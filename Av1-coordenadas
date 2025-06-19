@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aventura 1: Navegación por Coordenadas</title>
+    <title>Av1_coordenadas (GPS Google Maps)</title>
     <style>
         body {
             margin: 0;
             padding: 0;
-            font-family: Arial, sans-serif;
+            font-family: "Book Antiqua", "Palatino Linotype", "Palatino", Georgia, serif;
             overflow: hidden; /* Evita barras de desplazamiento */
         }
         #map {
@@ -17,6 +17,9 @@
             position: absolute;
             top: 0;
             left: 0;
+            /* Los bordes deben ser siempre de igual grosor. */
+            border: 3px solid #ddd; /* Borde del mapa */
+            box-sizing: border-box; /* Asegura que el padding/border no aumenten el tamaño total */
         }
         #message-overlay {
             position: absolute;
@@ -33,6 +36,8 @@
             display: none; /* Oculto por defecto */
             max-width: 90%;
             pointer-events: none; /* Permite clics "a través" si está visible pero no interactivo */
+            /* Los bordes deben ser siempre de igual grosor. */
+            border: 2px solid #555;
         }
 
         /* Estilos para el botón de cámara y la superposición de imagen */
@@ -55,6 +60,10 @@
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
             opacity: 0.8; /* Ligeramente transparente cuando no se usa */
             transition: opacity 0.3s ease;
+            /* Los bordes deben ser siempre de igual grosor. */
+            border: 2px solid #ccc;
+            /* El botón de cámara solo se muestra si hay un destino y el padre lo activa */
+            display: none; 
         }
 
         #camera-button:hover {
@@ -67,7 +76,8 @@
             left: 0;
             width: 100vw;
             height: 100vh;
-            background-color: rgba(0, 0, 0, 0.6); /* Fondo oscuro semitransparente para ver el mapa */
+            /* Fondo semitransparente para ver el mapa debajo */
+            background-color: rgba(0, 0, 0, 0.6); 
             display: flex;
             justify-content: center;
             align-items: center;
@@ -88,12 +98,15 @@
 
         #destination-image {
             max-width: 100%;
-            max-height: 80vh; /* La imagen ocupa el 80% de la altura de la pantalla */
+            /* La imagen ocupa el 75% de la altura de la pantalla */
+            max-height: 75vh; 
             height: auto;
             border-radius: 8px;
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5); /* Sombra más pronunciada */
             object-fit: contain; /* Asegura que la imagen se ajuste sin cortarse */
             display: none; /* Oculto por defecto, se muestra cuando carga */
+            /* Los bordes deben ser siempre de igual grosor. */
+            border: 3px solid #eee;
         }
 
         #close-image-button {
@@ -106,6 +119,8 @@
             font-size: 1.1em;
             margin-top: 15px; /* Espacio entre la imagen y el botón */
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            /* Los bordes deben ser siempre de igual grosor. */
+            border: 2px solid #c2332a;
         }
 
         #close-image-button:hover {
@@ -133,18 +148,22 @@
     <div id="map"></div>
     <div id="message-overlay">Cargando ubicación...</div>
 
-    <button id="camera-button" style="display: none;">📸</button>
+    <button id="camera-button">📸</button>
 
     <div id="image-modal-overlay">
         <div id="image-modal-content">
-            <div id="image-spinner" class="spinner"></div> <img id="destination-image" src="" alt="Imagen del destino">
-            <button id="close-image-button" style="display: none;">Cerrar</button> </div>
+            <div id="image-spinner" class="spinner"></div>
+            <img id="destination-image" src="" alt="Imagen del destino">
+            <button id="close-image-button" style="display: none;">Cerrar</button>
+        </div>
     </div>
 
     <script>
         let map;
         let directionsService;
         let directionsRenderer;
+        let userMarker; // Marcador para la posición del usuario
+        let stopMarkers = []; // Array para almacenar todos los marcadores de las paradas
         let currentTarget = null; // {lat, lon, radio, nombreParada, waypoints, imagen}
         let watchId; // Para almacenar el ID del observador de geolocalización
         let arrivalSent = false; // Bandera para evitar enviar el mensaje de llegada múltiples veces
@@ -267,7 +286,7 @@
             // PARADA 20: Edificio Suay (La Equitativa)
             { nombreParada: "Edificio Suay (La Equitativa)", lat: 39.4699, lon: -0.37573, radio: 10,
               waypoints: [
-                  { lat: 39.4703, lon: -0.3759 },    // Waypoint 9
+                  { lat: 39.4703, lon: -0.3759 },   // Waypoint 9
                   { lat: 39.47039, lon: -0.37505 }  // Waypoint 10
               ],
               imagen: "img/edificio_suay.jpg" }, 
@@ -334,7 +353,7 @@
 
         function initMap() {
             map = new google.maps.Map(document.getElementById('map'), {
-                center: { lat: 39.4700, lng: -0.3760 }, // Centro inicial en Valencia
+                center: { lat: 39.4700, lng: -0.3760 }, // Centro inicial en Valencia (si no hay destino activo)
                 zoom: 15,
                 mapTypeControl: false,
                 streetViewControl: false,
@@ -348,13 +367,44 @@
                     strokeColor: '#0077cc', // Color de la ruta
                     strokeOpacity: 0.8,
                     strokeWeight: 6 // Los bordes deben ser siempre de igual grosor.
-                }
+                },
+                suppressMarkers: true // Suprime los marcadores por defecto de Google para usar los nuestros
+            });
+
+            // Marcador para la posición del usuario
+            userMarker = new google.maps.Marker({
+                map: map,
+                position: { lat: 0, lng: 0 }, // Posición inicial, se actualizará con el GPS
+                icon: { // Icono para el usuario (círculo azul, por ejemplo)
+                    path: google.maps.SymbolPath.CIRCLE,
+                    scale: 8,
+                    fillColor: '#4285F4', // Azul de Google
+                    fillOpacity: 0.9,
+                    strokeWeight: 1,
+                    strokeColor: '#FFFFFF'
+                },
+                title: "Tu Posición"
+            });
+
+            // Añadir marcadores para todas las paradas (todos azules inicialmente)
+            paradasAventura.forEach((parada, index) => {
+                const marker = new google.maps.Marker({
+                    position: { lat: parada.lat, lng: parada.lon },
+                    map: map,
+                    icon: { // Marcador azul predeterminado para todas las paradas (excepto la activa)
+                        url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png', 
+                        scaledSize: new google.maps.Size(32, 32)
+                    },
+                    title: `Parada ${index}: ${parada.nombreParada}`
+                });
+                stopMarkers.push(marker); // Almacena para posible gestión posterior
             });
 
             overlay.style.display = 'block';
-            overlay.textContent = 'Esperando instrucciones del padre...';
+            overlay.textContent = 'Esperando ubicación GPS y destino del padre...';
 
             // *** IMPORTANTE: Enviamos las paradas al padre al cargarse ***
+            // Esto permite que el padre tenga acceso a toda la información de las paradas.
             window.parent.postMessage({ type: "gps-hijo-listo", paradas: paradasAventura }, "*");
 
             // Añadir event listeners para el botón de la cámara y el botón de cerrar
@@ -379,6 +429,7 @@
         }
 
         // Función para calcular la distancia entre dos puntos (fórmula de Haversine)
+        // Se mantiene como fallback si Directions API falla
         function calculateDistance(lat1, lon1, lat2, lon2) {
             const R = 6371e3; // Radio de la Tierra en metros
             const φ1 = lat1 * Math.PI / 180; // lat1 en radianes
@@ -403,24 +454,26 @@
 
             arrivalSent = false; // Resetear la bandera de llegada para la nueva parada
 
-            // Mostrar el botón de la cámara si hay un currentTarget
+            // Mostrar el botón de la cámara cuando watchUserPosition se activa (siempre que haya un currentTarget)
             if (currentTarget) {
-                cameraButton.style.display = 'flex'; // Mostrarlo
+                cameraButton.style.display = 'flex'; 
             } else {
-                cameraButton.style.display = 'none'; // Ocultarlo si no hay destino activo
+                cameraButton.style.display = 'none';
             }
 
             watchId = navigator.geolocation.watchPosition((position) => {
                 const userLat = position.coords.latitude;
                 const userLon = position.coords.longitude;
+                const userLatLng = new google.maps.LatLng(userLat, userLon);
 
-                map.setCenter({ lat: userLat, lng: userLon }); // Centrar el mapa en el usuario
+                userMarker.setPosition(userLatLng); // Actualizar la posición del marcador del usuario
+                map.setCenter(userLatLng); // Centrar el mapa en el usuario
 
                 if (currentTarget) {
                     overlay.textContent = `Dirígete a: ${currentTarget.nombreParada || 'Destino'}. Calculando ruta...`;
 
                     const requestOptions = {
-                        origin: new google.maps.LatLng(userLat, userLon),
+                        origin: userLatLng,
                         destination: new google.maps.LatLng(currentTarget.lat, currentTarget.lon),
                         travelMode: google.maps.TravelMode.WALKING // Confirmado: siempre andando
                     };
@@ -442,13 +495,19 @@
                             const duration = leg.duration.text; // Duración legible
                             overlay.textContent = `Dirígete a: ${currentTarget.nombreParada || 'Destino'}.\nDistancia: ${leg.distance.text} (${duration})`;
                             
+                            // Verificar si se ha llegado al radio del objetivo
                             if (distance <= currentTarget.radio && !arrivalSent) {
                                 overlay.textContent = `¡Has llegado a ${currentTarget.nombreParada || 'Destino'}!`;
                                 window.parent.postMessage({ type: "coordenadas-completadas", parada: currentTarget.nombreParada }, "*");
                                 arrivalSent = true; // Marcar que el mensaje de llegada ya se envió
                                 navigator.geolocation.clearWatch(watchId); // Detener la observación hasta la siguiente parada
                                 watchId = null; // Reiniciar el ID del observador
-                                cameraButton.style.display = 'none'; // Ocultar el botón de cámara al llegar
+                                directionsRenderer.setDirections({ routes: [] }); // Borrar la ruta del mapa
+                                // El botón de la cámara se MANTIENE visible para que puedan ver la imagen de la parada actual
+                                
+                                // Opcional: Centrar el mapa en la parada final con un zoom mayor para ver el sitio
+                                map.setCenter(new google.maps.LatLng(currentTarget.lat, currentTarget.lon));
+                                map.setZoom(18); // Zoom más cercano
                             }
                         } else {
                             // Si no se puede calcular la ruta con Directions API, usamos la distancia directa
@@ -462,7 +521,10 @@
                                 arrivalSent = true;
                                 navigator.geolocation.clearWatch(watchId);
                                 watchId = null;
-                                cameraButton.style.display = 'none'; // Ocultar el botón de cámara al llegar
+                                directionsRenderer.setDirections({ routes: [] }); // Borrar la ruta
+                                // El botón de la cámara se MANTIENE visible
+                                map.setCenter(new google.maps.LatLng(currentTarget.lat, currentTarget.lon));
+                                map.setZoom(18); // Zoom más cercano
                             }
                         }
                     });
@@ -508,7 +570,7 @@
                 imageSpinner.style.display = 'block'; // Mostrar spinner
                 destinationImage.style.display = 'none'; // Ocultar imagen mientras carga
                 closeImageButton.style.display = 'none'; // Ocultar botón de cerrar mientras carga
-                destinationImage.src = currentTarget.imagen; 
+                destinationImage.src = currentTarget.imagen;  
                 imageModalOverlay.style.display = 'flex'; // Mostrar la superposición
             } else {
                 alert('No hay imagen disponible para este destino.');
@@ -523,6 +585,10 @@
             imageSpinner.style.display = 'none'; // Asegurarse de que el spinner también esté oculto
             destinationImage.style.display = 'none'; // Resetear estado de la imagen
             closeImageButton.style.display = 'none'; // Resetear estado del botón
+            // Asegurarse de que el botón de la cámara permanezca visible si hay un currentTarget
+            if (currentTarget) {
+                cameraButton.style.display = 'flex';
+            }
         }
 
         // Listener para mensajes del padre
@@ -535,13 +601,97 @@
                 if (paradaIndex !== undefined && paradasAventura[paradaIndex]) {
                     currentTarget = paradasAventura[paradaIndex];
                     console.log("Mensaje 'irA_coordenadas' recibido del padre. Destino:", currentTarget.nombreParada);
-                    watchUserPosition(); 
-                    // Mostrar el botón de la cámara cuando se recibe una nueva instrucción de coordenadas
+                    
+                    // Actualizamos el icono del marcador de destino a rojo (actual activo)
+                    // Y resetear los demás a azul
+                    stopMarkers.forEach((marker, index) => {
+                        if (index === paradaIndex) {
+                            marker.setIcon({
+                                url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png', // Marcador rojo para el objetivo actual
+                                scaledSize: new google.maps.Size(32, 32)
+                            });
+                        } else {
+                            marker.setIcon({
+                                url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png', // Marcador azul para el resto
+                                scaledSize: new google.maps.Size(32, 32)
+                            });
+                        }
+                    });
+
+                    // Si hay un watchId activo de una parada anterior, lo limpiamos para iniciar uno nuevo
+                    if (watchId) {
+                        navigator.geolocation.clearWatch(watchId);
+                    }
+                    watchUserPosition(); // Iniciar la observación de la posición para el nuevo destino
+                    // El botón de la cámara se muestra aquí y se mantiene visible mientras haya un currentTarget
                     cameraButton.style.display = 'flex'; 
                 } else {
                     console.error("Mensaje 'irA_coordenadas' recibido con índice de parada inválido:", paradaIndex);
                     overlay.textContent = "Error: Destino no encontrado.";
                     cameraButton.style.display = 'none'; // Ocultar el botón si hay un error
+                    directionsRenderer.setDirections({ routes: [] }); // Borrar cualquier ruta existente
+                    if (watchId) { // Asegurarse de detener el GPS si el destino es inválido
+                        navigator.geolocation.clearWatch(watchId);
+                        watchId = null;
+                    }
+                }
+            } else if (event.data && event.data.type === "simular_ubicacion") {
+                // Mensaje del padre para simular una ubicación específica
+                const { lat, lon } = event.data;
+                if (watchId) { // Detener la observación real si se va a simular
+                    navigator.geolocation.clearWatch(watchId);
+                    watchId = null;
+                }
+                const simulatedLatLng = new google.maps.LatLng(lat, lon);
+                userMarker.setPosition(simulatedLatLng);
+                map.setCenter(simulatedLatLng);
+                overlay.textContent = `Ubicación simulada: Lat ${lat.toFixed(5)}, Lon ${lon.toFixed(5)}`;
+                
+                // Simular la llegada si estamos en modo simulación y dentro del radio
+                if (currentTarget) {
+                    const directDistance = calculateDistance(lat, lon, currentTarget.lat, currentTarget.lon);
+                    if (directDistance <= currentTarget.radio && !arrivalSent) {
+                        overlay.textContent = `¡Has llegado a ${currentTarget.nombreParada || 'Destino'}! (Simulado)`;
+                        window.parent.postMessage({ type: "coordenadas-completadas", parada: currentTarget.nombreParada }, "*");
+                        arrivalSent = true;
+                        directionsRenderer.setDirections({ routes: [] });
+                        // El botón de la cámara se MANTIENE visible
+                        map.setCenter(new google.maps.LatLng(currentTarget.lat, currentTarget.lon));
+                        map.setZoom(18);
+                    } else {
+                        // Si no ha llegado con la simulación, aún muestra la distancia y duración
+                        const requestOptions = {
+                            origin: simulatedLatLng,
+                            destination: new google.maps.LatLng(currentTarget.lat, currentTarget.lon),
+                            travelMode: google.maps.TravelMode.WALKING
+                        };
+                        directionsService.route(requestOptions, (response, status) => {
+                            if (status === 'OK') {
+                                directionsRenderer.setDirections(response);
+                                const leg = response.routes[0].legs[0];
+                                overlay.textContent = `Dirígete a: ${currentTarget.nombreParada || 'Destino'}.\nDistancia: ${leg.distance.text} (${leg.duration.text}) (Simulado)`;
+                            } else {
+                                overlay.textContent = `Dirígete a: ${currentTarget.nombreParada || 'Destino'}.\nDistancia: ${directDistance.toFixed(0)}m (ruta no disponible) (Simulado)`;
+                            }
+                        });
+                    }
+                }
+            } else if (event.data && event.data.type === "detener_gps") {
+                // Mensaje del padre para detener completamente el GPS
+                if (watchId) {
+                    navigator.geolocation.clearWatch(watchId);
+                    watchId = null;
+                }
+                overlay.textContent = "GPS detenido (modo de prueba).";
+                directionsRenderer.setDirections({ routes: [] }); // Borrar ruta
+                cameraButton.style.display = 'none'; // Ocultar el botón
+            } else if (event.data && event.data.type === "reiniciar_gps_real") {
+                // Mensaje del padre para reiniciar el GPS real
+                watchUserPosition(); // Volver a iniciar el seguimiento GPS real
+                overlay.textContent = "Reiniciando GPS real...";
+                // Mostrar el botón de la cámara si había un destino activo antes de detener
+                if (currentTarget) {
+                    cameraButton.style.display = 'flex';
                 }
             }
         });
