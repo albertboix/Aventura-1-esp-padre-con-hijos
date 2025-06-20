@@ -6,6 +6,11 @@
     <title>Aventura Urbana - Valencia</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
+        :root {
+            --base-font-size: 16px; /* Tamaño de fuente base */
+            --panel-width: 280px; /* Ancho de los paneles desplegables */
+            --border-thickness: 2px; /* Grosor consistente para bordes si se aplican */
+        }
         body {
             font-family: Arial, sans-serif;
             margin: 0;
@@ -16,6 +21,7 @@
             background-color: #f4f4f4;
             color: #333;
             overflow-x: hidden; /* Evita el scroll horizontal */
+            font-size: var(--base-font-size); /* Aplica el tamaño de fuente base */
         }
         header {
             background-color: #333;
@@ -23,14 +29,32 @@
             padding: 1em 0;
             text-align: center;
             font-size: 1.5em;
+            position: relative;
+            z-index: 2;
         }
-        .main-content {
+
+        /* Contenedor principal de secciones */
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+            position: relative; /* Necesario para posicionar los botones absolutos */
+        }
+
+        /* --- Estilos para la sección de la aventura principal --- */
+        .adventure-section {
             flex-grow: 1;
             padding: 1em;
             display: flex;
             flex-direction: column;
             align-items: center;
+            width: 100%;
+            max-width: 800px; /* Ancho máximo para el contenido */
+            margin: 0 auto; /* Centrar */
+            box-sizing: border-box;
+            position: relative;
         }
+
         .info-box {
             background-color: white;
             padding: 1em;
@@ -40,6 +64,8 @@
             width: 100%;
             max-width: 600px;
             text-align: center;
+            font-size: 1em;
+            border: var(--border-thickness) solid transparent; /* Consistencia en bordes */
         }
         #location-info {
             font-size: 1.1em;
@@ -87,15 +113,16 @@
             width: 100%;
             max-width: 600px;
             margin-top: 1em;
-            background-color: transparent; /* Para que el fondo del iframe se vea */
-            border-radius: 8px; /* Coincide con el estilo del reproductor hijo */
-            overflow: hidden; /* Asegura que el contenido interno no se salga */
+            background-color: transparent;
+            border-radius: 8px;
+            overflow: hidden;
+            border: var(--border-thickness) solid transparent; /* Consistencia en bordes */
         }
         #audioIframe {
             width: 100%;
-            height: 150px; /* Aumentado ligeramente para el botón de siguiente paso */
+            height: 150px;
             border: none;
-            display: block; /* Asegurarse de que esté visible */
+            display: block;
         }
 
         /* Contenedor del iframe del reto/puzzle */
@@ -106,19 +133,183 @@
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             background-color: white;
-            overflow: hidden; /* Asegura que el contenido interno no se salga */
-            display: none; /* Inicialmente oculto */
+            overflow: hidden;
+            display: none;
+            border: var(--border-thickness) solid rgba(0,0,0,0.1); /* Consistencia en bordes */
         }
         #retoIframe {
             width: 100%;
-            height: 400px; /* Altura ajustable según el contenido del reto */
+            height: 400px;
             border: none;
             display: block;
         }
 
-        /* Estilos del cartel "EN DESARROLLO" */
+        /* --- Estilos de los Botones Desplegables y Paneles --- */
+        .floating-btn {
+            position: fixed;
+            bottom: 20px;
+            width: 50px;
+            height: 50px;
+            background-color: #0077cc;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            font-size: 1.5em;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            z-index: 100; /* Asegura que estén por encima de todo */
+        }
+        .floating-btn:hover {
+            background-color: #005699;
+            transform: scale(1.05);
+        }
+        .floating-btn:active {
+            transform: scale(0.95);
+        }
+
+        #toggleBtn2 { /* Botón hamburguesa - Izquierda */
+            left: 20px;
+        }
+        #toggleBtn1 { /* Botón tres puntos - Derecha */
+            right: 20px;
+        }
+
+        .side-panel {
+            position: fixed;
+            top: 0;
+            width: 0; /* Inicialmente oculto */
+            height: 100%;
+            background-color: #333;
+            color: white;
+            padding-top: 60px; /* Espacio para el header */
+            transition: width 0.3s ease, left 0.3s ease, right 0.3s ease;
+            overflow-x: hidden;
+            overflow-y: auto; /* Permite scroll vertical */
+            white-space: nowrap;
+            z-index: 99; /* Por debajo de los botones flotantes, por encima del contenido */
+            box-shadow: 0 0 10px rgba(0,0,0,0.3);
+            display: flex; /* Para flexbox interno */
+            flex-direction: column;
+        }
+
+        #panel2 { /* Panel Izquierdo */
+            left: 0;
+        }
+        #panel1 { /* Panel Derecho */
+            right: 0;
+        }
+
+        .side-panel.open {
+            width: var(--panel-width); /* Ancho del panel al abrir */
+        }
+
+        .panel-close-btn {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 2em;
+            color: white;
+            cursor: pointer;
+            background: none;
+            border: none;
+            padding: 0;
+        }
+
+        .panel-tabs-nav {
+            display: flex;
+            flex-direction: column;
+            padding: 1em;
+            gap: 0.5em;
+        }
+        .panel-tabs-nav button {
+            background-color: #555;
+            color: white;
+            border: none;
+            padding: 1em;
+            text-align: left;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            border-radius: 5px;
+            font-size: 1em; /* Se adapta con --base-font-size */
+        }
+        .panel-tabs-nav button:hover {
+            background-color: #777;
+        }
+        .panel-tabs-nav button.active-panel-tab {
+            background-color: #0077cc;
+        }
+
+        .panel-content-area {
+            flex-grow: 1; /* Para que ocupe el espacio restante */
+            display: none; /* Secciones del panel ocultas por defecto */
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 1em;
+            color: #ccc;
+            font-size: 1em;
+            position: relative; /* Para que el cartel de desarrollo se posicione correctamente */
+        }
+        .panel-content-area iframe {
+            width: 100%;
+            height: 100%;
+            min-height: 300px; /* Altura mínima para los iframes */
+            border: none;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            border: var(--border-thickness) solid transparent; /* Consistencia en bordes */
+        }
+
+        /* Estilo para el slider de tamaño de letra */
+        .font-size-control {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 1em;
+            gap: 1em;
+            color: white;
+            font-size: 1em;
+            width: 100%;
+        }
+        .font-size-control input[type="range"] {
+            width: 80%;
+            -webkit-appearance: none;
+            height: 8px;
+            background: #005699;
+            outline: none;
+            border-radius: 5px;
+        }
+        .font-size-control input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #0077cc;
+            border: 2px solid white;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        .font-size-control input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #0077cc;
+            border: 2px solid white;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        .font-size-control .zoom-icon {
+            font-size: 1.5em;
+            color: white;
+        }
+
+        /* --- Estilos del cartel "EN DESARROLLO" --- */
         .en-desarrollo-cartel {
-            position: fixed; /* O 'absolute' si está dentro de un contenedor relativo */
+            position: absolute; /* Relative al panel-content-area */
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%) rotate(-15deg); /* Centrar y poner en oblicuo */
@@ -127,16 +318,109 @@
             color: rgba(255, 0, 0, 0.8); /* Rojo más fuerte */
             background-color: rgba(255, 255, 0, 0.6); /* Fondo amarillo semi-transparente */
             padding: 20px 40px; /* Padding más grande */
-            border: 4px solid rgba(255, 0, 0, 0.8); /* Borde más grueso y rojo */
+            border: var(--border-thickness) solid rgba(255, 0, 0, 0.8); /* Borde más grueso y rojo */
             border-radius: 12px;
-            z-index: 9999; /* Asegura que esté por encima de casi todo */
+            z-index: 10; /* Asegura que esté por encima del contenido */
             white-space: nowrap; /* Evita que el texto se rompa */
-            pointer-events: none; /* Permite hacer clic a través del cartel si está fijo */
-            display: block; /* Asegúrate de que esté visible por defecto */
+            pointer-events: none; /* Permite hacer clic a través del cartel */
+            display: none; /* OCULTO POR DEFECTO Y GESTIONADO POR JS */
+            text-align: center;
+        }
+        .en-desarrollo-cartel p {
+            font-size: 1em; /* Para que el texto interno no se vea afectado por el font-size del body */
+            margin: 0;
+            padding: 0;
+            line-height: 1.2;
+            color: inherit; /* Hereda el color principal del cartel */
         }
 
+        /* --- Estilos del Modal a Pantalla Completa para Términos/Contenido de Pestaña --- */
+        .fullscreen-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(0, 0, 0, 0.9); /* Fondo oscuro semi-transparente */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000; /* Asegura que esté por encima de todo lo demás */
+            box-sizing: border-box;
+            padding: 10px; /* Pequeño padding general */
+        }
+
+        .fullscreen-modal-content {
+            background-color: white;
+            border-radius: 10px;
+            width: 95%;
+            height: 95%;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; /* Para contener el iframe */
+            position: relative;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            border: var(--border-thickness) solid #0077cc; /* Borde para el modal */
+        }
+
+        .fullscreen-modal-content iframe {
+            flex-grow: 1; /* Ocupa el espacio restante */
+            border: none;
+            width: 100%;
+            height: 100%; /* El flex-grow y flex-direction lo manejan */
+        }
+
+        .modal-bottom-button-container {
+            padding: 15px;
+            background-color: #f0f0f0;
+            display: flex;
+            justify-content: center;
+            border-top: var(--border-thickness) solid #eee;
+        }
+
+        .modal-bottom-button-container button {
+            padding: 1em 2em;
+            font-size: 1.1em;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            background-color: #0077cc;
+            color: white;
+            transition: background-color 0.3s ease;
+        }
+        .modal-bottom-button-container button:hover {
+            background-color: #005699;
+        }
+
+        .fullscreen-modal-close-btn {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 2em;
+            color: #333; /* Color oscuro para contraste en fondo blanco */
+            cursor: pointer;
+            background: none;
+            border: none;
+            padding: 0;
+            z-index: 10; /* Para asegurar que esté por encima del iframe */
+        }
+
+
         /* Responsive adjustments */
+        @media (max-width: 768px) {
+            :root {
+                --panel-width: 70%; /* Más ancho en pantallas pequeñas */
+            }
+            .side-panel.open {
+                width: var(--panel-width);
+            }
+        }
         @media (max-width: 600px) {
+            :root {
+                --base-font-size: 14px;
+                --panel-width: 85%; /* Aún más ancho en móviles */
+            }
             header {
                 font-size: 1.2em;
             }
@@ -149,49 +433,115 @@
                 padding: 0.6em 1em;
             }
             #audioIframe {
-                height: 140px; /* Ajuste para móviles */
+                height: 140px;
             }
             #retoIframe {
-                height: 350px; /* Ajuste para móviles */
+                height: 350px;
+            }
+            .floating-btn {
+                width: 45px;
+                height: 45px;
+                font-size: 1.3em;
+                bottom: 15px;
+            }
+            #toggleBtn2 { left: 15px; }
+            #toggleBtn1 { right: 15px; }
+
+            .side-panel.open {
+                width: var(--panel-width);
+            }
+            .panel-tabs-nav button {
+                font-size: 0.9em;
+                padding: 0.8em;
             }
             .en-desarrollo-cartel {
-                font-size: 2em; /* Ajuste para pantallas más pequeñas */
-                padding: 15px 30px;
-                transform: translate(-50%, -50%) rotate(-10deg); /* Menos oblicuo en móviles */
+                font-size: 1.8em; /* Ajuste para pantallas aún más pequeñas */
+                padding: 10px 20px;
+                transform: translate(-50%, -50%) rotate(-8deg); /* Menos oblicuo en móviles */
+            }
+            .fullscreen-modal-content {
+                width: 98%;
+                height: 98%;
             }
         }
     </style>
 </head>
 <body>
+    <div id="termsConditionsModal" class="fullscreen-modal-overlay">
+        <div class="fullscreen-modal-content">
+            <iframe src="terminos_y_condiciones.html" title="Términos y Condiciones"></iframe>
+            <div class="modal-bottom-button-container">
+                <button id="acceptTermsBtn">Aceptar Términos y Condiciones</button>
+            </div>
+        </div>
+    </div>
+
     <header>
         Aventura Urbana: Valencia
     </header>
 
-    <div class="main-content">
-        <div class="info-box">
-            <p id="current-step-display">Iniciando Aventura...</p>
-            <p id="location-info">Esperando ubicación GPS...</p>
+    <div class="app-container" style="display: none;"> <div id="aventura-principal-section" class="adventure-section">
+            <div class="info-box">
+                <p id="current-step-display">Iniciando Aventura...</p>
+                <p id="location-info">Esperando ubicación GPS...</p>
+            </div>
+
+            <div id="audio-player-wrapper">
+                <iframe id="audioIframe" src="Av1_audio_esp.html"></iframe>
+            </div>
+
+            <div id="reto-player-wrapper">
+                <iframe id="retoIframe" src=""></iframe>
+            </div>
+
+            <div class="btn-container" id="puzzle-feedback-buttons" style="display: none;">
+                <button id="btnPuzzleCorrect" class="btn-padre">¡Reto Superado!</button>
+                <button id="btnPuzzleIncorrect" class="btn-padre">Intentar de Nuevo</button>
+            </div>
         </div>
 
-        <div id="audio-player-wrapper">
-            <iframe id="audioIframe" src="Av1_audio_esp.html"></iframe>
+        <button class="floating-btn" id="toggleBtn2">
+            <i class="fas fa-bars"></i>
+        </button>
+
+        <button class="floating-btn" id="toggleBtn1">
+            <i class="fas fa-ellipsis-v"></i>
+        </button>
+
+        <div id="panel2" class="side-panel">
+            <button class="panel-close-btn" id="closePanel2">&times;</button>
+            <div class="panel-tabs-nav">
+                <button id="tabBtnRetos">Retos y Puzzles</button>
+                <button id="tabBtnEnlacesHistoricos">Enlaces Históricos</button>
+                <button id="tabBtnPaginasOficiales">Páginas Oficiales</button>
+                <button id="tabBtnTextoAventuras">Texto Aventuras</button>
+                <button id="tabBtnTextoLecturaFacil">Texto Lectura Fácil</button>
+            </div>
+            </div>
+
+        <div id="panel1" class="side-panel">
+            <button class="panel-close-btn" id="closePanel1">&times;</button>
+            <div class="panel-tabs-nav">
+                <button id="tabBtnAgradecimientos">Agradecimientos</button>
+                <button id="tabBtnFuentesInfo">Fuentes de la Información</button>
+                <button id="tabBtnGastronomia">Gastronomía</button>
+                <button id="tabBtnConsejosSeguridad">Consejos Útiles y Seguridad Vial</button>
+                <button id="tabBtnCambioTamano">Cambio Tamaño Letra</button>
+            </div>
+            </div>
+
+    </div> <div id="fullscreenTabContentModal" class="fullscreen-modal-overlay" style="display:none;">
+        <div class="fullscreen-modal-content">
+            <button class="fullscreen-modal-close-btn" id="closeFullscreenModal">&times;</button>
+            <iframe id="fullscreenIframe" src="" title="Contenido de Pestaña"></iframe>
+            <div id="fullscreenEnDesarrolloCartel" class="en-desarrollo-cartel">EN DESARROLLO</div>
         </div>
-
-        <div id="reto-player-wrapper">
-            <iframe id="retoIframe" src=""></iframe>
-        </div>
-
-        <div class="btn-container" id="puzzle-feedback-buttons" style="display: none;">
-            <button id="btnPuzzleCorrect" class="btn-padre">¡Reto Superado!</button>
-            <button id="btnPuzzleIncorrect" class="btn-padre">Intentar de Nuevo</button>
-        </div>
-
-        <div class="en-desarrollo-cartel">EN DESARROLLO</div>
-
     </div>
 
+
     <script>
-        // Referencias a elementos del DOM
+        // --- Referencias a elementos del DOM de la Aventura Principal ---
+        const appContainer = document.querySelector('.app-container');
         const locationInfo = document.getElementById('location-info');
         const currentStepDisplay = document.getElementById('current-step-display');
         const audioIframe = document.getElementById('audioIframe');
@@ -201,20 +551,56 @@
         const btnPuzzleCorrect = document.getElementById('btnPuzzleCorrect');
         const btnPuzzleIncorrect = document.getElementById('btnPuzzleIncorrect');
         const puzzleFeedbackButtons = document.getElementById('puzzle-feedback-buttons');
+        
+        // --- Referencias para Botones Flotantes y Paneles ---
+        const toggleBtn1 = document.getElementById('toggleBtn1'); // Botón 3 puntos (derecha)
+        const toggleBtn2 = document.getElementById('toggleBtn2'); // Botón hamburguesa (izquierda)
+        const panel1 = document.getElementById('panel1'); // Panel derecho
+        const panel2 = document.getElementById('panel2'); // Panel izquierdo
+        const closePanel1 = document.getElementById('closePanel1');
+        const closePanel2 = document.getElementById('closePanel2');
 
-        // Estado de la Aventura
-        let currentStepIndex = 0; // Empieza en el paso 0
+        // --- Referencias para el Modal de Términos y Condiciones ---
+        const termsConditionsModal = document.getElementById('termsConditionsModal');
+        const acceptTermsBtn = document.getElementById('acceptTermsBtn');
+
+        // --- Referencias para el Modal de Contenido de Pestaña a Pantalla Completa ---
+        const fullscreenTabContentModal = document.getElementById('fullscreenTabContentModal');
+        const closeFullscreenModal = document.getElementById('closeFullscreenModal');
+        const fullscreenIframe = document.getElementById('fullscreenIframe');
+        const fullscreenEnDesarrolloCartel = document.getElementById('fullscreenEnDesarrolloCartel');
+
+        // --- Referencias para Pestañas de los Paneles ---
+        // Panel 2 (Izquierdo)
+        const tabBtnRetos = document.getElementById('tabBtnRetos');
+        const tabBtnEnlacesHistoricos = document.getElementById('tabBtnEnlacesHistoricos');
+        const tabBtnPaginasOficiales = document.getElementById('tabBtnPaginasOficiales');
+        const tabBtnTextoAventuras = document.getElementById('tabBtnTextoAventuras');
+        const tabBtnTextoLecturaFacil = document.getElementById('tabBtnTextoLecturaFacil');
+        // Panel 1 (Derecho)
+        const tabBtnAgradecimientos = document.getElementById('tabBtnAgradecimientos');
+        const tabBtnFuentesInfo = document.getElementById('tabBtnFuentesInfo');
+        const tabBtnGastronomia = document.getElementById('tabBtnGastronomia');
+        const tabBtnConsejosSeguridad = document.getElementById('tabBtnConsejosSeguridad');
+        const tabBtnCambioTamano = document.getElementById('tabBtnCambioTamano'); // Este es especial, no un iframe
+
+        // --- Estado de la Aventura Principal ---
+        let currentStepIndex = 0;
         let audioHijoListo = false;
         let retoHijoListo = false;
-        let audioPlayerIsPlaying = false; // Estado para saber si el audio está reproduciéndose
-        let currentAudioCanPlay = false; // Viene del GPS, si estamos en zona
+        let audioPlayerIsPlaying = false;
+        let currentAudioCanPlay = false;
+        let gpsActive = false; // Nuevo estado para controlar el GPS
 
-        // Definición de los pasos de la aventura (tus 30 paradas)
-        // Cada paso puede tener un audio asociado, un reto asociado, o ambos.
+        // --- Definición de los pasos de la aventura (tus 30 paradas) ---
+        // NOTA: Mantenemos la lista aquí hardcodeada, asumiendo que Av1-coordenadas.html
+        // es un archivo de datos que podría usarse para poblar esto, pero no es cargado
+        // como un iframe visible. Si Av1-coordenadas.html debe cargar y enviar esta info,
+        // necesitaríamos implementar esa lógica de postMessage.
         const adventureSteps = [
             {
                 name: "Torres de Serranos - Introducción",
-                coords: { latitude: 39.47953, longitude: -0.37759 }, // Coordenadas de ejemplo
+                coords: { latitude: 39.47953, longitude: -0.37759 }, // Coordenadas de ejemplo (Valencia)
                 radius: 50, // radio en metros
                 audioId: "audio_serranos_intro", // Este ID DEBE COINCIDIR con el 'id' en Av1_audio_esp.html
                 retoUrl: null, // No hay reto en este paso
@@ -223,7 +609,7 @@
             },
             {
                 name: "Muro de Santa Ana",
-                coords: { latitude: 39.47700, longitude: -0.37500 }, // Coordenadas de ejemplo
+                coords: { latitude: 39.47600, longitude: -0.37500 }, // Coordenadas de ejemplo (cerca de la Catedral)
                 radius: 30,
                 audioId: "audio_muro_santa_ana",
                 retoUrl: "puzzle_muro_santa_ana.html", // URL del reto para este paso
@@ -232,18 +618,16 @@
             },
             {
                 name: "Plaza de la Virgen",
-                coords: { latitude: 39.47600, longitude: -0.37400 },
+                coords: { latitude: 39.47520, longitude: -0.37520 }, // Coordenadas de ejemplo
                 radius: 30,
                 audioId: "audio_plaza_virgen",
                 retoUrl: "puzzle_plaza_virgen.html",
                 instruction: "Dirígete a la Plaza de la Virgen y completa la siguiente prueba.",
                 stepType: "audio-then-reto"
             },
-            // AÑADE AQUÍ LAS 27 PARADAS RESTANTES CON SUS COORDENADAS, RADIOS, AUDIO IDs Y RETOS
-            // Ejemplo de otras paradas (asegúrate de que los IDs coinciden con Av1_audio_esp.html)
             {
                 name: "Catedral y Miguelete",
-                coords: { latitude: 39.47500, longitude: -0.37300 },
+                coords: { latitude: 39.47520, longitude: -0.37520 },
                 radius: 40,
                 audioId: "audio_catedral_fachada",
                 retoUrl: "puzzle_catedral.html",
@@ -252,26 +636,25 @@
             },
             {
                 name: "Baños Árabes",
-                coords: { latitude: 39.47400, longitude: -0.37200 },
+                coords: { latitude: 39.47500, longitude: -0.37600 },
                 radius: 25,
                 audioId: "audio_banos_arabes",
                 retoUrl: null,
                 instruction: "Explora los antiguos baños árabes.",
                 stepType: "audio"
             },
-            // ... (añade las 25 paradas restantes aquí)
             {
                 name: "Última Parada de la Aventura",
                 coords: { latitude: 39.46800, longitude: -0.37000 },
                 radius: 50,
-                audioId: "audio_lonja_seda", // O el ID del último audio
-                retoUrl: "puzzle_final.html", // O un reto final
+                audioId: "audio_lonja_seda",
+                retoUrl: "puzzle_final.html",
                 instruction: "¡Felicidades! Has llegado al final de tu aventura. Completa el reto final.",
                 stepType: "audio-then-reto"
             }
         ];
 
-        // --- Funciones de Gestión de Pasos ---
+        // --- Funciones de Gestión de Pasos de Aventura ---
 
         function updateStepDisplay() {
             const currentStep = adventureSteps[currentStepIndex];
@@ -283,23 +666,20 @@
                 locationInfo.textContent = "Has completado todos los desafíos. ¡Gracias por jugar!";
                 hideAudioPlayer();
                 hideRetoPlayer();
+                stopLocationTracking(); // Detener GPS al finalizar
             }
         }
 
         function prepareAudioStep(audioId, canPlay) {
             showAudioPlayer();
             hideRetoPlayer();
-            // Envía el mensaje al iframe hijo para cargar el audio
             if (audioHijoListo) {
                 audioIframe.contentWindow.postMessage({ type: 'loadAudio', idAudio: audioId, canPlay: canPlay }, '*');
-                // Si el audio puede reproducirse por proximidad, y no está ya sonando
                 if (canPlay && !audioPlayerIsPlaying) {
                     audioIframe.contentWindow.postMessage({ type: 'playAudio' }, '*');
                 } else if (!canPlay && audioPlayerIsPlaying) {
-                    // Si pierde proximidad y el audio estaba sonando, pausarlo
                     audioIframe.contentWindow.postMessage({ type: 'pauseAudio' }, '*');
                 }
-                // Asegúrate de que el hijo siempre reciba el estado de 'canPlay'
                 audioIframe.contentWindow.postMessage({ type: 'updateCanPlay', canPlay: canPlay }, '*');
             } else {
                 console.warn("Audio iframe no está listo para recibir mensajes.");
@@ -310,8 +690,7 @@
             hideAudioPlayer();
             showRetoPlayer();
             retoIframe.src = retoUrl; // Carga la URL del reto en el iframe
-            // Ocultar botones de feedback del puzzle inicialmente
-            puzzleFeedbackButtons.style.display = 'none';
+            puzzleFeedbackButtons.style.display = 'none'; // Ocultar botones de feedback hasta que el reto se resuelva
         }
 
         function showAudioPlayer() {
@@ -320,7 +699,6 @@
 
         function hideAudioPlayer() {
             audioPlayerWrapper.style.display = 'none';
-            // Asegurarse de detener el audio al ocultar el reproductor
             if (audioHijoListo) {
                 audioIframe.contentWindow.postMessage({ type: 'stopAudio' }, '*');
             }
@@ -337,8 +715,10 @@
         function avanzarPaso() {
             currentStepIndex++;
             updateStepDisplay();
-            // Reiniciar el proceso de ubicación para el nuevo paso
-            startLocationTracking();
+            // Si el GPS está activo, reanudar seguimiento para el nuevo paso
+            if (gpsActive) {
+                startLocationTracking();
+            }
         }
 
         // --- Gestión de la Ubicación GPS ---
@@ -346,18 +726,25 @@
         let watchId; // Para almacenar el ID del watcher de geolocalización
 
         function startLocationTracking() {
-            if (navigator.geolocation) {
-                // Opciones para la geolocalización
-                const geoOptions = {
-                    enableHighAccuracy: true, // Pide la mayor precisión posible
-                    timeout: 10000,          // Espera hasta 10 segundos por una lectura
-                    maximumAge: 0            // No usar una posición en caché, pedir una nueva
-                };
-                watchId = navigator.geolocation.watchPosition(geoSuccess, geoError, geoOptions);
-                locationInfo.textContent = "Obteniendo tu ubicación...";
+            if (gpsActive) { // Solo si el GPS ya fue activado por el usuario
+                if (navigator.geolocation) {
+                    const geoOptions = {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 0
+                    };
+                    // Detener el watch anterior si existe para evitar duplicados
+                    if (watchId) {
+                        navigator.geolocation.clearWatch(watchId);
+                    }
+                    watchId = navigator.geolocation.watchPosition(geoSuccess, geoError, geoOptions);
+                    locationInfo.textContent = "Obteniendo tu ubicación...";
+                } else {
+                    locationInfo.textContent = "Geolocalización no soportada por tu navegador.";
+                    alert("Tu navegador no soporta la geolocalización. La aventura no puede continuar.");
+                }
             } else {
-                locationInfo.textContent = "Geolocalización no soportada por tu navegador.";
-                alert("Tu navegador no soporta la geolocalización. La aventura no puede continuar.");
+                locationInfo.textContent = "GPS inactivo. Acepte los términos y condiciones para activarlo.";
             }
         }
 
@@ -365,6 +752,7 @@
             if (watchId) {
                 navigator.geolocation.clearWatch(watchId);
                 watchId = null;
+                console.log("GPS tracking stopped.");
             }
         }
 
@@ -373,60 +761,40 @@
             const currentStep = adventureSteps[currentStepIndex];
 
             if (!currentStep) {
-                // Aventura terminada, no seguir rastreando
                 stopLocationTracking();
                 return;
             }
 
             const targetLat = currentStep.coords.latitude;
             const targetLon = currentStep.coords.longitude;
-            const detectionRadius = currentStep.radius; // Radio de detección para este paso
+            const detectionRadius = currentStep.radius;
 
             const distance = calculateDistance(latitude, longitude, targetLat, targetLon);
 
             locationInfo.textContent = `Paso ${currentStepIndex + 1}: ${currentStep.name}. Distancia: ${distance.toFixed(2)} metros.`;
 
-            // Lógica de proximidad y control de audio/reto
             if (distance <= detectionRadius) {
-                currentAudioCanPlay = true; // Estamos en la zona
+                currentAudioCanPlay = true;
                 locationInfo.textContent += " ¡Estás en la ubicación correcta!";
                 
-                // Si el paso tiene audio, prepáralo y quizás reprodúcelo
+                // Si el paso tiene audio, prepáralo y, si ya no está sonando, reprodúcelo
                 if (currentStep.audioId) {
-                    prepareAudioStep(currentStep.audioId, true); // True porque está en la zona
+                    prepareAudioStep(currentStep.audioId, true);
                 } else {
-                    hideAudioPlayer(); // Asegura que el reproductor de audio esté oculto si no hay audio
+                    hideAudioPlayer();
                 }
 
-                // Si el paso tiene un reto, prepáralo.
-                // IMPORTANTE: El reto solo se mostrará una vez que el audio haya terminado y el usuario
-                // haya pulsado "Siguiente Paso" desde el reproductor.
-                if (currentStep.retoUrl && audioPlayer.ended) { // Solo si el audio ha terminado
-                    // No hacemos nada aquí, el botón "Siguiente Paso" en el hijo lo gestionará
-                } else if (!currentStep.audioId && currentStep.retoUrl) {
-                    // Si no hay audio, cargar el reto directamente (ej: paso solo de reto)
-                    // Esto puede depender de tu flujo. Por ahora, asumimos que si hay reto
-                    // Y NO hay audio, se muestra directamente.
+                // Si no hay audio, o si el audio es solo informativo y el reto debe aparecer inmediatamente
+                // (esto lo controlaría el mensaje 'audio-player-next-step' del hijo o se ejecutaría aquí)
+                if (!currentStep.audioId && currentStep.retoUrl) {
                     prepareRetoStep(currentStep.retoUrl);
-                } else if (!currentStep.audioId && !currentStep.retoUrl) {
-                    // Si no hay audio ni reto, avanzar automáticamente (o mostrar "siguiente paso" si prefieres)
-                    // Para evitar bucles, solo avanzar si no hay audio y no hay reto definido
-                    // Si quieres que el usuario pulse para avanzar aunque no haya audio ni reto:
-                    // window.parent.postMessage({ type: 'audio-player-next-step' }, '*');
-                    console.log(`Paso ${currentStepIndex + 1}: Sin audio ni reto. Se avanzaría automáticamente o con botón "Siguiente".`);
-                    // Por ahora, no se avanza automáticamente para evitar saltos inesperados.
-                    // El botón "Siguiente Paso" en el hijo debería activarse si no hay audio.
-                    // Para esto, el hijo necesita saber si el paso no tiene audio, o forzar 'ended' si no hay src.
-                    // Para simplificar, asumiremos que todos los pasos tienen audio o reto.
                 }
-
             } else {
-                currentAudioCanPlay = false; // Fuera de la zona
-                // Pausar o evitar la reproducción de audio si estamos fuera de la zona
+                currentAudioCanPlay = false;
                 if (currentStep.audioId) {
-                    prepareAudioStep(currentStep.audioId, false); // False porque no está en la zona
+                    prepareAudioStep(currentStep.audioId, false); // Pausar o evitar reproducción si no está en rango
                 }
-                hideRetoPlayer(); // Ocultar reto si nos alejamos
+                hideRetoPlayer();
             }
         }
 
@@ -435,6 +803,7 @@
             switch (error.code) {
                 case error.PERMISSION_DENIED:
                     errorMessage += "Permiso denegado por el usuario.";
+                    gpsActive = false; // El usuario denegó el permiso
                     break;
                 case error.POSITION_UNAVAILABLE:
                     errorMessage += "Información de ubicación no disponible.";
@@ -448,20 +817,19 @@
             }
             locationInfo.textContent = errorMessage + " Por favor, asegúrate de que el GPS está activado y los permisos concedidos.";
             console.error(errorMessage, error);
-            // Si hay un error, el audio no puede reproducirse
             if (audioHijoListo) {
                  audioIframe.contentWindow.postMessage({ type: 'updateCanPlay', canPlay: false }, '*');
             }
             hideAudioPlayer();
             hideRetoPlayer();
+            stopLocationTracking(); // Detener el seguimiento si hay un error persistente
         }
 
         // --- Funciones Auxiliares ---
 
-        // Función para calcular la distancia entre dos coordenadas (Fórmula de Haversine)
         function calculateDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371e3; // Radio de la Tierra en metros
-            const φ1 = lat1 * Math.PI / 180; // φ, λ en radianes
+            const R = 6371e3;
+            const φ1 = lat1 * Math.PI / 180;
             const φ2 = lat2 * Math.PI / 180;
             const Δφ = (lat2 - lat1) * Math.PI / 180;
             const Δλ = (lon2 - lon1) * Math.PI / 180;
@@ -471,87 +839,235 @@
                       Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
-            return R * c; // Distancia en metros
+            return R * c;
+        }
+
+        // --- Simulación de GPS para Desarrollo (ACCESIBLE POR CONSOLA) ---
+        window.simulateCurrentLocation = function(stepIndex = currentStepIndex) {
+            if (stepIndex >= 0 && stepIndex < adventureSteps.length) {
+                const simulatedCoords = adventureSteps[stepIndex].coords;
+                console.warn(`[SIMULACIÓN GPS] Forzando ubicación a: Paso ${stepIndex + 1} (${adventureSteps[stepIndex].name})`);
+                // Llamamos a geoSuccess directamente con coordenadas simuladas
+                geoSuccess({ coords: simulatedCoords });
+                locationInfo.textContent = `[SIMULACIÓN] En Paso ${stepIndex + 1}: ${adventureSteps[stepIndex].name}`;
+                // Asegurarse de que el GPS se active si no lo está
+                if (!gpsActive) {
+                    gpsActive = true;
+                    // No reiniciar watchPosition aquí, ya que geoSuccess fue llamada directamente.
+                    // Para simular el flujo completo, podrías querer llamar a startLocationTracking()
+                    // después de aceptar permisos, y luego usar esta función para "actualizar" la posición.
+                    // Por simplicidad, esta función solo simula una llamada a geoSuccess.
+                }
+            } else {
+                console.error(`[SIMULACIÓN GPS] Índice de paso ${stepIndex} fuera de rango.`);
+            }
+        };
+
+
+        // --- Gestión de Paneles Desplegables ---
+        function openPanel(panel) {
+            // Cierra el otro panel si está abierto
+            if (panel === panel1 && panel2.classList.contains('open')) {
+                closePanel(panel2);
+            } else if (panel === panel2 && panel1.classList.contains('open')) {
+                closePanel(panel1);
+            }
+            panel.classList.add('open');
+            // Al abrir un panel, detener GPS y ocultar reproductores de la aventura principal
+            stopLocationTracking();
+            hideAudioPlayer();
+            hideRetoPlayer();
+        }
+
+        function closePanel(panel) {
+            panel.classList.remove('open');
+            // Al cerrar un panel, si estamos en la sección principal de aventura, reanudar GPS
+            if (appContainer.style.display !== 'none' && audioHijoListo && gpsActive) { // Solo si la app está visible y GPS activo
+                updateStepDisplay(); // Asegura que la información del paso esté al día
+                startLocationTracking();
+            } else if (appContainer.style.display !== 'none') {
+                locationInfo.textContent = "GPS inactivo. Acepte los términos y condiciones o active GPS.";
+            }
+        }
+
+        // --- Gestión de Contenido de Pestañas dentro de los Paneles (Pantalla Completa) ---
+        function showFullscreenTabContent(contentUrl, showDevelopmentCartel = false) {
+            fullscreenIframe.style.display = 'none'; // Ocultar iframe por defecto
+            fullscreenEnDesarrolloCartel.style.display = 'none'; // Ocultar cartel por defecto
+            fullscreenIframe.src = ''; // Limpiar src del iframe
+
+            // Cierra los paneles laterales si están abiertos
+            closePanel(panel1);
+            closePanel(panel2);
+
+            // Muestra el modal a pantalla completa
+            fullscreenTabContentModal.style.display = 'flex';
+
+            if (showDevelopmentCartel) {
+                fullscreenEnDesarrolloCartel.style.display = 'block';
+            } else {
+                fullscreenIframe.src = contentUrl;
+                fullscreenIframe.style.display = 'block';
+            }
+            // Detener GPS y audio principal al mostrar contenido a pantalla completa
+            stopLocationTracking();
+            hideAudioPlayer();
+            hideRetoPlayer();
+        }
+
+        function closeFullscreenTabContent() {
+            fullscreenTabContentModal.style.display = 'none';
+            fullscreenIframe.src = ''; // Limpiar src al cerrar
+            fullscreenEnDesarrolloCartel.style.display = 'none'; // Ocultar cartel
+
+            // Reanudar GPS y audio principal si la app está activa
+            if (appContainer.style.display !== 'none' && audioHijoListo && gpsActive) {
+                updateStepDisplay();
+                startLocationTracking();
+            } else if (appContainer.style.display !== 'none') {
+                locationInfo.textContent = "GPS inactivo. Acepte los términos y condiciones o active GPS.";
+            }
         }
 
         // --- Manejo de mensajes desde los iframes hijos ---
-
         window.addEventListener("message", (event) => {
-            // Es buena práctica verificar el origin de los mensajes en producción
-            // if (event.origin !== "https://tu-dominio.github.io") return;
-
             const data = event.data;
             if (data && typeof data === 'object') {
                 switch (data.type) {
                     case 'audio-hijo-listo':
                         audioHijoListo = true;
-                        console.log("Audio iframe está listo.");
-                        updateStepDisplay(); // Mostrar info del paso inicial
-                        startLocationTracking(); // Empezar a rastrear ubicación
+                        console.log("Audio iframe de aventura está listo.");
+                        // Solo inicia el GPS y actualiza la UI si la app principal está visible y T&C aceptados
+                        if (appContainer.style.display !== 'none' && gpsActive) {
+                            updateStepDisplay();
+                            startLocationTracking();
+                        } else if (appContainer.style.display !== 'none') {
+                            locationInfo.textContent = "Esperando activación de GPS...";
+                        }
                         break;
                     case 'reto-hijo-listo':
                         retoHijoListo = true;
                         console.log("Reto iframe está listo.");
-                        // Una vez el reto esté listo, si el tipo de paso lo requiere,
-                        // podemos mostrar los botones de feedback del puzzle.
-                        // Esto se controla ahora desde el botón de "Siguiente Paso" en el audio.
                         break;
-                    case 'audio-player-next-step': // MENSAJE CLAVE DEL HIJO (NUEVO)
+                    case 'audio-player-next-step':
                         console.log("Mensaje recibido: 'audio-player-next-step'");
                         const currentStep = adventureSteps[currentStepIndex];
                         if (currentStep && currentStep.retoUrl) {
-                            // Si el paso actual tiene un reto, cárgalo
                             prepareRetoStep(currentStep.retoUrl);
-                            // También podríamos mostrar los botones de "Correcto/Incorrecto" aquí
-                            // si el reto es interactivo y NO lo gestiona el propio iframe del reto.
-                            // Por ahora, asumimos que el reto hijo enviará su propio resultado.
                         } else {
-                            // Si no hay reto para este paso, o ya se ha completado, avanzar
                             avanzarPaso();
                         }
                         break;
                     case 'reto-resuelto':
-                        // Este mensaje lo enviaría el iframe del reto si el puzzle se resuelve
                         if (data.result === 'correct') {
                             alert("¡Reto resuelto correctamente! Pasando al siguiente punto.");
                             avanzarPaso();
                         } else if (data.result === 'incorrect') {
                             alert("Respuesta incorrecta. Inténtalo de nuevo.");
-                            // Podrías reiniciar el reto, dar una pista, etc.
-                            // retoIframe.src = retoIframe.src; // Recarga el iframe del reto
+                            retoIframe.src = adventureSteps[currentStepIndex].retoUrl; // Recarga el reto
                         }
                         break;
-                    case 'audio-is-playing': // El hijo informa si el audio está activo
+                    case 'audio-is-playing':
                         audioPlayerIsPlaying = data.isPlaying;
-                        break;
-                    case 'changeFontSize': // Si el padre quiere cambiar su propia fuente
-                        document.body.style.fontSize = data.size + 'px';
                         break;
                 }
             }
         });
 
-        // Inicializar al cargar la página
+        // --- Inicialización y Event Listeners ---
         document.addEventListener('DOMContentLoaded', () => {
-            updateStepDisplay();
-            // Iniciar el rastreo de ubicación solo cuando el iframe de audio esté listo
-            // (el iframe de audio enviará el mensaje 'audio-hijo-listo')
-        });
+            // Inicialmente, mostrar solo el modal de términos y condiciones
+            appContainer.style.display = 'none';
+            termsConditionsModal.style.display = 'flex';
 
-        // Event Listeners para los botones de feedback del puzzle (si tuvieras un puzzle interactivo)
-        btnPuzzleCorrect.addEventListener('click', () => {
-            // Lógica para cuando el puzzle es correcto
-            avanzarPaso();
-            puzzleFeedbackButtons.style.display = 'none'; // Ocultar botones
-        });
+            // Event Listener para aceptar términos y condiciones
+            acceptTermsBtn.addEventListener('click', () => {
+                termsConditionsModal.style.display = 'none'; // Ocultar modal de T&C
+                appContainer.style.display = 'flex'; // Mostrar la aplicación principal
+                gpsActive = true; // Activar estado del GPS para la aplicación
+                console.log("Términos aceptados. Intentando iniciar GPS.");
+                
+                // Iniciar el seguimiento GPS y mostrar la UI del paso actual
+                if (audioHijoListo) { // Si el iframe de audio ya está listo
+                    updateStepDisplay();
+                    startLocationTracking();
+                } else {
+                    locationInfo.textContent = "Cargando audio y preparando GPS...";
+                }
+                hideAudioPlayer(); // Por defecto oculto hasta que el GPS lo active
+                hideRetoPlayer();
+            });
 
-        btnPuzzleIncorrect.addEventListener('click', () => {
-            // Lógica para cuando el puzzle es incorrecto
-            alert("Inténtalo de nuevo. Puedes pedir una pista.");
-            // Aquí podrías recargar el reto o dar una pista
-            retoIframe.src = adventureSteps[currentStepIndex].retoUrl; // Recargar el reto
-        });
+            // Event Listeners para los botones flotantes de los paneles
+            toggleBtn1.addEventListener('click', () => openPanel(panel1));
+            toggleBtn2.addEventListener('click', () => openPanel(panel2));
+            closePanel1.addEventListener('click', () => closePanel(panel1));
+            closePanel2.addEventListener('click', () => closePanel(panel2));
 
+            // Event Listener para cerrar el modal de contenido a pantalla completa
+            closeFullscreenModal.addEventListener('click', closeFullscreenTabContent);
+
+            // Event Listeners para las pestañas del Panel 2 (Izquierdo)
+            tabBtnRetos.addEventListener('click', () => {
+                showFullscreenTabContent('retos_con_puzzles_Av1_es.html', false);
+            });
+            tabBtnEnlacesHistoricos.addEventListener('click', () => {
+                showFullscreenTabContent('enlaces_valencia_historica.html', false);
+            });
+            tabBtnPaginasOficiales.addEventListener('click', () => {
+                showFullscreenTabContent('paginas_oficiales.html', false);
+            });
+            tabBtnTextoAventuras.addEventListener('click', () => {
+                // Aquí iría un iframe con src si existiera el archivo
+                showFullscreenTabContent('', true); // Muestra solo el cartel
+            });
+            tabBtnTextoLecturaFacil.addEventListener('click', () => {
+                // Aquí iría un iframe con src si existiera el archivo
+                showFullscreenTabContent('', true); // Muestra solo el cartel
+            });
+
+            // Event Listeners para las pestañas del Panel 1 (Derecho)
+            tabBtnAgradecimientos.addEventListener('click', () => {
+                showFullscreenTabContent('Agradecimientos.html', false);
+            });
+            tabBtnFuentesInfo.addEventListener('click', () => {
+                // Aquí iría un iframe con src si existiera el archivo
+                showFullscreenTabContent('', true); // Muestra solo el cartel
+            });
+            tabBtnGastronomia.addEventListener('click', () => {
+                showFullscreenTabContent('Gastronomia.html', false);
+            });
+            tabBtnConsejosSeguridad.addEventListener('click', () => {
+                showFullscreenTabContent('consejos_seguridad_vial.html', false);
+            });
+            tabBtnCambioTamano.addEventListener('click', () => {
+                // Esta es una excepción, muestra el control en el panel, no un iframe a pantalla completa
+                // Necesitamos una forma de mostrar el slider en el panel o reconfigurar su manejo
+                // Por ahora, solo cerraremos paneles y mostraremos un mensaje o lo dejaremos como está
+                alert("La funcionalidad de cambio de tamaño de letra se implementará directamente en el panel en una futura actualización.");
+                closePanel(panel1); // Cierra el panel si se presiona este botón
+            });
+
+
+            // Event Listeners para los botones de feedback del puzzle (si tuvieras un puzzle interactivo)
+            btnPuzzleCorrect.addEventListener('click', () => {
+                avanzarPaso();
+                puzzleFeedbackButtons.style.display = 'none';
+            });
+            btnPuzzleIncorrect.addEventListener('click', () => {
+                alert("Inténtalo de nuevo. Puedes pedir una pista.");
+                retoIframe.src = adventureSteps[currentStepIndex].retoUrl; // Recarga el reto
+            });
+
+            // Inicializar el tamaño de fuente con un valor predeterminado y listeners
+            const fontSizeSlider = document.getElementById('fontSizeSlider');
+            if (fontSizeSlider) {
+                fontSizeSlider.value = getComputedStyle(document.documentElement).getPropertyValue('--base-font-size').replace('px', '');
+                fontSizeSlider.addEventListener('input', (event) => {
+                    document.documentElement.style.setProperty('--base-font-size', `${event.target.value}px`);
+                });
+            }
+        });
     </script>
 </body>
 </html>
