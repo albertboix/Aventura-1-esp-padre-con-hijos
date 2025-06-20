@@ -3,510 +3,1031 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reproductor de Audio de Aventura (Hijo)</title>
+    <title>Aventura Urbana - Valencia</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
+        :root {
+            --base-font-size: 16px; /* Tamaño de fuente base */
+            --panel-width: 280px; /* Ancho de los paneles desplegables */
+            --border-thickness: 2px; /* Grosor consistente para bordes si se aplican */
+        }
         body {
-            font-family: "Book Antiqua", "Palatino Linotype", "Palatino", Georgia, serif;
+            font-family: Arial, sans-serif;
             margin: 0;
-            padding: 1em;
-            background-color: #f9f9f9;
+            padding: 0;
             display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100%; /* Ocupa toda la altura del iframe */
-            box-sizing: border-box; /* Incluye padding en la altura */
+            flex-direction: column;
+            min-height: 100vh;
+            background-color: #f4f4f4;
             color: #333;
-            overflow: hidden; /* Evita scrollbars si el contenido es justo */
+            overflow-x: hidden; /* Evita el scroll horizontal */
+            font-size: var(--base-font-size); /* Aplica el tamaño de fuente base */
+        }
+        header {
+            background-color: #333;
+            color: white;
+            padding: 1em 0;
+            text-align: center;
+            font-size: 1.5em;
+            position: relative;
+            z-index: 2;
         }
 
-        .audio-player-controls {
+        /* Contenedor principal de secciones */
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+            position: relative; /* Necesario para posicionar los botones absolutos */
+        }
+
+        /* --- Estilos para la sección de la aventura principal --- */
+        .adventure-section {
+            flex-grow: 1;
+            padding: 1em;
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 1em;
             width: 100%;
-            max-width: 500px;
-            padding: 1em;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            background-color: white;
-            opacity: 0.7; /* Más transparente si no está activo */
-            transition: opacity 0.3s ease-in-out;
-            text-align: center;
-        }
-
-        .audio-player-controls.active {
-            opacity: 1; /* Opaco cuando está activo (cerca del GPS) */
-        }
-
-        .player-buttons {
-            display: flex;
-            align-items: center;
-            gap: 1em;
-            width: 100%;
-            justify-content: center;
-        }
-
-        .player-button {
-            padding: 1em;
-            font-size: 1.5em;
-            border: none;
-            border-radius: 50%;
-            background-color: #6c757d; /* Gris por defecto, inactivo */
-            color: white;
-            cursor: pointer;
-            width: 60px;
-            height: 60px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-            transition: background-color 0.3s ease, transform 0.1s ease;
-        }
-        .player-button:hover:not(:disabled) {
-            transform: scale(1.05);
-        }
-        .player-button:active:not(:disabled) {
-            transform: scale(0.95);
-        }
-        .player-button:disabled {
-            background-color: #ccc;
-            cursor: not-allowed;
-            box-shadow: none;
-            transform: none;
-        }
-
-        /* Estilos específicos para el botón Play/Pause */
-        #playPauseBtn.active {
-            background-color: #28a745; /* Verde cuando está activo por proximidad */
-        }
-        #playPauseBtn.active:hover:not(:disabled) {
-            background-color: #218838;
-        }
-
-        .progress-container {
-            width: 90%;
-            height: 8px;
-            background-color: #e0e0e0;
-            border-radius: 4px;
-            cursor: pointer;
+            max-width: 800px; /* Ancho máximo para el contenido */
+            margin: 0 auto; /* Centrar */
+            box-sizing: border-box;
             position: relative;
         }
 
-        #progressBar {
-            height: 100%;
-            width: 0%;
-            background-color: #0077cc;
-            border-radius: 4px;
-            transition: width 0.1s linear; /* Para una barra de progreso más suave */
-        }
-
-        .time-display {
-            display: flex;
-            justify-content: space-between;
-            width: 90%;
-            font-size: 0.9em;
-            color: #555;
-        }
-
-        .volume-container {
-            display: flex;
-            align-items: center;
-            gap: 0.5em;
-            width: 90%;
-        }
-
-        #volumeSlider {
-            -webkit-appearance: none;
+        .info-box {
+            background-color: white;
+            padding: 1em;
+            margin-bottom: 1em;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
             width: 100%;
-            height: 6px;
-            background: #d3d3d3;
-            outline: none;
-            opacity: 0.7;
-            -webkit-transition: .2s;
-            transition: opacity .2s;
-            border-radius: 3px;
-        }
-        #volumeSlider:hover {
-            opacity: 1;
-        }
-        #volumeSlider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
-            background: #0077cc;
-            cursor: pointer;
-        }
-        #volumeSlider::-moz-range-thumb {
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
-            background: #0077cc;
-            cursor: pointer;
-        }
-        
-        #volumeIcon {
-            color: #555;
-            font-size: 1.2em;
-            min-width: 20px; /* Para mantener el icono estable */
+            max-width: 600px;
             text-align: center;
+            font-size: 1em;
+            border: var(--border-thickness) solid rgba(0,0,0,0.1); /* Consistencia en bordes */
         }
-
-        /* Botón Siguiente Paso/Reto */
-        #nextStepBtn {
+        #location-info {
+            font-size: 1.1em;
+            color: #555;
+        }
+        #current-step-display {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #0077cc;
+            margin-bottom: 0.5em;
+        }
+        .btn-container {
+            display: flex;
+            justify-content: center;
+            gap: 1em;
+            margin-top: 1em;
+            width: 100%;
+            max-width: 600px;
+        }
+        .btn-padre {
             padding: 0.8em 1.5em;
             font-size: 1.1em;
             border: none;
             border-radius: 6px;
             cursor: pointer;
-            background-color: #999; /* Gris y deshabilitado por defecto */
+            background-color: #0077cc;
             color: white;
-            user-select: none;
             transition: background-color 0.3s ease, transform 0.1s ease;
-            width: auto;
-            min-width: 200px; /* Asegura un ancho mínimo */
-            margin-top: 1em; /* Separación del reproductor */
+            white-space: nowrap; /* Evita que el texto se rompa */
         }
-        #nextStepBtn:hover:not(:disabled) {
+        .btn-padre:hover {
+            background-color: #005699;
             transform: scale(1.02);
         }
-        #nextStepBtn.active-ready { /* Clase cuando el audio ha terminado */
-            background-color: #0077cc; /* Azul para activo */
+        .btn-padre:active {
+            transform: scale(0.98);
         }
-        #nextStepBtn.active-ready:hover {
-            background-color: #005699;
-        }
-        #nextStepBtn:disabled {
+        .btn-padre:disabled {
             background-color: #ccc;
             cursor: not-allowed;
-            box-shadow: none;
-            transform: none;
         }
 
+        /* Contenedor del iframe del audio */
+        #audio-player-wrapper {
+            width: 100%;
+            max-width: 600px;
+            margin-top: 1em;
+            background-color: transparent;
+            border-radius: 8px;
+            overflow: hidden;
+            border: var(--border-thickness) solid rgba(0,0,0,0.1); /* Consistencia en bordes */
+        }
+        #audioIframe {
+            width: 100%;
+            height: 150px;
+            border: none;
+            display: block;
+        }
+
+        /* Contenedor del iframe del reto/puzzle */
+        #reto-player-wrapper {
+            width: 100%;
+            max-width: 600px;
+            margin-top: 1em;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            background-color: white;
+            overflow: hidden;
+            display: none;
+            border: var(--border-thickness) solid rgba(0,0,0,0.1); /* Consistencia en bordes */
+        }
+        #retoIframe {
+            width: 100%;
+            height: 400px;
+            border: none;
+            display: block;
+        }
+
+        /* --- Estilos de los Botones Desplegables y Paneles --- */
+        .floating-btn {
+            position: fixed;
+            bottom: 20px;
+            width: 50px;
+            height: 50px;
+            background-color: #0077cc;
+            color: white;
+            border: var(--border-thickness) solid white; /* Borde para el botón */
+            border-radius: 50%;
+            font-size: 1.5em;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.2s ease, border-color 0.3s ease;
+            z-index: 100; /* Asegura que estén por encima de todo */
+        }
+        .floating-btn:hover {
+            background-color: #005699;
+            transform: scale(1.05);
+            border-color: #eee;
+        }
+        .floating-btn:active {
+            transform: scale(0.95);
+        }
+
+        #toggleBtn2 { /* Botón hamburguesa - Izquierda */
+            left: 20px;
+        }
+        #toggleBtn1 { /* Botón tres puntos - Derecha */
+            right: 20px;
+        }
+
+        .side-panel {
+            position: fixed;
+            top: 0;
+            width: 0; /* Inicialmente oculto */
+            height: 100%;
+            background-color: #333;
+            color: white;
+            padding-top: 60px; /* Espacio para el header */
+            transition: width 0.3s ease, left 0.3s ease, right 0.3s ease;
+            overflow-x: hidden;
+            overflow-y: auto; /* Permite scroll vertical */
+            white-space: nowrap;
+            z-index: 99; /* Por debajo de los botones flotantes, por encima del contenido */
+            box-shadow: 0 0 10px rgba(0,0,0,0.3);
+            display: flex; /* Para flexbox interno */
+            flex-direction: column;
+            border: var(--border-thickness) solid transparent; /* Consistencia en bordes */
+        }
+
+        #panel2 { /* Panel Izquierdo */
+            left: 0;
+            border-right-color: white; /* Borde visible al abrirse */
+        }
+        #panel1 { /* Panel Derecho */
+            right: 0;
+            border-left-color: white; /* Borde visible al abrirse */
+        }
+
+        .side-panel.open {
+            width: var(--panel-width); /* Ancho del panel al abrir */
+        }
+
+        .panel-close-btn {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 2em;
+            color: white;
+            cursor: pointer;
+            background: none;
+            border: none;
+            padding: 0;
+        }
+
+        .panel-tabs-nav {
+            display: flex;
+            flex-direction: column;
+            padding: 1em;
+            gap: 0.5em;
+        }
+        .panel-tabs-nav button {
+            background-color: #555;
+            color: white;
+            border: var(--border-thickness) solid #777; /* Borde para las pestañas */
+            padding: 1em;
+            text-align: left;
+            cursor: pointer;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
+            border-radius: 5px;
+            font-size: 1em; /* Se adapta con --base-font-size */
+        }
+        .panel-tabs-nav button:hover {
+            background-color: #777;
+            border-color: white;
+        }
+        .panel-tabs-nav button.active-panel-tab {
+            background-color: #0077cc;
+            border-color: white;
+        }
+
+        /* --- Estilos del cartel "EN DESARROLLO" --- */
+        .en-desarrollo-cartel {
+            position: absolute; /* Relative al fullscreen-modal-content */
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-15deg); /* Centrar y poner en oblicuo */
+            font-size: 2.8em; /* Tamaño de fuente más grande */
+            font-weight: bold;
+            color: rgba(255, 0, 0, 0.8); /* Rojo más fuerte */
+            background-color: rgba(255, 255, 0, 0.6); /* Fondo amarillo semi-transparente */
+            padding: 20px 40px; /* Padding más grande */
+            border: var(--border-thickness) solid rgba(255, 0, 0, 0.8); /* Borde más grueso y rojo */
+            border-radius: 12px;
+            z-index: 10; /* Asegura que esté por encima del contenido */
+            white-space: nowrap; /* Evita que el texto se rompa */
+            pointer-events: none; /* Permite hacer clic a través del cartel */
+            display: none; /* OCULTO POR DEFECTO Y GESTIONADO POR JS */
+            text-align: center;
+        }
+        .en-desarrollo-cartel p {
+            font-size: 1em;
+            margin: 0;
+            padding: 0;
+            line-height: 1.2;
+            color: inherit;
+        }
+
+        /* --- Estilos del Cartel de Bienvenida de Aventura --- */
+        .welcome-adventure-cartel {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 2.2em;
+            font-weight: bold;
+            color: #005699;
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 30px 50px;
+            border: var(--border-thickness) solid #0077cc;
+            border-radius: 15px;
+            z-index: 1001; /* Más alto que los modales para estar por encima */
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            opacity: 0; /* Inicialmente oculto */
+            transition: opacity 1s ease-out; /* Transición suave */
+            pointer-events: none; /* No bloquea clics */
+        }
+        .welcome-adventure-cartel.show {
+            opacity: 1;
+        }
+
+
+        /* --- Estilos del Modal a Pantalla Completa para Términos/Contenido de Pestaña --- */
+        .fullscreen-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(0, 0, 0, 0.9); /* Fondo oscuro semi-transparente */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000; /* Asegura que esté por encima de todo lo demás */
+            box-sizing: border-box;
+            padding: 10px; /* Pequeño padding general */
+            border: var(--border-thickness) solid transparent; /* Consistencia en bordes */
+        }
+
+        .fullscreen-modal-content {
+            background-color: white;
+            border-radius: 10px;
+            width: 95%;
+            height: 95%;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; /* Para contener el iframe */
+            position: relative;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            border: var(--border-thickness) solid #0077cc; /* Borde para el modal */
+        }
+
+        .fullscreen-modal-content iframe {
+            flex-grow: 1; /* Ocupa el espacio restante */
+            border: none;
+            width: 100%;
+            height: 100%; /* El flex-grow y flex-direction lo manejan */
+        }
+
+        .modal-bottom-button-container {
+            padding: 15px;
+            background-color: #f0f0f0;
+            display: flex;
+            justify-content: center;
+            border-top: var(--border-thickness) solid #eee; /* Borde superior del contenedor de botón */
+        }
+
+        .modal-bottom-button-container button {
+            padding: 1em 2em;
+            font-size: 1.1em;
+            border: var(--border-thickness) solid #005699; /* Borde para el botón del modal */
+            border-radius: 6px;
+            cursor: pointer;
+            background-color: #0077cc;
+            color: white;
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+        }
+        .modal-bottom-button-container button:hover {
+            background-color: #005699;
+            border-color: white;
+        }
+
+        .fullscreen-modal-close-btn {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 2em;
+            color: #333; /* Color oscuro para contraste en fondo blanco */
+            cursor: pointer;
+            background: none;
+            border: var(--border-thickness) solid transparent; /* Consistencia en bordes, se puede hacer visible al hover si se desea */
+            padding: 0;
+            z-index: 10; /* Para asegurar que esté por encima del iframe */
+            transition: color 0.3s ease, border-color 0.3s ease;
+        }
+        .fullscreen-modal-close-btn:hover {
+            color: #0077cc;
+            border-color: #0077cc;
+        }
+
+
         /* Responsive adjustments */
-        @media (max-width: 400px) {
-            .audio-player-controls {
-                padding: 0.8em;
+        @media (max-width: 768px) {
+            :root {
+                --panel-width: 70%; /* Más ancho en pantallas pequeñas */
             }
-            .player-button {
-                width: 50px;
-                height: 50px;
+            .side-panel.open {
+                width: var(--panel-width);
+            }
+        }
+        @media (max-width: 600px) {
+            :root {
+                --base-font-size: 14px;
+                --panel-width: 85%; /* Aún más ancho en móviles */
+            }
+            header {
                 font-size: 1.2em;
             }
-            .time-display, .volume-container {
-                font-size: 0.8em;
+            .info-box, .btn-container, #audio-player-wrapper, #reto-player-wrapper {
+                margin-left: 0.5em;
+                margin-right: 0.5em;
             }
-            #volumeSlider::-webkit-slider-thumb,
-            #volumeSlider::-moz-range-thumb {
-                width: 14px;
-                height: 14px;
-            }
-            #nextStepBtn {
+            .btn-padre {
                 font-size: 1em;
-                padding: 0.6em 1.2em;
-                min-width: 150px;
+                padding: 0.6em 1em;
+            }
+            #audioIframe {
+                height: 140px;
+            }
+            #retoIframe {
+                height: 350px;
+            }
+            .floating-btn {
+                width: 45px;
+                height: 45px;
+                font-size: 1.3em;
+                bottom: 15px;
+            }
+            #toggleBtn2 { left: 15px; }
+            #toggleBtn1 { right: 15px; }
+
+            .side-panel.open {
+                width: var(--panel-width);
+            }
+            .panel-tabs-nav button {
+                font-size: 0.9em;
+                padding: 0.8em;
+            }
+            .en-desarrollo-cartel {
+                font-size: 1.8em; /* Ajuste para pantallas aún más pequeñas */
+                padding: 10px 20px;
+                transform: translate(-50%, -50%) rotate(-8deg); /* Menos oblicuo en móviles */
+            }
+            .welcome-adventure-cartel {
+                font-size: 1.5em;
+                padding: 20px 30px;
+            }
+            .fullscreen-modal-content {
+                width: 98%;
+                height: 98%;
             }
         }
     </style>
 </head>
 <body>
-    <div class="audio-player-controls" id="audioPlayerControls">
-        <audio id="audioPlayer"></audio>
-        
-        <div class="player-buttons">
-            <button id="prevAudioBtn" class="player-button" disabled>
-                <i class="fas fa-backward"></i>
-            </button>
-            <button id="playPauseBtn" class="player-button" disabled>
-                <i class="fas fa-play"></i>
-            </button>
+    <div id="termsConditionsModal" class="fullscreen-modal-overlay">
+        <div class="fullscreen-modal-content">
+            <iframe src="terminos_y_condiciones.html" title="Términos y Condiciones"></iframe>
+            <div class="modal-bottom-button-container">
+                <button id="acceptTermsBtn">Aceptar Términos y Condiciones</button>
             </div>
-
-        <div class="progress-container" id="progressContainer">
-            <div id="progressBar"></div>
         </div>
-
-        <div class="time-display">
-            <span id="currentTime">0:00</span>
-            <span id="duration">0:00</span>
-        </div>
-
-        <div class="volume-container">
-            <i id="volumeIcon" class="fas fa-volume-up"></i>
-            <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="1">
-        </div>
-
-        <button id="nextStepBtn" disabled>Siguiente Paso</button>
     </div>
 
+    <div id="welcomeAdventureCartel" class="welcome-adventure-cartel">
+        ¡Bienvenido a la Aventura Urbana!
+    </div>
+
+    <header>
+        Aventura Urbana: Valencia
+    </header>
+
+    <div class="app-container" style="display: none;"> <div id="aventura-principal-section" class="adventure-section">
+            <div class="info-box">
+                <p id="current-step-display">Iniciando Aventura...</p>
+                <p id="location-info">Esperando ubicación GPS...</p>
+            </div>
+
+            <div id="audio-player-wrapper">
+                <iframe id="audioIframe" src="Av1_audio_esp.html"></iframe>
+            </div>
+
+            <div id="reto-player-wrapper">
+                <iframe id="retoIframe" src=""></iframe>
+            </div>
+
+            <div class="btn-container" id="puzzle-feedback-buttons" style="display: none;">
+                <button id="btnPuzzleCorrect" class="btn-padre">¡Reto Superado!</button>
+                <button id="btnPuzzleIncorrect" class="btn-padre">Intentar de Nuevo</button>
+            </div>
+        </div>
+
+        <button class="floating-btn" id="toggleBtn2">
+            <i class="fas fa-bars"></i>
+        </button>
+
+        <button class="floating-btn" id="toggleBtn1">
+            <i class="fas fa-ellipsis-v"></i>
+        </button>
+
+        <div id="panel2" class="side-panel">
+            <button class="panel-close-btn" id="closePanel2">&times;</button>
+            <div class="panel-tabs-nav">
+                <button id="tabBtnRetos">Retos y Puzzles</button>
+                <button id="tabBtnEnlacesHistoricos">Enlaces Históricos</button>
+                <button id="tabBtnPaginasOficiales">Páginas Oficiales</button>
+                <button id="tabBtnTextoAventuras">Texto Aventuras</button>
+                <button id="tabBtnTextoLecturaFacil">Texto Lectura Fácil</button>
+            </div>
+            </div>
+
+        <div id="panel1" class="side-panel">
+            <button class="panel-close-btn" id="closePanel1">&times;</button>
+            <div class="panel-tabs-nav">
+                <button id="tabBtnAgradecimientos">Agradecimientos</button>
+                <button id="tabBtnFuentesInfo">Fuentes de la Información</button>
+                <button id="tabBtnGastronomia">Gastronomía</button>
+                <button id="tabBtnConsejosSeguridad">Consejos Útiles y Seguridad Vial</button>
+            </div>
+            </div>
+
+    </div> <div id="fullscreenTabContentModal" class="fullscreen-modal-overlay" style="display:none;">
+        <div class="fullscreen-modal-content">
+            <button class="fullscreen-modal-close-btn" id="closeFullscreenModal">&times;</button>
+            <iframe id="fullscreenIframe" src="" title="Contenido de Pestaña"></iframe>
+            <div id="fullscreenEnDesarrolloCartel" class="en-desarrollo-cartel">EN DESARROLLO</div>
+        </div>
+    </div>
+
+
     <script>
-        const audioPlayer = document.getElementById('audioPlayer');
-        const playPauseBtn = document.getElementById('playPauseBtn');
-        const prevAudioBtn = document.getElementById('prevAudioBtn'); // Nuevo botón Anterior
-        const nextStepBtn = document.getElementById('nextStepBtn'); // Nuevo botón Siguiente Paso/Reto
-        const progressBar = document.getElementById('progressBar');
-        const progressContainer = document.getElementById('progressContainer');
-        const currentTimeSpan = document.getElementById('currentTime');
-        const durationSpan = document.getElementById('duration');
-        const volumeSlider = document.getElementById('volumeSlider');
-        const volumeIcon = document.getElementById('volumeIcon');
-        const audioPlayerControls = document.getElementById('audioPlayerControls');
+        // --- Referencias a elementos del DOM de la Aventura Principal ---
+        const appContainer = document.querySelector('.app-container');
+        const locationInfo = document.getElementById('location-info');
+        const currentStepDisplay = document.getElementById('current-step-display');
+        const audioIframe = document.getElementById('audioIframe');
+        const audioPlayerWrapper = document.getElementById('audio-player-wrapper');
+        const retoIframe = document.getElementById('retoIframe');
+        const retoPlayerWrapper = document.getElementById('reto-player-wrapper');
+        const btnPuzzleCorrect = document.getElementById('btnPuzzleCorrect');
+        const btnPuzzleIncorrect = document.getElementById('btnPuzzleIncorrect');
+        const puzzleFeedbackButtons = document.getElementById('puzzle-feedback-buttons');
+        
+        // --- Referencias para Botones Flotantes y Paneles ---
+        const toggleBtn1 = document.getElementById('toggleBtn1'); // Botón 3 puntos (derecha)
+        const toggleBtn2 = document.getElementById('toggleBtn2'); // Botón hamburguesa (izquierda)
+        const panel1 = document.getElementById('panel1'); // Panel derecho
+        const panel2 = document.getElementById('panel2'); // Panel izquierdo
+        const closePanel1 = document.getElementById('closePanel1');
+        const closePanel2 = document.getElementById('closePanel2');
 
-        let currentAudioId = null;
-        let currentAudioIndexInSequence = -1; // Índice del audio actual dentro de la secuencia (para Anterior/Siguiente)
-        let canPlayAudio = false; // Estado enviado por el padre (proximidad)
+        // --- Referencias para el Modal de Términos y Condiciones ---
+        const termsConditionsModal = document.getElementById('termsConditionsModal');
+        const acceptTermsBtn = document.getElementById('acceptTermsBtn');
 
-        // Aquí definiremos la secuencia de audios y sus rutas.
-        // ESTA LISTA DEBE SER LA MISMA QUE EN EL PADRE para la secuencia.
-        // El padre nos enviará el ID del audio a cargar.
-        const audiosSequence = [
-            { id: "audio_serranos_intro", src: "Av1_audio_esp/02 Intro ESPAÑOL 2.mp3" },
-            { id: "audio_muro_santa_ana", src: "audios/audio_muro_santa_ana.mp3" },
-            { id: "audio_plaza_virgen", src: "audios/audio_plaza_virgen.mp3" },
-            { id: "audio_catedral_fachada", src: "audios/audio_catedral_fachada.mp3" },
-            { id: "audio_miguelete", src: "audios/audio_miguelete.mp3" },
-            { id: "audio_banos_arabes", src: "audios/audio_banos_arabes.mp3" },
-            { id: "audio_ayuntamiento", src: "audios/audio_ayuntamiento.mp3" },
-            { id: "audio_toros_estacion", src: "audios/audio_toros_estacion.mp3" },
-            { id: "audio_mercado_central", src: "audios/audio_mercado_central.mp3" },
-            { id: "audio_correos", src: "audios/audio_correos.mp3" },
-            { id: "audio_san_nicolas", src: "audios/audio_san_nicolas.mp3" },
-            { id: "audio_lonja_seda", src: "audios/audio_lonja_seda.mp3" },
-            // AÑADE AQUÍ TODOS LOS OBJETOS { id: "tu_id", src: "audios/tu_audio.mp3" } PARA TUS 30 PARADAS
-            // Asegúrate que el ID del audio sea el mismo que envías desde el padre
-            // Ejemplo para paradas adicionales (simuladas):
-            { id: "audio_parada_13", src: "audios/audio_parada_13.mp3" },
-            { id: "audio_parada_14", src: "audios/audio_parada_14.mp3" },
-            { id: "audio_parada_15", src: "audios/audio_parada_15.mp3" },
-            { id: "audio_parada_16", src: "audios/audio_parada_16.mp3" },
-            { id: "audio_parada_17", src: "audios/audio_parada_17.mp3" },
-            { id: "audio_parada_18", src: "audios/audio_parada_18.mp3" },
-            { id: "audio_parada_19", src: "audios/audio_parada_19.mp3" },
-            { id: "audio_parada_20", src: "audios/audio_parada_20.mp3" },
-            { id: "audio_parada_21", src: "audios/audio_parada_21.mp3" },
-            { id: "audio_parada_22", src: "audios/audio_parada_22.mp3" },
-            { id: "audio_parada_23", src: "audios/audio_parada_23.mp3" },
-            { id: "audio_parada_24", src: "audios/audio_parada_24.mp3" },
-            { id: "audio_parada_25", src: "audios/audio_parada_25.mp3" },
-            { id: "audio_parada_26", src: "audios/audio_parada_26.mp3" },
-            { id: "audio_parada_27", src: "audios/audio_parada_27.mp3" },
-            { id: "audio_parada_28", src: "audios/audio_parada_28.mp3" },
-            { id: "audio_parada_29", src: "audios/audio_parada_29.mp3" },
-            { id: "audio_parada_30", src: "audios/audio_parada_30.mp3" }
+        // --- Referencias para el Modal de Contenido de Pestaña a Pantalla Completa ---
+        const fullscreenTabContentModal = document.getElementById('fullscreenTabContentModal');
+        const closeFullscreenModal = document.getElementById('closeFullscreenModal');
+        const fullscreenIframe = document.getElementById('fullscreenIframe');
+        const fullscreenEnDesarrolloCartel = document.getElementById('fullscreenEnDesarrolloCartel');
+
+        // --- Referencias para el Cartel de Bienvenida de Aventura ---
+        const welcomeAdventureCartel = document.getElementById('welcomeAdventureCartel');
+
+        // --- Referencias para Pestañas de los Paneles ---
+        // Panel 2 (Izquierdo)
+        const tabBtnRetos = document.getElementById('tabBtnRetos');
+        const tabBtnEnlacesHistoricos = document.getElementById('tabBtnEnlacesHistoricos');
+        const tabBtnPaginasOficiales = document.getElementById('tabBtnPaginasOficiales');
+        const tabBtnTextoAventuras = document.getElementById('tabBtnTextoAventuras');
+        const tabBtnTextoLecturaFacil = document.getElementById('tabBtnTextoLecturaFacil');
+        // Panel 1 (Derecho)
+        const tabBtnAgradecimientos = document.getElementById('tabBtnAgradecimientos');
+        const tabBtnFuentesInfo = document.getElementById('tabBtnFuentesInfo');
+        const tabBtnGastronomia = document.getElementById('tabBtnGastronomia');
+        const tabBtnConsejosSeguridad = document.getElementById('tabBtnConsejosSeguridad');
+
+        // --- Estado de la Aventura Principal ---
+        let currentStepIndex = 0;
+        let audioHijoListo = false;
+        let retoHijoListo = false;
+        let audioPlayerIsPlaying = false;
+        let currentAudioCanPlay = false; // Indica si el audio puede sonar (GPS en rango)
+        let gpsPermisoConcedido = false; // Nuevo estado para saber si el permiso fue concedido
+
+        // --- Definición de los pasos de la aventura (tus 30 paradas) ---
+        // NOTA: Mantenemos la lista aquí hardcodeada. Si Av1-coordenadas.html debe cargar y enviar esta info,
+        // necesitaríamos implementar esa lógica de postMessage desde Av1-coordenadas.html al padre.
+        const adventureSteps = [
+            {
+                name: "Torres de Serranos - Introducción",
+                coords: { latitude: 39.47953, longitude: -0.37759 }, // Coordenadas de ejemplo (Valencia)
+                radius: 50, // radio en metros
+                audioId: "audio_serranos_intro", // Este ID DEBE COINCIDIR con el 'id' en Av1_audio_esp.html
+                retoUrl: null, // No hay reto en este paso
+                instruction: "Bienvenido a la aventura. Dirígete a las Torres de Serranos y escucha la introducción.",
+                stepType: "audio" // Indica que este paso principalmente es de audio
+            },
+            {
+                name: "Muro de Santa Ana",
+                coords: { latitude: 39.47600, longitude: -0.37500 }, // Coordenadas de ejemplo (cerca de la Catedral)
+                radius: 30,
+                audioId: "audio_muro_santa_ana",
+                retoUrl: "puzzle_muro_santa_ana.html", // URL del reto para este paso
+                instruction: "Ahora, busca el Muro de Santa Ana y resuelve el reto.",
+                stepType: "audio-then-reto" // Primero audio, luego reto
+            },
+            {
+                name: "Plaza de la Virgen",
+                coords: { latitude: 39.47520, longitude: -0.37520 }, // Coordenadas de ejemplo
+                radius: 30,
+                audioId: "audio_plaza_virgen",
+                retoUrl: "puzzle_plaza_virgen.html",
+                instruction: "Dirígete a la Plaza de la Virgen y completa la siguiente prueba.",
+                stepType: "audio-then-reto"
+            },
+            {
+                name: "Catedral y Miguelete",
+                coords: { latitude: 39.47520, longitude: -0.37520 },
+                radius: 40,
+                audioId: "audio_catedral_fachada",
+                retoUrl: "puzzle_catedral.html",
+                instruction: "Descubre los secretos de la Catedral y su torre.",
+                stepType: "audio-then-reto"
+            },
+            {
+                name: "Baños Árabes",
+                coords: { latitude: 39.47500, longitude: -0.37600 },
+                radius: 25,
+                audioId: "audio_banos_arabes",
+                retoUrl: null,
+                instruction: "Explora los antiguos baños árabes.",
+                stepType: "audio"
+            },
+            {
+                name: "Última Parada de la Aventura",
+                coords: { latitude: 39.46800, longitude: -0.37000 },
+                radius: 50,
+                audioId: "audio_lonja_seda",
+                retoUrl: "puzzle_final.html",
+                instruction: "¡Felicidades! Has llegado al final de tu aventura. Completa el reto final.",
+                stepType: "audio-then-reto"
+            }
         ];
 
-        // Función de utilidad para formatear el tiempo
-        function formatTime(seconds) {
-            const minutes = Math.floor(seconds / 60);
-            const remainingSeconds = Math.floor(seconds % 60);
-            return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
-        }
+        // --- Funciones de Gestión de Pasos de Aventura ---
 
-        // --- Funciones de control de audio ---
-
-        function loadAudio(id) {
-            const audioData = audiosSequence.find(a => a.id === id);
-            if (audioData) {
-                audioPlayer.src = audioData.src;
-                currentAudioId = id;
-                currentAudioIndexInSequence = audiosSequence.findIndex(a => a.id === id); // Actualizar índice
-                audioPlayer.load(); // Cargar el audio
-                playPauseBtn.querySelector('i').className = 'fas fa-play'; // Asegurar icono de Play
-                audioPlayer.currentTime = 0; // Resetear tiempo
-                progressBar.style.width = '0%'; // Resetear barra
-                currentTimeSpan.textContent = '0:00';
-                durationSpan.textContent = '0:00';
-                updatePlayerControlsState(); // Actualizar estado de los botones
-                disableNextStepBtn(); // Deshabilitar el botón de siguiente paso al cargar un nuevo audio
+        function updateStepDisplay() {
+            const currentStep = adventureSteps[currentStepIndex];
+            if (currentStep) {
+                currentStepDisplay.textContent = `Paso ${currentStepIndex + 1}: ${currentStep.name}`;
+                locationInfo.textContent = currentStep.instruction; // Muestra la instrucción del paso
             } else {
-                console.error("Audio ID no encontrado en la secuencia:", id);
-                currentAudioId = null;
-                currentAudioIndexInSequence = -1;
-                audioPlayer.src = ''; // Limpiar src
-                updatePlayerControlsState(); // Deshabilitar todo si no hay audio
+                currentStepDisplay.textContent = "Aventura Terminada!";
+                locationInfo.textContent = "Has completado todos los desafíos. ¡Gracias por jugar!";
+                hideAudioPlayer();
+                hideRetoPlayer();
+                stopLocationTracking(); // Detener GPS al finalizar
             }
         }
 
-        function playAudio() {
-            if (currentAudioId && canPlayAudio) {
-                audioPlayer.play().catch(e => {
-                    console.error("Error al intentar reproducir audio:", e);
-                    // Esto puede ocurrir si el usuario no ha interactuado o si hay restricciones de autoplay
-                    // En móviles, a menudo se requiere una interacción previa del usuario.
-                });
-                playPauseBtn.querySelector('i').className = 'fas fa-pause';
-            } else if (!canPlayAudio) {
-                console.warn("No se puede reproducir el audio: fuera de proximidad o permisos denegados.");
-                // Opcional: enviar un mensaje al padre para mostrar una alerta al usuario
-            }
-        }
-
-        function pauseAudio() {
-            audioPlayer.pause();
-            playPauseBtn.querySelector('i').className = 'fas fa-play';
-        }
-
-        function togglePlayPause() {
-            if (audioPlayer.paused) {
-                playAudio();
+        function prepareAudioStep(audioId, canPlay) {
+            showAudioPlayer();
+            hideRetoPlayer();
+            if (audioHijoListo) {
+                audioIframe.contentWindow.postMessage({ type: 'loadAudio', idAudio: audioId, canPlay: canPlay }, '*');
+                if (canPlay && !audioPlayerIsPlaying) {
+                    audioIframe.contentWindow.postMessage({ type: 'playAudio' }, '*');
+                } else if (!canPlay && audioPlayerIsPlaying) {
+                    audioIframe.contentWindow.postMessage({ type: 'pauseAudio' }, '*');
+                }
+                audioIframe.contentWindow.postMessage({ type: 'updateCanPlay', canPlay: canPlay }, '*');
             } else {
-                pauseAudio();
+                console.warn("Audio iframe no está listo para recibir mensajes.");
             }
         }
 
-        function stopAudio() {
-            pauseAudio();
-            if (audioPlayer.src) { // Solo si hay una fuente cargada
-                audioPlayer.currentTime = 0;
+        function prepareRetoStep(retoUrl) {
+            hideAudioPlayer();
+            showRetoPlayer();
+            retoIframe.src = retoUrl; // Carga la URL del reto en el iframe
+            puzzleFeedbackButtons.style.display = 'none'; // Ocultar botones de feedback hasta que el reto se resuelva
+        }
+
+        function showAudioPlayer() {
+            audioPlayerWrapper.style.display = 'block';
+        }
+
+        function hideAudioPlayer() {
+            audioPlayerWrapper.style.display = 'none';
+            if (audioHijoListo) {
+                audioIframe.contentWindow.postMessage({ type: 'stopAudio' }, '*');
             }
         }
 
-        function playPrevAudio() {
-            if (currentAudioIndexInSequence > 0) {
-                stopAudio(); // Detener el audio actual
-                const prevAudio = audiosSequence[currentAudioIndexInSequence - 1];
-                loadAudio(prevAudio.id);
-                // No reproducir automáticamente, esperar al usuario si es por GPS
-                // Si la ubicación lo permite, se auto-reproducirá por el padre
+        function showRetoPlayer() {
+            retoPlayerWrapper.style.display = 'block';
+        }
+
+        function hideRetoPlayer() {
+            retoPlayerWrapper.style.display = 'none';
+        }
+
+        function avanzarPaso() {
+            currentStepIndex++;
+            updateStepDisplay();
+            // Reanudar seguimiento GPS para el nuevo paso
+            if (gpsPermisoConcedido) {
+                startLocationTracking();
             }
         }
 
-        // --- Funciones para el botón Siguiente Paso/Reto ---
-        function enableNextStepBtn() {
-            nextStepBtn.disabled = false;
-            nextStepBtn.classList.add('active-ready');
-            nextStepBtn.textContent = 'Siguiente Paso'; // O el texto que quieras
-        }
+        // --- Gestión de la Ubicación GPS ---
 
-        function disableNextStepBtn() {
-            nextStepBtn.disabled = true;
-            nextStepBtn.classList.remove('active-ready');
-            nextStepBtn.textContent = 'Siguiente Paso'; // Texto por defecto
-        }
+        let watchId; // Para almacenar el ID del watcher de geolocalización
 
-        // --- Actualizar estado de los controles ---
-        function updatePlayerControlsState() {
-            // Habilita/deshabilita el botón de Play/Pause y cambia su estilo de "activo"
-            if (currentAudioId && canPlayAudio) {
-                playPauseBtn.disabled = false;
-                audioPlayerControls.classList.add('active'); // Fondo opaco para el contenedor
-                playPauseBtn.classList.add('active'); // Botón Play/Pause verde
+        function startLocationTracking() {
+            if (navigator.geolocation) {
+                const geoOptions = {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                };
+                // Detener el watch anterior si existe para evitar duplicados
+                if (watchId) {
+                    navigator.geolocation.clearWatch(watchId);
+                }
+                watchId = navigator.geolocation.watchPosition(geoSuccess, geoError, geoOptions);
+                locationInfo.textContent = "Obteniendo tu ubicación...";
+                gpsPermisoConcedido = true; // El GPS está ahora activo y con permiso
             } else {
-                playPauseBtn.disabled = true;
-                audioPlayerControls.classList.remove('active'); // Fondo transparente
-                playPauseBtn.classList.remove('active'); // Botón Play/Pause gris
-                pauseAudio(); // Asegurarse de pausar si se pierde la proximidad
+                locationInfo.textContent = "Geolocalización no soportada por tu navegador.";
+                alert("Tu navegador no soporta la geolocalización. La aventura no puede continuar.");
+                gpsPermisoConcedido = false;
             }
-
-            // Habilita/deshabilita el botón Anterior
-            prevAudioBtn.disabled = (currentAudioIndexInSequence <= 0 || !currentAudioId);
-
-            // El botón "Siguiente Paso" se controla por el final del audio
-            // Ya se llama a disableNextStepBtn() al cargar un nuevo audio
         }
 
-        // --- Event Listeners del reproductor ---
-
-        playPauseBtn.addEventListener('click', togglePlayPause);
-        prevAudioBtn.addEventListener('click', playPrevAudio);
-        nextStepBtn.addEventListener('click', () => {
-            // Informar al padre que el usuario quiere avanzar al siguiente paso/reto
-            window.parent.postMessage({ type: 'audio-player-next-step' }, '*');
-            disableNextStepBtn(); // Deshabilitar el botón inmediatamente
-        });
-
-
-        audioPlayer.addEventListener('loadedmetadata', () => {
-            durationSpan.textContent = formatTime(audioPlayer.duration);
-        });
-
-        audioPlayer.addEventListener('timeupdate', () => {
-            const progress = (audioPlayer.currentTime / audioPlayer.duration) * 100;
-            progressBar.style.width = `${progress}%`;
-            currentTimeSpan.textContent = formatTime(audioPlayer.currentTime);
-        });
-
-        audioPlayer.addEventListener('ended', () => {
-            playPauseBtn.querySelector('i').className = 'fas fa-play';
-            progressBar.style.width = '0%';
-            currentTimeSpan.textContent = '0:00';
-            // Al finalizar el audio, habilitar el botón "Siguiente Paso"
-            enableNextStepBtn();
-        });
-
-        progressContainer.addEventListener('click', (e) => {
-            if (!audioPlayer.src) return; // No hacer nada si no hay audio cargado
-            const clickX = e.offsetX;
-            const width = progressContainer.offsetWidth;
-            const duration = audioPlayer.duration;
-            audioPlayer.currentTime = (clickX / width) * duration;
-        });
-
-        volumeSlider.addEventListener('input', () => {
-            audioPlayer.volume = volumeSlider.value;
-            if (volumeSlider.value == 0) {
-                volumeIcon.className = 'fas fa-volume-mute';
-            } else if (volumeSlider.value < 0.5) {
-                volumeIcon.className = 'fas fa-volume-down';
-            } else {
-                volumeIcon.className = 'fas fa-volume-up';
+        function stopLocationTracking() {
+            if (watchId) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+                console.log("GPS tracking stopped.");
             }
-        });
+        }
 
-        // --- Comunicación con el Padre ---
+        function geoSuccess(position) {
+            const { latitude, longitude } = position.coords;
+            const currentStep = adventureSteps[currentStepIndex];
 
-        window.addEventListener('message', (event) => {
-            // Es buena práctica verificar el origin de los mensajes en producción
-            // if (event.origin !== window.location.origin) return;
+            if (!currentStep) {
+                stopLocationTracking();
+                return;
+            }
 
+            const targetLat = currentStep.coords.latitude;
+            const targetLon = currentStep.coords.longitude;
+            const detectionRadius = currentStep.radius;
+
+            const distance = calculateDistance(latitude, longitude, targetLat, targetLon);
+
+            locationInfo.textContent = `Paso ${currentStepIndex + 1}: ${currentStep.name}. Distancia: ${distance.toFixed(2)} metros.`;
+
+            if (distance <= detectionRadius) {
+                currentAudioCanPlay = true;
+                locationInfo.textContent += " ¡Estás en la ubicación correcta!";
+                
+                // Si el paso tiene audio, prepáralo y, si ya no está sonando, reprodúcelo
+                if (currentStep.audioId) {
+                    prepareAudioStep(currentStep.audioId, true);
+                } else {
+                    hideAudioPlayer();
+                }
+
+                // Si no hay audio, o si el audio es solo informativo y el reto debe aparecer inmediatamente
+                // (esto lo controlaría el mensaje 'audio-player-next-step' del hijo o se ejecutaría aquí)
+                if (!currentStep.audioId && currentStep.retoUrl) {
+                    prepareRetoStep(currentStep.retoUrl);
+                }
+            } else {
+                currentAudioCanPlay = false;
+                if (currentStep.audioId) {
+                    prepareAudioStep(currentStep.audioId, false); // Pausar o evitar reproducción si no está en rango
+                }
+                hideRetoPlayer();
+            }
+        }
+
+        function geoError(error) {
+            let errorMessage = "Error de geolocalización: ";
+            switch (error.code) {
+                case error.PERMISSION_DENIED:
+                    errorMessage += "Permiso denegado por el usuario.";
+                    gpsPermisoConcedido = false; // El usuario denegó el permiso
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    errorMessage += "Información de ubicación no disponible.";
+                    break;
+                case error.TIMEOUT:
+                    errorMessage += "Tiempo de espera agotado.";
+                    break;
+                case error.UNKNOWN_ERROR:
+                    errorMessage += "Error desconocido.";
+                    break;
+            }
+            locationInfo.textContent = errorMessage + " Por favor, asegúrate de que el GPS está activado y los permisos concedidos.";
+            console.error(errorMessage, error);
+            if (audioHijoListo) {
+                 audioIframe.contentWindow.postMessage({ type: 'updateCanPlay', canPlay: false }, '*');
+            }
+            hideAudioPlayer();
+            hideRetoPlayer();
+            stopLocationTracking(); // Detener el seguimiento si hay un error persistente
+        }
+
+        // --- Funciones Auxiliares ---
+
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3;
+            const φ1 = lat1 * Math.PI / 180;
+            const φ2 = lat2 * Math.PI / 180;
+            const Δφ = (lat2 - lat1) * Math.PI / 180;
+            const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+            const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+            return R * c;
+        }
+
+        // --- Simulación de GPS para Desarrollo (ACCESIBLE POR CONSOLA) ---
+        window.simulateCurrentLocation = function(stepIndex = currentStepIndex) {
+            if (stepIndex >= 0 && stepIndex < adventureSteps.length) {
+                const simulatedCoords = adventureSteps[stepIndex].coords;
+                console.warn(`[SIMULACIÓN GPS] Forzando ubicación a: Paso ${stepIndex + 1} (${adventureSteps[stepIndex].name})`);
+                geoSuccess({ coords: simulatedCoords }); // Llama directamente a geoSuccess con las coordenadas simuladas
+                locationInfo.textContent = `[SIMULACIÓN] En Paso ${stepIndex + 1}: ${adventureSteps[stepIndex].name}`;
+                if (!gpsPermisoConcedido) {
+                    gpsPermisoConcedido = true; // Simular que el permiso fue dado si no lo estaba
+                    console.log("[SIMULACIÓN] Permiso GPS marcado como concedido.");
+                }
+            } else {
+                console.error(`[SIMULACIÓN GPS] Índice de paso ${stepIndex} fuera de rango.`);
+            }
+        };
+
+
+        // --- Gestión de Paneles Desplegables ---
+        function openPanel(panel) {
+            // Cierra el otro panel si está abierto
+            if (panel === panel1 && panel2.classList.contains('open')) {
+                closePanel(panel2);
+            } else if (panel === panel2 && panel1.classList.contains('open')) {
+                closePanel(panel1);
+            }
+            panel.classList.add('open');
+            // Al abrir un panel, la aventura principal NO se pausa.
+        }
+
+        function closePanel(panel) {
+            panel.classList.remove('open');
+            // Al cerrar un panel, la aventura principal NO se pausa.
+        }
+
+        // --- Gestión de Contenido de Pestañas dentro de los Paneles (Pantalla Completa) ---
+        function showFullscreenTabContent(contentUrl, showDevelopmentCartel = false) {
+            fullscreenIframe.style.display = 'none'; // Ocultar iframe por defecto
+            fullscreenEnDesarrolloCartel.style.display = 'none'; // Ocultar cartel por defecto
+            fullscreenIframe.src = ''; // Limpiar src del iframe
+
+            // Cierra los paneles laterales si están abiertos
+            closePanel(panel1);
+            closePanel(panel2);
+
+            // Muestra el modal a pantalla completa
+            fullscreenTabContentModal.style.display = 'flex';
+
+            if (showDevelopmentCartel) {
+                fullscreenEnDesarrolloCartel.style.display = 'block';
+            } else {
+                fullscreenIframe.src = contentUrl;
+                fullscreenIframe.style.display = 'block';
+            }
+            // La aventura principal NO se pausa al mostrar este modal.
+        }
+
+        function closeFullscreenTabContent() {
+            fullscreenTabContentModal.style.display = 'none';
+            fullscreenIframe.src = ''; // Limpiar src al cerrar
+            fullscreenEnDesarrolloCartel.style.display = 'none'; // Ocultar cartel
+
+            // La aventura principal NO se pausa al cerrar este modal.
+            // Si el audio estaba sonando y el GPS está en rango, debería continuar.
+        }
+
+        // --- Manejo de mensajes desde los iframes hijos ---
+        window.addEventListener("message", (event) => {
             const data = event.data;
             if (data && typeof data === 'object') {
                 switch (data.type) {
-                    case 'loadAudio':
-                        loadAudio(data.idAudio);
-                        canPlayAudio = data.canPlay; // Recibir estado de proximidad
-                        updatePlayerControlsState(); // Actualizar estado de los botones
+                    case 'audio-hijo-listo':
+                        audioHijoListo = true;
+                        console.log("Audio iframe de aventura está listo.");
+                        // Si ya se aceptaron los T&C y se concedió el permiso GPS, iniciar
+                        if (gpsPermisoConcedido) {
+                            updateStepDisplay();
+                            startLocationTracking();
+                        } else {
+                            locationInfo.textContent = "Esperando aceptación de Términos y permisos GPS...";
+                        }
+                        hideAudioPlayer(); // Por defecto oculto hasta que el GPS lo active
                         break;
-                    case 'playAudio': // Permitir que el padre fuerce la reproducción
-                        playAudio();
+                    case 'reto-hijo-listo':
+                        retoHijoListo = true;
+                        console.log("Reto iframe está listo.");
                         break;
-                    case 'pauseAudio': // Permitir que el padre fuerce la pausa
-                        pauseAudio();
+                    case 'audio-player-next-step':
+                        console.log("Mensaje recibido: 'audio-player-next-step'");
+                        const currentStep = adventureSteps[currentStepIndex];
+                        if (currentStep && currentStep.retoUrl) {
+                            prepareRetoStep(currentStep.retoUrl);
+                        } else {
+                            avanzarPaso();
+                        }
                         break;
-                    case 'stopAudio': // Permitir que el padre fuerce la parada
-                        stopAudio();
+                    case 'reto-resuelto':
+                        if (data.result === 'correct') {
+                            alert("¡Reto resuelto correctamente! Pasando al siguiente punto.");
+                            avanzarPaso();
+                        } else if (data.result === 'incorrect') {
+                            alert("Respuesta incorrecta. Inténtalo de nuevo.");
+                            retoIframe.src = adventureSteps[currentStepIndex].retoUrl; // Recarga el reto
+                        }
                         break;
-                    case 'updateCanPlay': // El padre informa sobre el cambio de proximidad
-                        canPlayAudio = data.canPlay;
-                        updatePlayerControlsState(); // Actualizar el estado del botón y pausar si es necesario
-                        break;
-                    case 'changeFontSize': // Mensaje desde el padre para cambiar el tamaño de la fuente
-                        document.body.style.fontSize = data.size + 'px';
-                        // Ajusta otros elementos si es necesario, pero el body suele ser suficiente
+                    case 'audio-is-playing':
+                        audioPlayerIsPlaying = data.isPlaying;
                         break;
                 }
             }
         });
 
-        // Informar al padre que este iframe está listo
-        window.addEventListener('DOMContentLoaded', () => {
-            window.parent.postMessage({ type: 'audio-hijo-listo' }, '*');
-            // Establecer volumen inicial del slider al cargar
-            volumeSlider.value = audioPlayer.volume;
-            volumeIcon.className = 'fas fa-volume-up'; // Icono por defecto
-            disableNextStepBtn(); // Asegurarse de que el botón de siguiente esté deshabilitado al inicio
-        });
+        // --- Inicialización y Event Listeners ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // Inicialmente, mostrar solo el modal de términos y condiciones
+            appContainer.style.display = 'none';
+            termsConditionsModal.style.display = 'flex';
+            welcomeAdventureCartel.style.display = 'none'; // Ocultar cartel de bienvenida inicialmente
 
-        // Manejar el foco para que el audio se pause al cambiar de pestaña/app
-        document.addEventListener('visibilitychange', () => {
-            if (document.hidden) {
-                pauseAudio();
-            }
-        });
+            // Event Listener para aceptar términos y condiciones
+            acceptTermsBtn.addEventListener('click', () => {
+                termsConditionsModal.style.display = 'none'; // Ocultar modal de T&C
+                appContainer.style.display = 'flex'; // Mostrar la aplicación principal
+                
+                // Mostrar cartel de bienvenida por un tiempo y luego ocultar
+                welcomeAdventureCartel.style.display = 'block';
+                welcomeAdventureCartel.classList.add('show');
+                setTimeout(() => {
+                    welcomeAdventureCartel.classList.remove('show');
+                    setTimeout(() => {
+                        welcomeAdventureCartel.style.display = 'none';
+                    }, 1000); // Esperar a que la transición termine
+                }, 3000); // Mostrar por 3 segundos
 
+                console.log("Términos aceptados. Solicitando permisos GPS y Audio.");
+                
+                // Iniciar el seguimiento GPS y mostrar la UI del paso actual
+                // La llamada a startLocationTracking se hace después de aceptar T&C
+                // y el permiso real se gestiona en geoSuccess/geoError.
+                // audioHijoListo se maneja por el mensaje del iframe.
+                if (audioHijoListo) { // Si el iframe de audio ya está listo
+                    updateStepDisplay();
+                    startLocationTracking();
+                } else {
+                    locationInfo.textContent = "Cargando audio y preparando GPS...";
+                    // El startLocationTracking se volverá a intentar cuando audio-hijo-listo
+                    // se dispare si el permiso GPS no fue denegado.
+                }
+                hideAudioPlayer(); // Por defecto oculto hasta que el GPS lo active
+                hideRetoPlayer();
+            });
+
+            // Event Listeners para los botones flotantes de los paneles
+            toggleBtn1.addEventListener('click', () => openPanel(panel1));
+            toggleBtn2.addEventListener('click', () => openPanel(panel2));
+            closePanel1.addEventListener('click', () => closePanel(panel1));
+            closePanel2.addEventListener('click', () => closePanel(panel2));
+
+            // Event Listener para cerrar el modal de contenido a pantalla completa
+            closeFullscreenModal.addEventListener('click', closeFullscreenTabContent);
+
+            // Event Listeners para las pestañas del Panel 2 (Izquierdo)
+            tabBtnRetos.addEventListener('click', () => {
+                // Carga retos_con_puzzles_Av1_es.html, no muestra cartel de desarrollo aquí
+                showFullscreenTabContent('retos_con_puzzles_Av1_es.html', false);
+            });
+            tabBtnEnlacesHistoricos.addEventListener('click', () => {
+                showFullscreenTabContent('enlaces_valencia_historica.html', false);
+            });
+            tabBtnPaginasOficiales.addEventListener('click', () => {
+                showFullscreenTabContent('paginas_oficiales.html', false);
+            });
+            tabBtnTextoAventuras.addEventListener('click', () => {
+                // Aquí iría un iframe con src si existiera el archivo
+                showFullscreenTabContent('', true); // Muestra el cartel EN DESARROLLO
+            });
+            tabBtnTextoLecturaFacil.addEventListener('click', () => {
+                // Aquí iría un iframe con src si existiera el archivo
+                showFullscreenTabContent('', true); // Muestra el cartel EN DESARROLLO
+            });
+
+            // Event Listeners para las pestañas del Panel 1 (Derecho)
+            tabBtnAgradecimientos.addEventListener('click', () => {
+                showFullscreenTabContent('Agradecimientos.html', false);
+            });
+            tabBtnFuentesInfo.addEventListener('click', () => {
+                // Aquí iría un iframe con src si existiera el archivo
+                showFullscreenTabContent('', true); // Muestra el cartel EN DESARROLLO
+            });
+            tabBtnGastronomia.addEventListener('click', () => {
+                showFullscreenTabContent('Gastronomia.html', false);
+            });
+            tabBtnConsejosSeguridad.addEventListener('click', () => {
+                showFullscreenTabContent('consejos_seguridad_vial.html', false);
+            });
+
+            // Event Listeners para los botones de feedback del puzzle (si tuvieras un puzzle interactivo)
+            btnPuzzleCorrect.addEventListener('click', () => {
+                avanzarPaso();
+                puzzleFeedbackButtons.style.display = 'none';
+            });
+            btnPuzzleIncorrect.addEventListener('click', () => {
+                alert("Inténtalo de nuevo. Puedes pedir una pista.");
+                retoIframe.src = adventureSteps[currentStepIndex].retoUrl; // Recarga el reto
+            });
+
+            // No se implementa el slider de tamaño de fuente porque la pestaña se eliminó
+        });
     </script>
 </body>
 </html>
