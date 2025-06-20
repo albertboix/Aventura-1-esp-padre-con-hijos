@@ -479,6 +479,48 @@
             font-weight: bold;
         }
 
+        /* --- NUEVO ESTILO PARA EL CONTENEDOR DE PANTALLA COMPLETA --- */
+        #fullScreenIframeContainer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #fff; /* Fondo blanco para el contenido */
+            z-index: 10000; /* Asegura que esté por encima de todo */
+            display: none; /* Oculto por defecto */
+            flex-direction: column; /* Para organizar el botón de cerrar y el iframe */
+            box-sizing: border-box; /* Incluir padding en el tamaño */
+            padding-top: 50px; /* Espacio para el botón de cerrar */
+        }
+
+        #fullScreenIframeContainer iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            flex-grow: 1; /* Ocupa el espacio restante */
+        }
+
+        #fullScreenCloseBtn {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(0, 0, 0, 0.5); /* Botón más discreto */
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            font-size: 1.5em;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            z-index: 10001; /* Más alto que el contenedor */
+        }
+        #fullScreenCloseBtn:hover {
+            background-color: rgba(0, 0, 0, 0.7);
+        }
 
         /* Media Queries para pantallas más pequeñas */
         @media (max-width: 800px) and (orientation: landscape) {
@@ -534,8 +576,9 @@
                 height: 50px;
                 font-size: 1.5em;
             }
+            /* Ajustar posición del botón derecho más a la derecha */
             #rightMenuBtn {
-                right: 80px; /* Ajustar posición para pantallas pequeñas */
+                right: 20px; /* Más pegado al borde derecho */
             }
         }
     </style>
@@ -625,6 +668,11 @@
                 </div>
             </div>
         </div>
+    </div>
+
+    <div id="fullScreenIframeContainer" style="display: none;">
+        <button id="fullScreenCloseBtn"><i class="fas fa-times"></i></button>
+        <iframe id="fullScreenIframe" src=""></iframe>
     </div>
 
 
@@ -754,6 +802,11 @@
         const fontSizeSliderContainer = document.getElementById('fontSizeSliderContainer');
         const fontSizeSlider = document.getElementById('fontSizeSlider');
         const fontSizeSliderValue = document.getElementById('fontSizeSliderValue');
+
+        // NUEVOS ELEMENTOS PARA PANTALLA COMPLETA
+        const fullScreenIframeContainer = document.getElementById('fullScreenIframeContainer');
+        const fullScreenIframe = document.getElementById('fullScreenIframe');
+        const fullScreenCloseBtn = document.getElementById('fullScreenCloseBtn');
         // -----------------------------
 
         // --- Variables de Estado Globales ---
@@ -1110,12 +1163,11 @@
         // --- FUNCIONES NUEVAS PARA LOS MENÚS DESPLEGABLES ---
 
         // Función genérica para abrir un menú overlay
-        function openMenu(overlayElement, iframeElement, enDesarrolloElement, tabContentElement) {
+        function openMenu(overlayElement) {
             overlayElement.style.display = 'flex';
             // Oculta todos los elementos de contenido al abrir el menú inicialmente
-            iframeElement.style.display = 'none';
-            enDesarrolloElement.style.display = 'none';
-            tabContentElement.style.display = 'none'; // Oculta el contenedor de la pestaña si ya estaba visible
+            const tabContentElement = overlayElement.querySelector('.tab-content');
+            if (tabContentElement) tabContentElement.style.display = 'none';
 
             // Asegura que el slider de texto esté oculto al abrir cualquier pestaña que no sea la suya
             if (overlayElement === rightMenuOverlay) { // Solo si es el menú derecho
@@ -1153,37 +1205,50 @@
             overlayElement.querySelectorAll('.menu-tab-btn').forEach(btn => btn.classList.remove('active'));
         }
 
-        // Función para mostrar el contenido específico de una pestaña
+        // Función para mostrar el contenido específico de una pestaña (ahora usa pantalla completa si es iframe)
         function showTabContent(overlayId, tabType, tabSrc = null) {
-            const tabContent = (overlayId === 'leftMenuOverlay') ? leftTabContent : rightTabContent;
-            const iframe = (overlayId === 'leftMenuOverlay') ? leftMenuIframe : rightMenuIframe;
-            const enDesarrolloDiv = (overlayId === 'leftMenuOverlay') ? leftMenuEnDesarrollo : rightMenuEnDesarrollo;
-            const sliderDiv = (overlayId === 'leftMenuOverlay') ? null : fontSizeSliderContainer; // El slider solo está en el menú derecho
-
-            // Oculta todos los contenidos posibles
-            iframe.style.display = 'none';
-            enDesarrolloDiv.style.display = 'none';
-            if (sliderDiv) sliderDiv.style.display = 'none';
-
-            tabContent.style.display = 'flex'; // Mostrar el contenedor general de la pestaña
+            closeMenu(leftMenuOverlay); // Cerrar ambos menús
+            closeMenu(rightMenuOverlay);
 
             if (tabType === 'iframe' && tabSrc) {
-                iframe.src = tabSrc;
-                iframe.style.display = 'block';
-            } else if (tabType === 'en-desarrollo') {
-                enDesarrolloDiv.style.display = 'flex';
-            } else if (tabType === 'font-size-slider' && sliderDiv) {
-                sliderDiv.style.display = 'flex';
-                // Asegurar que el valor del slider refleje el tamaño de letra actual del body
-                fontSizeSlider.value = parseInt(getComputedStyle(document.body).fontSize);
-                fontSizeSliderValue.textContent = fontSizeSlider.value + 'px';
+                fullScreenIframe.src = tabSrc;
+                fullScreenIframeContainer.style.display = 'flex'; // Mostrar contenedor pantalla completa
+                // Enviar el tamaño de fuente actual al iframe de pantalla completa
+                fullScreenIframe.onload = () => {
+                    if (fullScreenIframe.contentWindow) {
+                        fullScreenIframe.contentWindow.postMessage({ type: 'changeFontSize', size: parseInt(getComputedStyle(document.body).fontSize) }, '*');
+                    }
+                };
+            } else {
+                // Si no es iframe de pantalla completa, mostrarlo dentro del menú (ej. slider, en desarrollo)
+                const tabContent = (overlayId === 'leftMenuOverlay') ? leftTabContent : rightTabContent;
+                const iframe = (overlayId === 'leftMenuOverlay') ? leftMenuIframe : rightMenuIframe;
+                const enDesarrolloDiv = (overlayId === 'leftMenuOverlay') ? leftMenuEnDesarrollo : rightMenuEnDesarrollo;
+                const sliderDiv = (overlayId === 'leftMenuOverlay') ? null : fontSizeSliderContainer;
+
+                // Oculta todos los contenidos posibles
+                iframe.style.display = 'none';
+                enDesarrolloDiv.style.display = 'none';
+                if (sliderDiv) sliderDiv.style.display = 'none';
+
+                tabContent.style.display = 'flex'; // Mostrar el contenedor general de la pestaña
+
+                if (tabType === 'en-desarrollo') {
+                    enDesarrolloDiv.style.display = 'flex';
+                } else if (tabType === 'font-size-slider' && sliderDiv) {
+                    sliderDiv.style.display = 'flex';
+                    // Asegurar que el valor del slider refleje el tamaño de letra actual del body
+                    fontSizeSlider.value = parseInt(getComputedStyle(document.body).fontSize);
+                    fontSizeSliderValue.textContent = fontSizeSlider.value + 'px';
+                }
             }
         }
+
 
         // Función para aplicar el tamaño de fuente a todo el documento y a los iframes
         function applyFontSize(size) {
             document.body.style.fontSize = size + 'px';
-            // Envía un postMessage a todos los iframes para que también cambien su tamaño de letra
+            // Envía un postMessage a todos los iframes para que también adapten su tamaño de letra
             const iframes = document.querySelectorAll('iframe');
             iframes.forEach(iframe => {
                 if (iframe.contentWindow) {
@@ -1207,11 +1272,11 @@
 
         // --- LISTENERS PARA NUEVOS BOTONES DE MENÚ ---
         leftMenuBtn.addEventListener('click', () => {
-            openMenu(leftMenuOverlay, leftMenuIframe, leftMenuEnDesarrollo, leftTabContent);
+            openMenu(leftMenuOverlay);
         });
 
         rightMenuBtn.addEventListener('click', () => {
-            openMenu(rightMenuOverlay, rightMenuIframe, rightMenuEnDesarrollo, rightTabContent);
+            openMenu(rightMenuOverlay);
         });
 
         // Listener para cerrar el overlay del menú (clic fuera del contenido del menú)
@@ -1226,15 +1291,24 @@
             }
         });
 
+        // Listener para el botón de cierre de pantalla completa
+        fullScreenCloseBtn.addEventListener('click', () => {
+            fullScreenIframeContainer.style.display = 'none';
+            fullScreenIframe.src = ''; // Limpiar el src del iframe
+        });
+
+
         // Listeners para los botones de las pestañas del menú izquierdo
         leftMenuOverlay.querySelectorAll('.menu-tab-btn').forEach(button => {
             button.addEventListener('click', (e) => {
+                // Remove 'active' class from all buttons in this menu
                 leftMenuOverlay.querySelectorAll('.menu-tab-btn').forEach(btn => btn.classList.remove('active'));
-                e.target.classList.add('active'); // Activar el botón clicado
+                e.target.classList.add('active'); // Add 'active' class to the clicked button
 
                 const targetTab = e.target.dataset.target;
                 switch (targetTab) {
                     case 'retos-puzzles-tab':
+                        // Corregida la ruta a retos_con_puzzles_Av1_esp.html
                         showTabContent('leftMenuOverlay', 'iframe', 'retos_con_puzzles_Av1_esp.html');
                         break;
                     case 'enlaces-historicos-tab':
@@ -1244,16 +1318,18 @@
                         showTabContent('leftMenuOverlay', 'iframe', 'paginas_oficiales.html');
                         break;
                     case 'texto-aventuras-tab':
+                        // Estas se muestran dentro del menú (no pantalla completa)
                         showTabContent('leftMenuOverlay', 'en-desarrollo');
                         break;
                     case 'texto-lectura-facil-tab':
+                        // Estas se muestran dentro del menú (no pantalla completa)
                         showTabContent('leftMenuOverlay', 'en-desarrollo');
                         break;
                 }
             });
         });
 
-        // Listener para el botón 'X' de cierre de la pestaña izquierda
+        // Listener para el botón 'X' de cierre de la pestaña izquierda (si se abre en el menú)
         leftTabContent.querySelector('.close-tab-btn').addEventListener('click', () => {
             leftTabContent.style.display = 'none';
             leftMenuIframe.src = ""; // Limpiar src para detener la carga
@@ -1266,8 +1342,9 @@
         // Listeners para los botones de las pestañas del menú derecho
         rightMenuOverlay.querySelectorAll('.menu-tab-btn').forEach(button => {
             button.addEventListener('click', (e) => {
+                // Remove 'active' class from all buttons in this menu
                 rightMenuOverlay.querySelectorAll('.menu-tab-btn').forEach(btn => btn.classList.remove('active'));
-                e.target.classList.add('active'); // Activar el botón clicado
+                e.target.classList.add('active'); // Add 'active' class to the clicked button
 
                 const targetTab = e.target.dataset.target;
                 switch (targetTab) {
@@ -1275,6 +1352,7 @@
                         showTabContent('rightMenuOverlay', 'iframe', 'Agradecimientos.html');
                         break;
                     case 'fuentes-info-tab':
+                        // Esta se muestra dentro del menú (no pantalla completa)
                         showTabContent('rightMenuOverlay', 'en-desarrollo');
                         break;
                     case 'gastronomia-tab':
@@ -1284,13 +1362,14 @@
                         showTabContent('rightMenuOverlay', 'iframe', 'consejos_seguridad_vial.html');
                         break;
                     case 'cambio-letra-tab':
+                        // Esta se muestra dentro del menú (no pantalla completa)
                         showTabContent('rightMenuOverlay', 'font-size-slider');
                         break;
                 }
             });
         });
 
-        // Listener para el botón 'X' de cierre de la pestaña derecha
+        // Listener para el botón 'X' de cierre de la pestaña derecha (si se abre en el menú)
         rightTabContent.querySelector('.close-tab-btn').addEventListener('click', () => {
             rightTabContent.style.display = 'none';
             rightMenuIframe.src = ""; // Limpiar src para detener la carga
