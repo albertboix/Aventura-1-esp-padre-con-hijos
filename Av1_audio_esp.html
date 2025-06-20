@@ -573,7 +573,8 @@
         let retoHijoListo = false;
         let audioPlayerIsPlaying = false;
         let currentAudioCanPlay = false; // Indica si el audio puede sonar (GPS en rango)
-        let gpsPermisoConcedido = false; // Nuevo estado para saber si el permiso fue concedido
+        let gpsPermisoConcedido = false; // Estado para saber si el permiso fue concedido e iniciar tracking
+        let adventureStarted = false; // Nuevo: Para asegurar que la aventura y GPS solo inician una vez
 
         // --- Definición de los pasos de la aventura (tus 30 paradas) ---
         // NOTA: Mantenemos la lista aquí hardcodeada. Si Av1-coordenadas.html debe cargar y enviar esta info,
@@ -697,7 +698,7 @@
             currentStepIndex++;
             updateStepDisplay();
             // Reanudar seguimiento GPS para el nuevo paso
-            if (gpsPermisoConcedido) {
+            if (gpsPermisoConcedido && adventureStarted) { // Asegura que solo se haga si la aventura ya está iniciada
                 startLocationTracking();
             }
         }
@@ -707,7 +708,7 @@
         let watchId; // Para almacenar el ID del watcher de geolocalización
 
         function startLocationTracking() {
-            if (navigator.geolocation) {
+            if (adventureStarted && navigator.geolocation) { // Solo si la aventura ya se inició
                 const geoOptions = {
                     enableHighAccuracy: true,
                     timeout: 10000,
@@ -720,10 +721,13 @@
                 watchId = navigator.geolocation.watchPosition(geoSuccess, geoError, geoOptions);
                 locationInfo.textContent = "Obteniendo tu ubicación...";
                 gpsPermisoConcedido = true; // El GPS está ahora activo y con permiso
-            } else {
+            } else if (!navigator.geolocation) {
                 locationInfo.textContent = "Geolocalización no soportada por tu navegador.";
                 alert("Tu navegador no soporta la geolocalización. La aventura no puede continuar.");
                 gpsPermisoConcedido = false;
+            } else if (!adventureStarted) {
+                // Si se llama antes de adventureStarted, no hacer nada o loguear
+                console.log("startLocationTracking llamado antes de que la aventura inicie.");
             }
         }
 
@@ -736,6 +740,8 @@
         }
 
         function geoSuccess(position) {
+            if (!adventureStarted) return; // Asegurar que solo procesamos si la aventura está activa
+
             const { latitude, longitude } = position.coords;
             const currentStep = adventureSteps[currentStepIndex];
 
@@ -778,11 +784,25 @@
         }
 
         function geoError(error) {
+            // Solo muestra el error si la aventura ya debería estar iniciada
+            if (!adventureStarted) {
+                console.log("Error GPS antes del inicio de aventura, no mostrando alerta de usuario.");
+                // Si es un permiso denegado antes del inicio, marcarlo para no iniciar la aventura
+                if (error.code === error.PERMISSION_DENIED) {
+                    gpsPermisoConcedido = false; // El usuario denegó, no iniciar aventura GPS
+                    locationInfo.textContent = "Permiso de ubicación denegado. La aventura no puede iniciar.";
+                    termsConditionsModal.style.display = 'flex'; // Vuelve a mostrar T&C o un mensaje claro
+                    // Quizás incluso deshabilitar el botón de aceptar si el permiso no se da.
+                }
+                return;
+            }
+
             let errorMessage = "Error de geolocalización: ";
             switch (error.code) {
                 case error.PERMISSION_DENIED:
                     errorMessage += "Permiso denegado por el usuario.";
                     gpsPermisoConcedido = false; // El usuario denegó el permiso
+                    stopLocationTracking(); // Detener si se deniega durante la aventura
                     break;
                 case error.POSITION_UNAVAILABLE:
                     errorMessage += "Información de ubicación no disponible.";
@@ -801,7 +821,9 @@
             }
             hideAudioPlayer();
             hideRetoPlayer();
-            stopLocationTracking(); // Detener el seguimiento si hay un error persistente
+            // Mantener stopLocationTracking solo si el error es grave y persistente,
+            // como denegación de permiso. Para timeouts o no disponibles, el watcher
+            // puede seguir intentando.
         }
 
         // --- Funciones Auxiliares ---
@@ -823,6 +845,11 @@
 
         // --- Simulación de GPS para Desarrollo (ACCESIBLE POR CONSOLA) ---
         window.simulateCurrentLocation = function(stepIndex = currentStepIndex) {
+            if (!adventureStarted) {
+                console.error("[SIMULACIÓN GPS] La aventura no ha iniciado. Acepta los Términos y Condiciones primero.");
+                return;
+            }
+
             if (stepIndex >= 0 && stepIndex < adventureSteps.length) {
                 const simulatedCoords = adventureSteps[stepIndex].coords;
                 console.warn(`[SIMULACIÓN GPS] Forzando ubicación a: Paso ${stepIndex + 1} (${adventureSteps[stepIndex].name})`);
@@ -894,14 +921,15 @@
                     case 'audio-hijo-listo':
                         audioHijoListo = true;
                         console.log("Audio iframe de aventura está listo.");
-                        // Si ya se aceptaron los T&C y se concedió el permiso GPS, iniciar
-                        if (gpsPermisoConcedido) { // Solo si el permiso ya fue concedido
+                        // Si la aventura ya ha iniciado y el permiso GPS fue concedido, comenzar tracking
+                        if (adventureStarted && gpsPermisoConcedido) {
                             updateStepDisplay();
                             startLocationTracking();
-                        } else {
-                            locationInfo.textContent = "Esperando aceptación de Términos y permisos GPS...";
+                        } else if (adventureStarted && !gpsPermisoConcedido) {
+                             // Si la aventura ha iniciado pero el GPS fue denegado, informar al usuario
+                            locationInfo.textContent = "Permiso de ubicación denegado. La audioguía requiere GPS.";
+                            hideAudioPlayer();
                         }
-                        hideAudioPlayer(); // Por defecto oculto hasta que el GPS lo active
                         break;
                     case 'reto-hijo-listo':
                         retoHijoListo = true;
@@ -943,7 +971,8 @@
             acceptTermsBtn.addEventListener('click', () => {
                 termsConditionsModal.style.display = 'none'; // Ocultar modal de T&C
                 appContainer.style.display = 'flex'; // Mostrar la aplicación principal
-                
+                adventureStarted = true; // Marca la aventura como iniciada
+
                 // Mostrar cartel de bienvenida por un tiempo y luego ocultar
                 welcomeAdventureCartel.style.display = 'block';
                 welcomeAdventureCartel.classList.add('show');
@@ -954,41 +983,41 @@
                     }, 1000); // Esperar a que la transición termine
                 }, 3000); // Mostrar por 3 segundos
 
-                console.log("Términos aceptados. Solicitando permisos GPS y Audio.");
+                console.log("Términos aceptados. Intentando solicitar permisos GPS y Audio.");
                 
-                // Iniciar el seguimiento GPS y mostrar la UI del paso actual
-                // La llamada a startLocationTracking se hace inmediatamente después de aceptar T&C.
-                // El permiso real se gestiona en geoSuccess/geoError.
-                if (audioHijoListo) { // Solo si el iframe de audio ya está listo
-                    updateStepDisplay();
-                    startLocationTracking();
+                // Pedir permiso de geolocalización una única vez al inicio
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        (pos) => { // Éxito al obtener la posición o el permiso
+                            gpsPermisoConcedido = true;
+                            console.log("Permiso GPS concedido al inicio.");
+                            if (audioHijoListo) { // Si el audio iframe ya está listo, iniciar el tracking
+                                updateStepDisplay();
+                                startLocationTracking();
+                            } else {
+                                locationInfo.textContent = "Cargando audio y preparando audioguía...";
+                            }
+                        },
+                        (err) => { // Error o denegación del permiso
+                            geoError(err); // Esto actualizará locationInfo y marcará gpsPermisoConcedido a false
+                            // Si el permiso es denegado, la aventura no puede empezar correctamente
+                            if (err.code === err.PERMISSION_DENIED) {
+                                alert("Necesitamos tu ubicación GPS para la audioguía. La aventura no puede comenzar sin ella.");
+                                // Opcional: Podrías volver a mostrar el modal de T&C o un mensaje explicativo
+                                // termsConditionsModal.style.display = 'flex';
+                                appContainer.style.display = 'none'; // Ocultar app si no hay GPS
+                            }
+                        },
+                        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+                    );
                 } else {
-                    // Si el audio iframe no está listo, startLocationTracking se llamará
-                    // cuando el evento 'audio-hijo-listo' se dispare, si el permiso GPS no fue denegado.
-                    locationInfo.textContent = "Cargando audio y preparando GPS...";
-                    // Intentar pedir el permiso GPS una vez, incluso si el audio no está listo.
-                    // Si el permiso se concede, gpsPermisoConcedido se pondrá a true,
-                    // y la lógica de inicio se completará cuando el audio esté listo.
-                    if (navigator.geolocation) {
-                        navigator.geolocation.getCurrentPosition(
-                            (pos) => { // Éxito en obtener el permiso
-                                gpsPermisoConcedido = true;
-                                console.log("Permiso GPS concedido al inicio.");
-                                if (audioHijoListo) { // Si el audio ya estaba listo, iniciar ahora.
-                                    updateStepDisplay();
-                                    startLocationTracking();
-                                }
-                            },
-                            (err) => { // Error o denegación del permiso
-                                geoError(err); // Manejar el error de inmediato
-                            },
-                            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-                        );
-                    } else {
-                        geoError({code: 0, message: "Geolocalización no soportada."}); // No soportado
-                    }
+                    geoError({code: 0, message: "Geolocalización no soportada."}); // Navegador no soporta
+                    alert("Tu navegador no soporta la geolocalización. La audioguía no puede funcionar.");
+                    appContainer.style.display = 'none'; // Ocultar app si no hay GPS
                 }
-                hideAudioPlayer(); // Por defecto oculto hasta que el GPS lo active
+                
+                // Ocultar reproductores inicialmente hasta que el GPS los active
+                hideAudioPlayer();
                 hideRetoPlayer();
             });
 
@@ -1003,7 +1032,7 @@
 
             // Event Listeners para las pestañas del Panel 2 (Izquierdo)
             tabBtnRetos.addEventListener('click', () => {
-                // Esta pestaña es un EXTRA. NO activa GPS ni interfiere con la aventura principal.
+                // ESTE ES EL CAMBIO CRÍTICO: Solo carga el HTML, sin lógica de GPS o audio.
                 showFullscreenTabContent('retos_con_puzzles_Av1_es.html', false);
             });
             tabBtnEnlacesHistoricos.addEventListener('click', () => {
