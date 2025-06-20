@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reproductor de Audio de Aventura (Hijo)</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        body {
+            font-family: "Book Antiqua", "Palatino Linotype", "Palatino", Georgia, serif;
+            margin: 0;
+            padding: 1em;
+            background-color: #f9f9f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100%; /* Ocupa toda la altura del iframe */
+            box-sizing: border-box; /* Incluye padding en la altura */
+            color: #333;
+            overflow: hidden; /* Evita scrollbars si el contenido es justo */
+        }
+
+        .audio-player-controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1em;
+            width: 100%;
+            max-width: 500px;
+            padding: 1em;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            background-color: white;
+            opacity: 0.7; /* Más transparente si no está activo */
+            transition: opacity 0.3s ease-in-out;
+            text-align: center;
+        }
+
+        .audio-player-controls.active {
+            opacity: 1; /* Opaco cuando está activo (cerca del GPS) */
+        }
+
+        .player-buttons {
+            display: flex;
+            align-items: center;
+            gap: 1em;
+            width: 100%;
+            justify-content: center;
+        }
+
+        .player-button {
+            padding: 1em;
+            font-size: 1.5em;
+            border: none;
+            border-radius: 50%;
+            background-color: #6c757d; /* Gris por defecto, inactivo */
+            color: white;
+            cursor: pointer;
+            width: 60px;
+            height: 60px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            transition: background-color 0.3s ease, transform 0.1s ease;
+        }
+        .player-button:hover:not(:disabled) {
+            transform: scale(1.05);
+        }
+        .player-button:active:not(:disabled) {
+            transform: scale(0.95);
+        }
+        .player-button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }
+
+        /* Estilos específicos para el botón Play/Pause */
+        #playPauseBtn.active {
+            background-color: #28a745; /* Verde cuando está activo por proximidad */
+        }
+        #playPauseBtn.active:hover:not(:disabled) {
+            background-color: #218838;
+        }
+
+        .progress-container {
+            width: 90%;
+            height: 8px;
+            background-color: #e0e0e0;
+            border-radius: 4px;
+            cursor: pointer;
+            position: relative;
+        }
+
+        #progressBar {
+            height: 100%;
+            width: 0%;
+            background-color: #0077cc;
+            border-radius: 4px;
+            transition: width 0.1s linear; /* Para una barra de progreso más suave */
+        }
+
+        .time-display {
+            display: flex;
+            justify-content: space-between;
+            width: 90%;
+            font-size: 0.9em;
+            color: #555;
+        }
+
+        .volume-container {
+            display: flex;
+            align-items: center;
+            gap: 0.5em;
+            width: 90%;
+        }
+
+        #volumeSlider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            background: #d3d3d3;
+            outline: none;
+            opacity: 0.7;
+            -webkit-transition: .2s;
+            transition: opacity .2s;
+            border-radius: 3px;
+        }
+        #volumeSlider:hover {
+            opacity: 1;
+        }
+        #volumeSlider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #0077cc;
+            cursor: pointer;
+        }
+        #volumeSlider::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #0077cc;
+            cursor: pointer;
+        }
+        
+        #volumeIcon {
+            color: #555;
+            font-size: 1.2em;
+            min-width: 20px; /* Para mantener el icono estable */
+            text-align: center;
+        }
+
+        /* Botón Siguiente Paso/Reto */
+        #nextStepBtn {
+            padding: 0.8em 1.5em;
+            font-size: 1.1em;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            background-color: #999; /* Gris y deshabilitado por defecto */
+            color: white;
+            user-select: none;
+            transition: background-color 0.3s ease, transform 0.1s ease;
+            width: auto;
+            min-width: 200px; /* Asegura un ancho mínimo */
+            margin-top: 1em; /* Separación del reproductor */
+        }
+        #nextStepBtn:hover:not(:disabled) {
+            transform: scale(1.02);
+        }
+        #nextStepBtn.active-ready { /* Clase cuando el audio ha terminado */
+            background-color: #0077cc; /* Azul para activo */
+        }
+        #nextStepBtn.active-ready:hover {
+            background-color: #005699;
+        }
+        #nextStepBtn:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 400px) {
+            .audio-player-controls {
+                padding: 0.8em;
+            }
+            .player-button {
+                width: 50px;
+                height: 50px;
+                font-size: 1.2em;
+            }
+            .time-display, .volume-container {
+                font-size: 0.8em;
+            }
+            #volumeSlider::-webkit-slider-thumb,
+            #volumeSlider::-moz-range-thumb {
+                width: 14px;
+                height: 14px;
+            }
+            #nextStepBtn {
+                font-size: 1em;
+                padding: 0.6em 1.2em;
+                min-width: 150px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="audio-player-controls" id="audioPlayerControls">
+        <audio id="audioPlayer"></audio>
+        
+        <div class="player-buttons">
+            <button id="prevAudioBtn" class="player-button" disabled>
+                <i class="fas fa-backward"></i>
+            </button>
+            <button id="playPauseBtn" class="player-button" disabled>
+                <i class="fas fa-play"></i>
+            </button>
+            </div>
+
+        <div class="progress-container" id="progressContainer">
+            <div id="progressBar"></div>
+        </div>
+
+        <div class="time-display">
+            <span id="currentTime">0:00</span>
+            <span id="duration">0:00</span>
+        </div>
+
+        <div class="volume-container">
+            <i id="volumeIcon" class="fas fa-volume-up"></i>
+            <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="1">
+        </div>
+
+        <button id="nextStepBtn" disabled>Siguiente Paso</button>
+    </div>
+
+    <script>
+        const audioPlayer = document.getElementById('audioPlayer');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const prevAudioBtn = document.getElementById('prevAudioBtn'); // Nuevo botón Anterior
+        const nextStepBtn = document.getElementById('nextStepBtn'); // Nuevo botón Siguiente Paso/Reto
+        const progressBar = document.getElementById('progressBar');
+        const progressContainer = document.getElementById('progressContainer');
+        const currentTimeSpan = document.getElementById('currentTime');
+        const durationSpan = document.getElementById('duration');
+        const volumeSlider = document.getElementById('volumeSlider');
+        const volumeIcon = document.getElementById('volumeIcon');
+        const audioPlayerControls = document.getElementById('audioPlayerControls');
+
+        let currentAudioId = null;
+        let currentAudioIndexInSequence = -1; // Índice del audio actual dentro de la secuencia (para Anterior/Siguiente)
+        let canPlayAudio = false; // Estado enviado por el padre (proximidad)
+
+        // Aquí definiremos la secuencia de audios y sus rutas.
+        // ESTA LISTA DEBE SER LA MISMA QUE EN EL PADRE para la secuencia.
+        // El padre nos enviará el ID del audio a cargar.
+        const audiosSequence = [
+            { id: "audio_serranos_intro", src: "audios/audio_serranos_intro.mp3" },
+            { id: "audio_muro_santa_ana", src: "audios/audio_muro_santa_ana.mp3" },
+            { id: "audio_plaza_virgen", src: "audios/audio_plaza_virgen.mp3" },
+            { id: "audio_catedral_fachada", src: "audios/audio_catedral_fachada.mp3" },
+            { id: "audio_miguelete", src: "audios/audio_miguelete.mp3" },
+            { id: "audio_banos_arabes", src: "audios/audio_banos_arabes.mp3" },
+            { id: "audio_ayuntamiento", src: "audios/audio_ayuntamiento.mp3" },
+            { id: "audio_toros_estacion", src: "audios/audio_toros_estacion.mp3" },
+            { id: "audio_mercado_central", src: "audios/audio_mercado_central.mp3" },
+            { id: "audio_correos", src: "audios/audio_correos.mp3" },
+            { id: "audio_san_nicolas", src: "audios/audio_san_nicolas.mp3" },
+            { id: "audio_lonja_seda", src: "audios/audio_lonja_seda.mp3" },
+            // AÑADE AQUÍ TODOS LOS OBJETOS { id: "tu_id", src: "audios/tu_audio.mp3" } PARA TUS 30 PARADAS
+            // Asegúrate que el ID del audio sea el mismo que envías desde el padre
+            // Ejemplo para paradas adicionales (simuladas):
+            { id: "audio_parada_13", src: "audios/audio_parada_13.mp3" },
+            { id: "audio_parada_14", src: "audios/audio_parada_14.mp3" },
+            { id: "audio_parada_15", src: "audios/audio_parada_15.mp3" },
+            { id: "audio_parada_16", src: "audios/audio_parada_16.mp3" },
+            { id: "audio_parada_17", src: "audios/audio_parada_17.mp3" },
+            { id: "audio_parada_18", src: "audios/audio_parada_18.mp3" },
+            { id: "audio_parada_19", src: "audios/audio_parada_19.mp3" },
+            { id: "audio_parada_20", src: "audios/audio_parada_20.mp3" },
+            { id: "audio_parada_21", src: "audios/audio_parada_21.mp3" },
+            { id: "audio_parada_22", src: "audios/audio_parada_22.mp3" },
+            { id: "audio_parada_23", src: "audios/audio_parada_23.mp3" },
+            { id: "audio_parada_24", src: "audios/audio_parada_24.mp3" },
+            { id: "audio_parada_25", src: "audios/audio_parada_25.mp3" },
+            { id: "audio_parada_26", src: "audios/audio_parada_26.mp3" },
+            { id: "audio_parada_27", src: "audios/audio_parada_27.mp3" },
+            { id: "audio_parada_28", src: "audios/audio_parada_28.mp3" },
+            { id: "audio_parada_29", src: "audios/audio_parada_29.mp3" },
+            { id: "audio_parada_30", src: "audios/audio_parada_30.mp3" }
+        ];
+
+        // Función de utilidad para formatear el tiempo
+        function formatTime(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = Math.floor(seconds % 60);
+            return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
+        }
+
+        // --- Funciones de control de audio ---
+
+        function loadAudio(id) {
+            const audioData = audiosSequence.find(a => a.id === id);
+            if (audioData) {
+                audioPlayer.src = audioData.src;
+                currentAudioId = id;
+                currentAudioIndexInSequence = audiosSequence.findIndex(a => a.id === id); // Actualizar índice
+                audioPlayer.load(); // Cargar el audio
+                playPauseBtn.querySelector('i').className = 'fas fa-play'; // Asegurar icono de Play
+                audioPlayer.currentTime = 0; // Resetear tiempo
+                progressBar.style.width = '0%'; // Resetear barra
+                currentTimeSpan.textContent = '0:00';
+                durationSpan.textContent = '0:00';
+                updatePlayerControlsState(); // Actualizar estado de los botones
+                disableNextStepBtn(); // Deshabilitar el botón de siguiente paso al cargar un nuevo audio
+            } else {
+                console.error("Audio ID no encontrado en la secuencia:", id);
+                currentAudioId = null;
+                currentAudioIndexInSequence = -1;
+                audioPlayer.src = ''; // Limpiar src
+                updatePlayerControlsState(); // Deshabilitar todo si no hay audio
+            }
+        }
+
+        function playAudio() {
+            if (currentAudioId && canPlayAudio) {
+                audioPlayer.play().catch(e => {
+                    console.error("Error al intentar reproducir audio:", e);
+                    // Esto puede ocurrir si el usuario no ha interactuado o si hay restricciones de autoplay
+                    // En móviles, a menudo se requiere una interacción previa del usuario.
+                });
+                playPauseBtn.querySelector('i').className = 'fas fa-pause';
+            } else if (!canPlayAudio) {
+                console.warn("No se puede reproducir el audio: fuera de proximidad o permisos denegados.");
+                // Opcional: enviar un mensaje al padre para mostrar una alerta al usuario
+            }
+        }
+
+        function pauseAudio() {
+            audioPlayer.pause();
+            playPauseBtn.querySelector('i').className = 'fas fa-play';
+        }
+
+        function togglePlayPause() {
+            if (audioPlayer.paused) {
+                playAudio();
+            } else {
+                pauseAudio();
+            }
+        }
+
+        function stopAudio() {
+            pauseAudio();
+            if (audioPlayer.src) { // Solo si hay una fuente cargada
+                audioPlayer.currentTime = 0;
+            }
+        }
+
+        function playPrevAudio() {
+            if (currentAudioIndexInSequence > 0) {
+                stopAudio(); // Detener el audio actual
+                const prevAudio = audiosSequence[currentAudioIndexInSequence - 1];
+                loadAudio(prevAudio.id);
+                // No reproducir automáticamente, esperar al usuario si es por GPS
+                // Si la ubicación lo permite, se auto-reproducirá por el padre
+            }
+        }
+
+        // --- Funciones para el botón Siguiente Paso/Reto ---
+        function enableNextStepBtn() {
+            nextStepBtn.disabled = false;
+            nextStepBtn.classList.add('active-ready');
+            nextStepBtn.textContent = 'Siguiente Paso'; // O el texto que quieras
+        }
+
+        function disableNextStepBtn() {
+            nextStepBtn.disabled = true;
+            nextStepBtn.classList.remove('active-ready');
+            nextStepBtn.textContent = 'Siguiente Paso'; // Texto por defecto
+        }
+
+        // --- Actualizar estado de los controles ---
+        function updatePlayerControlsState() {
+            // Habilita/deshabilita el botón de Play/Pause y cambia su estilo de "activo"
+            if (currentAudioId && canPlayAudio) {
+                playPauseBtn.disabled = false;
+                audioPlayerControls.classList.add('active'); // Fondo opaco para el contenedor
+                playPauseBtn.classList.add('active'); // Botón Play/Pause verde
+            } else {
+                playPauseBtn.disabled = true;
+                audioPlayerControls.classList.remove('active'); // Fondo transparente
+                playPauseBtn.classList.remove('active'); // Botón Play/Pause gris
+                pauseAudio(); // Asegurarse de pausar si se pierde la proximidad
+            }
+
+            // Habilita/deshabilita el botón Anterior
+            prevAudioBtn.disabled = (currentAudioIndexInSequence <= 0 || !currentAudioId);
+
+            // El botón "Siguiente Paso" se controla por el final del audio
+            // Ya se llama a disableNextStepBtn() al cargar un nuevo audio
+        }
+
+        // --- Event Listeners del reproductor ---
+
+        playPauseBtn.addEventListener('click', togglePlayPause);
+        prevAudioBtn.addEventListener('click', playPrevAudio);
+        nextStepBtn.addEventListener('click', () => {
+            // Informar al padre que el usuario quiere avanzar al siguiente paso/reto
+            window.parent.postMessage({ type: 'audio-player-next-step' }, '*');
+            disableNextStepBtn(); // Deshabilitar el botón inmediatamente
+        });
+
+
+        audioPlayer.addEventListener('loadedmetadata', () => {
+            durationSpan.textContent = formatTime(audioPlayer.duration);
+        });
+
+        audioPlayer.addEventListener('timeupdate', () => {
+            const progress = (audioPlayer.currentTime / audioPlayer.duration) * 100;
+            progressBar.style.width = `${progress}%`;
+            currentTimeSpan.textContent = formatTime(audioPlayer.currentTime);
+        });
+
+        audioPlayer.addEventListener('ended', () => {
+            playPauseBtn.querySelector('i').className = 'fas fa-play';
+            progressBar.style.width = '0%';
+            currentTimeSpan.textContent = '0:00';
+            // Al finalizar el audio, habilitar el botón "Siguiente Paso"
+            enableNextStepBtn();
+        });
+
+        progressContainer.addEventListener('click', (e) => {
+            if (!audioPlayer.src) return; // No hacer nada si no hay audio cargado
+            const clickX = e.offsetX;
+            const width = progressContainer.offsetWidth;
+            const duration = audioPlayer.duration;
+            audioPlayer.currentTime = (clickX / width) * duration;
+        });
+
+        volumeSlider.addEventListener('input', () => {
+            audioPlayer.volume = volumeSlider.value;
+            if (volumeSlider.value == 0) {
+                volumeIcon.className = 'fas fa-volume-mute';
+            } else if (volumeSlider.value < 0.5) {
+                volumeIcon.className = 'fas fa-volume-down';
+            } else {
+                volumeIcon.className = 'fas fa-volume-up';
+            }
+        });
+
+        // --- Comunicación con el Padre ---
+
+        window.addEventListener('message', (event) => {
+            // Es buena práctica verificar el origin de los mensajes en producción
+            // if (event.origin !== window.location.origin) return;
+
+            const data = event.data;
+            if (data && typeof data === 'object') {
+                switch (data.type) {
+                    case 'loadAudio':
+                        loadAudio(data.idAudio);
+                        canPlayAudio = data.canPlay; // Recibir estado de proximidad
+                        updatePlayerControlsState(); // Actualizar estado de los botones
+                        break;
+                    case 'playAudio': // Permitir que el padre fuerce la reproducción
+                        playAudio();
+                        break;
+                    case 'pauseAudio': // Permitir que el padre fuerce la pausa
+                        pauseAudio();
+                        break;
+                    case 'stopAudio': // Permitir que el padre fuerce la parada
+                        stopAudio();
+                        break;
+                    case 'updateCanPlay': // El padre informa sobre el cambio de proximidad
+                        canPlayAudio = data.canPlay;
+                        updatePlayerControlsState(); // Actualizar el estado del botón y pausar si es necesario
+                        break;
+                    case 'changeFontSize': // Mensaje desde el padre para cambiar el tamaño de la fuente
+                        document.body.style.fontSize = data.size + 'px';
+                        // Ajusta otros elementos si es necesario, pero el body suele ser suficiente
+                        break;
+                }
+            }
+        });
+
+        // Informar al padre que este iframe está listo
+        window.addEventListener('DOMContentLoaded', () => {
+            window.parent.postMessage({ type: 'audio-hijo-listo' }, '*');
+            // Establecer volumen inicial del slider al cargar
+            volumeSlider.value = audioPlayer.volume;
+            volumeIcon.className = 'fas fa-volume-up'; // Icono por defecto
+            disableNextStepBtn(); // Asegurarse de que el botón de siguiente esté deshabilitado al inicio
+        });
+
+        // Manejar el foco para que el audio se pause al cambiar de pestaña/app
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                pauseAudio();
+            }
+        });
+
+    </script>
+</body>
+</html>
