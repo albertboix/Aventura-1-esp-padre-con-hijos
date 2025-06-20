@@ -847,12 +847,12 @@
                 closePanel(panel1);
             }
             panel.classList.add('open');
-            // Al abrir un panel, la aventura principal NO se pausa.
+            // La aventura principal NO se pausa.
         }
 
         function closePanel(panel) {
             panel.classList.remove('open');
-            // Al cerrar un panel, la aventura principal NO se pausa.
+            // La aventura principal NO se pausa.
         }
 
         // --- Gestión de Contenido de Pestañas dentro de los Paneles (Pantalla Completa) ---
@@ -895,7 +895,7 @@
                         audioHijoListo = true;
                         console.log("Audio iframe de aventura está listo.");
                         // Si ya se aceptaron los T&C y se concedió el permiso GPS, iniciar
-                        if (gpsPermisoConcedido) {
+                        if (gpsPermisoConcedido) { // Solo si el permiso ya fue concedido
                             updateStepDisplay();
                             startLocationTracking();
                         } else {
@@ -957,16 +957,36 @@
                 console.log("Términos aceptados. Solicitando permisos GPS y Audio.");
                 
                 // Iniciar el seguimiento GPS y mostrar la UI del paso actual
-                // La llamada a startLocationTracking se hace después de aceptar T&C
-                // y el permiso real se gestiona en geoSuccess/geoError.
-                // audioHijoListo se maneja por el mensaje del iframe.
-                if (audioHijoListo) { // Si el iframe de audio ya está listo
+                // La llamada a startLocationTracking se hace inmediatamente después de aceptar T&C.
+                // El permiso real se gestiona en geoSuccess/geoError.
+                if (audioHijoListo) { // Solo si el iframe de audio ya está listo
                     updateStepDisplay();
                     startLocationTracking();
                 } else {
+                    // Si el audio iframe no está listo, startLocationTracking se llamará
+                    // cuando el evento 'audio-hijo-listo' se dispare, si el permiso GPS no fue denegado.
                     locationInfo.textContent = "Cargando audio y preparando GPS...";
-                    // El startLocationTracking se volverá a intentar cuando audio-hijo-listo
-                    // se dispare si el permiso GPS no fue denegado.
+                    // Intentar pedir el permiso GPS una vez, incluso si el audio no está listo.
+                    // Si el permiso se concede, gpsPermisoConcedido se pondrá a true,
+                    // y la lógica de inicio se completará cuando el audio esté listo.
+                    if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(
+                            (pos) => { // Éxito en obtener el permiso
+                                gpsPermisoConcedido = true;
+                                console.log("Permiso GPS concedido al inicio.");
+                                if (audioHijoListo) { // Si el audio ya estaba listo, iniciar ahora.
+                                    updateStepDisplay();
+                                    startLocationTracking();
+                                }
+                            },
+                            (err) => { // Error o denegación del permiso
+                                geoError(err); // Manejar el error de inmediato
+                            },
+                            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+                        );
+                    } else {
+                        geoError({code: 0, message: "Geolocalización no soportada."}); // No soportado
+                    }
                 }
                 hideAudioPlayer(); // Por defecto oculto hasta que el GPS lo active
                 hideRetoPlayer();
@@ -983,7 +1003,7 @@
 
             // Event Listeners para las pestañas del Panel 2 (Izquierdo)
             tabBtnRetos.addEventListener('click', () => {
-                // Carga retos_con_puzzles_Av1_es.html, no muestra cartel de desarrollo aquí
+                // Esta pestaña es un EXTRA. NO activa GPS ni interfiere con la aventura principal.
                 showFullscreenTabContent('retos_con_puzzles_Av1_es.html', false);
             });
             tabBtnEnlacesHistoricos.addEventListener('click', () => {
@@ -993,11 +1013,9 @@
                 showFullscreenTabContent('paginas_oficiales.html', false);
             });
             tabBtnTextoAventuras.addEventListener('click', () => {
-                // Aquí iría un iframe con src si existiera el archivo
                 showFullscreenTabContent('', true); // Muestra el cartel EN DESARROLLO
             });
             tabBtnTextoLecturaFacil.addEventListener('click', () => {
-                // Aquí iría un iframe con src si existiera el archivo
                 showFullscreenTabContent('', true); // Muestra el cartel EN DESARROLLO
             });
 
@@ -1006,7 +1024,6 @@
                 showFullscreenTabContent('Agradecimientos.html', false);
             });
             tabBtnFuentesInfo.addEventListener('click', () => {
-                // Aquí iría un iframe con src si existiera el archivo
                 showFullscreenTabContent('', true); // Muestra el cartel EN DESARROLLO
             });
             tabBtnGastronomia.addEventListener('click', () => {
@@ -1025,8 +1042,6 @@
                 alert("Inténtalo de nuevo. Puedes pedir una pista.");
                 retoIframe.src = adventureSteps[currentStepIndex].retoUrl; // Recarga el reto
             });
-
-            // No se implementa el slider de tamaño de fuente porque la pestaña se eliminó
         });
     </script>
 </body>
