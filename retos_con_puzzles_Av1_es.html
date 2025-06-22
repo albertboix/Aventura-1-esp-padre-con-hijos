@@ -21,6 +21,7 @@
         text-align: center; /* Centrar la pregunta por defecto */
     }
     #reto {
+        /* Los bordes deben ser siempre de igual grosor. */
         border: 3px solid #ccc; /* Grosor de borde constante */
         border-radius: 8px;
         padding: 1em;
@@ -596,6 +597,7 @@ document.addEventListener("DOMContentLoaded", function() {
             retoDiv.appendChild(puzzleIframe);
 
             // Asegurarse de que todos los botones de la página principal estén ocultos para los puzzles
+            // Ya que el puzzle gestiona su propia lógica de 'continuar' y fuegos artificiales.
             btnEnviar.style.display = "none";
             btnMostrarRespuesta.style.display = "none";
             btnNext.style.display = "none";
@@ -613,8 +615,8 @@ document.addEventListener("DOMContentLoaded", function() {
         fuegosDiv.innerHTML = "";
         fuegosDiv.style.display = "none";
 
-        btnNext.style.display = "none"; // Asegurarse de que el botón "Siguiente" esté oculto al iniciar la verificación
-        btnMostrarRespuesta.style.display = "none"; // Asegurarse de que el botón "Mostrar Respuesta" esté oculto al iniciar la verificación
+        // btnNext.style.display = "none"; // Ya se ocultan al inicio de mostrarReto()
+        // btnMostrarRespuesta.style.display = "none"; // Ya se ocultan al inicio de mostrarReto()
 
         let esCorrecto = false;
 
@@ -649,15 +651,13 @@ document.addEventListener("DOMContentLoaded", function() {
         if (esCorrecto) {
             console.log("LOG: Respuesta CORRECTA. Iniciando secuencia de éxito.");
             retoDiv.classList.add("correct");
-            if (reto.tipo !== "puzzle") {
-                fuegosArtificiales(); // Llama a la animación
-                // Mostrar botones DESPUÉS de que la animación de fuegos haya tenido tiempo de empezar
-                setTimeout(() => {
-                    btnNext.style.display = "inline-block";
-                    btnMostrarRespuesta.style.display = "inline-block";
-                    console.log("LOG: Botones 'Continue su Aventura' y 'Mostrar Respuesta' visibles después de fuegos.");
-                }, DURACION_TOTAL_MS + 100); // Espera un poco más allá de la duración de los fuegos
-            }
+            fuegosArtificiales(); // Llama a la animación
+
+            // Mostrar botones inmediatamente para retos de opción/texto
+            btnNext.style.display = "inline-block";
+            btnMostrarRespuesta.style.display = "inline-block";
+            console.log("LOG: Botones 'Continue su Aventura' y 'Mostrar Respuesta' visibles.");
+
             btnEnviar.style.display = "none"; // Ocultar el botón Enviar tras una respuesta correcta
         } else {
             console.log("LOG: Respuesta INCORRECTA. Vibrando y permitiendo reintento.");
@@ -682,7 +682,7 @@ document.addEventListener("DOMContentLoaded", function() {
         divRespuestaCorrecta.style.display = "block";
     });
 
-    /* Botón siguiente (solo para retos de opción/texto) */
+    /* Botón siguiente (solo para retos de opción/texto y avance solicitado por puzzles) */
     btnNext.addEventListener("click", () => {
         console.log("LOG: Clic en 'Continue su Aventura'. Avanzando al siguiente reto.");
         indiceReto++;
@@ -702,17 +702,25 @@ document.addEventListener("DOMContentLoaded", function() {
         // if (event.origin !== "https://valenciavguides.github.io") return; // Reemplaza con tu dominio
         console.log('LOG: Mensaje recibido del iframe:', event.data);
 
+        // Asegúrate de que el mensaje provenga de un iframe dentro de este documento
+        // y no de un iframe que esté en el padre (aunque aquí solo hay 1 iframe).
+        if (event.source !== window.frames[0]) {
+            console.warn("LOG: Mensaje recibido de una fuente no esperada en este documento.");
+            return;
+        }
+
         if (event.data === "puzzle-state-completed") {
-            console.log('LOG: Mensaje recibido: Puzzle completado. Poniendo borde verde.');
+            console.log('LOG: Mensaje recibido: Puzzle completado. Poniendo borde verde. (Sin fuegos ni botón de padre)');
             retoDiv.classList.add("correct");
             retoDiv.classList.remove("incorrect");
-            // El puzzle gestiona su propio botón de "Continuar" para avanzar, no necesitamos el btnNext de la página principal aquí.
+            // No se activan fuegos ni se muestra btnNext aquí, ya que el puzzle tiene su propia lógica.
         }
         else if (event.data === "puzzle-state-timeout") {
-            console.log('LOG: Mensaje recibido: Tiempo del puzzle agotado. Poniendo borde rojo y vibrando.');
+            console.log('LOG: Mensaje recibido: Tiempo del puzzle agotado. Poniendo borde rojo y vibrando. (Sin fuegos ni botón de padre)');
             retoDiv.classList.add("incorrect");
             retoDiv.classList.remove("correct");
             vibrar();
+            // No se activan fuegos ni se muestra btnNext aquí, ya que el puzzle tiene su propia lógica.
         }
         else if (event.data === "advance-to-next") {
             console.log('LOG: Mensaje recibido: Avance al siguiente reto solicitado por el puzzle.');
