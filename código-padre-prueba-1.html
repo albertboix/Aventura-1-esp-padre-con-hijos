@@ -448,6 +448,56 @@
             display: block; /* Debe ser visible cuando la ventana de términos está abierta */
         }
 
+        /* Estilos para la pantalla de bienvenida/permisos (ahora flotante) */
+        #welcomeOverlay {
+            z-index: 99999; /* Un poco menos que los términos, para que estos estén primero */
+            display: none; /* Oculto por defecto */
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            justify-content: center;
+            align-items: center;
+        }
+
+        #welcomeBox {
+            background: #fff;
+            padding: 2em;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
+            max-width: 500px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5em;
+        }
+        #welcomeBox h1 {
+            font-size: 1.8em;
+            margin-bottom: 0.5em;
+            color: #0077cc;
+        }
+        #welcomeBox p {
+            font-size: 1.1em;
+            line-height: 1.5;
+            color: #333;
+        }
+        #acceptPermissionsBtn {
+            background-color: #28a745;
+            color: white;
+            padding: 0.8em 1.5em;
+            border: none;
+            border-radius: 6px;
+            font-size: 1.2em;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        #acceptPermissionsBtn:hover {
+            background-color: #218838;
+        }
+
+
         /* Media Queries para pantallas más pequeñas */
         @media (max-width: 800px) and (orientation: landscape) {
             h2 {
@@ -478,7 +528,8 @@
             /* Ajustar tamaño de menús en landscape */
             #leftMenuContainer .menu-container,
             #rightMenuContainer .menu-container,
-            #termsBox {
+            #termsBox,
+            #welcomeBox { /* También la caja de bienvenida */
                 width: 95%; /* Ocupar casi todo el ancho */
                 max-height: 95%;
             }
@@ -495,7 +546,8 @@
             /* Ajustar tamaño de menús en portrait */
             #leftMenuContainer .menu-container,
             #rightMenuContainer .menu-container,
-            #termsBox {
+            #termsBox,
+            #welcomeBox { /* También la caja de bienvenida */
                 width: 95%; /* Ocupar casi todo el ancho */
                 max-height: 95%;
             }
@@ -524,11 +576,11 @@
         <div id="welcomeBox">
             <h1>¡Bienvenido a tu Aventura en Valencia!</h1>
             <p>
-                Para disfrutar de esta experiencia, necesitamos acceder a algunas funciones de tu dispositivo.
+                Para disfrutar plenamente de esta experiencia, necesitamos acceder a algunas funciones de tu dispositivo.
                 Por favor, acepta los permisos de <strong>ubicación (GPS)</strong> y permite la reproducción de <strong>audio</strong>.
                 Esto nos permitirá guiarte por los puntos de interés y activar los retos y narraciones en el momento justo.
             </p>
-            <button id="acceptPermissionsBtn">Aceptar y Empezar Aventura</button>
+            <button id="acceptPermissionsBtn">Entendido, ¡Empezar Aventura!</button>
         </div>
     </div>
 
@@ -566,7 +618,7 @@
             <button class="close-tab-btn" onclick="hideLeftMenu()">&times;</button>
             <h3>Menú de Aventura</h3>
             <div class="menu-tabs">
-                <button class="menu-tab-btn" data-tab-target="retosPuzzlesTab">Retos y Puzzles</button>
+                <button class="menu-tab-btn" data-tab-target="retosPuzzlesTab">Retos y Puzzles (Juego)</button>
                 <button class="menu-tab-btn" data-tab-target="gastronomiaTab">Gastronomía</button>
                 <button class="menu-tab-btn" data-tab-target="paginasOficialesTab">Páginas Oficiales</button>
                 <button class="menu-tab-btn" data-tab-target="videosHistoricosTab">Videos Históricos</button>
@@ -645,7 +697,7 @@
         const btnNextAfterReto = document.getElementById('btnNextAfterReto');
         const playPauseBtn = document.getElementById('playPauseBtn');
 
-        // Referencias de la pantalla de bienvenida
+        // Referencias de la pantalla de bienvenida/permisos
         const welcomeOverlay = document.getElementById('welcomeOverlay');
         const acceptPermissionsBtn = document.getElementById('acceptPermissionsBtn');
 
@@ -675,13 +727,10 @@
         // Referencia al iframe del reproductor de audio hijo
         const audioIframe = document.getElementById('audioIframe');
 
-        // NUEVAS REFERENCIAS PARA TÉRMINOS Y CONDICIONES
+        // REFERENCIAS PARA TÉRMINOS Y CONDICIONES
         const termsOverlay = document.getElementById('termsOverlay');
         const acceptTermsBtn = document.getElementById('acceptTermsBtn');
         const termsIframe = document.getElementById('termsIframe');
-
-        // NO MÁS retoIframeTab directo, todo va a fullScreenIframe
-        // const retoIframeTab = document.getElementById('retoIframeTab');
 
         // --- Funciones de Geolocalización y Proximidad ---
 
@@ -690,18 +739,32 @@
             if ("geolocation" in navigator) {
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
-                        console.log("Permiso de geolocalización concedido.");
-                        // No se hace nada más aquí, startGeolocation se llama al aceptar
+                        console.log("Permiso de geolocalización concedido o ya existe.");
+                        // Solo iniciamos el GPS real si se aceptó y no estamos en modo simulado
+                        if (gpsRealActivado) {
+                            startGeolocation();
+                        }
                     },
                     (error) => {
                         console.warn(`Error de geolocalización inicial: ${error.message}`);
                         if (error.code === error.PERMISSION_DENIED) {
                             alert("Permiso de ubicación denegado. La aventura funcionará en modo manual.");
-                            gpsRealActivado = false;
+                            gpsRealActivado = false; // Forzar a modo manual
                             gpsModeStatusSpan.textContent = "GPS Desactivado (Permiso denegado)";
                             locationStatusSpan.textContent = "GPS Desactivado (Permiso denegado).";
                             locationStatusSpan.style.color = '#dc3545'; // Rojo
                             simulateProximityBtn.disabled = false; // Habilitar simulación
+                        } else {
+                            // Otros errores, intentar seguir en modo real pero con advertencia
+                            alert(`Error al obtener ubicación: ${error.message}. Intentando continuar...`);
+                            // Si falla por timeout o no disponible, aún podemos intentar con el watcher
+                            if (gpsRealActivado) {
+                                startGeolocation();
+                            }
+                        }
+                        // En cualquier caso de error, si no estamos en modo real, habilitar simulación
+                        if (!gpsRealActivado) {
+                            simulateProximityBtn.disabled = false;
                         }
                     },
                     { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
@@ -721,6 +784,8 @@
                 gpsModeStatusSpan.textContent = "Real (obteniendo ubicación...)";
                 locationStatusSpan.textContent = "Buscando tu ubicación...";
                 locationStatusSpan.style.color = '#ffc107'; // Amarillo
+                // Detener cualquier watcher previo para evitar duplicados
+                stopGeolocation();
                 watchId = navigator.geolocation.watchPosition(
                     handlePosition,
                     handleGeolocationError,
@@ -1030,27 +1095,27 @@
 
         // --- Event Listeners ---
 
-        // Evento para aceptar permisos y comenzar la aventura (de la pantalla de bienvenida)
-        acceptPermissionsBtn.addEventListener('click', () => {
-            console.log("¡Botón 'Aceptar y Empezar' clickeado!"); // Mensaje de depuración
-            welcomeOverlay.style.display = 'none'; // Oculta la pantalla de bienvenida
-            if (gpsRealActivado) {
-                // Si el GPS real está activo, pedirá permiso y luego iniciará la geolocalización
-                startGeolocation();
-            } else {
-                // Si el GPS real está desactivado (por defecto o por denegación previa)
-                gpsModeStatusSpan.textContent = "GPS Desactivado (Modo Manual/Simulado)";
-                locationStatusSpan.textContent = "GPS Desactivado.";
-                locationStatusSpan.style.color = '#6c757d'; // Gris
-                simulateProximityBtn.disabled = false; // Habilitar simulación
-            }
-            cargarSiguientePaso(); // Iniciar la aventura (cargar el primer audio/reto)
-        });
-
-        // NUEVO: Evento para aceptar los términos y condiciones
+        // Evento para aceptar los Términos y Condiciones
         acceptTermsBtn.addEventListener('click', () => {
             termsOverlay.style.display = 'none'; // Oculta la ventana de términos
-            welcomeOverlay.style.display = 'flex'; // Muestra la pantalla de bienvenida
+            welcomeOverlay.style.display = 'flex'; // Muestra la pantalla de bienvenida/permisos
+        });
+
+        // Evento para aceptar permisos y comenzar la aventura (de la pantalla de bienvenida/permisos)
+        acceptPermissionsBtn.addEventListener('click', () => {
+            console.log("¡Botón 'Entendido, ¡Empezar Aventura!' clickeado!"); // Mensaje de depuración
+            welcomeOverlay.style.display = 'none'; // Oculta la pantalla de bienvenida/permisos
+
+            // Solicitar permisos de geolocalización. El 'startGeolocation' se ejecutará en el callback.
+            requestGeolocationPermission();
+            // Iniciar la carga del audio player hijo al aceptar permisos
+            audioIframe.style.display = 'block';
+            audioIframe.src = "audio_player_hijo.html"; // Asegúrate de que el src esté siempre cargado
+            // Ocultar el iframe de audio después de cargarse, se mostrará cuando se reproduzca
+            audioIframe.style.display = 'none';
+
+
+            cargarSiguientePaso(); // Iniciar la aventura (cargar el primer audio/reto)
         });
 
         // Evento para el botón "Continuar con la Aventura"
@@ -1125,7 +1190,7 @@
                 let urlToLoad = '';
                 switch(tabTarget) {
                     case 'retosPuzzlesTab':
-                        urlToLoad = 'retos_con_puzzles_Av1_es.html?modo=principal';
+                        urlToLoad = 'retos_con_puzzles_Av1_es.html'; // Juego externo
                         break;
                     case 'gastronomiaTab':
                         urlToLoad = 'Gastronomia.html';
@@ -1153,7 +1218,6 @@
                         urlToLoad = 'Agradecimientos.html';
                         break;
                     case 'fuentesInfoTab':
-                        // Aquí podrías cargar un HTML con las fuentes de información
                         urlToLoad = 'fuentes_informacion.html'; // Ejemplo de URL
                         break;
                     case 'consejosSeguridadTab':
@@ -1183,27 +1247,20 @@
 
         // --- Inicialización de la Página ---
 
-        function initPage() {
-            console.log("Página inicializada después de bienvenida.");
-            requestGeolocationPermission(); // Solicitar permisos al cargar
-        }
-
-        // Mostrar la ventana de Términos y Condiciones al cargar la ventana
-        window.addEventListener('load', () => {
-            termsOverlay.style.display = 'flex'; // Asegura que los términos sean lo primero
-            // Asegurarse de que el iframe de audio esté cargado para poder enviar mensajes
-            audioIframe.style.display = 'block'; // Mostrar temporalmente para que se cargue, luego se oculta si no hay audio
-            audioIframe.src = "audio_player_hijo.html"; // Asegúrate de que el src esté siempre cargado
-            audioIframe.style.display = 'none'; // Ocultar después de cargarse
-        });
-
-        // Llamar a la función de inicialización cuando el DOM esté completamente cargado
+        // Función que se ejecuta al cargar la página
         document.addEventListener('DOMContentLoaded', () => {
-            // Asegurar que termsOverlay esté visible al inicio, y welcomeOverlay oculto.
+            // Asegurar que termsOverlay esté visible al inicio y el resto oculto
             termsOverlay.style.display = 'flex';
             welcomeOverlay.style.display = 'none';
+            document.getElementById('audioPlayerWrapper').style.display = 'none';
+            puzzleIframe.style.display = 'none';
+            btnNextAfterReto.style.display = 'none';
+            terminarAventuraBtn.style.display = 'none';
+            leftMenuContainer.style.display = 'none';
+            rightMenuContainer.style.display = 'none';
+            fullScreenIframeContainer.style.display = 'none';
+            document.getElementById('loading-message').style.display = 'block'; // Mostrar mensaje de carga inicial
         });
-
     </script>
 </body>
 </html>
