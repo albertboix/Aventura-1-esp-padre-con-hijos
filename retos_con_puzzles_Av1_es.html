@@ -414,27 +414,38 @@ const retos = [
 // Duración de la animación de fuegos artificiales
 const DURACION_TOTAL_MS = 3000;
 
+// Declarar las variables globales para los elementos del DOM
+let retoDiv;
+let btnEnviar;
+let btnMostrarRespuesta;
+let divRespuestaCorrecta;
+let btnNext;
+let fuegosDiv;
+
 /* Animación de fuegos artificiales valencianos */
 function fuegosArtificiales() {
-    console.log("Activando fuegos artificiales...");
-    const NUM_CHISPAS_POR_FUEGO = 30;
-    const NUM_EXPLOSIONES = 15;
-
-    // Asegurarse de que el div de fuegos existe
+    console.log("LOG: Activando fuegos artificiales...");
     if (!fuegosDiv) {
-        console.error("ERROR: fuegosDiv no está definido al intentar animar fuegos artificiales.");
+        console.error("ERROR: fuegosDiv no está definido o es nulo en fuegosArtificiales().");
         return;
     }
 
     fuegosDiv.innerHTML = ""; // Limpiar fuegos anteriores
     fuegosDiv.style.display = "block"; // Mostrar el contenedor de fuegos
 
+    const NUM_CHISPAS_POR_FUEGO = 30;
+    const NUM_EXPLOSIONES = 15;
+
     for (let e = 0; e < NUM_EXPLOSIONES; e++) {
         const delayExplosion = (DURACION_TOTAL_MS / NUM_EXPLOSIONES) * e;
 
         setTimeout(() => {
-            const startX = Math.random() * fuegosDiv.offsetWidth;
-            const startY = Math.random() * fuegosDiv.offsetHeight;
+            // Asegúrate de que fuegosDiv.offsetWidth y .offsetHeight no son cero
+            const containerWidth = fuegosDiv.offsetWidth || window.innerWidth;
+            const containerHeight = fuegosDiv.offsetHeight || window.innerHeight;
+
+            const startX = Math.random() * containerWidth;
+            const startY = Math.random() * containerHeight;
 
             for (let i = 0; i < NUM_CHISPAS_POR_FUEGO; i++) {
                 let chispa = document.createElement("div");
@@ -457,70 +468,79 @@ function fuegosArtificiales() {
 
                 const chispaDuration = DURACION_TOTAL_MS / NUM_EXPLOSIONES * 1.5;
 
+                // Forzar un reflow para asegurar que la posición inicial es renderizada antes de la transición
+                chispa.offsetWidth;
+
                 chispa.style.transition = `all ${chispaDuration}ms ease-out`;
-                setTimeout(() => {
-                    chispa.style.left = `${endX}px`;
-                    chispa.style.top = `${endY}px`;
-                    chispa.style.opacity = "0";
-                    chispa.style.transform = "scale(0.5)";
-                }, 10);
+                chispa.style.left = `${endX}px`;
+                chispa.style.top = `${endY}px`;
+                chispa.style.opacity = "0";
+                chispa.style.transform = "scale(0.5)";
 
                 setTimeout(() => {
                     if (chispa.parentNode) {
                         chispa.parentNode.removeChild(chispa);
                     }
-                }, delayExplosion + chispaDuration + 50);
+                }, chispaDuration + 50); // Tiempo para que la chispa termine su animación
             }
         }, delayExplosion);
     }
-    // Ocultar el contenedor de fuegos después de que terminen las animaciones
+    // Ocultar el contenedor de fuegos después de que terminen TODAS las animaciones
     setTimeout(() => {
         fuegosDiv.style.display = "none";
-        console.log("Fuegos artificiales terminados y ocultos.");
+        console.log("LOG: Fuegos artificiales terminados y ocultos.");
     }, DURACION_TOTAL_MS + 100);
 }
 
 
 /* Función para vibrar */
 function vibrar() {
-    console.log("Vibrando...");
+    console.log("LOG: Vibrando...");
     if (navigator.vibrate) navigator.vibrate(300);
 }
 
 // Envuelve todo el código que interactúa con el DOM dentro de DOMContentLoaded
 document.addEventListener("DOMContentLoaded", function() {
-    console.log("DOM completamente cargado.");
+    console.log("LOG: DOM completamente cargado. Inicializando variables y eventos.");
 
-    // Variables para control, ahora inicializadas DESPUÉS de que el DOM esté listo
-    let indiceReto = 0;
-    const retoDiv = document.getElementById("reto");
-    const btnEnviar = document.createElement("button");
+    // Asignar los elementos del DOM a las variables globales
+    retoDiv = document.getElementById("reto");
+    btnEnviar = document.createElement("button"); // Crear aquí el botón Enviar
     btnEnviar.textContent = "Enviar";
     btnEnviar.className = "btn";
 
-    const btnMostrarRespuesta = document.getElementById("btnMostrarRespuesta");
-    const divRespuestaCorrecta = document.getElementById("respuestaCorrectaTexto");
-    const btnNext = document.getElementById("btnNextAfterReto");
-    const fuegosDiv = document.getElementById("fuegos"); // Referencia al div de fuegos
+    btnMostrarRespuesta = document.getElementById("btnMostrarRespuesta");
+    divRespuestaCorrecta = document.getElementById("respuestaCorrectaTexto");
+    btnNext = document.getElementById("btnNextAfterReto");
+    fuegosDiv = document.getElementById("fuegos");
+
+    // Verificar que todos los elementos se encontraron
+    if (!retoDiv || !btnMostrarRespuesta || !divRespuestaCorrecta || !btnNext || !fuegosDiv) {
+        console.error("ERROR: No se pudieron encontrar todos los elementos del DOM necesarios. Asegúrate de que los IDs sean correctos.");
+        return; // Detener la ejecución si no se encuentran los elementos clave
+    } else {
+        console.log("LOG: Todos los elementos del DOM encontrados correctamente.");
+    }
 
     /* Función para limpiar el reto y mostrar uno nuevo */
     function mostrarReto() {
-        console.log(`Mostrando reto #${indiceReto + 1}: ${retos[indiceReto].pregunta}`);
+        console.log(`LOG: Mostrando reto #${indiceReto + 1}: ${retos[indiceReto].pregunta}`);
 
-        // Limpiamos y ocultamos elementos visuales
+        // Ocultar todos los botones y mensajes al inicio de un nuevo reto
         btnNext.style.display = "none";
         btnMostrarRespuesta.style.display = "none";
-        divRespuestaCorrecta.style.display = "none"; // Ocultar el mensaje de respuesta
+        btnEnviar.style.display = "none"; // Asegurarse de que el botón de enviar está oculto por defecto
+        divRespuestaCorrecta.style.display = "none";
         divRespuestaCorrecta.textContent = "";
+
         retoDiv.classList.remove("correct", "incorrect");
         fuegosDiv.innerHTML = "";
-        fuegosDiv.style.display = "none"; // Asegura que los fuegos estén ocultos al inicio de un reto
+        fuegosDiv.style.display = "none";
 
         const reto = retos[indiceReto];
         retoDiv.innerHTML = ""; // Limpiar contenido anterior del reto
         retoDiv.setAttribute("tabindex", "0");
-        // Remueve la clase puzzle-active para retos que no son puzzles
-        retoDiv.classList.remove('puzzle-active');
+        retoDiv.classList.remove('puzzle-active'); // Remover la clase puzzle-active
 
         let preguntaElem = document.createElement("h3");
         preguntaElem.textContent = `${reto.pregunta}`;
@@ -544,7 +564,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 divOpcion.appendChild(label);
                 retoDiv.appendChild(divOpcion);
             });
-            retoDiv.appendChild(btnEnviar);
+            retoDiv.appendChild(btnEnviar); // Añadir el botón Enviar al DOM
             btnEnviar.style.display = "inline-block"; // Mostrar el botón Enviar
             btnEnviar.disabled = false;
         }
@@ -559,14 +579,14 @@ document.addEventListener("DOMContentLoaded", function() {
             inputTexto.style.width = "100%";
             inputTexto.placeholder = "Escriba su respuesta aquí...";
             retoDiv.appendChild(inputTexto);
-            retoDiv.appendChild(btnEnviar);
+            retoDiv.appendChild(btnEnviar); // Añadir el botón Enviar al DOM
             btnEnviar.style.display = "inline-block"; // Mostrar el botón Enviar
             btnEnviar.disabled = false;
             setTimeout(() => inputTexto.focus(), 200);
         }
         else if (reto.tipo === "puzzle") {
-            console.log("Cargando reto de tipo PUZZLE.");
-            retoDiv.classList.add('puzzle-active'); // Añade la clase 'puzzle-active'
+            console.log("LOG: Cargando reto de tipo PUZZLE.");
+            retoDiv.classList.add('puzzle-active');
             const puzzleIframe = document.createElement("iframe");
             puzzleIframe.id = "puzzleIframe";
             puzzleIframe.src = reto.puzzleSrc;
@@ -574,7 +594,7 @@ document.addEventListener("DOMContentLoaded", function() {
             puzzleIframe.allowFullscreen = true;
             retoDiv.appendChild(puzzleIframe);
 
-            // Ocultamos todos los botones que no son para el puzzle
+            // Asegurarse de que todos los botones de la página principal estén ocultos para los puzzles
             btnEnviar.style.display = "none";
             btnMostrarRespuesta.style.display = "none";
             btnNext.style.display = "none";
@@ -583,16 +603,17 @@ document.addEventListener("DOMContentLoaded", function() {
 
     /* Función para verificar la respuesta (para retos de opción/texto) */
     function verificar() {
-        console.log("Verificando respuesta...");
+        console.log("LOG: Verificando respuesta...");
         const reto = retos[indiceReto];
         btnEnviar.disabled = true; // Desactivar el botón Enviar para evitar múltiples clics
-        divRespuestaCorrecta.style.display = "none"; // Ocultar antes de mostrar nuevo mensaje
+        divRespuestaCorrecta.style.display = "none";
         divRespuestaCorrecta.textContent = "";
-        retoDiv.classList.remove("correct", "incorrect"); // Limpiar clases de estado
-        fuegosDiv.innerHTML = ""; // Limpiar fuegos anteriores
-        fuegosDiv.style.display = "none"; // Ocultar fuegos
+        retoDiv.classList.remove("correct", "incorrect");
+        fuegosDiv.innerHTML = "";
+        fuegosDiv.style.display = "none";
 
-        btnNext.style.display = "none"; // Ocultar el botón "Siguiente" al verificar
+        btnNext.style.display = "none"; // Asegurarse de que el botón "Siguiente" esté oculto al iniciar la verificación
+        btnMostrarRespuesta.style.display = "none"; // Asegurarse de que el botón "Mostrar Respuesta" esté oculto al iniciar la verificación
 
         let esCorrecto = false;
 
@@ -600,7 +621,7 @@ document.addEventListener("DOMContentLoaded", function() {
             const seleccion = document.querySelector('input[name="op"]:checked');
             if (!seleccion) {
                 alert("Por favor, seleccione una opción.");
-                btnEnviar.disabled = false; // Habilitar de nuevo para que el usuario pueda seleccionar
+                btnEnviar.disabled = false;
                 return;
             }
             esCorrecto = reto.correctas.includes(seleccion.value);
@@ -611,7 +632,6 @@ document.addEventListener("DOMContentLoaded", function() {
                 btnEnviar.disabled = false;
                 return;
             }
-            // Verifica que todas las correctas estén seleccionadas Y que no haya seleccionadas incorrectas
             esCorrecto = reto.correctas.every(c => checks.includes(c)) && checks.every(s => reto.correctas.includes(s));
         } else if (reto.tipo === "texto") {
             const inputTexto = document.getElementById("respuestaTexto");
@@ -626,30 +646,31 @@ document.addEventListener("DOMContentLoaded", function() {
         }
 
         if (esCorrecto) {
-            console.log("Respuesta CORRECTA.");
+            console.log("LOG: Respuesta CORRECTA. Preparando animación y botón Siguiente.");
             retoDiv.classList.add("correct");
             // Solo activar fuegos y mostrar botón "Siguiente" para retos de opción/texto
-            if (reto.tipo !== "puzzle") { // Asegúrate de que no es un puzzle
+            if (reto.tipo !== "puzzle") {
                 fuegosArtificiales();
+                // Mostrar btnNext y btnMostrarRespuesta después de que la animación termine
                 setTimeout(() => {
-                    btnNext.style.display = "inline-block"; // Mostrar botón "Continue su Aventura"
-                    console.log("Botón 'Continue su Aventura' visible después de fuegos.");
-                }, DURACION_TOTAL_MS); // Espera a que los fuegos terminen
+                    btnNext.style.display = "inline-block";
+                    btnMostrarRespuesta.style.display = "inline-block";
+                    console.log("LOG: Botones 'Continue su Aventura' y 'Mostrar Respuesta' visibles.");
+                }, DURACION_TOTAL_MS + 100); // Espera a que los fuegos terminen completamente
             }
-            btnMostrarRespuesta.style.display = "inline-block"; // Mostrar botón de respuesta siempre si es correcto
-            btnEnviar.style.display = "none"; // Ocultar botón Enviar
+            btnEnviar.style.display = "none"; // Ocultar el botón Enviar tras una respuesta correcta
         } else {
-            console.log("Respuesta INCORRECTA.");
+            console.log("LOG: Respuesta INCORRECTA. Vibrando y permitiendo reintento.");
             retoDiv.classList.add("incorrect");
-            vibrar(); // Vibrar al fallar
+            vibrar();
             btnEnviar.disabled = false; // Permitir reintentar
-            btnMostrarRespuesta.style.display = "inline-block"; // Mostrar botón de respuesta
+            btnMostrarRespuesta.style.display = "inline-block"; // Mostrar botón de respuesta aunque sea incorrecto
         }
     }
 
     /* Mostrar respuesta correcta (para retos de opción/texto) */
     btnMostrarRespuesta.addEventListener("click", () => {
-        console.log("Mostrando respuesta correcta.");
+        console.log("LOG: Clic en 'Mostrar Respuesta Correcta'.");
         const reto = retos[indiceReto];
         if (reto.tipo === "opcion" || reto.tipo === "opcion-multiple") {
             divRespuestaCorrecta.textContent = "Respuesta correcta: " + reto.correctas.join(", ");
@@ -658,12 +679,12 @@ document.addEventListener("DOMContentLoaded", function() {
         } else {
             divRespuestaCorrecta.textContent = "No hay respuesta correcta disponible para este tipo de reto.";
         }
-        divRespuestaCorrecta.style.display = "block"; // Asegurar que se muestre
+        divRespuestaCorrecta.style.display = "block";
     });
 
     /* Botón siguiente (solo para retos de opción/texto) */
     btnNext.addEventListener("click", () => {
-        console.log("Clic en 'Continue su Aventura'.");
+        console.log("LOG: Clic en 'Continue su Aventura'.");
         indiceReto++;
         if (indiceReto >= retos.length) {
             alert("¡Has terminado todos los retos de la Aventura 1!");
@@ -677,28 +698,27 @@ document.addEventListener("DOMContentLoaded", function() {
 
     /* Listener para mensajes del iframe del puzzle */
     window.addEventListener("message", (event) => {
-        // En un entorno de producción, es MUY RECOMENDABLE verificar event.origin para seguridad
-        // if (event.origin !== "https://tudominio.com") return;
-        console.log('Mensaje recibido del iframe:', event.data);
+        // MUY RECOMENDABLE: Añadir una verificación de origen en un entorno de producción por seguridad
+        // if (event.origin !== "https://valenciavguides.github.io") return;
+        console.log('LOG: Mensaje recibido del iframe:', event.data);
 
         if (event.data === "puzzle-state-completed") {
-            console.log('Mensaje recibido: Puzzle completado. Poniendo borde verde.');
-            retoDiv.classList.add("correct"); // Borde verde
-            retoDiv.classList.remove("incorrect"); // Asegurarse de quitar el borde rojo si estaba
-            // No activar fuegos ni botón "Next" aquí, el puzzle lo gestiona con su propio botón "Continuar"
+            console.log('LOG: Mensaje recibido: Puzzle completado. Poniendo borde verde.');
+            retoDiv.classList.add("correct");
+            retoDiv.classList.remove("incorrect");
+            // No activar fuegos ni mostrar btnNext aquí, el puzzle gestiona el avance.
         }
         else if (event.data === "puzzle-state-timeout") {
-            console.log('Mensaje recibido: Tiempo del puzzle agotado. Poniendo borde rojo y vibrando.');
-            retoDiv.classList.add("incorrect"); // Borde rojo
-            retoDiv.classList.remove("correct"); // Asegurarse de quitar el borde verde si estaba
-            vibrar(); // Vibración al agotar el tiempo
+            console.log('LOG: Mensaje recibido: Tiempo del puzzle agotado. Poniendo borde rojo y vibrando.');
+            retoDiv.classList.add("incorrect");
+            retoDiv.classList.remove("correct");
+            vibrar();
         }
         // Esta es la señal FINAL del puzzle para AVANZAR al siguiente reto
-        // Se activa cuando el usuario hace clic en el botón "Continuar" dentro del puzzle.
         else if (event.data === "advance-to-next") {
-            console.log('Mensaje recibido: Avance al siguiente reto solicitado por el puzzle.');
-            divRespuestaCorrecta.style.display = "none"; // Ocultar mensaje al avanzar
-            indiceReto++; // Avanza al siguiente reto
+            console.log('LOG: Mensaje recibido: Avance al siguiente reto solicitado por el puzzle.');
+            divRespuestaCorrecta.style.display = "none";
+            indiceReto++;
             if (indiceReto >= retos.length) {
                 alert("¡Has terminado todos los retos de la Aventura 1!");
                 indiceReto = 0; // Opcional: Reiniciar o redirigir al final de la aventura
