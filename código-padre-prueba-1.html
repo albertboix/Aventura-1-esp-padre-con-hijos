@@ -269,7 +269,7 @@
             align-items: center;
             cursor: pointer;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-            z-index: 1000;
+            z-index: 1000; /* Asegura que estén por encima de todo el contenido principal */
             transition: background-color 0.3s ease;
         }
         .floating-btn:hover {
@@ -285,6 +285,14 @@
             bottom: 20px;
             right: 100px; /* Desplazado para no chocar con Terminar Aventura */
         }
+        
+        /* NUEVO: Botón de mapa flotante */
+        #mapMenuBtn {
+            bottom: 90px; /* Por encima de leftMenuBtn */
+            left: 20px;
+            z-index: 1000; /* Asegura que esté por encima de todo el contenido principal */
+            display: none; /* Se muestra cuando la aventura inicia */
+        }
 
         /* Estilos para los contenedores de menú desplegable */
         .menu-overlay {
@@ -294,7 +302,7 @@
             width: 100%;
             height: 100%;
             background: rgba(0, 0, 0, 0.6); /* Fondo semi-transparente */
-            z-index: 1000;
+            z-index: 1001; /* Ligeramente más alto que los botones flotantes */
             display: none; /* Oculto por defecto */
             justify-content: center;
             align-items: center;
@@ -321,6 +329,11 @@
         /* Menú de la derecha */
         #rightMenuContainer .menu-container {
             width: 350px; /* Ancho fijo para el menú de la derecha */
+        }
+        
+        /* NUEVO: Menú del mapa */
+        #mapMenuContainer .menu-container {
+            width: 300px; /* Ancho fijo para el menú del mapa */
         }
 
         /* --- Posición de la X de cierre (ahora arriba a la derecha) --- */
@@ -540,6 +553,7 @@
             /* Ajustar tamaño de menús en landscape */
             #leftMenuContainer .menu-container,
             #rightMenuContainer .menu-container,
+            #mapMenuContainer .menu-container, /* NUEVO */
             #termsBox,
             #welcomeBox { /* También la caja de bienvenida */
                 width: 95%; /* Ocupar casi todo el ancho */
@@ -558,6 +572,7 @@
             /* Ajustar tamaño de menús en portrait */
             #leftMenuContainer .menu-container,
             #rightMenuContainer .menu-container,
+            #mapMenuContainer .menu-container, /* NUEVO */
             #termsBox,
             #welcomeBox { /* También la caja de bienvenida */
                 width: 95%; /* Ocupar casi todo el ancho */
@@ -627,7 +642,7 @@
 
     <button id="leftMenuBtn" class="floating-btn"><i class="fas fa-bars"></i></button>
     <button id="rightMenuBtn" class="floating-btn"><i class="fas fa-ellipsis-v"></i></button>
-    <button id="terminarAventuraBtn">Terminar Aventura</button>
+    <button id="mapMenuBtn" class="floating-btn"><i class="fas fa-map"></i></button> <button id="terminarAventuraBtn">Terminar Aventura</button>
 
     <div id="leftMenuContainer" class="menu-overlay">
         <div class="menu-container">
@@ -675,6 +690,17 @@
         </div>
     </div>
 
+    <div id="mapMenuContainer" class="menu-overlay">
+        <div class="menu-container">
+            <button class="close-tab-btn" onclick="hideMapMenu()">&times;</button>
+            <h3>Opciones del Mapa</h3>
+            <div class="menu-tabs">
+                <button class="menu-tab-btn" id="mapFocusNextBtn">Centrar en Siguiente Punto</button>
+                <button class="menu-tab-btn" id="mapShowFullRouteBtn">Ver Ruta Completa</button>
+            </div>
+        </div>
+    </div>
+
     <div id="fullScreenIframeContainer">
         <button id="fullScreenCloseBtn"><i class="fas fa-times"></i></button>
         <iframe id="fullScreenIframe" src=""></iframe>
@@ -682,31 +708,8 @@
 
     <script>
         // Variables globales
-        let initialAudioPoint = 0; // El primer punto de audio/reto a cargar
-        let gpsRealActivado = true; // Por defecto, intentar usar GPS real
         let currentStep = 0; // Controla el paso actual de la aventura
-
-        // Definición de los puntos de interés de la aventura
-        // Es crucial que los IDs coincidan con los de Av1-coordenadas.html si se usan para referencia
-        const audioPuntosInteres = [
-            { id: 1, lat: 39.475962, lon: -0.375253, name: 'Plaza de la Virgen', audio: 'audio/01_intro.mp3', distanciaActivacion: 50 },
-            { id: 2, lat: 39.476483, lon: -0.376175, name: 'Catedral de Valencia', audio: 'audio/02_catedral.mp3', distanciaActivacion: 30 },
-            { id: 3, lat: 39.476602, lon: -0.377610, name: 'Mercado Central', audio: 'audio/03_mercado.mp3', distanciaActivacion: 40 },
-            // Añade más puntos aquí. Asegúrate de que los IDs sean únicos y los uses coherentemente.
-        ];
-
-        // Mapeo de puntos de interés a puzzles/retos
-        // Cada clave es el id del punto de interes, y el valor es un array de objetos de reto
-        // { tipo: 'reto'|'puzzle', src: 'url_del_iframe', activacion: 'auto'|'manual' }
-        const puzzlesPorPunto = {
-            1: [ // Punto 1: Plaza de la Virgen
-                { tipo: 'puzzle', src: 'puzzle_jigsaw.html', activacion: 'manual' } // Ejemplo de un puzzle
-            ],
-            2: [ // Punto 2: Catedral
-                { tipo: 'reto', src: 'reto_especifico_punto2.html', activacion: 'manual' } // Ejemplo de un reto específico para el punto
-            ],
-            // Puedes añadir más puntos y sus retos/puzzles aquí
-        };
+        let gpsRealActivado = true; // Por defecto, intentar usar GPS real
 
         // Referencias a elementos del DOM
         const retoContainer = document.getElementById('reto-container');
@@ -714,7 +717,7 @@
         const btnNextAfterReto = document.getElementById('btnNextAfterReto');
         const playPauseBtn = document.getElementById('playPauseBtn');
 
-        // NUEVO: Referencia al iframe del mapa GPS
+        // Referencia al iframe del mapa GPS
         const gpsIframe = document.getElementById('gpsIframe');
 
         // Referencias de la pantalla de bienvenida/permisos
@@ -726,7 +729,6 @@
         const locationStatusSpan = document.getElementById('locationStatus');
         const toggleGpsModeBtn = document.getElementById('toggleGpsMode');
         const simulateProximityBtn = document.getElementById('simulateProximityBtn');
-        // Eliminamos 'watchId' y toda la lógica GPS directa del padre
 
         // Referencia al ID del punto de audio actual
         const currentAudioPointSpan = document.getElementById('currentAudioPoint');
@@ -734,10 +736,12 @@
         // Referencias de los botones flotantes y menús
         const leftMenuBtn = document.getElementById('leftMenuBtn');
         const rightMenuBtn = document.getElementById('rightMenuBtn');
+        const mapMenuBtn = document.getElementById('mapMenuBtn');
         const terminarAventuraBtn = document.getElementById('terminarAventuraBtn');
 
         const leftMenuContainer = document.getElementById('leftMenuContainer');
         const rightMenuContainer = document.getElementById('rightMenuContainer');
+        const mapMenuContainer = document.getElementById('mapMenuContainer');
 
         // Referencias para el iframe en pantalla completa
         const fullScreenIframeContainer = document.getElementById('fullScreenIframeContainer');
@@ -754,80 +758,63 @@
 
         // --- Funciones de Control de la Aventura (Pasos, Retos, Puzzles) ---
 
+        // Función auxiliar para pausar el audio
+        function pauseCurrentAudio() {
+            sendMessageToAudioChild('pauseAudio');
+            playPauseBtn.classList.remove('active', 'ready');
+            playPauseBtn.disabled = true; // Deshabilitar el botón cuando el audio es pausado por acción del usuario/menú
+        }
+
+        // Esta función ahora solo AVANZA el contador del paso y notifica al iframe del mapa
+        // para que cargue su siguiente punto. Toda la lógica de "qué audio/puzzle toca"
+        // residirá en el iframe del mapa.
         function cargarSiguientePaso() {
             ocultarRetoYPuzzle(); // Ocultar cualquier reto/puzzle anterior en el área principal
             btnNextAfterReto.style.display = 'none'; // Ocultar botón de "Continuar Aventura"
             
-            // Deshabilitar el botón de play del audio y quitar la clase 'active'/'ready'
-            playPauseBtn.disabled = true;
-            playPauseBtn.classList.remove('active', 'ready');
+            pauseCurrentAudio(); // Pausar audio al cambiar de paso
+            playPauseBtn.disabled = true; // Asegurarse de que el botón esté deshabilitado inicialmente para el nuevo paso
 
-            if (currentStep < audioPuntosInteres.length) {
-                const puntoActual = audioPuntosInteres[currentStep];
-                console.log(`Cargando paso ${currentStep + 1}: Punto ${puntoActual.id}`);
-                currentAudioPointSpan.textContent = puntoActual.id;
-                document.getElementById('audioPlayerWrapper').style.display = 'flex'; // Asegurarse de que el reproductor de audio esté visible
+            console.log(`Cargando paso ${currentStep + 1}`);
+            currentAudioPointSpan.textContent = `...`; // El mapa hijo informará el ID del punto
 
-                // Asegurarse de que el mapa sea visible y el puzzle esté oculto
-                gpsIframe.style.display = 'block';
-                puzzleIframe.style.display = 'none';
+            document.getElementById('audioPlayerWrapper').style.display = 'flex'; // Asegurarse de que el reproductor de audio esté visible
+            mapMenuBtn.style.display = 'flex'; // Mostrar el botón del mapa
 
-                // Enviar mensaje al iframe del mapa para ir al siguiente punto
-                gpsIframe.contentWindow.postMessage({
-                    type: "irA_coordenadas",
-                    paradaIndex: currentStep,
-                    gpsRealActivo: gpsRealActivado // Indica al hijo si el padre está en modo GPS real
-                }, "*");
+            // Asegurarse de que el mapa sea visible y el puzzle esté oculto
+            gpsIframe.style.display = 'block';
+            puzzleIframe.style.display = 'none';
 
-                // Si el GPS Real está desactivado, cargamos el audio para reproducción manual, habilitando el botón
-                if (!gpsRealActivado) {
-                    sendMessageToAudioChild('loadAudio', { src: puntoActual.audio });
-                    playPauseBtn.disabled = false; // Habilitar el botón de play
-                    playPauseBtn.classList.add('ready'); // Indicar que está listo para reproducir
-                    locationStatusSpan.textContent = `Avanza al punto ${puntoActual.id} y pulsa Play.`;
-                } else {
-                    locationStatusSpan.textContent = `Dirígete al punto ${puntoActual.id}: ${puntoActual.name}`;
-                }
+            // Enviar mensaje al iframe del mapa para ir al siguiente punto
+            gpsIframe.contentWindow.postMessage({
+                type: "avanzar_siguiente_parada", // El mapa hijo gestiona cuál es el siguiente punto
+                gpsRealActivo: gpsRealActivado // Indica al hijo si el padre está en modo GPS real
+            }, "*");
 
-                // Determinar si hay un reto/puzzle en el punto actual para mostrar el borde
-                const retosDelPunto = puzzlesPorPunto[puntoActual.id] || [];
-                if (retosDelPunto.length > 0) {
-                    retoContainer.classList.add('ready'); // Borde azul indicando que hay un reto/puzzle pendiente
-                } else {
-                    retoContainer.classList.add('no-reto'); // Sin borde si no hay reto
-                }
-
-            } else {
-                console.log("¡Aventura completada!");
-                // Enviar mensaje al hijo del mapa para detener su seguimiento GPS
-                gpsIframe.contentWindow.postMessage({ type: "detener_gps" }, "*");
-
-                locationStatusSpan.textContent = "¡Felicidades, la aventura ha terminado!";
-                locationStatusSpan.style.color = '#28a745';
-                document.getElementById('audioPlayerWrapper').style.display = 'none';
-                gpsIframe.style.display = 'none'; // Ocultar el mapa al finalizar
-                puzzleIframe.style.display = 'none';
-                retoContainer.classList.add('no-reto');
-                terminarAventuraBtn.style.display = 'block'; // Mostrar botón de terminar
-            }
+            locationStatusSpan.textContent = "Cargando siguiente punto...";
+            retoContainer.classList.add('no-reto'); // Por defecto, sin borde hasta que el mapa hijo indique un reto.
         }
 
         // Carga un reto en el iframe principal del CONTENEDOR DE AVENTURA
         function cargarReto(url) {
+            pauseCurrentAudio(); // Pausar audio al cargar un reto
             puzzleIframe.src = url;
             puzzleIframe.style.display = 'block';
             gpsIframe.style.display = 'none'; // Ocultar el mapa cuando el reto esté activo
             btnNextAfterReto.style.display = 'none'; // Ocultar el botón de continuar mientras el reto está activo
+            retoContainer.classList.remove('no-reto');
             retoContainer.classList.add('ready'); // Borde azul para "en espera"
             console.log("Reto cargado en contenedor principal:", url);
         }
 
         // Muestra un puzzle en el iframe secundario (en el contenedor de aventura)
         function mostrarPuzzle(url) {
+            pauseCurrentAudio(); // Pausar audio al mostrar un puzzle
             puzzleIframe.src = url;
             puzzleIframe.style.display = 'block';
             gpsIframe.style.display = 'none'; // Ocultar el mapa cuando el puzzle esté activo
             btnNextAfterReto.style.display = 'none';
+            retoContainer.classList.remove('no-reto');
             retoContainer.classList.add('ready'); // Borde azul para "en espera"
             console.log("Puzzle cargado en contenedor principal:", url);
         }
@@ -837,8 +824,9 @@
             puzzleIframe.style.display = 'none';
             puzzleIframe.src = 'about:blank'; // Limpiar el contenido del iframe
             retoContainer.classList.remove('correct', 'incorrect', 'ready', 'revealed');
-            retoContainer.classList.add('no-reto'); // Borde transparente cuando no hay nada
+            retoContainer.classList.add('no-reto'); // Borde transparente si no hay reto/puzzle
             gpsIframe.style.display = 'block'; // Asegurarse de que el mapa vuelva a ser visible
+            // No pausar el audio aquí, ya que volver al mapa no implica pausar el audio de la parada
         }
 
         // Reinicia el estado visual del contenedor del reto
@@ -851,47 +839,72 @@
 
         // Muestra el contenido en el iframe de pantalla completa
         function showContentInFullScreen(url) {
+            pauseCurrentAudio(); // Pausar audio al abrir cualquier contenido en pantalla completa
             fullScreenIframe.src = url;
             fullScreenIframeContainer.style.display = 'flex';
             // Ocultar los menús flotantes si están abiertos
             hideLeftMenu();
             hideRightMenu();
-            // Asegurarse de detener el audio si se está reproduciendo
-            sendMessageToAudioChild('pauseAudio');
-            playPauseBtn.classList.remove('active');
+            hideMapMenu(); // También el menú del mapa
+            // Notificar al iframe del mapa que se oculte para liberar recursos si está visible
+            gpsIframe.contentWindow.postMessage({ type: "ocultar_mapa" }, "*");
         }
 
         // Oculta el iframe de pantalla completa
         function hideFullScreenIframe() {
             fullScreenIframe.src = ''; // Limpiar el contenido
             fullScreenIframeContainer.style.display = 'none';
-            // Al volver, si el GPS real está activo, el audio puede activarse por proximidad
+            // Re-evaluar el estado del audio y del botón de play
+            // Si el GPS real está activo, el audio puede activarse por proximidad
             // o el botón de play puede habilitarse si se sigue cerca del punto.
-            // Para simplificar, simplemente volvemos al estado inicial de 'espera' para el play
+            // Para simplificar, volvemos al estado inicial de 'espera' para el play
             playPauseBtn.disabled = true;
             playPauseBtn.classList.remove('active', 'ready');
+            // Notificar al iframe del mapa que se muestre de nuevo
+            gpsIframe.contentWindow.postMessage({ type: "mostrar_mapa" }, "*");
         }
 
         function showLeftMenu() {
+            pauseCurrentAudio(); // Pausar audio al abrir el menú izquierdo
             leftMenuContainer.style.display = 'flex';
             // Al abrir, desactiva todas las pestañas y oculta su contenido
             leftMenuContainer.querySelectorAll('.menu-tab-btn').forEach(btn => btn.classList.remove('active'));
             leftMenuContainer.querySelectorAll('.tab-content').forEach(content => content.style.display = 'none');
+            // Notificar al iframe del mapa que se oculte
+            gpsIframe.contentWindow.postMessage({ type: "ocultar_mapa" }, "*");
         }
 
         function hideLeftMenu() {
             leftMenuContainer.style.display = 'none';
+            // Notificar al iframe del mapa que se muestre de nuevo
+            gpsIframe.contentWindow.postMessage({ type: "mostrar_mapa" }, "*");
         }
 
         function showRightMenu() {
+            pauseCurrentAudio(); // Pausar audio al abrir el menú derecho
             rightMenuContainer.style.display = 'flex';
             // Al abrir, desactiva todas las pestañas y oculta su contenido
             rightMenuContainer.querySelectorAll('.menu-tab-btn').forEach(btn => btn.classList.remove('active'));
             rightMenuContainer.querySelectorAll('.tab-content').forEach(content => content.style.display = 'none');
+            // Notificar al iframe del mapa que se oculte
+            gpsIframe.contentWindow.postMessage({ type: "ocultar_mapa" }, "*");
         }
 
         function hideRightMenu() {
             rightMenuContainer.style.display = 'none';
+            // Notificar al iframe del mapa que se muestre de nuevo
+            gpsIframe.contentWindow.postMessage({ type: "mostrar_mapa" }, "*");
+        }
+
+        // Funciones para el menú del mapa
+        function showMapMenu() {
+            pauseCurrentAudio(); // Pausar audio al abrir el menú del mapa
+            mapMenuContainer.style.display = 'flex';
+            // Aquí no necesitamos ocultar el mapa hijo porque este menú interactúa con él directamente.
+        }
+
+        function hideMapMenu() {
+            mapMenuContainer.style.display = 'none';
         }
 
         // --- Comunicación entre Padre e Hijo (iframes) ---
@@ -925,10 +938,7 @@
                             alert("Respuesta incorrecta. Inténtalo de nuevo o avanza.");
                         }
                         btnNextAfterReto.style.display = 'block'; // Mostrar el botón para continuar
-                        // Si se termina un reto, el audio se detiene y el botón de play se deshabilita
-                        sendMessageToAudioChild('pauseAudio');
-                        playPauseBtn.classList.remove('active', 'ready');
-                        playPauseBtn.disabled = true;
+                        pauseCurrentAudio(); // Asegurarse de que el audio se pause
                     }
                     break;
                 case 'audioEnded':
@@ -937,32 +947,22 @@
                     break;
                 case 'audioReady':
                     console.log("Audio player hijo listo.");
-                    // Si el GPS real está desactivado, cargamos el audio manualmente al inicio del paso
-                    if (!gpsRealActivado && currentStep < audioPuntosInteres.length && audioPuntosInteres[currentStep].audio) {
-                        sendMessageToAudioChild('loadAudio', { src: audioPuntosInteres[currentStep].audio });
-                        playPauseBtn.disabled = false; // Habilitar el botón
-                        playPauseBtn.classList.add('ready'); // Indicar que está listo para reproducir
-                    }
-                    break;
-                case 'audioTogglePlayPause':
-                    // Este mensaje se ignora ya que el padre gestiona el control de audio
+                    // Este mensaje ya no inicia la carga de audio aquí, el mapa hijo lo hará.
                     break;
                 case 'abrirFullscreen': // Mensaje para abrir un iframe en pantalla completa (ahora centralizado)
                     if (message.url) {
                         showContentInFullScreen(message.url);
                     }
                     break;
-                case 'actualizarAudioControles':
-                    // Este mensaje se ignora ya que el padre gestiona el control de audio
-                    break;
 
-                // --- NUEVOS CASOS PARA LA COMUNICACIÓN CON EL MAPA GPS (Av1-coordenadas.html) ---
+                // --- CASOS PARA LA COMUNICACIÓN CON EL MAPA GPS (Av1-coordenadas.html) ---
 
                 case 'gps-hijo-listo':
                     // El hijo del mapa avisa cuando está listo y ha inicializado el GPS.
                     if (event.source === gpsIframe.contentWindow) {
-                        console.log("Padre: GPS Hijos listo. Paradas recibidas:", message.paradas);
-                        // Aquí podríamos guardar las paradas si las necesitamos en el padre.
+                        console.log("Padre: GPS Hijo listo.");
+                        // El padre puede ahora pedir la primera parada o esperar al usuario.
+                        // Ya no necesitamos pedir paradas al hijo aquí.
                     }
                     break;
 
@@ -971,57 +971,60 @@
                     if (event.source === gpsIframe.contentWindow) {
                         locationStatusSpan.textContent = `Ubicación: ${message.lat.toFixed(6)}, ${message.lon.toFixed(6)} (±${message.accuracy.toFixed(0)}m) - Distancia al punto ${message.targetId}: ${message.distance.toFixed(0)}m`;
                         locationStatusSpan.style.color = '#0077cc'; // Azul para ubicación
+                        currentAudioPointSpan.textContent = message.targetId || '...'; // Mostrar ID del punto actual del mapa
                     }
                     break;
 
                 case 'coordenadas-cerca':
                     // El hijo del mapa avisa que está cerca del punto de interés actual.
-                    if (event.source === gpsIframe.contentWindow && message.paradaIndex === currentStep) {
+                    if (event.source === gpsIframe.contentWindow) {
                         console.log(`¡Padre: Cerca del punto ${message.paradaId}! Activando botón de play.`);
-                        // NO reproducimos el audio automáticamente, sino que habilitamos el botón de play
-                        playPauseBtn.disabled = false; // Habilitar el botón de play
-                        playPauseBtn.classList.add('ready'); // Añadir clase 'ready' para indicar visualmente que está listo
+                        // Habilitamos el botón de play y cargamos el audio desde aquí
+                        sendMessageToAudioChild('loadAudio', { src: message.audioUrl }); // Carga el audio que el mapa hijo indica
+                        if (!playPauseBtn.classList.contains('active')) { // Solo si no está ya reproduciendo
+                            playPauseBtn.disabled = false; // Habilitar el botón de play
+                            playPauseBtn.classList.add('ready'); // Añadir clase 'ready' para indicar visualmente que está listo
+                        }
                         locationStatusSpan.textContent = `¡Estás cerca de ${message.paradaNombre}! Pulsa Play.`; // Actualizar el mensaje
                     }
                     break;
 
                 case 'coordenadas-lejos':
                     // El hijo del mapa avisa que se ha alejado del punto de interés actual.
-                    if (event.source === gpsIframe.contentWindow && message.paradaIndex === currentStep) {
+                    if (event.source === gpsIframe.contentWindow) {
                         console.log(`Padre: Lejos del punto ${message.paradaId}. Pausando audio.`);
-                        sendMessageToAudioChild('pauseAudio');
-                        playPauseBtn.classList.remove('active', 'ready');
-                        playPauseBtn.disabled = true; // Deshabilitar el botón si nos alejamos
+                        pauseCurrentAudio(); // Pausar audio si nos alejamos
                         locationStatusSpan.textContent = `Te has alejado de ${message.paradaNombre}.`;
                     }
                     break;
 
                 case 'coordenadas-completadas':
                     // El hijo del mapa avisa que se ha llegado al punto de interés actual.
-                    if (event.source === gpsIframe.contentWindow && message.paradaIndex === currentStep) {
+                    if (event.source === gpsIframe.contentWindow) {
+                        currentStep = message.paradaIndex; // Actualizar el paso del padre
                         console.log(`¡Padre: Llegada a la parada: ${message.paradaId}!`);
                         locationStatusSpan.textContent = `¡Has llegado a ${message.paradaNombre}!`;
                         locationStatusSpan.style.color = '#28a745'; // Verde para confirmación
 
-                        // Pausar audio una vez que se ha llegado completamente
-                        sendMessageToAudioChild('pauseAudio');
-                        playPauseBtn.classList.remove('active', 'ready');
-                        playPauseBtn.disabled = true; // Deshabilitar el botón
+                        pauseCurrentAudio(); // Pausar audio una vez que se ha llegado completamente
 
-                        // Si hay un reto o puzzle para este punto y es de activación 'manual', mostrarlo.
-                        const retosDelPunto = puzzlesPorPunto[message.paradaId] || [];
-                        const retoManual = retosDelPunto.find(r => r.activacion === 'manual');
-                        if (retoManual && (puzzleIframe.style.display === 'none' || !puzzleIframe.style.display)) {
-                            console.log(`Activando reto manual para el punto ${message.paradaId}: ${retoManual.src}`);
+                        // Si hay un reto o puzzle para este punto, el mapa hijo nos lo indicará
+                        if (message.retoUrl) {
+                            console.log(`Activando reto del mapa hijo para el punto ${message.paradaId}: ${message.retoUrl}`);
                             gpsIframe.style.display = 'none'; // Ocultar el mapa para mostrar el puzzle
-                            if (retoManual.tipo === 'reto') {
-                                cargarReto(retoManual.src);
-                            } else if (retoManual.tipo === 'puzzle') {
-                                mostrarPuzzle(retoManual.src);
+                            // El mapa hijo debe indicar si es un 'reto' o 'puzzle'
+                            if (message.retoTipo === 'reto') {
+                                cargarReto(message.retoUrl);
+                            } else if (message.retoTipo === 'puzzle') {
+                                mostrarPuzzle(message.retoUrl);
+                            } else {
+                                // Por defecto, si no especifica, asumimos puzzle
+                                mostrarPuzzle(message.retoUrl);
                             }
                         } else {
-                            // Si no hay reto manual, muestra el botón de "Continuar Aventura" directamente
+                            // Si no hay reto, muestra el botón de "Continuar Aventura" directamente
                             btnNextAfterReto.style.display = 'block';
+                            retoContainer.classList.add('no-reto'); // Asegurar borde transparente
                         }
                     }
                     break;
@@ -1037,10 +1040,30 @@
                         toggleGpsModeBtn.textContent = "Activar GPS Real";
                         gpsModeStatusSpan.textContent = "GPS Desactivado (Error)";
                         simulateProximityBtn.disabled = false;
-                        // Deshabilitar el botón de audio
-                        playPauseBtn.disabled = true;
-                        playPauseBtn.classList.remove('active', 'ready');
+                        pauseCurrentAudio(); // Pausar audio si hay un error de GPS
                     }
+                    break;
+                case 'aventura-completada':
+                    // El mapa hijo notifica que la aventura ha llegado a su fin
+                    if (event.source === gpsIframe.contentWindow) {
+                        console.log("¡Aventura completada!");
+                        locationStatusSpan.textContent = "¡Felicidades, la aventura ha terminado!";
+                        locationStatusSpan.style.color = '#28a745';
+                        document.getElementById('audioPlayerWrapper').style.display = 'none';
+                        gpsIframe.style.display = 'none'; // Ocultar el mapa al finalizar
+                        puzzleIframe.style.display = 'none';
+                        retoContainer.classList.add('no-reto');
+                        terminarAventuraBtn.style.display = 'block'; // Mostrar botón de terminar
+                        mapMenuBtn.style.display = 'none'; // Ocultar botón del mapa
+                    }
+                    break;
+                case 'imagen-modal-abierto':
+                    // Notificar al padre que el modal de imagen en el GPS hijo está abierto.
+                    pauseCurrentAudio();
+                    break;
+                case 'imagen-modal-cerrado':
+                    // Notificar al padre que el modal de imagen en el GPS hijo está cerrado.
+                    // El audio no se reanuda automáticamente, el usuario debe pulsarlo si es necesario.
                     break;
             }
         });
@@ -1063,21 +1086,15 @@
             audioIframe.src = "audio_player_hijo.html";
             audioIframe.style.display = 'none'; // Lo ocultamos hasta que se necesite mostrar el reproductor
 
-            // NUEVO: Al aceptar permisos, le decimos al GPS hijo que inicie su proceso de solicitud
-            // (El iframe del GPS ya está cargado en el HTML)
+            // Al aceptar permisos, le decimos al GPS hijo que inicie su proceso de solicitud
             gpsIframe.contentWindow.postMessage({ type: "iniciar_gps_con_permiso" }, "*");
 
-            cargarSiguientePaso(); // Iniciar la aventura (cargar el primer audio/reto/mapa)
+            cargarSiguientePaso(); // Iniciar la aventura (cargar el primer punto del mapa)
         });
 
         // Evento para el botón "Continuar con la Aventura"
         btnNextAfterReto.addEventListener('click', () => {
-            currentStep++; // Avanzar al siguiente paso de la aventura
-            cargarSiguientePaso();
-            // Asegurarse de que el audio se detenga si se estaba reproduciendo
-            sendMessageToAudioChild('pauseAudio');
-            playPauseBtn.classList.remove('active', 'ready');
-            playPauseBtn.disabled = true;
+            cargarSiguientePaso(); // Avanzar al siguiente paso de la aventura
         });
 
         // Toggle GPS real / simulación
@@ -1099,51 +1116,23 @@
             simulateProximityBtn.disabled = gpsRealActivado; // Habilitar/deshabilitar botón de simulación
             console.log(`Modo GPS: ${gpsRealActivado ? 'Real' : 'Manual/Simulado'}`);
 
-            // Asegurarse de que el audio se detenga si se estaba reproduciendo y el modo cambió
-            sendMessageToAudioChild('pauseAudio');
-            playPauseBtn.classList.remove('active', 'ready');
-            playPauseBtn.disabled = true;
-
-            // Recargar el paso actual para aplicar el nuevo modo GPS
-            cargarSiguientePaso();
+            pauseCurrentAudio(); // Pausar audio al cambiar el modo GPS
+            // No es necesario llamar a cargarSiguientePaso() aquí. El mapa hijo se encargará.
+            // Si el modo GPS real está activado, el mapa empezará a buscar la ubicación.
+            // Si está desactivado, el botón de simulación se habilitará.
         });
 
         // Simular proximidad al siguiente punto (solo para depuración)
         simulateProximityBtn.addEventListener('click', () => {
-            if (currentStep < audioPuntosInteres.length && !gpsRealActivado) {
-                const puntoSimulado = audioPuntosInteres[currentStep];
-                // Enviar ubicación simulada al iframe del mapa
+            if (!gpsRealActivado) { // Solo si el GPS real está desactivado
+                // Enviamos un mensaje al iframe del mapa para que simule proximidad al punto actual
+                // El iframe del mapa es el que sabe cuál es el "current step" para la simulación
                 gpsIframe.contentWindow.postMessage({
-                    type: "simular_ubicacion",
-                    lat: puntoSimulado.lat,
-                    lon: puntoSimulado.lon,
-                    targetParadaIndex: currentStep // Para que el hijo sepa a qué parada simular ir
+                    type: "simular_proximidad_al_punto_actual"
                 }, "*");
-                console.log(`Padre: Enviando simulación de ubicación a ${puntoSimulado.lat}, ${puntoSimulado.lon}`);
-
-                // Al simular proximidad, habilitar el botón de play
-                if (audioPuntosInteres[currentStep].audio) {
-                    playPauseBtn.disabled = false;
-                    playPauseBtn.classList.add('ready');
-                    locationStatusSpan.textContent = `Simulando proximidad a ${puntoSimulado.name}. Pulsa Play.`;
-                }
-
-                // Si hay un reto o puzzle manual para este punto, mostrarlo también
-                const retosDelPunto = puzzlesPorPunto[puntoSimulado.id] || [];
-                const retoManual = retosDelPunto.find(r => r.activacion === 'manual');
-                if (retoManual && (puzzleIframe.style.display === 'none' || !puzzleIframe.style.display)) {
-                    console.log(`Padre: Activando reto manual simulado para el punto ${puntoSimulado.id}: ${retoManual.src}`);
-                    gpsIframe.style.display = 'none'; // Ocultar el mapa para mostrar el puzzle
-                    if (retoManual.tipo === 'reto') {
-                        cargarReto(retoManual.src);
-                    } else if (retoManual.tipo === 'puzzle') {
-                        mostrarPuzzle(retoManual.src);
-                    }
-                }
-            } else if (gpsRealActivado) {
-                alert("La simulación de proximidad solo funciona con el GPS Real Desactivado. Desactívalo primero.");
+                console.log(`Padre: Solicitando al mapa hijo simular proximidad al punto actual.`);
             } else {
-                alert("No hay más puntos para simular o la aventura ha terminado.");
+                alert("La simulación de proximidad solo funciona con el GPS Real Desactivado. Desactívalo primero.");
             }
         });
 
@@ -1158,7 +1147,20 @@
         // Event listeners para los botones flotantes
         leftMenuBtn.addEventListener('click', showLeftMenu);
         rightMenuBtn.addEventListener('click', showRightMenu);
+        mapMenuBtn.addEventListener('click', showMapMenu);
         fullScreenCloseBtn.addEventListener('click', hideFullScreenIframe);
+
+        // Event listeners para los sub-botones del menú del mapa
+        document.getElementById('mapFocusNextBtn').addEventListener('click', () => {
+            gpsIframe.contentWindow.postMessage({ type: "mapa-hijo-focus-next-point" }, "*");
+            hideMapMenu(); // Ocultar el menú del mapa después de la acción
+        });
+
+        document.getElementById('mapShowFullRouteBtn').addEventListener('click', () => {
+            gpsIframe.contentWindow.postMessage({ type: "mapa-hijo-show-full-route" }, "*");
+            hideMapMenu(); // Ocultar el menú del mapa después de la acción
+        });
+
 
         // Event listeners para las pestañas del menú izquierdo (abren en pantalla completa)
         leftMenuContainer.querySelectorAll('.menu-tab-btn').forEach(button => {
@@ -1215,14 +1217,14 @@
                     playPauseBtn.classList.remove('active');
                     playPauseBtn.classList.add('ready'); // Vuelve a estado 'listo'
                 } else {
-                    // Asegurarse de que haya un audio para el paso actual
-                    if (currentStep < audioPuntosInteres.length && audioPuntosInteres[currentStep].audio) {
-                        sendMessageToAudioChild('playAudio', { src: audioPuntosInteres[currentStep].audio });
-                        playPauseBtn.classList.add('active');
-                        playPauseBtn.classList.remove('ready'); // Quita estado 'listo'
-                    } else {
-                        console.warn("No hay audio definido para el paso actual.");
-                    }
+                    // Pedir al mapa hijo que indique qué audio debería reproducirse
+                    // y el mapa hijo enviará un mensaje 'loadAudio' de vuelta al padre,
+                    // que luego el padre reenvía al iframe de audio.
+                    // Para simplificar ahora mismo, asumimos que el audio ya fue cargado
+                    // por el mensaje 'coordenadas-cerca'.
+                    sendMessageToAudioChild('playAudio'); // Solo play/resume
+                    playPauseBtn.classList.add('active');
+                    playPauseBtn.classList.remove('ready'); // Quita estado 'listo'
                 }
             } else {
                 console.warn("El audio se activará cuando te acerques al punto o actives el modo manual.");
@@ -1242,8 +1244,10 @@
             terminarAventuraBtn.style.display = 'none';
             leftMenuContainer.style.display = 'none';
             rightMenuContainer.style.display = 'none';
+            mapMenuContainer.style.display = 'none';
+            mapMenuBtn.style.display = 'none';
             fullScreenIframeContainer.style.display = 'none';
-            document.getElementById('loading-message').style.display = 'none'; // Ocultar mensaje de carga inicial
+            document.getElementById('loading-message').style.display = 'none';
             
             // Asegurarse de que el gpsIframe esté visible desde el principio
             gpsIframe.style.display = 'block';
