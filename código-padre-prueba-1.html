@@ -84,8 +84,8 @@
 
   bloquearInteraccion();
 
-  // Permisos reales para GPS
-  async function pedirPermisoGPS() {
+  // Pedir permiso GPS y obtener posición, luego enviar coords al iframe
+  function pedirPermisoGPS() {
     return new Promise((resolve, reject) => {
       if (!navigator.geolocation) {
         alert('Geolocalización no disponible');
@@ -93,16 +93,22 @@
         return;
       }
       navigator.geolocation.getCurrentPosition(
-        () => resolve(true),
-        () => {
-          alert('Permiso GPS denegado');
+        pos => {
+          gpsActivo = true;
+          const coords = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+          // Enviar coords al iframe para que centre mapa
+          iframeContenido.contentWindow?.postMessage({ type: 'posicionGPS', coords }, '*');
+          resolve(true);
+        },
+        err => {
+          alert('Permiso GPS denegado o error al obtener ubicación');
           reject(false);
         }
       );
     });
   }
 
-  // Permisos reales para audio (audio context)
+  // Pedir permiso audio
   async function pedirPermisoAudio() {
     return new Promise((resolve, reject) => {
       try {
@@ -120,30 +126,27 @@
     });
   }
 
-  // Al aceptar términos, pedir permisos
+  // Cuando aceptan términos, pedir permisos y desbloquear interfaz
   btnAceptarTerminos.addEventListener('click', async () => {
     try {
       await pedirPermisoGPS();
-      gpsActivo = true;
       await pedirPermisoAudio();
       audioActivo = true;
       permisosAceptados = true;
       modalTerminos.style.display = 'none';
       desbloquearInteraccion();
     } catch {
-      // Si no concede permisos, se queda bloqueado, no se cierra modal ni habilitan botones
       alert('Debes aceptar los permisos para continuar.');
     }
   });
 
-  // Ocultar todos submenus
+  // Submenus toggle
   function ocultarSubmenus() {
     submenuHamburguesa.style.display = 'none';
     submenuTresPuntos.style.display = 'none';
     submenuMapa.style.display = 'none';
   }
 
-  // Solo permitir abrir submenus si permisos aceptados
   btnHamburguesa.addEventListener('click', () => {
     if(!permisosAceptados) return alert('Debes aceptar términos y permisos para usar la app.');
     if (submenuHamburguesa.style.display === 'block') submenuHamburguesa.style.display = 'none';
@@ -174,6 +177,14 @@
     ocultarSubmenus();
     iframeContenido.src = url;
     pantallaCompleta.style.display = 'flex';
+
+    // Tras abrir iframe, volver a enviar posición GPS para que mapa se centre (por si llegó después)
+    if(gpsActivo){
+      navigator.geolocation.getCurrentPosition(pos => {
+        const coords = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+        iframeContenido.contentWindow.postMessage({ type: 'posicionGPS', coords }, '*');
+      });
+    }
   }
 
   // Eventos click en botones submenu
