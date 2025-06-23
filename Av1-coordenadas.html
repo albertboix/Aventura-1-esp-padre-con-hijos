@@ -62,8 +62,7 @@
             transition: opacity 0.3s ease;
             /* Los bordes deben ser siempre de igual grosor. */
             border: 2px solid #ccc;
-            /* El botón de cámara solo se muestra si hay un destino y el padre lo activa */
-            display: none; 
+            display: none; /* Oculto por defecto, se muestra por JS */
         }
 
         #camera-button:hover {
@@ -164,9 +163,12 @@
         let directionsRenderer;
         let userMarker; // Marcador para la posición del usuario
         let stopMarkers = []; // Array para almacenar todos los marcadores de las paradas
-        let currentTarget = null; // {lat, lon, radio, nombreParada, waypoints, imagen}
+        let currentTargetIndex = -1; // Índice de la parada actual en paradasAventura
+        let currentTargetData = null; // Datos completos del currentTarget (lat, lon, radio, etc.)
         let watchId; // Para almacenar el ID del observador de geolocalización
         let arrivalSent = false; // Bandera para evitar enviar el mensaje de llegada múltiples veces
+        let proximitySent = false; // Bandera para evitar enviar el mensaje de "cerca" múltiples veces
+        let gpsRealActivado = true; // Controlado por el padre, pero el hijo también necesita saberlo
 
         const overlay = document.getElementById('message-overlay');
         const cameraButton = document.getElementById('camera-button');
@@ -180,72 +182,72 @@
         // Asegúrate de que las rutas de las imágenes sean correctas (ej. "img/nombre_foto.jpg")
         const paradasAventura = [
             // PARADA 0: Torres de Serranos (start) Plaza de los Fueros
-            { nombreParada: "Torres de Serranos (start) Plaza de los Fueros", lat: 39.47876, lon: -0.37626, radio: 20,
+            { id: 1, nombreParada: "Torres de Serranos (start) Plaza de los Fueros", lat: 39.47876, lon: -0.37626, radio: 20,
               waypoints: [{ lat: 39.47943, lon: -0.37636 }],
               imagen: "img/torres_serranos.jpg" }, 
             
             // PARADA 1: Puente de Serranos – Plaza de la Crida
-            { nombreParada: "Puente de Serranos – Plaza de la Crida", lat: 39.47959, lon: -0.37583, radio: 20,
+            { id: 2, nombreParada: "Puente de Serranos – Plaza de la Crida", lat: 39.47959, lon: -0.37583, radio: 20,
               waypoints: [{ lat: 39.47939, lon: -0.3752 }],
               imagen: "img/puente_serranos.jpg" }, 
             
             // PARADA 2: Calle Muro Santa Ana
-            { nombreParada: "Calle Muro Santa Ana", lat: 39.47866, lon: -0.3747, radio: 15,
+            { id: 3, nombreParada: "Calle Muro Santa Ana", lat: 39.47866, lon: -0.3747, radio: 15,
               waypoints: [],
               imagen: "img/muro_santa_ana.jpg" }, 
             
             // PARADA 3: Cortes Valencianas (Palacio de los Borgia)
-            { nombreParada: "Cortes Valencianas (Palacio de los Borgia)", lat: 39.47785, lon: -0.37485, radio: 15,
+            { id: 4, nombreParada: "Cortes Valencianas (Palacio de los Borgia)", lat: 39.47785, lon: -0.37485, radio: 15,
               waypoints: [],
               imagen: "img/palacio_borgia.jpg" }, 
             
             // PARADA 4: Iglesia de San Lorenzo
-            { nombreParada: "Iglesia de San Lorenzo", lat: 39.47768, lon: -0.3749, radio: 15,
+            { id: 5, nombreParada: "Iglesia de San Lorenzo", lat: 39.47768, lon: -0.3749, radio: 15,
               waypoints: [],
               imagen: "img/iglesia_san_lorenzo.jpg" }, 
             
             // PARADA 5: Plaza de la Virgen
-            { nombreParada: "Plaza de la Virgen", lat: 39.47656, lon: -0.37529, radio: 25,
+            { id: 6, nombreParada: "Plaza de la Virgen", lat: 39.47656, lon: -0.37529, radio: 25,
               waypoints: [{ lat: 39.4766, lon: -0.37473 }],
               imagen: "img/plaza_virgen.jpg" }, 
             
             // PARADA 6: Plaza de la Almoína
-            { nombreParada: "Plaza de la Almoína", lat: 39.47609, lon: -0.37449, radio: 15,
+            { id: 7, nombreParada: "Plaza de la Almoína", lat: 39.47609, lon: -0.37449, radio: 15,
               waypoints: [],
               imagen: "img/plaza_almoina.jpg" }, 
             
             // PARADA 7: Catedral de València
-            { nombreParada: "Catedral de València", lat: 39.47594, lon: -0.37474, radio: 10,
+            { id: 8, nombreParada: "Catedral de València", lat: 39.47594, lon: -0.37474, radio: 10,
               waypoints: [],
               imagen: "img/catedral_valencia.jpg" }, 
             
             // PARADA 8: Plaza Decimo Juno Bruto (Museo Arqueológico de la Almoína)
-            { nombreParada: "Plaza Decimo Juno Bruto (Museo Arqueológico de la Almoína)", lat: 39.4762, lon: -0.37412, radio: 15,
+            { id: 9, nombreParada: "Plaza Decimo Juno Bruto (Museo Arqueológico de la Almoína)", lat: 39.4762, lon: -0.37412, radio: 15,
               waypoints: [],
               imagen: "img/museo_almoina.jpg" }, 
             
             // PARADA 9: Basílica de València
-            { nombreParada: "Basílica de València", lat: 39.47611, lon: -0.37478, radio: 10,
+            { id: 10, nombreParada: "Basílica de València", lat: 39.47611, lon: -0.37478, radio: 10,
               waypoints: [],
               imagen: "img/basilica_valencia.jpg" }, 
             
             // PARADA 10: Casa del Punt de Gantxo
-            { nombreParada: "Casa del Punt de Gantxo", lat: 39.47603, lon: -0.37433, radio: 10,
+            { id: 11, nombreParada: "Casa del Punt de Gantxo", lat: 39.47603, lon: -0.37433, radio: 10,
               waypoints: [],
               imagen: "img/punt_gantxo.jpg" }, 
             
             // PARADA 11: Palacio Arzobispal
-            { nombreParada: "Palacio Arzobispal", lat: 39.4755, lon: -0.37436, radio: 10,
+            { id: 12, nombreParada: "Palacio Arzobispal", lat: 39.4755, lon: -0.37436, radio: 10,
               waypoints: [],
               imagen: "img/palacio_arzobispal.jpg" }, 
             
             // PARADA 12: Puerta Románica de la Catedral
-            { nombreParada: "Puerta Románica de la Catedral", lat: 39.4756, lon: -0.37466, radio: 10,
+            { id: 13, nombreParada: "Puerta Románica de la Catedral", lat: 39.4756, lon: -0.37466, radio: 10,
               waypoints: [],
               imagen: "img/puerta_romanica.jpg" }, 
             
             // PARADA 13: Torre del Miguelete
-            { nombreParada: "Torre del Miguelete", lat: 39.47533, lon: -0.37563, radio: 10,
+            { id: 14, nombreParada: "Torre del Miguelete", lat: 39.47533, lon: -0.37563, radio: 10,
               waypoints: [
                   { lat: 39.47514, lon: -0.37494 }, // Waypoint 4
                   { lat: 39.47447, lon: -0.3754 },  // Waypoint 5
@@ -254,37 +256,37 @@
               imagen: "img/miguelete.jpg" }, 
             
             // PARADA 14: Plaza del Ayuntamiento
-            { nombreParada: "Plaza del Ayuntamiento", lat: 39.47056, lon: -0.37677, radio: 20,
+            { id: 15, nombreParada: "Plaza del Ayuntamiento", lat: 39.47056, lon: -0.37677, radio: 20,
               waypoints: [],
               imagen: "img/plaza_ayuntamiento.jpg" }, 
             
             // PARADA 15: Edificio del Ayuntamiento de València
-            { nombreParada: "Edificio del Ayuntamiento de València", lat: 39.46971, lon: -0.37693, radio: 15,
+            { id: 16, nombreParada: "Edificio del Ayuntamiento de València", lat: 39.46971, lon: -0.37693, radio: 15,
               waypoints: [{ lat: 39.46795, lon: -0.37701 }],
               imagen: "img/ayuntamiento_edificio.jpg" }, 
             
             // PARADA 16: Estación de Ferrocarril (Estación del Norte)
-            { nombreParada: "Estación de Ferrocarril (Estación del Norte)", lat: 39.46722, lon: -0.37702, radio: 30,
+            { id: 17, nombreParada: "Estación de Ferrocarril (Estación del Norte)", lat: 39.46722, lon: -0.37702, radio: 30,
               waypoints: [],
               imagen: "img/estacion_norte.jpg" }, 
             
             // PARADA 17: Plaza de Toros de València
-            { nombreParada: "Plaza de Toros de València", lat: 39.46709, lon: -0.37595, radio: 30,
+            { id: 18, nombreParada: "Plaza de Toros de València", lat: 39.46709, lon: -0.37595, radio: 30,
               waypoints: [{ lat: 39.46714, lon: -0.37498 }],
               imagen: "img/plaza_toros.jpg" }, 
             
             // PARADA 18: Casa estilo Árabe
-            { nombreParada: "Casa estilo Árabe", lat: 39.46753, lon: -0.37511, radio: 15,
+            { id: 19, nombreParada: "Casa estilo Árabe", lat: 39.46753, lon: -0.37511, radio: 15,
               waypoints: [],
               imagen: "img/casa_arabe.jpg" }, 
             
             // PARADA 19: Palacio de Comunicaciones (Correos)
-            { nombreParada: "Palacio de Comunicaciones (Correos)", lat: 39.46942, lon: -0.37559, radio: 10,
+            { id: 20, nombreParada: "Palacio de Comunicaciones (Correos)", lat: 39.46942, lon: -0.37559, radio: 10,
               waypoints: [],
               imagen: "img/correos.jpg" }, 
             
             // PARADA 20: Edificio Suay (La Equitativa)
-            { nombreParada: "Edificio Suay (La Equitativa)", lat: 39.4699, lon: -0.37573, radio: 10,
+            { id: 21, nombreParada: "Edificio Suay (La Equitativa)", lat: 39.4699, lon: -0.37573, radio: 10,
               waypoints: [
                   { lat: 39.4703, lon: -0.3759 },   // Waypoint 9
                   { lat: 39.47039, lon: -0.37505 }  // Waypoint 10
@@ -292,17 +294,17 @@
               imagen: "img/edificio_suay.jpg" }, 
             
             // PARADA 21: Antigua sede del Banco de València
-            { nombreParada: "Antigua sede del Banco de València", lat: 39.47061, lon: -0.37408, radio: 10,
+            { id: 22, nombreParada: "Antigua sede del Banco de València", lat: 39.47061, lon: -0.37408, radio: 10,
               waypoints: [{ lat: 39.47119, lon: -0.37423 }],
               imagen: "img/banco_valencia.jpg" }, 
             
             // PARADA 22: Iglesia de San Juan de la Cruz
-            { nombreParada: "Iglesia de San Juan de la Cruz", lat: 39.47214, lon: -0.37446, radio: 15,
+            { id: 23, nombreParada: "Iglesia de San Juan de la Cruz", lat: 39.47214, lon: -0.37446, radio: 15,
               waypoints: [],
               imagen: "img/san_juan_cruz.jpg" }, 
             
             // PARADA 23: Palacio del Marqués de Dos Aguas (Museo Nacional de Cerámica)
-            { nombreParada: "Palacio del Marqués de Dos Aguas (Museo Nacional de Cerámica)", lat: 39.47276, lon: -0.37467, radio: 15,
+            { id: 24, nombreParada: "Palacio del Marqués de Dos Aguas (Museo Nacional de Cerámica)", lat: 39.47276, lon: -0.37467, radio: 15,
               waypoints: [
                   { lat: 39.47311, lon: -0.37589 }, // Waypoint 12
                   { lat: 39.47261, lon: -0.37654 }, // Waypoint 13
@@ -311,42 +313,42 @@
               imagen: "img/palacio_dos_aguas.jpg" }, 
             
             // PARADA 24: Mercado Central
-            { nombreParada: "Mercado Central", lat: 39.47377, lon: -0.37832, radio: 20,
+            { id: 25, nombreParada: "Mercado Central", lat: 39.47377, lon: -0.37832, radio: 20,
               waypoints: [],
               imagen: "img/mercado_central.jpg" }, 
             
             // PARADA 25: San Juan del Mercado (Iglesia de los Santos Juanes)
-            { nombreParada: "San Juan del Mercado (Iglesia de los Santos Juanes)", lat: 39.47425, lon: -0.37895, radio: 15,
+            { id: 26, nombreParada: "San Juan del Mercado (Iglesia de los Santos Juanes)", lat: 39.47425, lon: -0.37895, radio: 15,
               waypoints: [],
               imagen: "img/santos_juanes.jpg" }, 
             
             // PARADA 26: Lonja de València (Mercado de la Seda)
-            { nombreParada: "Lonja de València (Mercado de la Seda)", lat: 39.47426, lon: -0.37862, radio: 20,
+            { id: 27, nombreParada: "Lonja de València (Mercado de la Seda)", lat: 39.47426, lon: -0.37862, radio: 20,
               waypoints: [{ lat: 39.47459, lon: -0.37868 }],
               imagen: "img/lonja_seda.jpg" }, 
             
             // PARADA 27: Plaza del Doctor Collado
-            { nombreParada: "Plaza del Doctor Collado", lat: 39.47444, lon: -0.3779, radio: 10,
+            { id: 28, nombreParada: "Plaza del Doctor Collado", lat: 39.47444, lon: -0.3779, radio: 10,
               waypoints: [{ lat: 39.47521, lon: -0.37766 }],
               imagen: "img/plaza_collado.jpg" }, 
             
             // PARADA 28: Plaza del Negrito (Fuente del Negrito)
-            { nombreParada: "Plaza del Negrito (Fuente del Negrito)", lat: 39.47611, lon: -0.37741, radio: 10,
+            { id: 29, nombreParada: "Plaza del Negrito (Fuente del Negrito)", lat: 39.47611, lon: -0.37741, radio: 10,
               waypoints: [],
               imagen: "img/fuente_negrito.jpg" }, 
             
             // PARADA 29: Calle Caballeros
-            { nombreParada: "Calle Caballeros", lat: 39.47663, lon: -0.3773, radio: 10,
+            { id: 30, nombreParada: "Calle Caballeros", lat: 39.47663, lon: -0.3773, radio: 10,
               waypoints: [],
               imagen: "img/calle_caballeros.jpg" }, 
             
             // PARADA 30: Palacio de la Generalitat
-            { nombreParada: "Palacio de la Generalitat", lat: 39.47668, lon: -0.37671, radio: 10,
+            { id: 31, nombreParada: "Palacio de la Generalitat", lat: 39.47668, lon: -0.37671, radio: 10,
               waypoints: [],
               imagen: "img/palacio_generalitat.jpg" }, 
             
             // PARADA 31: Calle Serranos (Fin de la aventura)
-            { nombreParada: "Calle Serranos (Fin de la aventura)", lat: 39.47774, lon: -0.37671, radio: 15,
+            { id: 32, nombreParada: "Calle Serranos (Fin de la aventura)", lat: 39.47774, lon: -0.37671, radio: 15,
               waypoints: [],
               imagen: "img/fin_aventura.jpg" } 
         ];
@@ -366,7 +368,7 @@
                 polylineOptions: {
                     strokeColor: '#0077cc', // Color de la ruta
                     strokeOpacity: 0.8,
-                    strokeWeight: 6 // Los bordes deben ser siempre de igual grosor.
+                    strokeWeight: 6 
                 },
                 suppressMarkers: true // Suprime los marcadores por defecto de Google para usar los nuestros
             });
@@ -401,7 +403,7 @@
             });
 
             overlay.style.display = 'block';
-            overlay.textContent = 'Esperando ubicación GPS y destino del padre...';
+            overlay.textContent = 'Esperando permisos de ubicación y destino del padre...';
 
             // *** IMPORTANTE: Enviamos las paradas al padre al cargarse ***
             // Esto permite que el padre tenga acceso a toda la información de las paradas.
@@ -424,12 +426,11 @@
                 destinationImage.style.display = 'none'; // Asegurarse de que la imagen no se muestre si hay error
                 closeImageButton.style.display = 'block'; // Mostrar botón de cerrar para que el usuario pueda cerrar el modal
                 console.error("Error al cargar la imagen: " + destinationImage.src);
-                alert("No se pudo cargar la imagen del destino.");
+                alert("No se pudo cargar la imagen del destino. Asegúrate de que la ruta sea correcta.");
             });
         }
 
         // Función para calcular la distancia entre dos puntos (fórmula de Haversine)
-        // Se mantiene como fallback si Directions API falla
         function calculateDistance(lat1, lon1, lat2, lon2) {
             const R = 6371e3; // Radio de la Tierra en metros
             const φ1 = lat1 * Math.PI / 180; // lat1 en radianes
@@ -445,46 +446,64 @@
             return R * c; // Distancia en metros
         }
 
-        // Función para obtener la ubicación del usuario y actualizar el mapa/ruta
+        // Función para iniciar la observación de la posición del usuario
         function watchUserPosition() {
             // Limpiar el observador anterior si ya existe para evitar duplicados
             if (watchId) {
                 navigator.geolocation.clearWatch(watchId);
+                watchId = null;
             }
 
-            arrivalSent = false; // Resetear la bandera de llegada para la nueva parada
+            // Resetear las banderas para la nueva parada
+            arrivalSent = false;
+            proximitySent = false; 
 
             // Mostrar el botón de la cámara cuando watchUserPosition se activa (siempre que haya un currentTarget)
-            if (currentTarget) {
+            if (currentTargetData) {
                 cameraButton.style.display = 'flex'; 
             } else {
                 cameraButton.style.display = 'none';
             }
 
+            overlay.textContent = 'Obteniendo ubicación...';
+            
+            // Iniciar la observación de geolocalización
             watchId = navigator.geolocation.watchPosition((position) => {
                 const userLat = position.coords.latitude;
                 const userLon = position.coords.longitude;
+                const accuracy = position.coords.accuracy; // Precisión en metros
                 const userLatLng = new google.maps.LatLng(userLat, userLon);
 
                 userMarker.setPosition(userLatLng); // Actualizar la posición del marcador del usuario
                 map.setCenter(userLatLng); // Centrar el mapa en el usuario
-
-                if (currentTarget) {
-                    overlay.textContent = `Dirígete a: ${currentTarget.nombreParada || 'Destino'}. Calculando ruta...`;
+                
+                // Si hay un destino objetivo
+                if (currentTargetData) {
+                    const targetLatLng = new google.maps.LatLng(currentTargetData.lat, currentTargetData.lon);
+                    
+                    // Enviar siempre la ubicación actualizada al padre
+                    window.parent.postMessage({ 
+                        type: "coordenadas-actualizadas", 
+                        lat: userLat, 
+                        lon: userLon, 
+                        accuracy: accuracy,
+                        targetId: currentTargetData.id,
+                        distance: calculateDistance(userLat, userLon, currentTargetData.lat, currentTargetData.lon)
+                    }, "*");
 
                     const requestOptions = {
                         origin: userLatLng,
-                        destination: new google.maps.LatLng(currentTarget.lat, currentTarget.lon),
-                        travelMode: google.maps.TravelMode.WALKING // Confirmado: siempre andando
+                        destination: targetLatLng,
+                        travelMode: google.maps.TravelMode.WALKING
                     };
 
-                    // Si el currentTarget (obtenido del array paradasAventura) tiene waypoints, los añade a la solicitud
-                    if (currentTarget.waypoints && currentTarget.waypoints.length > 0) {
-                        requestOptions.waypoints = currentTarget.waypoints.map(wp => ({
+                    // Añadir waypoints si existen para la parada actual
+                    if (currentTargetData.waypoints && currentTargetData.waypoints.length > 0) {
+                        requestOptions.waypoints = currentTargetData.waypoints.map(wp => ({
                             location: new google.maps.LatLng(wp.lat, wp.lon),
-                            stopover: false // Asumimos que son puntos de paso, no paradas
+                            stopover: false
                         }));
-                        requestOptions.optimizeWaypoints = false; // Mantiene el orden de los waypoints
+                        requestOptions.optimizeWaypoints = false;
                     }
 
                     directionsService.route(requestOptions, (response, status) => {
@@ -492,45 +511,106 @@
                             directionsRenderer.setDirections(response);
                             const leg = response.routes[0].legs[0];
                             const distance = leg.distance.value; // Distancia en metros
-                            const duration = leg.duration.text; // Duración legible
-                            overlay.textContent = `Dirígete a: ${currentTarget.nombreParada || 'Destino'}.\nDistancia: ${leg.distance.text} (${duration})`;
+
+                            overlay.textContent = `Dirígete a: ${currentTargetData.nombreParada}.\nDistancia: ${leg.distance.text} (${leg.duration.text})`;
                             
-                            // Verificar si se ha llegado al radio del objetivo
-                            if (distance <= currentTarget.radio && !arrivalSent) {
-                                overlay.textContent = `¡Has llegado a ${currentTarget.nombreParada || 'Destino'}!`;
-                                window.parent.postMessage({ type: "coordenadas-completadas", parada: currentTarget.nombreParada }, "*");
+                            // Lógica de proximidad (ej. a 100m antes del radio de llegada)
+                            const proximityThreshold = currentTargetData.radio + 70; // 70 metros antes del radio de llegada
+                            if (distance <= proximityThreshold && distance > currentTargetData.radio && !proximitySent) {
+                                console.log(`Cerca del punto ${currentTargetData.nombreParada}. Distancia: ${distance}m`);
+                                window.parent.postMessage({ 
+                                    type: "coordenadas-cerca", 
+                                    paradaIndex: currentTargetIndex,
+                                    paradaId: currentTargetData.id,
+                                    paradaNombre: currentTargetData.nombreParada
+                                }, "*");
+                                proximitySent = true; // Marca que el mensaje de cerca ya se envió
+                            } else if (distance > proximityThreshold && proximitySent) {
+                                // Si se aleja después de haber estado cerca
+                                console.log(`Alejándose del punto ${currentTargetData.nombreParada}. Distancia: ${distance}m`);
+                                window.parent.postMessage({ 
+                                    type: "coordenadas-lejos", 
+                                    paradaIndex: currentTargetIndex,
+                                    paradaId: currentTargetData.id,
+                                    paradaNombre: currentTargetData.nombreParada
+                                }, "*");
+                                proximitySent = false; // Resetear para que pueda volver a activarse
+                                arrivalSent = false; // Resetear también el de llegada por si acaso
+                            }
+                            
+                            // Lógica de llegada
+                            if (distance <= currentTargetData.radio && !arrivalSent) {
+                                overlay.textContent = `¡Has llegado a ${currentTargetData.nombreParada}!`;
+                                window.parent.postMessage({ 
+                                    type: "coordenadas-completadas", 
+                                    paradaIndex: currentTargetIndex,
+                                    paradaId: currentTargetData.id,
+                                    paradaNombre: currentTargetData.nombreParada
+                                }, "*");
                                 arrivalSent = true; // Marcar que el mensaje de llegada ya se envió
-                                navigator.geolocation.clearWatch(watchId); // Detener la observación hasta la siguiente parada
-                                watchId = null; // Reiniciar el ID del observador
+                                if (watchId) {
+                                    navigator.geolocation.clearWatch(watchId); // Detener la observación hasta la siguiente parada
+                                    watchId = null; 
+                                }
                                 directionsRenderer.setDirections({ routes: [] }); // Borrar la ruta del mapa
                                 // El botón de la cámara se MANTIENE visible para que puedan ver la imagen de la parada actual
                                 
-                                // Opcional: Centrar el mapa en la parada final con un zoom mayor para ver el sitio
-                                map.setCenter(new google.maps.LatLng(currentTarget.lat, currentTarget.lon));
-                                map.setZoom(18); // Zoom más cercano
+                                map.setCenter(targetLatLng); // Centrar el mapa en la parada final con un zoom mayor
+                                map.setZoom(18); 
                             }
                         } else {
-                            // Si no se puede calcular la ruta con Directions API, usamos la distancia directa
-                            const directDistance = calculateDistance(userLat, userLon, currentTarget.lat, currentTarget.lon);
-                            overlay.textContent = `Dirígete a: ${currentTarget.nombreParada || 'Destino'}.\nDistancia: ${directDistance.toFixed(0)}m (ruta no disponible)`;
+                            // Si Directions API falla, usamos la distancia directa (Haversine)
+                            const directDistance = calculateDistance(userLat, userLon, currentTargetData.lat, currentTargetData.lon);
+                            overlay.textContent = `Dirígete a: ${currentTargetData.nombreParada}.\nDistancia: ${directDistance.toFixed(0)}m (ruta no disponible)`;
                             console.error('Directions request failed due to ' + status + '. Calculando distancia directa.');
+                            directionsRenderer.setDirections({ routes: [] }); // Asegurarse de que no haya ruta vieja
+
+                            // Lógica de proximidad con distancia directa
+                            const proximityThreshold = currentTargetData.radio + 70;
+                            if (directDistance <= proximityThreshold && directDistance > currentTargetData.radio && !proximitySent) {
+                                console.log(`Cerca del punto ${currentTargetData.nombreParada}. Distancia: ${directDistance}m (directa)`);
+                                window.parent.postMessage({ 
+                                    type: "coordenadas-cerca", 
+                                    paradaIndex: currentTargetIndex,
+                                    paradaId: currentTargetData.id,
+                                    paradaNombre: currentTargetData.nombreParada
+                                }, "*");
+                                proximitySent = true;
+                            } else if (directDistance > proximityThreshold && proximitySent) {
+                                console.log(`Alejándose del punto ${currentTargetData.nombreParada}. Distancia: ${directDistance}m (directa)`);
+                                window.parent.postMessage({ 
+                                    type: "coordenadas-lejos", 
+                                    paradaIndex: currentTargetIndex,
+                                    paradaId: currentTargetData.id,
+                                    paradaNombre: currentTargetData.nombreParada
+                                }, "*");
+                                proximitySent = false;
+                                arrivalSent = false;
+                            }
                             
-                            if (directDistance <= currentTarget.radio && !arrivalSent) {
-                                overlay.textContent = `¡Has llegado a ${currentTarget.nombreParada || 'Destino'}!`;
-                                window.parent.postMessage({ type: "coordenadas-completadas", parada: currentTarget.nombreParada }, "*");
+                            // Lógica de llegada con distancia directa
+                            if (directDistance <= currentTargetData.radio && !arrivalSent) {
+                                overlay.textContent = `¡Has llegado a ${currentTargetData.nombreParada}!`;
+                                window.parent.postMessage({ 
+                                    type: "coordenadas-completadas", 
+                                    paradaIndex: currentTargetIndex,
+                                    paradaId: currentTargetData.id,
+                                    paradaNombre: currentTargetData.nombreParada
+                                }, "*");
                                 arrivalSent = true;
-                                navigator.geolocation.clearWatch(watchId);
-                                watchId = null;
-                                directionsRenderer.setDirections({ routes: [] }); // Borrar la ruta
-                                // El botón de la cámara se MANTIENE visible
-                                map.setCenter(new google.maps.LatLng(currentTarget.lat, currentTarget.lon));
-                                map.setZoom(18); // Zoom más cercano
+                                if (watchId) {
+                                    navigator.geolocation.clearWatch(watchId);
+                                    watchId = null;
+                                }
+                                map.setCenter(targetLatLng);
+                                map.setZoom(18);
                             }
                         }
                     });
                 } else {
-                    overlay.textContent = 'Ubicación actual: ' + userLat.toFixed(5) + ', ' + userLon.toFixed(5) + '\nEsperando destino...';
+                    overlay.textContent = 'Ubicación actual: ' + userLat.toFixed(5) + ', ' + userLon.toFixed(5) + ` (Precisión: ${accuracy.toFixed(0)}m)\nEsperando destino...`;
                     cameraButton.style.display = 'none'; // Ocultar el botón si no hay un destino activo
+                    directionsRenderer.setDirections({ routes: [] }); // Borrar cualquier ruta existente
                 }
 
             }, (error) => {
@@ -550,9 +630,9 @@
                         errorMessage += 'Error desconocido.';
                         break;
                 }
-                overlay.textContent = errorMessage + '\nRecarga la página y acepta el permiso.';
+                overlay.textContent = errorMessage;
                 window.parent.postMessage({ type: "coordenadas-error", error: errorMessage }, "*");
-                if (watchId) {
+                if (watchId) { // Asegurarse de limpiar el watch en caso de error
                     navigator.geolocation.clearWatch(watchId);
                     watchId = null;
                 }
@@ -560,17 +640,17 @@
             }, {
                 enableHighAccuracy: true,
                 maximumAge: 0,
-                timeout: 10000
+                timeout: 15000 // Aumentar timeout para dar más tiempo a la ubicación
             });
         }
 
         // Función para mostrar la imagen del destino actual
         function showDestinationImage() {
-            if (currentTarget && currentTarget.imagen) {
+            if (currentTargetData && currentTargetData.imagen) {
                 imageSpinner.style.display = 'block'; // Mostrar spinner
                 destinationImage.style.display = 'none'; // Ocultar imagen mientras carga
                 closeImageButton.style.display = 'none'; // Ocultar botón de cerrar mientras carga
-                destinationImage.src = currentTarget.imagen;  
+                destinationImage.src = currentTargetData.imagen;  
                 imageModalOverlay.style.display = 'flex'; // Mostrar la superposición
             } else {
                 alert('No hay imagen disponible para este destino.');
@@ -586,7 +666,7 @@
             destinationImage.style.display = 'none'; // Resetear estado de la imagen
             closeImageButton.style.display = 'none'; // Resetear estado del botón
             // Asegurarse de que el botón de la cámara permanezca visible si hay un currentTarget
-            if (currentTarget) {
+            if (currentTargetData) {
                 cameraButton.style.display = 'flex';
             }
         }
@@ -596,103 +676,260 @@
             // En producción, es buena práctica verificar el origen:
             // if (event.origin !== "https://tu-dominio.com") return; 
 
-            if (event.data && event.data.type === "irA_coordenadas") {
-                const paradaIndex = event.data.paradaIndex;
-                if (paradaIndex !== undefined && paradasAventura[paradaIndex]) {
-                    currentTarget = paradasAventura[paradaIndex];
-                    console.log("Mensaje 'irA_coordenadas' recibido del padre. Destino:", currentTarget.nombreParada);
-                    
-                    // Actualizamos el icono del marcador de destino a rojo (actual activo)
-                    // Y resetear los demás a azul
-                    stopMarkers.forEach((marker, index) => {
-                        if (index === paradaIndex) {
-                            marker.setIcon({
-                                url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png', // Marcador rojo para el objetivo actual
-                                scaledSize: new google.maps.Size(32, 32)
-                            });
+            if (!event.data || !event.data.type) {
+                return; // Ignorar mensajes sin tipo
+            }
+
+            console.log("Mensaje recibido del padre en GPS Hijos:", event.data.type, event.data);
+
+            switch (event.data.type) {
+                case "iniciar_gps_con_permiso":
+                    // El padre indica que se aceptaron los permisos y se debe iniciar el GPS real
+                    gpsRealActivado = true; // Asegurarse de que el modo real esté activado
+                    watchUserPosition();
+                    break;
+                case "irA_coordenadas":
+                    const paradaIndex = event.data.paradaIndex;
+                    if (paradaIndex !== undefined && paradasAventura[paradaIndex]) {
+                        currentTargetIndex = paradaIndex;
+                        currentTargetData = paradasAventura[paradaIndex];
+                        console.log("Mensaje 'irA_coordenadas' recibido del padre. Destino:", currentTargetData.nombreParada);
+                        
+                        // Actualizamos el icono del marcador de destino a rojo (actual activo)
+                        // Y resetear los demás a azul
+                        stopMarkers.forEach((marker, index) => {
+                            if (index === paradaIndex) {
+                                marker.setIcon({
+                                    url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png', // Marcador rojo para el objetivo actual
+                                    scaledSize: new google.maps.Size(32, 32)
+                                });
+                            } else {
+                                marker.setIcon({
+                                    url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png', // Marcador azul para el resto
+                                    scaledSize: new google.maps.Size(32, 32)
+                                });
+                            }
+                        });
+
+                        // Si GPS real está activado, iniciar/reiniciar observación.
+                        // Si no, esperar mensaje de simulación.
+                        if (gpsRealActivado) {
+                            watchUserPosition(); 
                         } else {
-                            marker.setIcon({
-                                url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png', // Marcador azul para el resto
+                            // Si estamos en modo simulación, solo actualizamos el currentTargetData
+                            // y borramos la ruta anterior. La simulación la activa el padre con 'simular_ubicacion'.
+                            if (watchId) { // Asegurarse de limpiar cualquier watch activo si cambiamos de modo
+                                navigator.geolocation.clearWatch(watchId);
+                                watchId = null;
+                            }
+                            directionsRenderer.setDirections({ routes: [] }); // Borrar cualquier ruta existente
+                            overlay.textContent = `Esperando simulación para: ${currentTargetData.nombreParada}`;
+                            cameraButton.style.display = 'flex'; // Mantener el botón de la cámara visible
+                        }
+                    } else {
+                        console.error("Mensaje 'irA_coordenadas' recibido con índice de parada inválido:", paradaIndex);
+                        overlay.textContent = "Error: Destino no encontrado.";
+                        cameraButton.style.display = 'none'; 
+                        directionsRenderer.setDirections({ routes: [] }); 
+                        if (watchId) { 
+                            navigator.geolocation.clearWatch(watchId);
+                            watchId = null;
+                        }
+                    }
+                    break;
+                case "simular_ubicacion":
+                    // Mensaje del padre para simular una ubicación específica
+                    gpsRealActivado = false; // Forzar modo simulación
+                    const { lat, lon, targetParadaIndex } = event.data;
+                    
+                    if (watchId) { 
+                        navigator.geolocation.clearWatch(watchId);
+                        watchId = null;
+                    }
+                    
+                    // Si se especifica un targetParadaIndex en la simulación, actualizar el currentTarget
+                    if (targetParadaIndex !== undefined && paradasAventura[targetParadaIndex]) {
+                        currentTargetIndex = targetParadaIndex;
+                        currentTargetData = paradasAventura[targetParadaIndex];
+                        // Actualizar marcadores para reflejar el objetivo simulado
+                         stopMarkers.forEach((marker, index) => {
+                            if (index === targetParadaIndex) {
+                                marker.setIcon({
+                                    url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png',
+                                    scaledSize: new google.maps.Size(32, 32)
+                                });
+                            } else {
+                                marker.setIcon({
+                                    url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png',
+                                    scaledSize: new google.maps.Size(32, 32)
+                                });
+                            }
+                        });
+                        cameraButton.style.display = 'flex'; // Mostrar botón de cámara
+                        arrivalSent = false; // Resetear banderas para la simulación
+                        proximitySent = false;
+                    } else if (!currentTargetData) {
+                        // Si no hay currentTargetData y no se pasó un targetParadaIndex, no podemos simular
+                        console.warn("No hay un destino establecido para simular ubicación.");
+                        overlay.textContent = "Error: No hay destino para simular.";
+                        cameraButton.style.display = 'none';
+                        return;
+                    }
+
+                    const simulatedLatLng = new google.maps.LatLng(lat, lon);
+                    userMarker.setPosition(simulatedLatLng);
+                    map.setCenter(simulatedLatLng);
+                    
+                    // Lógica de simulación de distancia y ruta
+                    const targetLat = currentTargetData.lat;
+                    const targetLon = currentTargetData.lon;
+                    const directDistance = calculateDistance(lat, lon, targetLat, targetLon);
+
+                    const requestOptions = {
+                        origin: simulatedLatLng,
+                        destination: new google.maps.LatLng(targetLat, targetLon),
+                        travelMode: google.maps.TravelMode.WALKING
+                    };
+
+                    if (currentTargetData.waypoints && currentTargetData.waypoints.length > 0) {
+                        requestOptions.waypoints = currentTargetData.waypoints.map(wp => ({
+                            location: new google.maps.LatLng(wp.lat, wp.lon),
+                            stopover: false
+                        }));
+                        requestOptions.optimizeWaypoints = false;
+                    }
+
+                    directionsService.route(requestOptions, (response, status) => {
+                        if (status === 'OK') {
+                            directionsRenderer.setDirections(response);
+                            const leg = response.routes[0].legs[0];
+                            const distance = leg.distance.value;
+
+                            overlay.textContent = `Ubicación simulada: ${lat.toFixed(5)}, ${lon.toFixed(5)}\nDistancia a ${currentTargetData.nombreParada}: ${leg.distance.text} (${leg.duration.text})`;
+
+                            // Proximidad simulada
+                            const proximityThreshold = currentTargetData.radio + 70;
+                            if (distance <= proximityThreshold && distance > currentTargetData.radio && !proximitySent) {
+                                window.parent.postMessage({ 
+                                    type: "coordenadas-cerca", 
+                                    paradaIndex: currentTargetIndex,
+                                    paradaId: currentTargetData.id,
+                                    paradaNombre: currentTargetData.nombreParada
+                                }, "*");
+                                proximitySent = true;
+                            } else if (distance > proximityThreshold && proximitySent) {
+                                window.parent.postMessage({ 
+                                    type: "coordenadas-lejos", 
+                                    paradaIndex: currentTargetIndex,
+                                    paradaId: currentTargetData.id,
+                                    paradaNombre: currentTargetData.nombreParada
+                                }, "*");
+                                proximitySent = false;
+                                arrivalSent = false;
+                            }
+
+                            // Llegada simulada
+                            if (distance <= currentTargetData.radio && !arrivalSent) {
+                                overlay.textContent = `¡Has llegado a ${currentTargetData.nombreParada}! (Simulado)`;
+                                window.parent.postMessage({ 
+                                    type: "coordenadas-completadas", 
+                                    paradaIndex: currentTargetIndex,
+                                    paradaId: currentTargetData.id,
+                                    paradaNombre: currentTargetData.nombreParada
+                                }, "*");
+                                arrivalSent = true;
+                                directionsRenderer.setDirections({ routes: [] });
+                                map.setCenter(new google.maps.LatLng(targetLat, targetLon));
+                                map.setZoom(18);
+                            }
+                        } else {
+                            overlay.textContent = `Ubicación simulada: ${lat.toFixed(5)}, ${lon.toFixed(5)}\nDistancia a ${currentTargetData.nombreParada}: ${directDistance.toFixed(0)}m (ruta no disponible)`;
+                            directionsRenderer.setDirections({ routes: [] });
+
+                            // Proximidad simulada (directa)
+                            const proximityThreshold = currentTargetData.radio + 70;
+                            if (directDistance <= proximityThreshold && directDistance > currentTargetData.radio && !proximitySent) {
+                                window.parent.postMessage({ 
+                                    type: "coordenadas-cerca", 
+                                    paradaIndex: currentTargetIndex,
+                                    paradaId: currentTargetData.id,
+                                    paradaNombre: currentTargetData.nombreParada
+                                }, "*");
+                                proximitySent = true;
+                            } else if (directDistance > proximityThreshold && proximitySent) {
+                                window.parent.postMessage({ 
+                                    type: "coordenadas-lejos", 
+                                    paradaIndex: currentTargetIndex,
+                                    paradaId: currentTargetData.id,
+                                    paradaNombre: currentTargetData.nombreParada
+                                }, "*");
+                                proximitySent = false;
+                                arrivalSent = false;
+                            }
+
+                            // Llegada simulada (directa)
+                            if (directDistance <= currentTargetData.radio && !arrivalSent) {
+                                overlay.textContent = `¡Has llegado a ${currentTargetData.nombreParada}! (Simulado)`;
+                                window.parent.postMessage({ 
+                                    type: "coordenadas-completadas", 
+                                    paradaIndex: currentTargetIndex,
+                                    paradaId: currentTargetData.id,
+                                    paradaNombre: currentTargetData.nombreParada
+                                }, "*");
+                                arrivalSent = true;
+                                map.setCenter(new google.maps.LatLng(targetLat, targetLon));
+                                map.setZoom(18);
+                            }
+                        }
+                    });
+                    break;
+                case "detener_gps":
+                    if (watchId) {
+                        navigator.geolocation.clearWatch(watchId);
+                        watchId = null;
+                    }
+                    overlay.textContent = "GPS detenido.";
+                    directionsRenderer.setDirections({ routes: [] });
+                    cameraButton.style.display = 'none';
+                    currentTargetIndex = -1; // Resetear el objetivo
+                    currentTargetData = null;
+                    break;
+                case "activar_gps_real":
+                    gpsRealActivado = true;
+                    // Resetear todos los marcadores a azul al activar GPS real
+                    stopMarkers.forEach((marker) => {
+                        marker.setIcon({
+                            url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png', 
+                            scaledSize: new google.maps.Size(32, 32)
+                        });
+                    });
+                    if (currentTargetData) { // Si hay un destino ya establecido, reactivar el seguimiento real
+                        watchUserPosition();
+                    } else {
+                        // Si no hay un destino, simplemente iniciar la observación sin ruta
+                        watchUserPosition(); 
+                        overlay.textContent = "GPS Real Activado. Esperando destino...";
+                    }
+                    break;
+                case "desactivar_gps_real":
+                    gpsRealActivado = false;
+                    if (watchId) {
+                        navigator.geolocation.clearWatch(watchId);
+                        watchId = null;
+                    }
+                    overlay.textContent = "GPS Desactivado. Usa el modo de simulación o activa el GPS real.";
+                    directionsRenderer.setDirections({ routes: [] });
+                    cameraButton.style.display = 'none';
+                    // Resetear el marcador actual a azul si estaba rojo
+                    stopMarkers.forEach((marker, index) => {
+                        if (index === currentTargetIndex) {
+                             marker.setIcon({
+                                url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png', 
                                 scaledSize: new google.maps.Size(32, 32)
                             });
                         }
                     });
-
-                    // Si hay un watchId activo de una parada anterior, lo limpiamos para iniciar uno nuevo
-                    if (watchId) {
-                        navigator.geolocation.clearWatch(watchId);
-                    }
-                    watchUserPosition(); // Iniciar la observación de la posición para el nuevo destino
-                    // El botón de la cámara se muestra aquí y se mantiene visible mientras haya un currentTarget
-                    cameraButton.style.display = 'flex'; 
-                } else {
-                    console.error("Mensaje 'irA_coordenadas' recibido con índice de parada inválido:", paradaIndex);
-                    overlay.textContent = "Error: Destino no encontrado.";
-                    cameraButton.style.display = 'none'; // Ocultar el botón si hay un error
-                    directionsRenderer.setDirections({ routes: [] }); // Borrar cualquier ruta existente
-                    if (watchId) { // Asegurarse de detener el GPS si el destino es inválido
-                        navigator.geolocation.clearWatch(watchId);
-                        watchId = null;
-                    }
-                }
-            } else if (event.data && event.data.type === "simular_ubicacion") {
-                // Mensaje del padre para simular una ubicación específica
-                const { lat, lon } = event.data;
-                if (watchId) { // Detener la observación real si se va a simular
-                    navigator.geolocation.clearWatch(watchId);
-                    watchId = null;
-                }
-                const simulatedLatLng = new google.maps.LatLng(lat, lon);
-                userMarker.setPosition(simulatedLatLng);
-                map.setCenter(simulatedLatLng);
-                overlay.textContent = `Ubicación simulada: Lat ${lat.toFixed(5)}, Lon ${lon.toFixed(5)}`;
-                
-                // Simular la llegada si estamos en modo simulación y dentro del radio
-                if (currentTarget) {
-                    const directDistance = calculateDistance(lat, lon, currentTarget.lat, currentTarget.lon);
-                    if (directDistance <= currentTarget.radio && !arrivalSent) {
-                        overlay.textContent = `¡Has llegado a ${currentTarget.nombreParada || 'Destino'}! (Simulado)`;
-                        window.parent.postMessage({ type: "coordenadas-completadas", parada: currentTarget.nombreParada }, "*");
-                        arrivalSent = true;
-                        directionsRenderer.setDirections({ routes: [] });
-                        // El botón de la cámara se MANTIENE visible
-                        map.setCenter(new google.maps.LatLng(currentTarget.lat, currentTarget.lon));
-                        map.setZoom(18);
-                    } else {
-                        // Si no ha llegado con la simulación, aún muestra la distancia y duración
-                        const requestOptions = {
-                            origin: simulatedLatLng,
-                            destination: new google.maps.LatLng(currentTarget.lat, currentTarget.lon),
-                            travelMode: google.maps.TravelMode.WALKING
-                        };
-                        directionsService.route(requestOptions, (response, status) => {
-                            if (status === 'OK') {
-                                directionsRenderer.setDirections(response);
-                                const leg = response.routes[0].legs[0];
-                                overlay.textContent = `Dirígete a: ${currentTarget.nombreParada || 'Destino'}.\nDistancia: ${leg.distance.text} (${leg.duration.text}) (Simulado)`;
-                            } else {
-                                overlay.textContent = `Dirígete a: ${currentTarget.nombreParada || 'Destino'}.\nDistancia: ${directDistance.toFixed(0)}m (ruta no disponible) (Simulado)`;
-                            }
-                        });
-                    }
-                }
-            } else if (event.data && event.data.type === "detener_gps") {
-                // Mensaje del padre para detener completamente el GPS
-                if (watchId) {
-                    navigator.geolocation.clearWatch(watchId);
-                    watchId = null;
-                }
-                overlay.textContent = "GPS detenido (modo de prueba).";
-                directionsRenderer.setDirections({ routes: [] }); // Borrar ruta
-                cameraButton.style.display = 'none'; // Ocultar el botón
-            } else if (event.data && event.data.type === "reiniciar_gps_real") {
-                // Mensaje del padre para reiniciar el GPS real
-                watchUserPosition(); // Volver a iniciar el seguimiento GPS real
-                overlay.textContent = "Reiniciando GPS real...";
-                // Mostrar el botón de la cámara si había un destino activo antes de detener
-                if (currentTarget) {
-                    cameraButton.style.display = 'flex';
-                }
+                    break;
             }
         });
     </script>
