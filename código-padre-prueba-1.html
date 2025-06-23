@@ -594,7 +594,7 @@
 
     <div class="audio-player-container" id="audioPlayerWrapper" style="display: none;">
         <h3>Audio del Punto <span id="currentAudioPoint"></span></h3>
-        <iframe id="audioIframe" src="audio_player_hijo.html" style="width: 100%; height: 120px; border: none; display: none;"></iframe>
+        <iframe id="audioIframe" src="audio_player_hijo.html" style="width: 100%; height: 120px; border: none; display: block;"></iframe>
         <p id="locationStatus" style="color: red; font-weight: bold;">Esperando ubicación...</p>
     </div>
 
@@ -736,10 +736,12 @@
 
         // Función para solicitar permisos de geolocalización
         function requestGeolocationPermission() {
+            alert("DEBUG PADRE: requestGeolocationPermission() - Solicitando permiso GPS...");
             if ("geolocation" in navigator) {
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
                         console.log("Permiso de geolocalización concedido o ya existe.");
+                        alert("DEBUG PADRE: Permiso GPS concedido. Iniciando GPS real.");
                         // Solo iniciamos el GPS real si se aceptó y no estamos en modo simulado
                         if (gpsRealActivado) {
                             startGeolocation();
@@ -747,6 +749,7 @@
                     },
                     (error) => {
                         console.warn(`Error de geolocalización inicial: ${error.message}`);
+                        alert("DEBUG PADRE: Error de geolocalización inicial: " + error.message);
                         if (error.code === error.PERMISSION_DENIED) {
                             alert("Permiso de ubicación denegado. La aventura funcionará en modo manual.");
                             gpsRealActivado = false; // Forzar a modo manual
@@ -770,6 +773,7 @@
                     { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
                 );
             } else {
+                alert("DEBUG PADRE: Tu navegador no soporta geolocalización.");
                 alert("Tu navegador no soporta geolocalización. La aventura funcionará en modo manual.");
                 gpsRealActivado = false;
                 gpsModeStatusSpan.textContent = "GPS Desactivado (No soportado)";
@@ -780,6 +784,7 @@
         }
 
         function startGeolocation() {
+            alert("DEBUG PADRE: startGeolocation() - Iniciando seguimiento GPS.");
             if (gpsRealActivado && "geolocation" in navigator) {
                 gpsModeStatusSpan.textContent = "Real (obteniendo ubicación...)";
                 locationStatusSpan.textContent = "Buscando tu ubicación...";
@@ -792,8 +797,10 @@
                     { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
                 );
                 console.log("Iniciando seguimiento de geolocalización.");
+                alert("DEBUG PADRE: navigator.geolocation.watchPosition() iniciado.");
             } else {
                 console.log("Geolocalización real desactivada o no soportada.");
+                alert("DEBUG PADRE: GPS real desactivado o no soportado. No se inicia watchPosition.");
                 gpsModeStatusSpan.textContent = "GPS Desactivado (Modo Manual/Simulado)";
                 locationStatusSpan.textContent = "GPS Desactivado.";
                 locationStatusSpan.style.color = '#6c757d'; // Gris
@@ -802,6 +809,7 @@
         }
 
         function stopGeolocation() {
+            alert("DEBUG PADRE: stopGeolocation() - Deteniendo seguimiento GPS.");
             if (watchId !== undefined) {
                 navigator.geolocation.clearWatch(watchId);
                 watchId = undefined;
@@ -812,6 +820,7 @@
         function updateLocationStatus(message, color = '#333') {
             locationStatusSpan.textContent = message;
             locationStatusSpan.style.color = color;
+            alert("DEBUG PADRE: Estado Ubicación: " + message);
         }
 
         function handlePosition(position) {
@@ -819,20 +828,28 @@
             const lon = position.coords.longitude;
             const accuracy = position.coords.accuracy;
             console.log(`Ubicación: ${lat}, ${lon} (precisión: ${accuracy}m)`);
+            alert(`DEBUG PADRE: handlePosition() - Ubicación recibida: Lat ${lat.toFixed(6)}, Lon ${lon.toFixed(6)} (Precisión: ${accuracy.toFixed(0)}m)`);
             updateLocationStatus(`Ubicación: ${lat.toFixed(6)}, ${lon.toFixed(6)} (±${accuracy.toFixed(0)}m)`, '#28a745'); // Verde
 
             // Verificar proximidad solo si no hay un reto/puzzle activo en el `#reto-container`
             // y si el botón de "Continuar Aventura" no está visible (indicando que un reto ha terminado)
-            if (!puzzleIframe.style.display || puzzleIframe.style.display === 'none') { // Asegura que no haya un puzzle activo
-                 if (btnNextAfterReto.style.display === 'none') { // y que no se esté esperando para continuar la aventura
+            // Agregué una verificación explícita para puzzleIframe.style.display para evitar problemas con "undefined" o cadenas vacías.
+            if (puzzleIframe.style.display === 'none' || !puzzleIframe.style.display) {
+                 if (btnNextAfterReto.style.display === 'none') {
+                     alert("DEBUG PADRE: handlePosition() - No hay reto activo ni botón de siguiente. Verificando proximidad.");
                      verificarProximidad(lat, lon);
+                 } else {
+                     alert("DEBUG PADRE: handlePosition() - Botón 'Continuar Aventura' visible, no se verifica proximidad.");
                  }
+             } else {
+                 alert("DEBUG PADRE: handlePosition() - Puzzle/Reto está activo, no se verifica proximidad.");
              }
         }
 
 
         function handleGeolocationError(error) {
             console.error(`Error de geolocalización: ${error.message} (Código: ${error.code})`);
+            alert(`DEBUG PADRE: handleGeolocationError() - Error GPS: ${error.message} (Código: ${error.code})`);
             let errorMessage = "Error al obtener ubicación.";
             let errorColor = '#dc3545'; // Rojo
 
@@ -874,18 +891,22 @@
         }
 
         function verificarProximidad(lat, lon) {
+            alert("DEBUG PADRE: verificarProximidad() - Verificando proximidad al punto actual.");
             if (currentStep < audioPuntosInteres.length) {
                 const puntoActual = audioPuntosInteres[currentStep];
                 const distancia = distanciaHaversine(lat, lon, puntoActual.lat, puntoActual.lon);
                 console.log(`Distancia al punto ${puntoActual.id}: ${distancia.toFixed(2)}m`);
+                alert(`DEBUG PADRE: Distancia al punto ${puntoActual.id}: ${distancia.toFixed(2)}m (Activación: ${puntoActual.distanciaActivacion}m)`);
                 updateLocationStatus(`Distancia al punto ${puntoActual.id}: ${distancia.toFixed(0)}m`, '#0077cc'); // Azul
 
                 if (distancia < puntoActual.distanciaActivacion) {
-                    if (!audioIframe.style.display || audioIframe.style.display === 'none') { // Solo si el audio no está activo
-                        console.log(`¡Cerca del punto ${puntoActual.id}! Activando audio.`);
+                    // Solo si el audio no está activo, o si estaba activo pero se detuvo por alejamiento y ahora se volvió a acercar
+                    // Aquí la lógica es que el audio se reproduce por proximidad, y una vez que se activa, puede ser controlado por el usuario o terminar.
+                    // Si el audio está visible, ya se ha activado. Si no está visible, es la primera vez que entramos en proximidad.
+                    if (document.getElementById('audioPlayerWrapper').style.display === 'none' || playPauseBtn.classList.contains('fa-play')) { // Si el wrapper está oculto o el botón muestra 'play' (pausado)
+                        alert(`DEBUG PADRE: ¡Cerca del punto ${puntoActual.id}! Activando audio.`);
                         // Enviar mensaje al iframe del audio para que reproduzca
                         sendMessageToAudioChild('playAudio', { src: puntoActual.audio });
-                        audioIframe.style.display = 'block';
                         document.getElementById('audioPlayerWrapper').style.display = 'flex';
                         currentAudioPointSpan.textContent = puntoActual.id;
                         playPauseBtn.classList.add('active'); // Indicar que el botón de audio está activo
@@ -894,6 +915,7 @@
                         const retosDelPunto = puzzlesPorPunto[puntoActual.id] || [];
                         const autoReto = retosDelPunto.find(r => r.activacion === 'auto');
                         if (autoReto && (puzzleIframe.style.display === 'none' || !puzzleIframe.style.display)) {
+                            alert(`DEBUG PADRE: Activando reto automático para el punto ${puntoActual.id}: ${autoReto.src}`);
                             console.log(`Activando reto automático para el punto ${puntoActual.id}: ${autoReto.src}`);
                             if (autoReto.tipo === 'reto') {
                                 cargarReto(autoReto.src);
@@ -901,15 +923,22 @@
                                 mostrarPuzzle(autoReto.src);
                             }
                         }
+                    } else {
+                        alert("DEBUG PADRE: Ya dentro del radio y audio activo/reproduciéndose. No se hace nada.");
                     }
                 } else {
-                    // Si nos alejamos del punto, pausar el audio
-                    if (audioIframe.style.display === 'block') {
+                    // Si nos alejamos del punto, pausar el audio y ocultar el reproductor
+                    if (document.getElementById('audioPlayerWrapper').style.display === 'flex' && playPauseBtn.classList.contains('active')) {
+                        alert("DEBUG PADRE: Fuera del radio. Pausando audio y ocultando reproductor.");
                         sendMessageToAudioChild('pauseAudio');
                         playPauseBtn.classList.remove('active');
+                        document.getElementById('audioPlayerWrapper').style.display = 'none'; // Ocultar si te alejas
+                    } else {
+                        alert("DEBUG PADRE: Fuera del radio. Audio ya inactivo/oculto o no activo.");
                     }
                 }
             } else {
+                alert("DEBUG PADRE: Aventura completada o puntos agotados.");
                 updateLocationStatus("Aventura completada o puntos agotados.", '#28a745');
                 terminarAventuraBtn.style.display = 'block'; // Mostrar botón de terminar al final
             }
@@ -919,6 +948,7 @@
         // --- Funciones de Control de la Aventura (Pasos, Retos, Puzzles) ---
 
         function cargarSiguientePaso() {
+            alert("DEBUG PADRE: cargarSiguientePaso() - Cargando paso " + (currentStep + 1));
             ocultarRetoYPuzzle(); // Ocultar cualquier reto/puzzle anterior en el área principal
             btnNextAfterReto.style.display = 'none'; // Ocultar botón de "Continuar Aventura"
 
@@ -927,14 +957,17 @@
                 console.log(`Cargando paso ${currentStep + 1}: Punto ${puntoActual.id}`);
                 currentAudioPointSpan.textContent = puntoActual.id;
                 document.getElementById('audioPlayerWrapper').style.display = 'flex'; // Asegurarse de que el reproductor de audio esté visible
+                audioIframe.style.display = 'block'; // Asegura que el iframe de audio esté visible dentro de su wrapper
 
                 // Ocultar mensaje de carga inicial
                 document.getElementById('loading-message').style.display = 'none';
 
                 // Iniciar la geolocalización si estamos en modo real
                 if (gpsRealActivado) {
+                    alert("DEBUG PADRE: Modo GPS Real activo. Iniciando geolocalización.");
                     startGeolocation();
                 } else {
+                    alert("DEBUG PADRE: Modo GPS Manual/Simulado activo. Habilitando simulación.");
                     // En modo manual, habilitar simulación si no está activo el GPS real
                     simulateProximityBtn.disabled = false;
                     // También, si no hay GPS real, el botón de play/pause se activa manualmente
@@ -948,11 +981,14 @@
 
                 if (tieneReto) {
                     reiniciarEstadoReto(); // Poner el borde en color azul por defecto si se espera un reto/puzzle
+                    alert("DEBUG PADRE: Punto actual tiene retos. Borde listo.");
                 } else {
                     retoContainer.classList.add('no-reto'); // Ocultar borde si no hay reto activo para este punto
+                    alert("DEBUG PADRE: Punto actual no tiene retos. Borde transparente.");
                 }
 
             } else {
+                alert("DEBUG PADRE: ¡Aventura completada!");
                 console.log("¡Aventura completada!");
                 updateLocationStatus("¡Felicidades, la aventura ha terminado!", '#28a745');
                 document.getElementById('audioPlayerWrapper').style.display = 'none';
@@ -965,6 +1001,7 @@
 
         // Carga un reto en el iframe principal del CONTENEDOR DE AVENTURA
         function cargarReto(url) {
+            alert("DEBUG PADRE: cargarReto() - Cargando reto: " + url);
             puzzleIframe.src = url;
             puzzleIframe.style.display = 'block';
             btnNextAfterReto.style.display = 'none'; // Ocultar el botón de continuar mientras el reto está activo
@@ -974,6 +1011,7 @@
 
         // Muestra un puzzle en el iframe secundario (en el contenedor de aventura)
         function mostrarPuzzle(url) {
+            alert("DEBUG PADRE: mostrarPuzzle() - Mostrando puzzle: " + url);
             puzzleIframe.src = url;
             puzzleIframe.style.display = 'block';
             btnNextAfterReto.style.display = 'none';
@@ -983,6 +1021,7 @@
 
         // Oculta el iframe de puzzle/reto del contenedor principal
         function ocultarRetoYPuzzle() {
+            alert("DEBUG PADRE: ocultarRetoYPuzzle() - Ocultando retos y puzzles.");
             puzzleIframe.style.display = 'none';
             puzzleIframe.src = 'about:blank'; // Limpiar el contenido del iframe
             retoContainer.classList.remove('correct', 'incorrect', 'ready', 'revealed');
@@ -991,6 +1030,7 @@
 
         // Reinicia el estado visual del contenedor del reto
         function reiniciarEstadoReto() {
+            alert("DEBUG PADRE: reiniciarEstadoReto() - Reiniciando estado visual del reto.");
             retoContainer.classList.remove('correct', 'incorrect', 'revealed', 'no-reto');
             retoContainer.classList.add('ready'); // Por defecto, el borde es azul cuando hay un reto
         }
@@ -999,6 +1039,7 @@
 
         // Muestra el contenido en el iframe de pantalla completa
         function showContentInFullScreen(url) {
+            alert("DEBUG PADRE: showContentInFullScreen() - Abriendo URL en pantalla completa: " + url);
             fullScreenIframe.src = url;
             fullScreenIframeContainer.style.display = 'flex';
             // Ocultar los menús flotantes si están abiertos
@@ -1008,11 +1049,13 @@
 
         // Oculta el iframe de pantalla completa
         function hideFullScreenIframe() {
+            alert("DEBUG PADRE: hideFullScreenIframe() - Cerrando pantalla completa.");
             fullScreenIframe.src = ''; // Limpiar el contenido
             fullScreenIframeContainer.style.display = 'none';
         }
 
         function showLeftMenu() {
+            alert("DEBUG PADRE: showLeftMenu() - Mostrando menú izquierdo.");
             leftMenuContainer.style.display = 'flex';
             // Al abrir, desactiva todas las pestañas y oculta su contenido
             leftMenuContainer.querySelectorAll('.menu-tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -1020,10 +1063,12 @@
         }
 
         function hideLeftMenu() {
+            alert("DEBUG PADRE: hideLeftMenu() - Ocultando menú izquierdo.");
             leftMenuContainer.style.display = 'none';
         }
 
         function showRightMenu() {
+            alert("DEBUG PADRE: showRightMenu() - Mostrando menú derecho.");
             rightMenuContainer.style.display = 'flex';
             // Al abrir, desactiva todas las pestañas y oculta su contenido
             rightMenuContainer.querySelectorAll('.menu-tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -1031,6 +1076,7 @@
         }
 
         function hideRightMenu() {
+            alert("DEBUG PADRE: hideRightMenu() - Ocultando menú derecho.");
             rightMenuContainer.style.display = 'none';
         }
 
@@ -1038,8 +1084,11 @@
 
         // Función para enviar mensajes al iframe del reproductor de audio
         function sendMessageToAudioChild(type, data = {}) {
+            alert("DEBUG PADRE: sendMessageToAudioChild() - Enviando mensaje a audio hijo: Tipo=" + type + ", Data=" + JSON.stringify(data));
             if (audioIframe.contentWindow) {
                 audioIframe.contentWindow.postMessage({ type, ...data }, '*');
+            } else {
+                alert("ERROR PADRE: No se pudo acceder a contentWindow de audioIframe.");
             }
         }
 
@@ -1049,13 +1098,14 @@
             // if (event.origin !== "http://tu-dominio.com") return;
 
             const message = event.data;
-            console.log("Mensaje recibido del hijo:", message);
+            alert("DEBUG PADRE: Mensaje recibido del hijo: " + JSON.stringify(message));
 
             switch (message.type) {
                 case 'retoCompletado':
                 case 'puzzleCompletado':
                     // Verificar si el mensaje viene del iframe de AVENTURA (#puzzleIframe)
                     if (event.source === puzzleIframe.contentWindow) {
+                        alert(`DEBUG PADRE: Reto/Puzzle de aventura completado con resultado: ${message.correct ? 'Correcto' : 'Incorrecto'}`);
                         console.log(`Reto/Puzzle de aventura completado con resultado: ${message.correct ? 'Correcto' : 'Incorrecto'}`);
                         if (message.correct) {
                             retoContainer.classList.add('correct');
@@ -1065,30 +1115,47 @@
                             alert("Respuesta incorrecta. Inténtalo de nuevo o avanza.");
                         }
                         btnNextAfterReto.style.display = 'block'; // Mostrar el botón para continuar
+                    } else {
+                         alert("DEBUG PADRE: Mensaje de reto/puzzle, pero no del iframe principal. Ignorado.");
                     }
-                    // Ignorar mensajes de reto/puzzle del iframe de la pestaña, ya que son independientes y no afectan el flujo principal
                     break;
                 case 'audioEnded':
+                    alert("DEBUG PADRE: Reproducción de audio finalizada.");
                     console.log("Reproducción de audio finalizada.");
                     playPauseBtn.classList.remove('active'); // Desactivar el botón de play/pause
+                    // No avanzamos el paso automáticamente aquí, ya que el audio podría ser una narración introductoria.
+                    // El avance lo controla el botón "Continuar Aventura" o la activación de un reto.
                     break;
                 case 'audioReady':
+                    alert("DEBUG PADRE: Audio player hijo listo. Fuente: " + event.source.location.href);
                     console.log("Audio player hijo listo.");
                     // Cargar el primer audio si el GPS real está desactivado y el audio no está ya cargado
+                    // También, si estamos en modo manual y el audio es el primer paso del punto actual
                     if (!gpsRealActivado && currentStep < audioPuntosInteres.length && audioPuntosInteres[currentStep].audio) {
+                        alert("DEBUG PADRE: Audio listo y GPS Real Desactivado. Cargando audio para reproducción manual.");
                         sendMessageToAudioChild('loadAudio', { src: audioPuntosInteres[currentStep].audio });
                         playPauseBtn.classList.add('active'); // Activar visualmente para reproducción manual
+                    } else if (gpsRealActivado) {
+                        alert("DEBUG PADRE: Audio listo. En modo GPS real, esperando proximidad para el audio.");
                     }
                     break;
                 case 'audioTogglePlayPause':
+                    alert("DEBUG PADRE: Audio toggled by child.");
                     console.log("Audio toggled by child.");
+                    // El padre no necesita hacer nada aquí si el hijo maneja el estado del botón.
                     break;
                 case 'abrirFullscreen': // Mensaje para abrir un iframe en pantalla completa (ahora centralizado)
+                    alert("DEBUG PADRE: Mensaje 'abrirFullscreen' recibido. URL: " + message.url);
                     if (message.url) {
                         showContentInFullScreen(message.url);
                     }
                     break;
                 case 'actualizarAudioControles':
+                    // Este mensaje no debería llegar al padre si el hijo maneja sus propios controles
+                    // Pero si lo hace, no hay que hacer nada aquí.
+                    break;
+                default:
+                    alert("DEBUG PADRE: Mensaje de tipo desconocido recibido: " + message.type);
                     break;
             }
         });
@@ -1097,29 +1164,31 @@
 
         // Evento para aceptar los Términos y Condiciones
         acceptTermsBtn.addEventListener('click', () => {
+            alert("DEBUG PADRE: Botón 'Aceptar Términos' clickeado.");
             termsOverlay.style.display = 'none'; // Oculta la ventana de términos
             welcomeOverlay.style.display = 'flex'; // Muestra la pantalla de bienvenida/permisos
         });
 
         // Evento para aceptar permisos y comenzar la aventura (de la pantalla de bienvenida/permisos)
         acceptPermissionsBtn.addEventListener('click', () => {
+            alert("DEBUG PADRE: Botón 'Entendido, ¡Empezar Aventura!' clickeado!");
             console.log("¡Botón 'Entendido, ¡Empezar Aventura!' clickeado!"); // Mensaje de depuración
             welcomeOverlay.style.display = 'none'; // Oculta la pantalla de bienvenida/permisos
 
             // Solicitar permisos de geolocalización. El 'startGeolocation' se ejecutará en el callback.
             requestGeolocationPermission();
-            // Iniciar la carga del audio player hijo al aceptar permisos
-            audioIframe.style.display = 'block';
-            audioIframe.src = "audio_player_hijo.html"; // Asegúrate de que el src esté siempre cargado
-            // Ocultar el iframe de audio después de cargarse, se mostrará cuando se reproduzca
-            audioIframe.style.display = 'none';
 
+            // Asegurarse de que el iframe de audio esté cargado antes de que se use
+            // Ya está en el HTML con src="audio_player_hijo.html", solo hay que asegurar su display
+            // El wrapper se hará visible en cargarSiguientePaso()
+            audioIframe.style.display = 'block'; // Aseguramos que el iframe hijo de audio esté visible dentro de su contenedor.
 
             cargarSiguientePaso(); // Iniciar la aventura (cargar el primer audio/reto)
         });
 
         // Evento para el botón "Continuar con la Aventura"
         btnNextAfterReto.addEventListener('click', () => {
+            alert("DEBUG PADRE: Botón 'Continuar Aventura' clickeado. Avanzando paso.");
             currentStep++; // Avanzar al siguiente paso de la aventura
             cargarSiguientePaso();
             // Asegurarse de que el audio se detenga si se estaba reproduciendo
@@ -1129,11 +1198,14 @@
 
         // Toggle GPS real / simulación
         toggleGpsModeBtn.addEventListener('click', () => {
+            alert("DEBUG PADRE: Botón 'Toggle GPS Mode' clickeado.");
             gpsRealActivado = !gpsRealActivado;
             if (gpsRealActivado) {
+                alert("DEBUG PADRE: Cambiando a Modo GPS Real.");
                 stopGeolocation(); // Detener si estaba simulando
                 requestGeolocationPermission(); // Solicitar permiso y luego iniciar real
             } else {
+                alert("DEBUG PADRE: Cambiando a Modo GPS Manual/Simulado.");
                 stopGeolocation(); // Detener el GPS real
                 gpsModeStatusSpan.textContent = "GPS Desactivado (Modo Manual/Simulado)";
                 locationStatusSpan.textContent = "GPS Desactivado.";
@@ -1147,15 +1219,18 @@
 
         // Simular proximidad al siguiente punto (solo para depuración)
         simulateProximityBtn.addEventListener('click', () => {
+            alert("DEBUG PADRE: Botón 'Simular Proximidad' clickeado.");
             if (currentStep < audioPuntosInteres.length && !gpsRealActivado) {
                 const puntoSimulado = audioPuntosInteres[currentStep];
                 // Simular estar justo en el punto de activación
+                alert(`DEBUG PADRE: Simulando proximidad al punto ${puntoSimulado.id}`);
                 verificarProximidad(puntoSimulado.lat, puntoSimulado.lon);
 
                 // Si hay un reto o puzzle manual para este punto, mostrarlo también
                 const retosDelPunto = puzzlesPorPunto[puntoSimulado.id] || [];
                 const retoManual = retosDelPunto.find(r => r.activacion === 'manual');
                 if (retoManual && (puzzleIframe.style.display === 'none' || !puzzleIframe.style.display)) { // Solo si no hay un puzzle ya abierto
+                    alert(`DEBUG PADRE: Activando reto/puzzle manual simulado para el punto ${puntoSimulado.id}: ${retoManual.src}`);
                     console.log(`Activando reto manual simulado para el punto ${puntoSimulado.id}: ${retoManual.src}`);
                     if (retoManual.tipo === 'reto') {
                         cargarReto(retoManual.src);
@@ -1164,14 +1239,15 @@
                     }
                 }
             } else if (gpsRealActivado) {
-                alert("La simulación de proximidad solo funciona con el GPS Real Desactivado.");
+                alert("DEBUG PADRE: La simulación de proximidad solo funciona con el GPS Real Desactivado.");
             } else {
-                alert("No hay más puntos para simular o la aventura ha terminado.");
+                alert("DEBUG PADRE: No hay más puntos para simular o la aventura ha terminado.");
             }
         });
 
         // Manejar click del botón de Terminar Aventura
         terminarAventuraBtn.addEventListener('click', () => {
+            alert("DEBUG PADRE: Botón 'Terminar Aventura' clickeado.");
             if (confirm("¿Estás seguro de que quieres terminar la aventura?")) {
                 alert("¡Gracias por jugar! Aventura finalizada.");
                 window.location.reload(); // Recargar la página para reiniciar
@@ -1186,6 +1262,7 @@
         // Event listeners para las pestañas del menú izquierdo (ahora abren en pantalla completa)
         leftMenuContainer.querySelectorAll('.menu-tab-btn').forEach(button => {
             button.addEventListener('click', () => {
+                alert("DEBUG PADRE: Click en botón de menú izquierdo.");
                 const tabTarget = button.dataset.tabTarget;
                 let urlToLoad = '';
                 switch(tabTarget) {
@@ -1204,6 +1281,8 @@
                 }
                 if (urlToLoad) {
                     showContentInFullScreen(urlToLoad);
+                } else {
+                    alert("DEBUG PADRE: No se encontró URL para la pestaña: " + tabTarget);
                 }
             });
         });
@@ -1211,6 +1290,7 @@
         // Event listeners para las pestañas del menú derecho (ahora abren en pantalla completa)
         rightMenuContainer.querySelectorAll('.menu-tab-btn').forEach(button => {
             button.addEventListener('click', () => {
+                alert("DEBUG PADRE: Click en botón de menú derecho.");
                 const tabTarget = button.dataset.tabTarget;
                 let urlToLoad = '';
                 switch(tabTarget) {
@@ -1226,17 +1306,22 @@
                 }
                 if (urlToLoad) {
                     showContentInFullScreen(urlToLoad);
+                } else {
+                    alert("DEBUG PADRE: No se encontró URL para la pestaña: " + tabTarget);
                 }
             });
         });
 
         // Función para el botón de play/pause del audio (en el padre)
         playPauseBtn.addEventListener('click', () => {
+            alert("DEBUG PADRE: Botón Play/Pause clickeado.");
             if (!gpsRealActivado) { // Solo si el GPS real está desactivado
                 if (playPauseBtn.classList.contains('active')) {
+                    alert("DEBUG PADRE: Pausando audio manualmente.");
                     sendMessageToAudioChild('pauseAudio');
                     playPauseBtn.classList.remove('active');
                 } else {
+                    alert("DEBUG PADRE: Reproduciendo audio manualmente.");
                     sendMessageToAudioChild('playAudio', { src: audioPuntosInteres[currentStep].audio });
                     playPauseBtn.classList.add('active');
                 }
@@ -1249,6 +1334,7 @@
 
         // Función que se ejecuta al cargar la página
         document.addEventListener('DOMContentLoaded', () => {
+            alert("DEBUG PADRE: DOMContentLoaded - Inicializando la página.");
             // Asegurar que termsOverlay esté visible al inicio y el resto oculto
             termsOverlay.style.display = 'flex';
             welcomeOverlay.style.display = 'none';
@@ -1260,6 +1346,11 @@
             rightMenuContainer.style.display = 'none';
             fullScreenIframeContainer.style.display = 'none';
             document.getElementById('loading-message').style.display = 'block'; // Mostrar mensaje de carga inicial
+
+            // Asegurarse de que el iframe de audio esté cargado desde el principio pero oculto
+            // Su display se gestiona a través de audioPlayerWrapper
+            audioIframe.src = "audio_player_hijo.html";
+            alert("DEBUG PADRE: 'audio_player_hijo.html' cargado en iframe de audio.");
         });
     </script>
 </body>
