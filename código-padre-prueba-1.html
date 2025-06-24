@@ -1,60 +1,272 @@
-hamburguesaBtn.addEventListener('click', () => {
-  cerrarTodo();
-  panelHamburguesa.classList.add('visible');
-  panelHamburguesa.setAttribute('aria-hidden', 'false');
-});
-
-tresPuntosBtn.addEventListener('click', () => {
-  cerrarTodo();
-  panelTresPuntos.classList.add('visible');
-  panelTresPuntos.setAttribute('aria-hidden', 'false');
-});
-
-btnTierra.addEventListener('click', () => {
-  cerrarTodo();
-  menuTierra.classList.add('visible');
-  menuTierraVisible = true;
-});
-
-document.querySelectorAll('.cerrar-panel').forEach(btn => {
-  btn.addEventListener('click', cerrarTodo);
-});
-
-// Funciones del menú tierra
-menuTierra.querySelectorAll('button').forEach(btn => {
-  btn.addEventListener('click', e => {
-    const action = e.currentTarget.dataset.action;
-    if (action === 'mostrar_siguiente') {
-      document.getElementById('hijo').contentWindow.mostrarSiguientePunto();
-    } else if (action === 'mostrar_ruta') {
-      document.getElementById('hijo').contentWindow.mostrarRutaCompleta();
-    } else if (action === 'mostrar_imagen') {
-      imagenFull.classList.add('visible');
-      if (screen.orientation?.lock) {
-        screen.orientation.lock('landscape').catch(() => {});
-      }
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aventura en València</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      font-family: sans-serif;
     }
-  });
-});
+    #mapa {
+      height: 100%;
+      width: 100%;
+    }
+    iframe {
+      width: 0;
+      height: 0;
+      border: none;
+      position: absolute;
+      z-index: -1;
+    }
+    .boton-flotante {
+      position: fixed;
+      background: #007BFF;
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      font-size: 24px;
+      z-index: 13000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    #hamburguesa { bottom: 20px; left: 20px; }
+    #mas-opciones { bottom: 20px; right: 20px; }
+    #btn-mapa { top: 20px; right: 20px; }
+    #gps-prueba {
+      top: 20px;
+      left: 20px;
+      width: auto;
+      padding: 10px;
+      border-radius: 10px;
+      font-size: 14px;
+      position: fixed;
+      z-index: 13001;
+      cursor: pointer;
+    }
 
-gpsBtn.addEventListener('click', () => {
-  const estaON = gpsBtn.style.background === 'green';
-  if (estaON) {
-    gpsBtn.textContent = 'Modo casa OFF';
-    gpsBtn.style.background = 'red';
-    document.getElementById('hijo').contentWindow.activarGPS();
-  } else {
-    gpsBtn.textContent = 'Modo casa ON';
-    gpsBtn.style.background = 'green';
-    document.getElementById('hijo').contentWindow.desactivarGPS();
-  }
-});
+    .panel-flotante {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      width: 75vw;
+      height: 75vh;
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.3);
+      transform: translate(-50%, -50%) scale(0);
+      opacity: 0;
+      z-index: 12999;
+      display: flex;
+      flex-direction: column;
+      padding: 1rem;
+      overflow-y: auto;
+      transition: transform 0.4s ease, opacity 0.4s ease;
+    }
+    .panel-flotante.visible {
+      transform: translate(-50%, -50%) scale(1);
+      opacity: 1;
+    }
+    .panel-flotante .cerrar-panel {
+      align-self: flex-end;
+      background: #007BFF;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-size: 1.2rem;
+      padding: 5px 10px;
+      cursor: pointer;
+    }
+    .panel-flotante ul {
+      list-style: none;
+      padding: 0;
+      margin-top: 1rem;
+    }
+    .panel-flotante li {
+      margin: 1rem 0;
+      font-size: 1.2rem;
+      cursor: pointer;
+      color: #007BFF;
+    }
 
-// Abrir enlaces en iframe
-document.querySelectorAll('.panel-flotante li[data-url]').forEach(el => {
-  el.addEventListener('click', () => {
-    const url = el.dataset.url;
-    document.getElementById('hijo').src = url;
-    cerrarTodo();
-  });
-});
+    #menu-tierra {
+      position: fixed;
+      top: 80px;
+      right: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      z-index: 13000;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+    #menu-tierra.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    #menu-tierra button {
+      background: #007BFF;
+      border: none;
+      border-radius: 50%;
+      width: 44px;
+      height: 44px;
+      color: white;
+      font-size: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    #imagen-full {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: white;
+      z-index: 13002;
+      display: none;
+      flex-direction: column;
+    }
+    #imagen-full.visible {
+      display: flex;
+    }
+    #imagen-full img {
+      flex: 1;
+      width: 100%;
+      object-fit: contain;
+      touch-action: pinch-zoom;
+    }
+    #imagen-full .cerrar-panel {
+      align-self: flex-end;
+      background: #007BFF;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      margin: 10px;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div id="mapa"></div>
+  <iframe id="hijo" src="Av1-coordenadas.html"></iframe>
+
+  <button id="hamburguesa" class="boton-flotante">☰</button>
+  <button id="mas-opciones" class="boton-flotante">⋮</button>
+  <button id="btn-mapa" class="boton-flotante">🌍</button>
+  <button id="gps-prueba" style="background:red;">Modo casa OFF</button>
+
+  <div id="panel-hamburguesa" class="panel-flotante">
+    <button class="cerrar-panel">X</button>
+    <ul>
+      <li data-url="retos_con_puzzles_Av1_es.html">Retos y Puzzles</li>
+      <li data-url="Gastronomia.html">Gastronomía</li>
+      <li data-url="paginas_oficiales.html">Páginas Oficiales</li>
+      <li data-url="enlaces_valencia_historica.html">València Històrica</li>
+    </ul>
+  </div>
+
+  <div id="panel-trespuntos" class="panel-flotante">
+    <button class="cerrar-panel">X</button>
+    <ul>
+      <li data-url="Agradecimientos.html">Agradecimientos</li>
+      <li data-url="consejos_seguridad_vial.html">Consejos y Seguridad</li>
+    </ul>
+  </div>
+
+  <div id="menu-tierra">
+    <button data-action="mostrar_siguiente">📍</button>
+    <button data-action="mostrar_ruta">🗺️</button>
+    <button data-action="mostrar_imagen">🧭</button>
+  </div>
+
+  <div id="imagen-full">
+    <button class="cerrar-panel">X</button>
+    <img src="mapas/Av1_mapa.jpg" alt="Brújula">
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const mapa = L.map('mapa').setView([39.4699, -0.3763], 14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(mapa);
+
+    const btnHamburguesa = document.getElementById('hamburguesa');
+    const btnTrespuntos = document.getElementById('mas-opciones');
+    const btnTierra = document.getElementById('btn-mapa');
+    const gpsBtn = document.getElementById('gps-prueba');
+
+    const panelHamburguesa = document.getElementById('panel-hamburguesa');
+    const panelTrespuntos = document.getElementById('panel-trespuntos');
+    const menuTierra = document.getElementById('menu-tierra');
+    const imagenFull = document.getElementById('imagen-full');
+
+    function cerrarTodosPaneles() {
+      panelHamburguesa.classList.remove('visible');
+      panelTrespuntos.classList.remove('visible');
+      menuTierra.classList.remove('visible');
+      imagenFull.classList.remove('visible');
+      screen.orientation?.unlock?.();
+    }
+
+    btnHamburguesa.onclick = () => {
+      cerrarTodosPaneles();
+      panelHamburguesa.classList.add('visible');
+    };
+    btnTrespuntos.onclick = () => {
+      cerrarTodosPaneles();
+      panelTrespuntos.classList.add('visible');
+    };
+    btnTierra.onclick = () => {
+      cerrarTodosPaneles();
+      menuTierra.classList.add('visible');
+    };
+    document.querySelectorAll('.cerrar-panel').forEach(btn => btn.onclick = cerrarTodosPaneles);
+
+    menuTierra.querySelectorAll('button').forEach(btn => {
+      btn.onclick = e => {
+        const accion = e.currentTarget.dataset.action;
+        const iframe = document.getElementById('hijo').contentWindow;
+        if (accion === 'mostrar_siguiente') iframe.mostrarSiguientePunto();
+        else if (accion === 'mostrar_ruta') iframe.mostrarRutaCompleta();
+        else if (accion === 'mostrar_imagen') {
+          imagenFull.classList.add('visible');
+          if (screen.orientation?.lock) screen.orientation.lock('landscape').catch(() => {});
+        }
+      };
+    });
+
+    gpsBtn.onclick = () => {
+      const iframe = document.getElementById('hijo').contentWindow;
+      const esModoCasa = gpsBtn.style.background === 'green';
+      if (esModoCasa) {
+        gpsBtn.textContent = 'Modo casa OFF';
+        gpsBtn.style.background = 'red';
+        iframe.activarGPS();
+      } else {
+        gpsBtn.textContent = 'Modo casa ON';
+        gpsBtn.style.background = 'green';
+        iframe.desactivarGPS();
+      }
+    };
+
+    document.querySelectorAll('.panel-flotante li[data-url]').forEach(el => {
+      el.onclick = () => {
+        const url = el.dataset.url;
+        document.getElementById('hijo').src = url;
+        cerrarTodosPaneles();
+      }
+    });
+  </script>
+</body>
+</html>
