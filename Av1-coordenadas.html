@@ -1,88 +1,292 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <title>Detección de parada por coordenadas</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mapa padre con Leaflet y iframe Av1-coordenadas.html</title>
+
+<!-- Leaflet CSS -->
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-sA+o11o3JsKFY3Dc6rQ7PzGzO1bXYo7B1p+nJZpJb38="
+  crossorigin=""
+/>
+
+<style>
+  html, body, #map {
+    height: 100%;
+    margin: 0; padding: 0;
+  }
+
+  /* Botones flotantes */
+
+  /* Hamburguesa inferior izquierda */
+  #btnHamburguesa {
+    position: fixed;
+    bottom: 12px;
+    left: 12px;
+    width: 40px; height: 40px;
+    background: #004080;
+    border-radius: 6px;
+    color: white;
+    font-size: 28px;
+    text-align: center;
+    line-height: 40px;
+    cursor: pointer;
+    user-select: none;
+    z-index: 1500;
+  }
+
+  /* Tres botones inferior derecha */
+  #btnsDerecha {
+    position: fixed;
+    bottom: 12px;
+    right: 12px;
+    display: flex;
+    gap: 8px;
+    z-index: 1500;
+  }
+  #btnsDerecha button {
+    width: 40px;
+    height: 40px;
+    background: #004080;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-size: 20px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  /* Botón APAS esquina superior derecha */
+  #btnAPAS {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    width: 40px; height: 40px;
+    background: #004080;
+    border-radius: 6px;
+    color: white;
+    font-size: 22px;
+    text-align: center;
+    line-height: 40px;
+    cursor: pointer;
+    user-select: none;
+    z-index: 1500;
+  }
+
+  /* Botón GPS esquina superior izquierda */
+  #btnGPS {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    width: 40px; height: 40px;
+    background: #004080;
+    border-radius: 6px;
+    color: white;
+    font-size: 22px;
+    text-align: center;
+    line-height: 40px;
+    cursor: pointer;
+    user-select: none;
+    z-index: 1500;
+  }
+
+  /* Contenedor iframe con botón X para cerrar */
+  #iframeContainer {
+    position: fixed;
+    top: 60px;
+    right: 12px;
+    width: 350px;
+    height: 400px;
+    background: #003366;
+    border-radius: 8px;
+    box-shadow: 0 0 8px rgba(0,0,0,0.7);
+    z-index: 1400;
+    display: flex;
+    flex-direction: column;
+  }
+  #iframeContainer.hidden {
+    display: none;
+  }
+
+  #iframeHeader {
+    height: 36px;
+    background: #0059b3;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding-right: 6px;
+    user-select: none;
+  }
+  #iframeCloseBtn {
+    background: orange;
+    color: #003366;
+    border: none;
+    border-radius: 4px;
+    font-weight: bold;
+    cursor: pointer;
+    width: 28px;
+    height: 28px;
+    line-height: 28px;
+    text-align: center;
+  }
+
+  iframe {
+    flex-grow: 1;
+    border: none;
+    border-radius: 0 0 8px 8px;
+  }
+
+  /* Botón play activable */
+  #btnPlay {
+    position: fixed;
+    top: 60px;
+    left: 60px;
+    width: 48px; height: 48px;
+    background: #007700;
+    border-radius: 50%;
+    color: white;
+    font-size: 28px;
+    line-height: 48px;
+    text-align: center;
+    cursor: pointer;
+    user-select: none;
+    z-index: 1500;
+    opacity: 0.3;
+    transition: opacity 0.3s;
+  }
+  #btnPlay.active {
+    opacity: 1;
+    background: #00cc00;
+  }
+</style>
+
 </head>
 <body>
-  <h1>Detección de parada</h1>
-  <p id="estado">Esperando ubicación…</p>
 
-  <script>
-    const paradas = [
-      { nombre: "Torres de Serranos", lat: 39.4795, lng: -0.3757 },
-      { nombre: "Puente de Serranos – Plaza de la crida", lat: 39.4782, lng: -0.3750 },
-      { nombre: "Cortes Valencianas (Palacio de los Borgia)", lat: 39.4788, lng: -0.3744 },
-      { nombre: "Plaza de la Virgen", lat: 39.4781, lng: -0.3766 },
-      { nombre: "Plaza de la Almoína", lat: 39.4777, lng: -0.3758 },
-      { nombre: "Catedral de València", lat: 39.4776, lng: -0.3753 },
-      { nombre: "Plaza decimo Juno Bruto", lat: 39.4771, lng: -0.3749 },
-      { nombre: "Basílica de València", lat: 39.4780, lng: -0.3754 },
-      { nombre: "Palacio Arzobispal", lat: 39.4775, lng: -0.3756 },
-      { nombre: "Plaza del Ayuntamiento", lat: 39.4698, lng: -0.3763 },
-      { nombre: "Edificio del Ayuntamiento de València", lat: 39.4695, lng: -0.3762 },
-      { nombre: "Estación de Ferrocarril (Estación del Norte)", lat: 39.4655, lng: -0.3770 },
-      { nombre: "Plaza de Toros de València", lat: 39.4652, lng: -0.3767 },
-      { nombre: "Casa estilo Árabe", lat: 39.4672, lng: -0.3759 },
-      { nombre: "Palacio de Comunicaciones (Correos)", lat: 39.4693, lng: -0.3761 },
-      { nombre: "Antigua sede del Banco de València", lat: 39.4691, lng: -0.3760 },
-      { nombre: "Palacio del Marqués de Dos Aguas", lat: 39.4703, lng: -0.3747 },
-      { nombre: "Mercado Central", lat: 39.4741, lng: -0.3780 },
-      { nombre: "San Juan del Mercado", lat: 39.4739, lng: -0.3776 },
-      { nombre: "Lonja de València", lat: 39.4742, lng: -0.3772 },
-      { nombre: "Plaza del Doctor Collado", lat: 39.4740, lng: -0.3768 },
-      { nombre: "Plaza del Negrito", lat: 39.4760, lng: -0.3755 },
-      { nombre: "Calle Caballeros", lat: 39.4768, lng: -0.3751 },
-      { nombre: "Palacio de la Generalitat", lat: 39.4784, lng: -0.3752 },
-    ];
+<div id="map"></div>
 
-    function slugify(texto) {
-      return texto.toLowerCase()
-        .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // quita acentos
-        .replace(/[^a-z0-9]+/g, '-')                     // reemplaza no alfanumérico por guiones
-        .replace(/(^-|-$)/g, '');                        // quita guiones al inicio/final
-    }
+<!-- Botones flotantes -->
+<div id="btnHamburguesa" title="Menú">&#9776;</div>
 
-    function getDistanceMeters(lat1, lng1, lat2, lng2) {
-      const R = 6371000; // Radio Tierra en m
-      const toRad = deg => deg * Math.PI / 180;
-      const dLat = toRad(lat2 - lat1);
-      const dLng = toRad(lng2 - lng1);
-      const a = Math.sin(dLat/2)**2 +
-                Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng/2)**2;
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      return R * c;
-    }
+<div id="btnsDerecha" title="Tres botones flotantes">
+  <button title="Botón 1">1</button>
+  <button title="Botón 2">2</button>
+  <button title="Botón 3">3</button>
+</div>
 
-    function detectarParada(pos) {
-      const { latitude, longitude } = pos.coords;
+<div id="btnAPAS" title="Botón APAS">🗺️</div>
 
-      for (const parada of paradas) {
-        const dist = getDistanceMeters(latitude, longitude, parada.lat, parada.lng);
-        if (dist < 15) {
-          const slug = slugify(parada.nombre);
-          document.getElementById("estado").textContent =
-            `Estás en: ${parada.nombre} (${Math.round(dist)} m)`;
+<div id="btnGPS" title="Activar/Desactivar GPS">📍</div>
 
-          // ✅ Paso 1: enviar slug/id robusto al padre
-          window.parent.postMessage({ tipo: "parada_detectada", id: slug }, "*");
-          return;
-        }
+<!-- Botón play activable -->
+<div id="btnPlay" title="Play">&#9658;</div>
+
+<!-- Contenedor iframe -->
+<div id="iframeContainer">
+  <div id="iframeHeader">
+    <button id="iframeCloseBtn" title="Cerrar iframe">X</button>
+  </div>
+  <iframe src="Av1-coordenadas.html" id="iframeAv1"></iframe>
+</div>
+
+<!-- Leaflet JS -->
+<script
+  src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-o9N1j7N46AIvL6auQJcMXj1S6hQz8ch+JXsnXYp9B38="
+  crossorigin=""
+></script>
+
+<script>
+  // Inicializamos el mapa
+  const map = L.map('map').setView([40.4168, -3.7038], 13); // Madrid centro por defecto
+
+  // Añadimos OpenStreetMap
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap'
+  }).addTo(map);
+
+  // Contenedor de marcadores para limpiar si es necesario
+  const markers = {};
+
+  // Escuchar mensajes del iframe Av1-coordenadas.html
+  window.addEventListener('message', (event) => {
+    // Podríamos verificar origin si se requiere seguridad
+    if (!event.data) return;
+
+    if (event.data.tipo === 'paradas') {
+      const paradas = event.data.paradas; // array con objetos {id, nombre, lat, lng}
+      // Limpiar marcadores anteriores
+      for(let key in markers) {
+        map.removeLayer(markers[key]);
       }
-
-      document.getElementById("estado").textContent =
-        `No estás cerca de ninguna parada (${latitude.toFixed(5)}, ${longitude.toFixed(5)})`;
+      // Añadir marcadores nuevos
+      paradas.forEach(p => {
+        const mk = L.marker([p.lat, p.lng]).addTo(map).bindPopup(p.nombre);
+        mk.on('click', () => {
+          mk.openPopup();
+          // Enviar mensaje al iframe si quieres que haga algo
+          // o aquí disparar evento en padre si se requiere
+        });
+        markers[p.id] = mk;
+      });
     }
 
-    function error(err) {
-      document.getElementById("estado").textContent = "Error obteniendo ubicación: " + err.message;
+    if(event.data.tipo === 'parada_detectada') {
+      const paradaId = event.data.id; // el slug de la parada
+      activarBotonPlay(paradaId);
     }
+  });
 
-    navigator.geolocation.watchPosition(detectarParada, error, {
-      enableHighAccuracy: true,
-      maximumAge: 1000,
-      timeout: 5000,
+  // Función para activar botón play
+  const btnPlay = document.getElementById('btnPlay');
+  function activarBotonPlay(paradaId) {
+    // Por ahora simplemente lo activamos y ponemos título con id
+    btnPlay.classList.add('active');
+    btnPlay.title = `Play activado para parada: ${paradaId}`;
+  }
+
+  // Botón para cerrar/abrir iframe
+  const iframeContainer = document.getElementById('iframeContainer');
+  const iframeCloseBtn = document.getElementById('iframeCloseBtn');
+
+  iframeCloseBtn.addEventListener('click', () => {
+    if(iframeContainer.classList.contains('hidden')){
+      iframeContainer.classList.remove('hidden');
+      iframeCloseBtn.textContent = 'X';
+    } else {
+      iframeContainer.classList.add('hidden');
+      iframeCloseBtn.textContent = '▶';
+    }
+  });
+
+  // Opcional: Añadir función para botón GPS para simular activar/desactivar
+  const btnGPS = document.getElementById('btnGPS');
+  let gpsActivo = false;
+  btnGPS.addEventListener('click', () => {
+    gpsActivo = !gpsActivo;
+    btnGPS.style.background = gpsActivo ? '#007700' : '#004080';
+    btnGPS.title = gpsActivo ? 'GPS Activado' : 'GPS Desactivado';
+    // Aquí puedes añadir lógica real de geolocalización si quieres
+  });
+
+  // Otros botones (hamburguesa, APAS, tres botones) pueden tener listeners vacíos por ahora
+  document.getElementById('btnHamburguesa').addEventListener('click', () => {
+    alert('Botón hamburguesa pulsado');
+  });
+  document.getElementById('btnAPAS').addEventListener('click', () => {
+    alert('Botón APAS pulsado');
+  });
+  [...document.querySelectorAll('#btnsDerecha button')].forEach((btn, i) => {
+    btn.addEventListener('click', () => {
+      alert(`Botón derecho ${i+1} pulsado`);
     });
-  </script>
+  });
+
+</script>
+
 </body>
 </html>
