@@ -123,7 +123,7 @@
     #imagen-full img {
       width: 100vw;
       height: 100vh;
-      object-fit: contain;
+      object-fit: cover;
     }
     #cerrar-imagen {
       position: absolute;
@@ -139,6 +139,10 @@
       border-radius: 6px;
       cursor: pointer;
       z-index: 15000;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     #gps-prueba {
       position: fixed;
@@ -197,6 +201,7 @@
       'icono-seguridad': 'consejos_seguridad_vial.html',
       'icono-fuentes': null,
     };
+
     const btnGps = document.getElementById('gps-prueba');
     let gpsActivo = false;
     btnGps.onclick = () => {
@@ -230,77 +235,141 @@
       ocultarIconos(iconosMapa);
 
       const rect = btn.getBoundingClientRect();
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
-      const radio = 100;
-      const margen = 10;
-      const startAngle = direccion === 'arriba' ? -Math.PI / 2 : Math.PI;
-      const endAngle = direccion === 'arriba' ? 0 : Math.PI / 2;
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const radio = 80;
+      const total = iconos.length;
 
       iconos.forEach((icono, i) => {
-        const angle = startAngle + (i / (iconos.length - 1 || 1)) * (endAngle - startAngle);
-        let x = cx + radio * Math.cos(angle) - icono.offsetWidth / 2;
-        let y = cy + radio * Math.sin(angle) - icono.offsetHeight / 2;
-        x = Math.max(margen, Math.min(window.innerWidth - icono.offsetWidth - margen, x));
-        y = Math.max(margen, Math.min(window.innerHeight - icono.offsetHeight - margen, y));
-        icono.style.left = `${x}px`;
-        icono.style.top = `${y}px`;
-        icono.style.display = 'flex';
+        if (icono) {
+          icono.style.display = 'flex';
+          let angleStart, angleEnd;
+          if (direccion === 'izquierda') {
+            angleStart = 0;
+            angleEnd = Math.PI;
+          } else if (direccion === 'derecha') {
+            angleStart = Math.PI;
+            angleEnd = 2 * Math.PI;
+          } else {
+            angleStart = 0;
+            angleEnd = 2 * Math.PI;
+          }
+          const angle = angleStart + (angleEnd - angleStart) * (i / (total - 1));
+          icono.style.left = (centerX + radio * Math.cos(angle) - icono.offsetWidth / 2) + 'px';
+          icono.style.top = (centerY + radio * Math.sin(angle) - icono.offsetHeight / 2) + 'px';
+        }
       });
+      grupoActual = iconos;
     }
+
     function ocultarIconos(iconos) {
-      iconos.forEach(icono => icono.style.display = 'none');
+      iconos.forEach(icono => {
+        if (icono) icono.style.display = 'none';
+      });
     }
 
     document.getElementById('hamburguesa').onclick = () => {
-      grupoActual === 'hamburguesa' ? (ocultarIconos(iconosHamburguesa), grupoActual = null)
-        : (mostrarEnCuarto(iconosHamburguesa, event.currentTarget, 'arriba'), grupoActual = 'hamburguesa');
+      if (grupoActual === iconosHamburguesa) {
+        ocultarIconos(iconosHamburguesa);
+        grupoActual = null;
+      } else {
+        mostrarEnCuarto(iconosHamburguesa, document.getElementById('hamburguesa'), 'izquierda');
+      }
     };
     document.getElementById('mas-opciones').onclick = () => {
-      grupoActual === 'mas' ? (ocultarIconos(iconosMasOpciones), grupoActual = null)
-        : (mostrarEnCuarto(iconosMasOpciones, event.currentTarget, 'arriba'), grupoActual = 'mas');
+      if (grupoActual === iconosMasOpciones) {
+        ocultarIconos(iconosMasOpciones);
+        grupoActual = null;
+      } else {
+        mostrarEnCuarto(iconosMasOpciones, document.getElementById('mas-opciones'), 'derecha');
+      }
     };
     document.getElementById('btn-mapa').onclick = () => {
-      grupoActual === 'mapa' ? (ocultarIconos(iconosMapa), grupoActual = null)
-        : (mostrarEnCuarto(iconosMapa, event.currentTarget, 'abajo'), grupoActual = 'mapa');
+      if (grupoActual === iconosMapa) {
+        ocultarIconos(iconosMapa);
+        grupoActual = null;
+      } else {
+        mostrarEnCuarto(iconosMapa, document.getElementById('btn-mapa'), 'izquierda');
+      }
     };
 
-    iconosHamburguesa.concat(iconosMasOpciones).forEach(icono => {
-      icono.onclick = () => {
-        const url = iconosUrls[icono.id];
-        if (!url) return alert('Esta función está en desarrollo.');
-        document.getElementById('iframe-contenido').src = url;
-        document.getElementById('panel-contenido').style.display = 'flex';
-      }
-    });
+    // Abrir panel contenido al hacer click en iconos
+    function abrirPanel(url) {
+      if (!url) return;
+      const panel = document.getElementById('panel-contenido');
+      const iframe = document.getElementById('iframe-contenido');
+      iframe.src = url;
+      panel.style.display = 'flex';
+    }
     document.getElementById('cerrar-panel').onclick = () => {
-      document.getElementById('iframe-contenido').src = '';
-      document.getElementById('panel-contenido').style.display = 'none';
+      const panel = document.getElementById('panel-contenido');
+      const iframe = document.getElementById('iframe-contenido');
+      iframe.src = '';
+      panel.style.display = 'none';
     };
-    iconosMapa[0].onclick = () => document.getElementById('hijo').contentWindow.postMessage('mostrar_siguiente', '*');
-    iconosMapa[1].onclick = () => document.getElementById('hijo').contentWindow.postMessage('mostrar_ruta', '*');
-    iconosMapa[2].onclick = () => {
-      document.getElementById('imagen-mapa').src = 'mapas/Av1_mapa.jpg';
-      document.getElementById('imagen-full').style.display = 'flex';
+
+    for (const id in iconosUrls) {
+      const icono = document.getElementById(id);
+      if (icono) {
+        icono.onclick = () => {
+          abrirPanel(iconosUrls[id]);
+          ocultarIconos(iconosHamburguesa);
+          ocultarIconos(iconosMasOpciones);
+          ocultarIconos(iconosMapa);
+          grupoActual = null;
+        };
+      }
+    }
+
+    // Iconos especiales
+    const iconoPunto = document.getElementById('icono-punto');
+    const iconoRuta = document.getElementById('icono-ruta');
+    const iconoBrujula = document.getElementById('icono-brujula');
+
+    iconoPunto.onclick = () => {
+      alert('Función "Punto" activada');
+      ocultarIconos(iconosMapa);
+      grupoActual = null;
     };
+    iconoRuta.onclick = () => {
+      alert('Función "Ruta" activada');
+      ocultarIconos(iconosMapa);
+      grupoActual = null;
+    };
+    iconoBrujula.onclick = () => {
+      const imagenFull = document.getElementById('imagen-full');
+      const imagenMapa = document.getElementById('imagen-mapa');
+      imagenMapa.src = 'brujula_valencia.png';
+      imagenFull.style.display = 'flex';
+      ocultarIconos(iconosMapa);
+      grupoActual = null;
+    };
+
     document.getElementById('cerrar-imagen').onclick = () => {
-      document.getElementById('imagen-full').style.display = 'none';
+      const imagenFull = document.getElementById('imagen-full');
+      imagenFull.style.display = 'none';
       document.getElementById('imagen-mapa').src = '';
     };
 
-    window.addEventListener('message', e => {
-      if (e.data === 'cerrar_panel') {
-        document.getElementById('iframe-contenido').src = '';
-        document.getElementById('panel-contenido').style.display = 'none';
+    // Inicialización Leaflet (aunque no hay mapas visibles, lo dejamos)
+    const map = L.map('mapa').setView([39.4699, -0.3763], 13);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    // Evitar que los iconos desaparezcan si se clica fuera (click en body)
+    document.body.addEventListener('click', e => {
+      const botones = ['hamburguesa', 'mas-opciones', 'btn-mapa'];
+      if (!botones.some(id => document.getElementById(id).contains(e.target)) &&
+          ![...document.querySelectorAll('.icono-flotante')].some(icono => icono.contains(e.target))) {
+        if (grupoActual) {
+          ocultarIconos(grupoActual);
+          grupoActual = null;
+        }
       }
     });
 
-    L.map('mapa').setView([39.4699, -0.3763], 13).addLayer(
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '© OpenStreetMap'
-      })
-    );
   </script>
 </body>
 </html>
