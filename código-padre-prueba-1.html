@@ -229,7 +229,7 @@
     ];
     let grupoActual = null;
 
-    function mostrarEnCuarto(iconos, btn, direccion) {
+    function mostrarEnCuarto(iconos, btn, grupo) {
       ocultarIconos(iconosHamburguesa);
       ocultarIconos(iconosMasOpciones);
       ocultarIconos(iconosMapa);
@@ -237,28 +237,62 @@
       const rect = btn.getBoundingClientRect();
       const centerX = rect.left + rect.width / 2;
       const centerY = rect.top + rect.height / 2;
-      const radio = 80;
-      const total = iconos.length;
+      const radio = 90;
+
+      // Ángulos reloj en radianes según el grupo:
+      // Para que sea intuitivo:
+      // Hamb: 12(0º), 1(30º), 2(60º), 3(90º) = [ -90º, -60º, -30º, 0º ] respecto a eje X positivo, pero mejor en radianes en coordenadas canvas
+      // En canvas 0 rad = derecha (3h), y aumenta antihorario.
+      // Queremos posiciones arriba y a la derecha (para hamburguesa abajo izquierda)
+      // Así que ajustamos para que iconos estén arriba y derecha.
+      // En canvas (x, y) con y hacia abajo:
+      // -90º = 270º = 3*PI/2 rad (arriba)
+      // -60º = 300º = 5*PI/3
+      // -30º = 330º = 11*PI/6
+      // 0º = 0 (derecha)
+
+      // Más opciones: abajo derecha: posiciones 12(270º),10(210º),9(180º)
+      // que en canvas son 3*PI/2, 7*PI/6, PI
+      // Mapa arriba derecha: 9(180º), 7(210º), 6(270º)
+
+      let angulos = [];
+
+      if (grupo === 'hamburguesa') {
+        // posiciones: 12h(270°),1h(300°),2h(330°),3h(0°)
+        angulos = [
+          3 * Math.PI / 2,    // 270°
+          5 * Math.PI / 3,    // 300°
+          11 * Math.PI / 6,   // 330°
+          0                   // 0°
+        ];
+      } else if (grupo === 'mas-opciones') {
+        // posiciones: 12h(270°),10h(210°),9h(180°)
+        angulos = [
+          3 * Math.PI / 2,    // 270°
+          7 * Math.PI / 6,    // 210°
+          Math.PI             // 180°
+        ];
+      } else if (grupo === 'mapa') {
+        // posiciones: 9h(180°),7h(210°),6h(270°)
+        angulos = [
+          Math.PI,            // 180°
+          7 * Math.PI / 6,    // 210°
+          3 * Math.PI / 2     // 270°
+        ];
+      }
 
       iconos.forEach((icono, i) => {
-        if (icono) {
-          icono.style.display = 'flex';
-          let angleStart, angleEnd;
-          if (direccion === 'izquierda') {
-            angleStart = 0;
-            angleEnd = Math.PI;
-          } else if (direccion === 'derecha') {
-            angleStart = Math.PI;
-            angleEnd = 2 * Math.PI;
-          } else {
-            angleStart = 0;
-            angleEnd = 2 * Math.PI;
-          }
-          const angle = angleStart + (angleEnd - angleStart) * (i / (total - 1));
-          icono.style.left = (centerX + radio * Math.cos(angle) - icono.offsetWidth / 2) + 'px';
-          icono.style.top = (centerY + radio * Math.sin(angle) - icono.offsetHeight / 2) + 'px';
-        }
+        if (!icono) return;
+        icono.style.display = 'flex';
+        const angulo = angulos[i];
+        // Calcular posiciones
+        // ojo con el sistema coordenadas pantalla: y positivo hacia abajo, x positivo hacia derecha
+        const x = centerX + radio * Math.cos(angulo) - icono.offsetWidth / 2;
+        const y = centerY + radio * Math.sin(angulo) - icono.offsetHeight / 2;
+        icono.style.left = x + 'px';
+        icono.style.top = y + 'px';
       });
+
       grupoActual = iconos;
     }
 
@@ -273,7 +307,7 @@
         ocultarIconos(iconosHamburguesa);
         grupoActual = null;
       } else {
-        mostrarEnCuarto(iconosHamburguesa, document.getElementById('hamburguesa'), 'izquierda');
+        mostrarEnCuarto(iconosHamburguesa, document.getElementById('hamburguesa'), 'hamburguesa');
       }
     };
     document.getElementById('mas-opciones').onclick = () => {
@@ -281,7 +315,7 @@
         ocultarIconos(iconosMasOpciones);
         grupoActual = null;
       } else {
-        mostrarEnCuarto(iconosMasOpciones, document.getElementById('mas-opciones'), 'derecha');
+        mostrarEnCuarto(iconosMasOpciones, document.getElementById('mas-opciones'), 'mas-opciones');
       }
     };
     document.getElementById('btn-mapa').onclick = () => {
@@ -289,7 +323,7 @@
         ocultarIconos(iconosMapa);
         grupoActual = null;
       } else {
-        mostrarEnCuarto(iconosMapa, document.getElementById('btn-mapa'), 'izquierda');
+        mostrarEnCuarto(iconosMapa, document.getElementById('btn-mapa'), 'mapa');
       }
     };
 
@@ -369,7 +403,6 @@
         }
       }
     });
-
   </script>
 </body>
 </html>
