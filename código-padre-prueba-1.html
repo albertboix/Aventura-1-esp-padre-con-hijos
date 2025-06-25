@@ -239,75 +239,85 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    const mapa = L.map('mapa').setView([39.4699, -0.3763], 14);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(mapa);
+    document.addEventListener('DOMContentLoaded', () => {
+      // Mostrar siempre términos al iniciar
+      const terminos = document.getElementById('terminos');
+      const btnAceptarTerminos = document.getElementById('aceptar-terminos');
+      terminos.style.display = 'flex';
+      btnAceptarTerminos.addEventListener('click', () => {
+        terminos.style.display = 'none';
+      });
 
-    let gpsActivo = false;
-    const btnGps = document.getElementById('gps-prueba');
-    btnGps.addEventListener('click', () => {
-      gpsActivo = !gpsActivo;
-      btnGps.style.background = gpsActivo ? 'green' : 'red';
-      btnGps.textContent = gpsActivo ? 'Casa ON' : 'Casa OFF';
-      document.getElementById('hijo').contentWindow.postMessage({ tipo: 'gps_modo', activo: gpsActivo }, '*');
-    });
+      // Inicializar mapa Leaflet
+      const mapa = L.map('mapa').setView([39.4699, -0.3763], 14);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(mapa);
 
-    function cargar(url) {
-      const paneles = ['panel-hamburguesa', 'panel-trespuntos', 'panel-mapa'];
-      let panelVisible = null;
-      for (const id of paneles) {
-        const p = document.getElementById(id);
-        if (p.style.display === 'flex') {
-          panelVisible = p;
-          break;
+      // Control GPS activado/desactivado
+      let gpsActivo = false;
+      const btnGps = document.getElementById('gps-prueba');
+      btnGps.addEventListener('click', () => {
+        gpsActivo = !gpsActivo;
+        btnGps.style.background = gpsActivo ? 'green' : 'red';
+        btnGps.textContent = gpsActivo ? 'Casa ON' : 'Casa OFF';
+        document.getElementById('hijo').contentWindow.postMessage({ tipo: 'gps_modo', activo: gpsActivo }, '*');
+      });
+
+      // Función cargar HTML en iframe dentro del panel visible
+      function cargar(url) {
+        const paneles = ['panel-hamburguesa', 'panel-trespuntos', 'panel-mapa'];
+        let panelVisible = null;
+        for (const id of paneles) {
+          const p = document.getElementById(id);
+          if (p.style.display === 'flex') {
+            panelVisible = p;
+            break;
+          }
+        }
+        if (!panelVisible) return;
+        const iframeExistente = panelVisible.querySelector('iframe');
+        if (iframeExistente) {
+          iframeExistente.src = url;
+        } else {
+          const iframe = document.createElement('iframe');
+          iframe.src = url;
+          panelVisible.appendChild(iframe);
         }
       }
-      if (!panelVisible) return;
-      const iframeExistente = panelVisible.querySelector('iframe');
-      if (iframeExistente) {
-        iframeExistente.src = url;
-      } else {
-        const iframe = document.createElement('iframe');
-        iframe.src = url;
-        panelVisible.appendChild(iframe);
-      }
-    }
 
-    function cerrarPanel() {
-      document.querySelectorAll('.panel').forEach(p => {
-        p.style.display = 'none';
-        const iframe = p.querySelector('iframe');
-        if (iframe) {
-          iframe.src = '';
-          iframe.remove();
+      // Función cerrar paneles e imagen
+      function cerrarPanel() {
+        document.querySelectorAll('.panel').forEach(p => {
+          p.style.display = 'none';
+          const iframe = p.querySelector('iframe');
+          if (iframe) {
+            iframe.src = '';
+            iframe.remove();
+          }
+        });
+        document.getElementById('imagen-full').style.display = 'none';
+      }
+
+      const togglePanel = (btnId, panelId) => {
+        const panel = document.getElementById(panelId);
+        const isVisible = panel.style.display === 'flex';
+        cerrarPanel();
+        if (!isVisible) panel.style.display = 'flex';
+      };
+
+      document.getElementById('hamburguesa').addEventListener('click', () => togglePanel('hamburguesa', 'panel-hamburguesa'));
+      document.getElementById('mas-opciones').addEventListener('click', () => togglePanel('mas-opciones', 'panel-trespuntos'));
+      document.getElementById('btn-mapa').addEventListener('click', () => togglePanel('btn-mapa', 'panel-mapa'));
+
+      function mostrarImagen() {
+        cerrarPanel();
+        document.getElementById('imagen-full').style.display = 'flex';
+      }
+
+      window.addEventListener('message', (event) => {
+        if (event.data.tipo === 'parada_detectada') {
+          console.log('Parada detectada:', event.data.id);
         }
       });
-      document.getElementById('imagen-full').style.display = 'none';
-    }
-
-    const togglePanel = (btnId, panelId) => {
-      const panel = document.getElementById(panelId);
-      const isVisible = panel.style.display === 'flex';
-      cerrarPanel();
-      if (!isVisible) panel.style.display = 'flex';
-    };
-
-    document.getElementById('hamburguesa').addEventListener('click', () => togglePanel('hamburguesa', 'panel-hamburguesa'));
-    document.getElementById('mas-opciones').addEventListener('click', () => togglePanel('mas-opciones', 'panel-trespuntos'));
-    document.getElementById('btn-mapa').addEventListener('click', () => togglePanel('btn-mapa', 'panel-mapa'));
-
-    function mostrarImagen() {
-      cerrarPanel();
-      document.getElementById('imagen-full').style.display = 'flex';
-    }
-
-    window.addEventListener('message', (event) => {
-      if (event.data.tipo === 'parada_detectada') {
-        console.log('Parada detectada:', event.data.id);
-      }
-    });
-
-    document.getElementById('aceptar-terminos').addEventListener('click', () => {
-      document.getElementById('terminos').style.display = 'none';
     });
   </script>
 </body>
