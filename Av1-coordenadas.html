@@ -125,7 +125,7 @@
     paradas.forEach((parada, i) => {
       const li = document.createElement('li');
       li.textContent = parada.nombre;
-      li.tabIndex = 0; // que sea accesible con teclado
+      li.tabIndex = 0; // accesible con teclado
       li.setAttribute('role', 'button');
       li.addEventListener('click', () => {
         document.getElementById('estado').textContent = `Parada seleccionada: ${parada.nombre}`;
@@ -137,6 +137,12 @@
         }
       });
       lista.appendChild(li);
+    });
+
+    // Enviar las coordenadas al padre para que pinte la ruta en el mapa padre
+    window.addEventListener("load", () => {
+      const puntos = paradas.map(({nombre, lat, lng}) => ({ nombre, lat, lng }));
+      window.parent.postMessage({ tipo: "coordenadas", puntos }, "*");
     });
 
     // Función para slugificar
@@ -185,48 +191,16 @@
       document.getElementById("estado").textContent = "Error obteniendo ubicación: " + err.message;
     }
 
-    // Variable para almacenar watcher id
-    let geoWatcherId = null;
-
-    // Función para iniciar geolocalización
-    function iniciarGeolocalizacion() {
-      if (navigator.geolocation) {
-        geoWatcherId = navigator.geolocation.watchPosition(detectarParada, error, {
-          enableHighAccuracy: true,
-          maximumAge: 1000,
-          timeout: 5000,
-        });
-      } else {
-        document.getElementById("estado").textContent = "Geolocalización no soportada por este navegador.";
-      }
+    // Iniciar geolocalización
+    if (navigator.geolocation) {
+      navigator.geolocation.watchPosition(detectarParada, error, {
+        enableHighAccuracy: true,
+        maximumAge: 1000,
+        timeout: 5000,
+      });
+    } else {
+      document.getElementById("estado").textContent = "Geolocalización no soportada por este navegador.";
     }
-
-    // Función para detener geolocalización
-    function detenerGeolocalizacion() {
-      if (geoWatcherId !== null) {
-        navigator.geolocation.clearWatch(geoWatcherId);
-        geoWatcherId = null;
-        document.getElementById("estado").textContent = "Geolocalización detenida.";
-      }
-    }
-
-    // Al cargar, enviar las coordenadas al padre (para el mapa padre)
-    window.addEventListener("load", () => {
-      window.parent.postMessage({ tipo: "coordenadas", puntos: paradas }, "*");
-      // Iniciar geolocalización por defecto (puedes modificar si quieres que sea solo cuando padre mande)
-      iniciarGeolocalizacion();
-    });
-
-    // Escuchar mensajes del padre para activar/desactivar geolocalización
-    window.addEventListener("message", (event) => {
-      if (!event.data || !event.data.tipo) return;
-
-      if (event.data.tipo === "activar_gps") {
-        iniciarGeolocalizacion();
-      } else if (event.data.tipo === "desactivar_gps") {
-        detenerGeolocalizacion();
-      }
-    });
 
     // --- MAPA LEAFLET ---
 
@@ -256,7 +230,7 @@
       }
 
       mapDiv.style.display = 'block';
-      map.invalidateSize(); // para que Leaflet ajuste tamaño tras mostrar
+      map.invalidateSize(); // ajustar tamaño tras mostrar
     });
 
     cerrarMapaBtn.addEventListener('click', () => {
