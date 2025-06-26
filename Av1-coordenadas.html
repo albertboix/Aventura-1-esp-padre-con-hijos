@@ -3,10 +3,94 @@
 <head>
   <meta charset="UTF-8" />
   <title>Detección de parada por coordenadas</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 1em;
+      position: relative;
+      min-height: 100vh;
+    }
+    #estado {
+      margin: 1em 0;
+      font-weight: bold;
+    }
+    #listaParadas {
+      list-style: none;
+      padding: 0;
+      max-height: 250px;
+      overflow-y: auto;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    #listaParadas li {
+      padding: 8px 12px;
+      cursor: pointer;
+      border-bottom: 1px solid #eee;
+      transition: background-color 0.3s;
+    }
+    #listaParadas li:hover {
+      background-color: #f0f0f0;
+    }
+    #btnMapa {
+      margin: 1em 0;
+      padding: 8px 16px;
+      cursor: pointer;
+      background-color: #007bff;
+      border: none;
+      border-radius: 4px;
+      color: white;
+      font-size: 1em;
+    }
+    #map {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      z-index: 1000;
+      display: none;
+    }
+    #map.leaflet-container {
+      width: 100%;
+      height: 100%;
+    }
+    #cerrarMapa {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1100;
+      background: rgba(255,255,255,0.9);
+      border: none;
+      padding: 6px 12px;
+      font-weight: bold;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+  </style>
+
+  <!-- Leaflet CSS -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-o1bfrXJsAw+ZjF0wtX+c2LuRm2zI8Fw7QCEaqN+Q8kw="
+    crossorigin=""
+  />
 </head>
 <body>
   <h1>Detección de parada</h1>
   <p id="estado">Esperando ubicación…</p>
+
+  <button id="btnMapa">Mostrar mapa</button>
+
+  <ul id="listaParadas" aria-label="Lista de paradas"></ul>
+
+  <div id="map">
+    <button id="cerrarMapa">Cerrar mapa ✕</button>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-oCknbDwhJyoZ0chF88PlJ8uyT3+q3lvVZ/QQ5CRd9lg="
+    crossorigin=""
+  ></script>
 
   <script>
     const paradas = [
@@ -36,6 +120,26 @@
       { nombre: "Palacio de la Generalitat", lat: 39.4784, lng: -0.3752 }
     ];
 
+    // Rellenar lista de paradas con li clicables
+    const lista = document.getElementById('listaParadas');
+    paradas.forEach((parada, i) => {
+      const li = document.createElement('li');
+      li.textContent = parada.nombre;
+      li.tabIndex = 0; // que sea accesible con teclado
+      li.setAttribute('role', 'button');
+      li.addEventListener('click', () => {
+        document.getElementById('estado').textContent = `Parada seleccionada: ${parada.nombre}`;
+      });
+      li.addEventListener('keypress', e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          li.click();
+        }
+      });
+      lista.appendChild(li);
+    });
+
+    // Función para slugificar
     function slugify(texto) {
       return texto.toLowerCase()
         .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -43,6 +147,7 @@
         .replace(/(^-|-$)/g, '');
     }
 
+    // Calcular distancia en metros
     function getDistanceMeters(lat1, lng1, lat2, lng2) {
       const R = 6371000;
       const toRad = deg => deg * Math.PI / 180;
@@ -54,6 +159,7 @@
       return R * c;
     }
 
+    // Detección de parada por GPS
     function detectarParada(pos) {
       const { latitude, longitude } = pos.coords;
 
@@ -64,7 +170,7 @@
           document.getElementById("estado").textContent =
             `Estás en: ${parada.nombre} (${Math.round(dist)} m)`;
 
-          // ✅ Enviar al padre
+          // Enviar al padre (si se usa iframe)
           window.parent.postMessage({ tipo: "parada_detectada", id: slug }, "*");
           return;
         }
@@ -74,20 +180,60 @@
         `No estás cerca de ninguna parada (${latitude.toFixed(5)}, ${longitude.toFixed(5)})`;
     }
 
+    // Error geolocalización
     function error(err) {
       document.getElementById("estado").textContent = "Error obteniendo ubicación: " + err.message;
     }
 
-    // ✅ Enviar todas las paradas al padre al cargar
+    // Enviar todas las paradas al padre al cargar (opcional)
     window.addEventListener("load", () => {
       window.parent.postMessage({ tipo: "paradas", datos: paradas }, "*");
     });
 
-    // ✅ Iniciar geolocalización
-    navigator.geolocation.watchPosition(detectarParada, error, {
-      enableHighAccuracy: true,
-      maximumAge: 1000,
-      timeout: 5000,
+    // Iniciar geolocalización
+    if (navigator.geolocation) {
+      navigator.geolocation.watchPosition(detectarParada, error, {
+        enableHighAccuracy: true,
+        maximumAge: 1000,
+        timeout: 5000,
+      });
+    } else {
+      document.getElementById("estado").textContent = "Geolocalización no soportada por este navegador.";
+    }
+
+    // --- MAPA LEAFLET ---
+
+    const btnMapa = document.getElementById('btnMapa');
+    const mapDiv = document.getElementById('map');
+    const cerrarMapaBtn = document.getElementById('cerrarMapa');
+    let map;
+    let markers = [];
+
+    btnMapa.addEventListener('click', () => {
+      if (!map) {
+        // Crear mapa centrado en la primera parada
+        map = L.map('map').setView([paradas[0].lat, paradas[0].lng], 15);
+
+        // Capa de mapa OpenStreetMap
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Añadir marcadores
+        paradas.forEach(parada => {
+          const marker = L.marker([parada.lat, parada.lng]).addTo(map);
+          marker.bindPopup(parada.nombre);
+          markers.push(marker);
+        });
+      }
+
+      mapDiv.style.display = 'block';
+      map.invalidateSize(); // para que Leaflet ajuste tamaño tras mostrar
+    });
+
+    cerrarMapaBtn.addEventListener('click', () => {
+      mapDiv.style.display = 'none';
     });
   </script>
 </body>
