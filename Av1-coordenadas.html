@@ -185,21 +185,48 @@
       document.getElementById("estado").textContent = "Error obteniendo ubicación: " + err.message;
     }
 
-    // Enviar todas las paradas al padre al cargar (opcional)
+    // Variable para almacenar watcher id
+    let geoWatcherId = null;
+
+    // Función para iniciar geolocalización
+    function iniciarGeolocalizacion() {
+      if (navigator.geolocation) {
+        geoWatcherId = navigator.geolocation.watchPosition(detectarParada, error, {
+          enableHighAccuracy: true,
+          maximumAge: 1000,
+          timeout: 5000,
+        });
+      } else {
+        document.getElementById("estado").textContent = "Geolocalización no soportada por este navegador.";
+      }
+    }
+
+    // Función para detener geolocalización
+    function detenerGeolocalizacion() {
+      if (geoWatcherId !== null) {
+        navigator.geolocation.clearWatch(geoWatcherId);
+        geoWatcherId = null;
+        document.getElementById("estado").textContent = "Geolocalización detenida.";
+      }
+    }
+
+    // Al cargar, enviar las coordenadas al padre (para el mapa padre)
     window.addEventListener("load", () => {
-      window.parent.postMessage({ tipo: "paradas", datos: paradas }, "*");
+      window.parent.postMessage({ tipo: "coordenadas", puntos: paradas }, "*");
+      // Iniciar geolocalización por defecto (puedes modificar si quieres que sea solo cuando padre mande)
+      iniciarGeolocalizacion();
     });
 
-    // Iniciar geolocalización
-    if (navigator.geolocation) {
-      navigator.geolocation.watchPosition(detectarParada, error, {
-        enableHighAccuracy: true,
-        maximumAge: 1000,
-        timeout: 5000,
-      });
-    } else {
-      document.getElementById("estado").textContent = "Geolocalización no soportada por este navegador.";
-    }
+    // Escuchar mensajes del padre para activar/desactivar geolocalización
+    window.addEventListener("message", (event) => {
+      if (!event.data || !event.data.tipo) return;
+
+      if (event.data.tipo === "activar_gps") {
+        iniciarGeolocalizacion();
+      } else if (event.data.tipo === "desactivar_gps") {
+        detenerGeolocalizacion();
+      }
+    });
 
     // --- MAPA LEAFLET ---
 
