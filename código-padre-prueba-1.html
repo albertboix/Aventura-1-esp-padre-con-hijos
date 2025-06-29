@@ -2,46 +2,99 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <title>Padre con Leaflet y botones en iframe</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>App Padre Limpia</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    html, body, #mapa {
-      height: 100%;
-      margin: 0;
-      padding: 0;
+    body, html {
+      margin: 0; padding: 0; height: 100%;
+      font-family: Arial, sans-serif;
+      overflow: hidden;
+      background: #f0f0f0;
     }
     #mapa {
-      position: absolute;
-      top: 0; left: 0; right: 0; bottom: 0;
-      z-index: 1; /* mapa debajo */
+      height: 100vh;
+      width: 100vw;
+      z-index: 1;
     }
-    #botones-iframe {
-      position: fixed;
+    #botones-container {
+      position: absolute;
       top: 0; left: 0;
       width: 100vw; height: 100vh;
-      border: none;
-      z-index: 9999; /* botones arriba */
-      pointer-events: none; /* por defecto no bloquea mapa */
-      background: transparent;
+      pointer-events: none;
+      z-index: 10000;
+    }
+    #botones-container * {
+      pointer-events: auto;
     }
   </style>
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css"
-  />
 </head>
 <body>
   <div id="mapa"></div>
+  <div id="botones-container"></div>
 
-  <!-- iframe que carga el hijo con botones -->
-  <iframe id="botones-iframe" src="hijo.html" allowtransparency="true"></iframe>
-
-  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    // Inicializa Leaflet
-    const mapa = L.map('mapa').setView([39.46975, -0.37739], 13);
+    fetch('Botones y subfunciones.html')
+      .then(res => res.text())
+      .then(html => {
+        const div = document.createElement('div');
+        div.innerHTML = html;
+
+        // Insertar contenido del body del hijo dentro del contenedor botones
+        const bodyHijo = div.querySelector('body');
+        if (bodyHijo) {
+          [...bodyHijo.children].forEach(el => {
+            document.getElementById('botones-container').appendChild(el);
+          });
+        } else {
+          [...div.children].forEach(el => {
+            document.getElementById('botones-container').appendChild(el);
+          });
+        }
+
+        // Ejecutar scripts del hijo
+        const scripts = div.querySelectorAll('script');
+        scripts.forEach(oldScript => {
+          const newScript = document.createElement('script');
+          if (oldScript.src) {
+            newScript.src = oldScript.src;
+            newScript.async = false;
+          } else {
+            newScript.textContent = oldScript.textContent;
+          }
+          document.body.appendChild(newScript);
+        });
+      })
+      .catch(err => console.error('Error al cargar botones:', err));
+
+    const map = L.map('mapa').setView([39.47, -0.38], 15);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
-    }).addTo(mapa);
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    let rutaLine = null, markers = [];
+    window.addEventListener('message', e => {
+      const d = e.data;
+      if (d?.tipo === 'ruta-completa') {
+        if (rutaLine) map.removeLayer(rutaLine);
+        markers.forEach(m => map.removeLayer(m));
+        markers = [];
+        if (Array.isArray(d.ruta)) {
+          const coords = d.ruta.map(p => [p.lat, p.lng]);
+          rutaLine = L.polyline(coords, { color: 'blue', weight: 5 }).addTo(map);
+          map.fitBounds(rutaLine.getBounds());
+        }
+        if (Array.isArray(d.paradas)) {
+          d.paradas.forEach(p => {
+            const mk = L.marker([p.lat, p.lng]).addTo(map);
+            if (p.nombre) mk.bindPopup(p.nombre);
+            markers.push(mk);
+          });
+        }
+      }
+    });
   </script>
 </body>
 </html>
