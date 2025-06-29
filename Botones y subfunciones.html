@@ -30,10 +30,12 @@
     #btn-mapa { top: 12px; right: 12px; }
 
     .icono-flotante {
+      position: absolute; /* CAMBIO: fixed -> absolute */
       width: 45px;
       height: 45px;
       font-size: 1.8rem;
       z-index: 13000;
+      display: none; /* Ocultos inicialmente */
     }
   </style>
 </head>
@@ -44,16 +46,16 @@
   <button id="btn-mapa" class="boton-flotante">🌍</button>
 
   <!-- Iconos flotantes -->
-  <button class="icono-flotante" id="icono-retos" style="display:none;">🧩</button>
-  <button class="icono-flotante" id="icono-gastronomia" style="display:none;">🍽️</button>
-  <button class="icono-flotante" id="icono-informacion" style="display:none;">🌐</button>
-  <button class="icono-flotante" id="icono-historia" style="display:none;">🏛️</button>
-  <button class="icono-flotante" id="icono-agradecimientos" style="display:none;">🤝</button>
-  <button class="icono-flotante" id="icono-seguridad" style="display:none;">🚦</button>
-  <button class="icono-flotante" id="icono-fuentes" style="display:none;">📚</button>
-  <button class="icono-flotante" id="icono-punto" style="display:none;">📍</button>
-  <button class="icono-flotante" id="icono-ruta" style="display:none;">🗺️</button>
-  <button class="icono-flotante" id="icono-brujula" style="display:none;">🧭</button>
+  <button class="icono-flotante" id="icono-retos">🧩</button>
+  <button class="icono-flotante" id="icono-gastronomia">🍽️</button>
+  <button class="icono-flotante" id="icono-informacion">🌐</button>
+  <button class="icono-flotante" id="icono-historia">🏛️</button>
+  <button class="icono-flotante" id="icono-agradecimientos">🤝</button>
+  <button class="icono-flotante" id="icono-seguridad">🚦</button>
+  <button class="icono-flotante" id="icono-fuentes">📚</button>
+  <button class="icono-flotante" id="icono-punto">📍</button>
+  <button class="icono-flotante" id="icono-ruta">🗺️</button>
+  <button class="icono-flotante" id="icono-brujula">🧭</button>
 
   <script>
     const gruposIconos = {
@@ -64,9 +66,8 @@
 
     function ocultarTodosLosIconos() {
       Object.values(gruposIconos).flat().forEach(id => {
-        const icono = document.getElementById(id);
-        icono.style.display = 'none';
-        icono.style.visibility = 'visible'; // Reset de estado anterior
+        const el = document.getElementById(id);
+        el.style.display = 'none';
       });
     }
 
@@ -77,10 +78,7 @@
       const margen = 8;
 
       iconos.forEach((icono, index) => {
-        // Mostrar temporalmente para calcular tamaño
-        icono.style.visibility = 'hidden';
-        icono.style.display = 'block';
-
+        icono.style.display = 'flex';
         const a = angulosDeg[index] * Math.PI / 180;
         let x = cx + radio * Math.cos(a) - icono.offsetWidth / 2;
         let y = cy + radio * Math.sin(a) - icono.offsetHeight / 2;
@@ -88,30 +86,58 @@
         y = Math.max(margen, Math.min(window.innerHeight - icono.offsetHeight - margen, y));
         icono.style.left = x + 'px';
         icono.style.top = y + 'px';
-
-        // Mostrar definitivamente
-        icono.style.display = 'flex';
-        icono.style.visibility = 'visible';
       });
     }
 
+    // Variable para guardar qué grupo está abierto
+    let grupoAbierto = null;
+
     Object.entries(gruposIconos).forEach(([botonId, iconoIds]) => {
-      document.getElementById(botonId).onclick = () => {
-        const visibles = iconoIds.map(id => document.getElementById(id).style.display === 'flex');
-        const algunoVisible = visibles.includes(true);
-        ocultarTodosLosIconos();
-        if (!algunoVisible) {
+      const boton = document.getElementById(botonId);
+      boton.onclick = () => {
+        const iconos = iconoIds.map(id => document.getElementById(id));
+        const algunoVisible = iconos.some(i => i.style.display === 'flex');
+        if (algunoVisible) {
+          ocultarTodosLosIconos();
+          grupoAbierto = null;
+        } else {
+          ocultarTodosLosIconos();
           const angulos = {
             'hamburguesa': [270, 300, 330, 0],
             'mas-opciones': [270, 225, 180],
             'btn-mapa': [180, 135, 90]
           };
-          posicionarIconosRadial(iconoIds.map(id => document.getElementById(id)), document.getElementById(botonId), angulos[botonId]);
+          posicionarIconosRadial(iconos, boton, angulos[botonId]);
+          grupoAbierto = botonId;
         }
       };
     });
 
-    // Asignar redirecciones directas
+    // Reposicionar iconos abiertos al cambiar tamaño o rotación
+    function reposicionarGrupoAbierto() {
+      if (!grupoAbierto) return;
+      const boton = document.getElementById(grupoAbierto);
+      const iconoIds = gruposIconos[grupoAbierto];
+      const iconos = iconoIds.map(id => document.getElementById(id));
+      const angulos = {
+        'hamburguesa': [270, 300, 330, 0],
+        'mas-opciones': [270, 225, 180],
+        'btn-mapa': [180, 135, 90]
+      };
+      posicionarIconosRadial(iconos, boton, angulos[grupoAbierto]);
+    }
+
+    window.addEventListener('resize', () => {
+      ocultarTodosLosIconos();
+      grupoAbierto = null;
+    });
+
+    window.addEventListener('orientationchange', () => {
+      ocultarTodosLosIconos();
+      grupoAbierto = null;
+    });
+
+    // Redirecciones directas
     document.getElementById('icono-retos').onclick = () => window.location.href = 'retos_con_puzzles_Av1_es.html';
     document.getElementById('icono-gastronomia').onclick = () => window.location.href = 'Gastronomia.html';
     document.getElementById('icono-informacion').onclick = () => window.location.href = 'paginas_oficiales.html';
