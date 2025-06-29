@@ -72,11 +72,24 @@
       'btn-mapa': ['icono-punto','icono-ruta','icono-brujula']
     };
 
+    // Ángulos para disposición radial según icono padre (en grados)
+    // Los ajustamos según tu pedido: hamburguesa (4 iconos) 12, 1, 2, 3 horas
+    // mas-opciones (3 iconos) 12, 10:30, 9
+    // btn-mapa (3 iconos) 9, 7:30, 6
+    const angulos = {
+      hamburguesa: [270, 300, 330, 0], // 12h=270°, 1h=300°, 2h=330°, 3h=0°
+      'mas-opciones': [270, 225, 180], // 12h=270°, 10:30=225°, 9h=180°
+      'btn-mapa': [180, 225, 270] // 9h=180°, 7:30=225°, 6h=270° (ajustados para que estén abajo-izq)
+    };
+
+    let iconosMostradosPor = null; // para saber qué menú está abierto
+
     function ocultarTodosLosIconos() {
       Object.values(gruposIconos).flat().forEach(id => {
         const el = document.getElementById(id);
-        el.style.display = 'none';
+        if (el) el.style.display = 'none';
       });
+      iconosMostradosPor = null;
     }
 
     function posicionarIconosRadial(iconos, boton, angulosDeg, radio = 100) {
@@ -88,32 +101,59 @@
       iconos.forEach((icono, index) => {
         icono.style.display = 'flex';
         const a = angulosDeg[index] * Math.PI / 180;
-        const x = Math.max(margen, Math.min(window.innerWidth - icono.offsetWidth - margen, cx + radio * Math.cos(a) - icono.offsetWidth / 2));
-        const y = Math.max(margen, Math.min(window.innerHeight - icono.offsetHeight - margen, cy + radio * Math.sin(a) - icono.offsetHeight / 2));
+        // Ajuste para que no salgan fuera de la pantalla
+        const x = Math.min(
+          window.innerWidth - icono.offsetWidth - margen,
+          Math.max(margen, cx + radio * Math.cos(a) - icono.offsetWidth / 2)
+        );
+        const y = Math.min(
+          window.innerHeight - icono.offsetHeight - margen,
+          Math.max(margen, cy + radio * Math.sin(a) - icono.offsetHeight / 2)
+        );
         icono.style.left = `${x}px`;
         icono.style.top = `${y}px`;
-        console.log(`[${icono.id}] → x:${x}, y:${y}`); // debug
+        // console.log(`[${icono.id}] → x:${x}, y:${y}`);
       });
+      iconosMostradosPor = boton.id;
     }
 
-    const angulos = {
-      'hamburguesa': [270, 300, 330, 0],
-      'mas-opciones': [270, 225, 180],
-      'btn-mapa': [180, 135, 90]
+    // Función para mostrar los iconos flotantes de un botón padre, global para que padre lo llame
+    window.mostrarIconosDeBoton = function(botonId) {
+      if (!gruposIconos[botonId]) return;
+      const boton = document.getElementById(botonId);
+      if (!boton) return;
+
+      const iconos = gruposIconos[botonId].map(id => document.getElementById(id));
+      const estanMostrados = iconos.every(icono => icono.style.display === 'flex');
+      if (estanMostrados) {
+        ocultarTodosLosIconos();
+      } else {
+        ocultarTodosLosIconos();
+        posicionarIconosRadial(iconos, boton, angulos[botonId]);
+      }
     };
 
+    // Evento click para cada botón principal
     Object.entries(gruposIconos).forEach(([botonId, iconoIds]) => {
-      document.getElementById(botonId).onclick = () => {
-        const visibles = iconoIds.map(id => document.getElementById(id).style.display === 'flex');
-        const algunoVisible = visibles.includes(true);
-        ocultarTodosLosIconos();
-        if (!algunoVisible) {
-          posicionarIconosRadial(iconoIds.map(id => document.getElementById(id)), document.getElementById(botonId), angulos[botonId]);
-        }
+      const boton = document.getElementById(botonId);
+      if (!boton) return;
+      boton.onclick = () => {
+        window.mostrarIconosDeBoton(botonId);
       };
     });
 
-    // Asignar redirecciones directas
+    // Reposicionar iconos si cambian tamaño o orientación
+    window.addEventListener('resize', () => {
+      if (iconosMostradosPor) {
+        const botonId = iconosMostradosPor;
+        const boton = document.getElementById(botonId);
+        if (!boton) return;
+        const iconos = gruposIconos[botonId].map(id => document.getElementById(id));
+        posicionarIconosRadial(iconos, boton, angulos[botonId]);
+      }
+    });
+
+    // Asignar redirecciones directas para los iconos
     document.getElementById('icono-retos').onclick = () => window.location.href = 'retos_con_puzzles_Av1_es.html';
     document.getElementById('icono-gastronomia').onclick = () => window.location.href = 'Gastronomia.html';
     document.getElementById('icono-informacion').onclick = () => window.location.href = 'paginas_oficiales.html';
@@ -124,6 +164,7 @@
     document.getElementById('icono-punto').onclick = () => alert('Función "Punto" aún no definida');
     document.getElementById('icono-ruta').onclick = () => window.location.href = 'Av1_mapa_completo.html';
     document.getElementById('icono-brujula').onclick = () => window.location.href = 'mapas/Av1_mapa.jpg';
+
   </script>
 </body>
 </html>
