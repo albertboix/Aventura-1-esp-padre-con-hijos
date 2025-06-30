@@ -55,11 +55,10 @@
       'btn-mapa': ['icono-punto','icono-ruta','icono-brujula']
     };
 
-    // Rango angular (grados) para repartir los iconos equidistantemente
     const rangosAngulos = {
-      hamburguesa: [300, 360],    // desde 300° a 360° (arriba-derecha desde la esquina inferior izquierda)
-      'mas-opciones': [180, 225], // desde 180° a 225° (izquierda-arriba desde la esquina inferior derecha)
-      'btn-mapa': [90, 180]       // desde 90° a 180° (arriba-izquierda desde esquina superior derecha)
+      hamburguesa: [270, 360],    // desde abajo a derecha
+      'mas-opciones': [180, 270], // desde izquierda a abajo
+      'btn-mapa': [90, 180]       // desde arriba a izquierda
     };
 
     const enlacesIconos = {
@@ -75,36 +74,24 @@
       'icono-brujula': 'mapas/Av1_mapa.jpg'
     };
 
+    const margen = 5; // px margen del borde de pantalla
+
+    let iconosVisibles = {};
+
     function ocultarTodos() {
       Object.values(gruposIconos).flat().forEach(id => {
         const el = document.getElementById(id);
-        if (el) el.style.display = 'none';
+        if (el) {
+          el.style.display = 'none';
+          iconosVisibles[id] = false;
+        }
       });
     }
 
-    function mostrarIconos(idBoton, iconos, anguloInicio, anguloFin, margen = 5) {
-      const b = document.getElementById(idBoton);
-      const rect = b.getBoundingClientRect();
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
-
-      const totalIconos = iconos.length;
-      const rangoAngulo = anguloFin - anguloInicio;
-
-      // Ángulos equidistantes
-      const angulosActuales = [];
-      for (let i = 0; i < totalIconos; i++) {
-        if (totalIconos === 1) {
-          angulosActuales.push((anguloInicio + anguloFin) / 2);
-        } else {
-          angulosActuales.push(anguloInicio + (rangoAngulo / (totalIconos - 1)) * i);
-        }
-      }
-
-      // Calcular radio máximo posible para que ningún icono salga del viewport con margen igual en todos lados
+    function calcularRadioMax(cx, cy, angulos, iconos) {
       let radioMax = Infinity;
 
-      angulosActuales.forEach((angulo, i) => {
+      angulos.forEach((angulo, i) => {
         const el = document.getElementById(iconos[i]);
         if (!el) return;
 
@@ -112,7 +99,7 @@
         const halfWidth = el.offsetWidth / 2;
         const halfHeight = el.offsetHeight / 2;
 
-        // Máximo radio horizontal
+        // Distancia máxima horizontal
         let maxRadioX;
         if (Math.cos(angRad) > 0) {
           maxRadioX = (window.innerWidth - margen - halfWidth - cx) / Math.cos(angRad);
@@ -122,7 +109,7 @@
           maxRadioX = Infinity;
         }
 
-        // Máximo radio vertical
+        // Distancia máxima vertical
         let maxRadioY;
         if (Math.sin(angRad) > 0) {
           maxRadioY = (window.innerHeight - margen - halfHeight - cy) / Math.sin(angRad);
@@ -138,23 +125,51 @@
         }
       });
 
-      // Limitar radio máximo para que no quede muy lejos
-      if (radioMax > 75) radioMax = 75;
+      return Math.min(radioMax, 75);
+    }
+
+    function mostrarIconos(idBoton) {
+      const iconos = gruposIconos[idBoton];
+      if (!iconos) return;
+
+      const b = document.getElementById(idBoton);
+      const rect = b.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+
+      const anguloInicio = rangosAngulos[idBoton][0];
+      const anguloFin = rangosAngulos[idBoton][1];
+      const totalIconos = iconos.length;
+      const rangoAngulo = anguloFin - anguloInicio;
+
+      // Calcular ángulos equidistantes
+      const angulosActuales = [];
+      for (let i = 0; i < totalIconos; i++) {
+        if (totalIconos === 1) {
+          angulosActuales.push((anguloInicio + anguloFin) / 2);
+        } else {
+          angulosActuales.push(anguloInicio + (rangoAngulo / (totalIconos - 1)) * i);
+        }
+      }
+
+      // Calcular radio máximo dinámico
+      const radioMax = calcularRadioMax(cx, cy, angulosActuales, iconos);
 
       // Posicionar iconos
       angulosActuales.forEach((angulo, i) => {
         const el = document.getElementById(iconos[i]);
         if (!el) return;
 
-        const angRad = angulo * Math.PI / 180;
+        const angRad = angulosActuales[i] * Math.PI / 180;
 
-        let x = cx + radioMax * Math.cos(angRad) - el.offsetWidth / 2;
-        let y = cy + radioMax * Math.sin(angRad) - el.offsetHeight / 2;
+        const x = cx + radioMax * Math.cos(angRad) - el.offsetWidth / 2;
+        const y = cy + radioMax * Math.sin(angRad) - el.offsetHeight / 2;
 
         el.style.left = `${x}px`;
         el.style.top = `${y}px`;
         el.style.position = 'fixed';
         el.style.display = 'flex';
+        iconosVisibles[iconos[i]] = true;
       });
     }
 
@@ -164,9 +179,9 @@
         if (!boton) return;
 
         boton.addEventListener('click', () => {
-          const visible = iconoIds.some(id => document.getElementById(id)?.style.display === 'flex');
+          const algunoVisible = iconoIds.some(id => iconosVisibles[id]);
           ocultarTodos();
-          if (!visible) mostrarIconos(botonId, iconoIds, rangosAngulos[botonId][0], rangosAngulos[botonId][1]);
+          if (!algunoVisible) mostrarIconos(botonId);
         });
       });
 
@@ -181,7 +196,27 @@
       });
     }
 
-    window.addEventListener('load', inicializarBotonesFlotantes);
+    // Recalcular iconos visibles en resize o rotación
+    function recalcularIconosVisibles() {
+      Object.entries(gruposIconos).forEach(([botonId, iconoIds]) => {
+        const algunoVisible = iconoIds.some(id => iconosVisibles[id]);
+        if (algunoVisible) {
+          mostrarIconos(botonId);
+        }
+      });
+    }
+
+    window.addEventListener('load', () => {
+      inicializarBotonesFlotantes();
+    });
+
+    window.addEventListener('resize', () => {
+      recalcularIconosVisibles();
+    });
+
+    window.addEventListener('orientationchange', () => {
+      setTimeout(() => recalcularIconosVisibles(), 200);
+    });
   </script>
 </body>
 </html>
