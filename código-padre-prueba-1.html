@@ -7,22 +7,22 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     html, body {
-      margin: 0; padding: 0; height: 100%;
-      font-family: Arial, sans-serif;
-      background: #f0f0f0;
+      margin: 0;
+      height: 100%;
       overflow: hidden;
+      font-family: sans-serif;
     }
     #mapa {
-      height: 100vh;
       width: 100vw;
-      z-index: 1;
+      height: 100vh;
     }
     #botones-container {
       position: absolute;
       top: 0; left: 0;
-      width: 100vw; height: 100vh;
+      width: 100vw;
+      height: 100vh;
       pointer-events: none;
-      z-index: 10000;
+      z-index: 1000;
     }
     #botones-container * {
       pointer-events: auto;
@@ -35,21 +35,29 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    // Cargar archivo hijo con botones e íconos
+    // Inicializa el mapa
+    const map = L.map('mapa').setView([39.47, -0.38], 14);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Carga del archivo hijo con los botones flotantes
     fetch('Botones y subfunciones.html')
       .then(res => res.text())
       .then(html => {
+        const div = document.createElement('div');
+        div.innerHTML = html;
+
+        // Añadir solo contenido dentro del body del hijo
+        const bodyContent = div.querySelector('body');
         const contenedor = document.getElementById('botones-container');
-        const temp = document.createElement('div');
-        temp.innerHTML = html;
+        if (bodyContent) {
+          [...bodyContent.children].forEach(child => contenedor.appendChild(child));
+        }
 
-        // Agregar contenido HTML del hijo
-        const bodyHijo = temp.querySelector('body');
-        const hijos = bodyHijo ? [...bodyHijo.children] : [...temp.children];
-        hijos.forEach(el => contenedor.appendChild(el));
-
-        // Ejecutar los scripts del hijo
-        const scripts = temp.querySelectorAll('script');
+        // Ejecutar scripts del hijo
+        const scripts = div.querySelectorAll('script');
         scripts.forEach(oldScript => {
           const newScript = document.createElement('script');
           if (oldScript.src) {
@@ -62,40 +70,6 @@
         });
       })
       .catch(err => console.error('Error al cargar botones:', err));
-
-    // Crear mapa Leaflet
-    const map = L.map('mapa').setView([39.47, -0.38], 15);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
-
-    // Mostrar rutas desde mensaje externo
-    let rutaLine = null;
-    let markers = [];
-
-    window.addEventListener('message', e => {
-      const d = e.data;
-      if (d?.tipo === 'ruta-completa') {
-        if (rutaLine) map.removeLayer(rutaLine);
-        markers.forEach(m => map.removeLayer(m));
-        markers = [];
-
-        if (Array.isArray(d.ruta)) {
-          const coords = d.ruta.map(p => [p.lat, p.lng]);
-          rutaLine = L.polyline(coords, { color: 'blue', weight: 5 }).addTo(map);
-          map.fitBounds(rutaLine.getBounds());
-        }
-
-        if (Array.isArray(d.paradas)) {
-          d.paradas.forEach(p => {
-            const mk = L.marker([p.lat, p.lng]).addTo(map);
-            if (p.nombre) mk.bindPopup(p.nombre);
-            markers.push(mk);
-          });
-        }
-      }
-    });
   </script>
 </body>
 </html>
