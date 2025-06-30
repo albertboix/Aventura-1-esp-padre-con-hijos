@@ -31,9 +31,9 @@
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      user-select: none;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
       z-index: 1001;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      user-select: none;
     }
     .icono-flotante {
       display: none;
@@ -55,12 +55,6 @@
       'btn-mapa': ['icono-punto','icono-ruta','icono-brujula']
     };
 
-    // Rangos angulares para distribuir iconos equitativamente (en grados)
-  const rangosAngulos = {
-  hamburguesa: [280, 350],     // esquina inferior izquierda, hacia arriba-derecha
-  'mas-opciones': [190, 260],  // esquina inferior derecha, hacia arriba-izquierda
-  'btn-mapa': [100, 170]       // esquina superior derecha, hacia abajo-izquierda
-};
     const enlacesIconos = {
       'icono-retos': 'retos_con_puzzles_Av1_es.html',
       'icono-gastronomia': 'Gastronomia.html',
@@ -74,6 +68,13 @@
       'icono-brujula': 'mapas/Av1_mapa.jpg'
     };
 
+    // Rangos angulares para cada grupo (en grados)
+    const rangosAngulos = {
+      hamburguesa: [280, 350],     // desde 280° a 350° (arriba-derecha desde esquina inferior izquierda)
+      'mas-opciones': [190, 260],  // desde 190° a 260° (arriba-izquierda desde esquina inferior derecha)
+      'btn-mapa': [100, 170]       // desde 100° a 170° (abajo-izquierda desde esquina superior derecha)
+    };
+
     function ocultarTodos() {
       Object.values(gruposIconos).flat().forEach(id => {
         const el = document.getElementById(id);
@@ -81,7 +82,7 @@
       });
     }
 
-    function mostrarIconos(idBoton, iconos, anguloInicio, anguloFin, radio = 75, margen = 5) {
+    function mostrarIconos(idBoton, iconos, anguloInicio, anguloFin, radioMax = 75, margen = 5) {
       const b = document.getElementById(idBoton);
       const rect = b.getBoundingClientRect();
       const cx = rect.left + rect.width / 2;
@@ -90,26 +91,62 @@
       const totalIconos = iconos.length;
       const rangoAngulo = anguloFin - anguloInicio;
 
-      iconos.forEach((id, i) => {
-        const el = document.getElementById(id);
+      // Calculamos el ángulo para cada icono
+      const angulosActuales = [];
+      for (let i = 0; i < totalIconos; i++) {
+        if (totalIconos === 1) {
+          angulosActuales.push((anguloInicio + anguloFin) / 2);
+        } else {
+          angulosActuales.push(anguloInicio + (rangoAngulo / (totalIconos - 1)) * i);
+        }
+      }
+
+      // Calculamos el radio máximo permitido para cada icono según el borde más cercano
+      let radiosPosibles = [];
+
+      angulosActuales.forEach((angulo, i) => {
+        const el = document.getElementById(iconos[i]);
         if (!el) return;
 
-        // Si solo hay 1 icono evitar dividir por cero
-        let anguloActual;
-        if (totalIconos === 1) {
-          anguloActual = (anguloInicio + anguloFin) / 2;
+        const angRad = angulo * Math.PI / 180;
+
+        // Distancia máxima en X
+        let maxRadioX;
+        if (Math.cos(angRad) > 0) {
+          maxRadioX = (window.innerWidth - margen - el.offsetWidth / 2 - cx) / Math.cos(angRad);
+        } else if (Math.cos(angRad) < 0) {
+          maxRadioX = (margen + el.offsetWidth / 2 - cx) / Math.cos(angRad);
         } else {
-          anguloActual = anguloInicio + (rangoAngulo / (totalIconos - 1)) * i;
+          maxRadioX = radioMax; // cos = 0, no limita en X
         }
 
-        const angRad = anguloActual * Math.PI / 180;
+        // Distancia máxima en Y
+        let maxRadioY;
+        if (Math.sin(angRad) > 0) {
+          maxRadioY = (window.innerHeight - margen - el.offsetHeight / 2 - cy) / Math.sin(angRad);
+        } else if (Math.sin(angRad) < 0) {
+          maxRadioY = (margen + el.offsetHeight / 2 - cy) / Math.sin(angRad);
+        } else {
+          maxRadioY = radioMax; // sin = 0, no limita en Y
+        }
 
-        let x = cx + radio * Math.cos(angRad) - el.offsetWidth / 2;
-        let y = cy + radio * Math.sin(angRad) - el.offsetHeight / 2;
+        // Radio máximo permitido para este icono
+        const maxRadioIcono = Math.min(maxRadioX, maxRadioY, radioMax);
+        radiosPosibles.push(maxRadioIcono);
+      });
 
-        // Evitar que se salgan del viewport con margen
-        x = Math.min(Math.max(x, margen), window.innerWidth - el.offsetWidth - margen);
-        y = Math.min(Math.max(y, margen), window.innerHeight - el.offsetHeight - margen);
+      // Usamos el radio más pequeño para que todos queden a la misma distancia
+      const radioFinal = Math.min(...radiosPosibles, radioMax);
+
+      // Posicionamos los iconos
+      angulosActuales.forEach((angulo, i) => {
+        const el = document.getElementById(iconos[i]);
+        if (!el) return;
+
+        const angRad = angulo * Math.PI / 180;
+
+        let x = cx + radioFinal * Math.cos(angRad) - el.offsetWidth / 2;
+        let y = cy + radioFinal * Math.sin(angRad) - el.offsetHeight / 2;
 
         el.style.left = `${x}px`;
         el.style.top = `${y}px`;
@@ -126,7 +163,7 @@
         boton.addEventListener('click', () => {
           const visible = iconoIds.some(id => document.getElementById(id)?.style.display === 'flex');
           ocultarTodos();
-          if (!visible) mostrarIconos(botonId, iconoIds, rangosAngulos[botonId][0], rangosAngulos[botonId][1], 60, 5);
+          if (!visible) mostrarIconos(botonId, iconoIds, rangosAngulos[botonId][0], rangosAngulos[botonId][1], 75);
         });
       });
 
