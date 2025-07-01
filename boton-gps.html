@@ -1,1 +1,187 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Botón GPS</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: transparent;
+      color: black;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      user-select: none;
+    }
+    #boton-gps {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      border-radius: 12px;
+      padding: 8px 12px;
+      font-weight: bold;
+      font-size: 1.2rem;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+      user-select: none;
+      transition: background-color 0.3s;
+      border: 2px solid transparent;
+      background-color: #d4f0d4;
+      color: green;
+    }
+    #boton-gps.off {
+      background-color: #f8d4d4;
+      color: red;
+      border-color: red;
+    }
+    #boton-gps span.icono-casa {
+      font-size: 1.6rem;
+      margin-right: 8px;
+    }
+    #input-coords {
+      margin-top: 12px;
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      width: 100%;
+      max-width: 260px;
+    }
+    #input-coords label {
+      font-size: 0.9rem;
+    }
+    #input-coords input {
+      padding: 6px 8px;
+      font-size: 1rem;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    #input-coords button {
+      margin-top: 6px;
+      padding: 8px;
+      font-weight: bold;
+      border: none;
+      background-color: #007acc;
+      color: white;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.25s;
+    }
+    #input-coords button:hover {
+      background-color: #005f99;
+    }
+    #mensaje-error {
+      color: red;
+      font-size: 0.85rem;
+      height: 18px;
+      margin-top: 4px;
+      min-height: 18px;
+    }
+  </style>
+</head>
+<body>
+  <div id="boton-gps" class="off" aria-pressed="false" role="button" tabindex="0" title="Alternar GPS simulado">
+    <span class="icono-casa">🏠</span>
+    <span id="texto-estado">OFF</span>
+  </div>
+
+  <div id="input-coords" aria-live="polite">
+    <label for="latitud">Latitud:</label>
+    <input type="number" id="latitud" step="0.000001" placeholder="Ej: 39.4786" aria-label="Latitud" />
+    <label for="longitud">Longitud:</label>
+    <input type="number" id="longitud" step="0.000001" placeholder="Ej: -0.3769" aria-label="Longitud" />
+    <button id="btn-actualizar">Actualizar ubicación</button>
+    <div id="mensaje-error" role="alert" aria-live="assertive"></div>
+  </div>
+
+  <script>
+    (function(){
+      const boton = document.getElementById('boton-gps');
+      const textoEstado = document.getElementById('texto-estado');
+      const inputCoords = document.getElementById('input-coords');
+      const latInput = document.getElementById('latitud');
+      const lngInput = document.getElementById('longitud');
+      const btnActualizar = document.getElementById('btn-actualizar');
+      const mensajeError = document.getElementById('mensaje-error');
+
+      let gpsActivo = false;
+      let coords = { lat: null, lng: null };
+
+      function actualizarVisual() {
+        if (gpsActivo) {
+          boton.classList.remove('off');
+          textoEstado.textContent = 'ON';
+          boton.style.color = 'red';
+          boton.style.backgroundColor = '#f8d4d4';
+          inputCoords.style.display = 'none';
+          mensajeError.textContent = '';
+        } else {
+          boton.classList.add('off');
+          textoEstado.textContent = 'OFF';
+          boton.style.color = 'green';
+          boton.style.backgroundColor = '#d4f0d4';
+          inputCoords.style.display = 'flex';
+        }
+        boton.setAttribute('aria-pressed', gpsActivo ? 'true' : 'false');
+      }
+
+      function enviarEstado() {
+        parent.postMessage({
+          tipo: 'gps_modo',
+          activo: gpsActivo,
+          coords: gpsActivo ? null : coords
+        }, '*');
+      }
+
+      boton.addEventListener('click', () => {
+        gpsActivo = !gpsActivo;
+        actualizarVisual();
+        enviarEstado();
+      });
+
+      btnActualizar.addEventListener('click', () => {
+        mensajeError.textContent = '';
+        const lat = parseFloat(latInput.value);
+        const lng = parseFloat(lngInput.value);
+        if (isNaN(lat) || lat < -90 || lat > 90) {
+          mensajeError.textContent = 'Latitud inválida.';
+          return;
+        }
+        if (isNaN(lng) || lng < -180 || lng > 180) {
+          mensajeError.textContent = 'Longitud inválida.';
+          return;
+        }
+        coords.lat = lat;
+        coords.lng = lng;
+        enviarEstado();
+      });
+
+      // Escuchar mensajes del padre para sincronizar estado
+      window.addEventListener('message', (e) => {
+        const data = e.data;
+        if (data && data.tipo === 'gps_modo') {
+          if (typeof data.activo === 'boolean') {
+            gpsActivo = data.activo;
+          }
+          if (data.coords && typeof data.coords.lat === 'number' && typeof data.coords.lng === 'number') {
+            coords.lat = data.coords.lat;
+            coords.lng = data.coords.lng;
+            latInput.value = coords.lat.toFixed(6);
+            lngInput.value = coords.lng.toFixed(6);
+          }
+          actualizarVisual();
+        }
+      });
+
+      // Inicializar con visual actualizado
+      actualizarVisual();
+
+    })();
+  </script>
+</body>
+</html>
 
