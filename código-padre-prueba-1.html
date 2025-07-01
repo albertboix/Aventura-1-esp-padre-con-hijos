@@ -41,13 +41,34 @@
       attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
+    // Variables para simular GPS
+    let gpsSimuladoActivo = false;
+    let coordenadasSimuladas = null;
+
+    // Cargar botones y funciones hijas
     fetch('Botones-y-subfunciones.html')
       .then(res => res.text())
       .then(html => {
         const container = document.getElementById('botones-container');
         container.innerHTML = html;
 
-        // Ejecutar scripts inline manualmente:
+        // Insertar iframe boton-gps (hijo)
+        const iframeGPS = document.createElement('iframe');
+        iframeGPS.id = 'iframe-gps';
+        iframeGPS.src = 'boton-gps.html';
+        iframeGPS.style.cssText = `
+          position: absolute;
+          left: 0;
+          top: 50%;
+          transform: translateY(-50%);
+          border: none;
+          width: 140px;
+          height: 120px;
+          z-index: 1100;
+        `;
+        container.appendChild(iframeGPS);
+
+        // Ejecutar scripts inline dentro de container
         container.querySelectorAll('script').forEach(oldScript => {
           const newScript = document.createElement('script');
           if (oldScript.src) {
@@ -59,14 +80,47 @@
           document.body.appendChild(newScript);
         });
 
-        // Ejecutar inicialización del hijo después de cargar contenido y scripts:
+        // Esperar un poco e inicializar si existe función
         setTimeout(() => {
           if (typeof inicializarBotonesFlotantes === 'function') {
             inicializarBotonesFlotantes();
           } else {
-            console.error('Función inicializarBotonesFlotantes no encontrada.');
+            console.warn('Función inicializarBotonesFlotantes no encontrada.');
           }
         }, 100);
+
+        // Listener postMessage para mensajes del hijo boton-gps
+        window.addEventListener('message', e => {
+          // Ideal: validar e.origin para seguridad (omito aquí para ejemplo)
+          const data = e.data;
+          if (!data || data.tipo !== 'gps_modo') return;
+
+          gpsSimuladoActivo = !!data.activo;
+          if (data.coords && typeof data.coords.lat === 'number' && typeof data.coords.lng === 'number') {
+            coordenadasSimuladas = { lat: data.coords.lat, lng: data.coords.lng };
+          } else {
+            coordenadasSimuladas = null;
+          }
+
+          console.log('GPS simulado:', gpsSimuladoActivo ? 'ON' : 'OFF', coordenadasSimuladas);
+
+          if (gpsSimuladoActivo && coordenadasSimuladas) {
+            map.setView([coordenadasSimuladas.lat, coordenadasSimuladas.lng], 16);
+          } else {
+            // GPS OFF: opcional, volver a vista por defecto o dejar mapa donde esté
+            // map.setView([39.478046, -0.375515], 14);
+          }
+        });
+
+        // Sincronizar estado con iframe hijo (opcional)
+        iframeGPS.addEventListener('load', () => {
+          iframeGPS.contentWindow.postMessage({
+            tipo: 'gps_modo',
+            activo: gpsSimuladoActivo,
+            coords: coordenadasSimuladas
+          }, '*');
+        });
+
       })
       .catch(err => console.error('Error al cargar botones:', err));
   </script>
