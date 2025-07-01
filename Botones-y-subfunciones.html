@@ -1,5 +1,41 @@
 <!DOCTYPE html>
 <html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Iconos Radiales</title>
+  <style>
+    .boton-flotante, .icono-flotante {
+      position: fixed;
+      background: #007acc;
+      color: white;
+      border-radius: 50%;
+      width: 56px;
+      height: 56px;
+      font-size: 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 1001;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      user-select: none;
+      transition: left 0.3s, top 0.3s, opacity 0.3s;
+    }
+    .icono-flotante {
+      width: 44px;
+      height: 44px;
+      font-size: 1.5rem;
+      z-index: 1002;
+      display: none;
+      opacity: 0;
+      pointer-events: auto;
+    }
+
+    #hamburguesa { bottom: 12px; left: 12px; }
+    #mas-opciones { bottom: 12px; right: 12px; }
+    #btn-mapa { top: 12px; right: 12px; }
+  </style>
+</head>
 <body>
   <!-- Botones principales -->
   <button id="hamburguesa" class="boton-flotante">☰</button>
@@ -18,39 +54,6 @@
   <button class="icono-flotante" id="icono-ruta">🗺️</button>
   <button class="icono-flotante" id="icono-brujula">🧭</button>
 
-  <style>
-    .boton-flotante, .icono-flotante {
-      position: fixed;
-      background: #007acc;
-      color: white;
-      border-radius: 50%;
-      width: 56px;
-      height: 56px;
-      font-size: 2rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      z-index: 1001;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-      user-select: none;
-    }
-    .icono-flotante {
-      display: none;
-      width: 44px;
-      height: 44px;
-      font-size: 1.5rem;
-      z-index: 1002;
-      visibility: hidden;
-      opacity: 0;
-      transition: opacity 0.3s;
-    }
-
-    #hamburguesa { bottom: 12px; left: 12px; }
-    #mas-opciones { bottom: 12px; right: 12px; }
-    #btn-mapa { top: 12px; right: 12px; }
-  </style>
-
   <script>
     const gruposIconos = {
       hamburguesa: ['icono-retos','icono-gastronomia','icono-informacion','icono-historia'],
@@ -58,23 +61,11 @@
       'btn-mapa': ['icono-punto','icono-ruta','icono-brujula']
     };
 
+    // Ángulo central y arco (en grados) para cada grupo, pensado como reloj (0° = 3h)
     const sectores = {
-      hamburguesa: { centro: 90, arco: 90 },
-      'mas-opciones': { centro: 270, arco: 90 },
-      'btn-mapa': { centro: 180, arco: 90 }
-    };
-
-    const enlacesIconos = {
-      'icono-retos': 'retos_con_puzzles_Av1_es.html',
-      'icono-gastronomia': 'Gastronomia.html',
-      'icono-informacion': 'paginas_oficiales.html',
-      'icono-historia': 'enlaces_valencia_historica.html',
-      'icono-agradecimientos': 'Agradecimientos.html',
-      'icono-seguridad': 'consejos_seguridad_vial.html',
-      'icono-fuentes': null,
-      'icono-punto': null,
-      'icono-ruta': 'Av1_mapa_completo.html',
-      'icono-brujula': 'mapas/Av1_mapa.jpg'
+      hamburguesa: { centro: 45, arco: 90 },      // Entre 0h y 3h (45° es 1:30h)
+      'mas-opciones': { centro: 315, arco: 90 },  // Entre 21h y 0h (315° es 10:30h)
+      'btn-mapa': { centro: 225, arco: 90 }       // Entre 18h y 21h (225° es 7:30h)
     };
 
     let iconosVisibles = {};
@@ -84,7 +75,6 @@
         const el = document.getElementById(id);
         if (el) {
           el.style.display = 'none';
-          el.style.visibility = 'hidden';
           el.style.opacity = 0;
           iconosVisibles[id] = false;
         }
@@ -103,46 +93,46 @@
       const sector = sectores[idBoton];
       const { centro, arco } = sector;
       const total = iconos.length;
-      const inicio = centro - arco / 2;
 
-      const maxRadio = 120;
+      // Calcular ángulo de inicio para distribuir los iconos equidistantemente
+      const anguloInicio = centro - arco / 2;
+
+      // Máximo radio para que no se salgan de la pantalla (ajustando 60px padding)
       const padding = 60;
       const vw = window.innerWidth;
       const vh = window.innerHeight;
+      const maxRadio = 150;
 
+      // Vamos a reducir radio si algún icono queda fuera del viewport
       let radio = maxRadio;
-
       while (radio > 40) {
         let fuera = false;
         for (let i = 0; i < total; i++) {
-          const angulo = total === 1 ? centro : inicio + (arco / (total - 1)) * i;
+          const angulo = total === 1 ? centro : anguloInicio + (arco / (total - 1)) * i;
           const rad = angulo * Math.PI / 180;
           const x = cx + radio * Math.cos(rad);
-          const y = cy + radio * Math.sin(rad);
+          const y = cy - radio * Math.sin(rad); // OJO, en pantalla y aumenta hacia abajo, por eso restamos
           if (x < padding || x > vw - padding || y < padding || y > vh - padding) {
             fuera = true;
             break;
           }
         }
         if (!fuera) break;
-        radio -= 10;
+        radio -= 5;
       }
 
+      // Posicionar los iconos
       for (let i = 0; i < total; i++) {
-        const angulo = total === 1 ? centro : inicio + (arco / (total - 1)) * i;
+        const angulo = total === 1 ? centro : anguloInicio + (arco / (total - 1)) * i;
         const rad = angulo * Math.PI / 180;
         const x = cx + radio * Math.cos(rad);
-        const y = cy + radio * Math.sin(rad);
-
-        console.log(`Icono ${iconos[i]}: angulo=${angulo}, x=${x}, y=${y}`);
+        const y = cy - radio * Math.sin(rad);
 
         const el = document.getElementById(iconos[i]);
         if (el) {
           el.style.left = `${x - el.offsetWidth / 2}px`;
           el.style.top = `${y - el.offsetHeight / 2}px`;
-          el.style.position = 'fixed';
           el.style.display = 'flex';
-          el.style.visibility = 'visible';
           el.style.opacity = 1;
           iconosVisibles[iconos[i]] = true;
         }
@@ -150,3 +140,28 @@
     }
 
     function inicializarBotones() {
+      Object.entries(gruposIconos).forEach(([botonId, iconoIds]) => {
+        const boton = document.getElementById(botonId);
+        if (!boton) return;
+
+        boton.addEventListener('click', () => {
+          const algunoVisible = iconoIds.some(id => iconosVisibles[id]);
+          ocultarTodos();
+          if (!algunoVisible) mostrarIconos(botonId);
+        });
+      });
+    }
+
+    function recalcularVisibles() {
+      Object.entries(gruposIconos).forEach(([botonId, iconos]) => {
+        const alguno = iconos.some(id => iconosVisibles[id]);
+        if (alguno) mostrarIconos(botonId);
+      });
+    }
+
+    window.addEventListener('load', inicializarBotones);
+    window.addEventListener('resize', recalcularVisibles);
+    window.addEventListener('orientationchange', () => setTimeout(recalcularVisibles, 200));
+  </script>
+</body>
+</html>
