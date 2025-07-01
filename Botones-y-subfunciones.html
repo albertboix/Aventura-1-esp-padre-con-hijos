@@ -55,6 +55,12 @@
       'btn-mapa': ['icono-punto','icono-ruta','icono-brujula']
     };
 
+    const sectores = {
+      hamburguesa: { centro: 45, arco: 90 },
+      'mas-opciones': { centro: 315, arco: 90 },
+      'btn-mapa': { centro: 225, arco: 90 }
+    };
+
     const enlacesIconos = {
       'icono-retos': 'retos_con_puzzles_Av1_es.html',
       'icono-gastronomia': 'Gastronomia.html',
@@ -68,45 +74,7 @@
       'icono-brujula': 'mapas/Av1_mapa.jpg'
     };
 
-    const radioFijo = 80; // distancia fija desde el botón principal
     let iconosVisibles = {};
-
-    // Decide el ángulo central y arco basado en posición relativa del botón en pantalla
-    function calcularSector(cx, cy) {
-      const margen = 20; // margen desde los bordes para decidir sector
-      const ancho = window.innerWidth;
-      const alto = window.innerHeight;
-
-      const enIzquierda = cx < ancho / 2;
-      const enArriba = cy < alto / 2;
-
-      // Ajustar sectores para que los iconos siempre estén visibles
-      // Ángulos en grados (0° = derecha, 90°= abajo, 180°=izquierda, 270°=arriba)
-      if (enIzquierda && !enArriba) {
-        // Abajo izquierda: sector hacia arriba-derecha
-        return { anguloCentro: 45, arco: 90 };
-      } else if (!enIzquierda && !enArriba) {
-        // Abajo derecha: sector hacia arriba-izquierda
-        return { anguloCentro: 135, arco: 90 };
-      } else if (enIzquierda && enArriba) {
-        // Arriba izquierda: sector hacia abajo-derecha
-        return { anguloCentro: 315, arco: 90 };
-      } else {
-        // Arriba derecha: sector hacia abajo-izquierda
-        return { anguloCentro: 225, arco: 90 };
-      }
-    }
-
-    function distribuirAngulos(anguloCentro, arco, cantidad) {
-      if (cantidad === 1) return [anguloCentro];
-      const angulos = [];
-      const paso = arco / (cantidad - 1);
-      const inicio = anguloCentro - arco / 2;
-      for (let i = 0; i < cantidad; i++) {
-        angulos.push(inicio + paso * i);
-      }
-      return angulos;
-    }
 
     function ocultarTodos() {
       Object.values(gruposIconos).flat().forEach(id => {
@@ -122,32 +90,39 @@
       const iconos = gruposIconos[idBoton];
       if (!iconos) return;
 
-      const boton = document.getElementById(idBoton);
-      if (!boton) return;
-      const rect = boton.getBoundingClientRect();
+      const b = document.getElementById(idBoton);
+      const rect = b.getBoundingClientRect();
       const cx = rect.left + rect.width / 2;
       const cy = rect.top + rect.height / 2;
 
-      const { anguloCentro, arco } = calcularSector(cx, cy);
-      const angulos = distribuirAngulos(anguloCentro, arco, iconos.length);
+      const { centro, arco } = sectores[idBoton];
+      const total = iconos.length;
 
-      iconos.forEach((iconoId, i) => {
-        const el = document.getElementById(iconoId);
+      const angulos = total === 1
+        ? [centro]
+        : Array.from({ length: total }, (_, i) =>
+            centro - arco / 2 + (i * arco) / (total - 1)
+          );
+
+      const radio = 80;
+
+      angulos.forEach((angulo, i) => {
+        const el = document.getElementById(iconos[i]);
         if (!el) return;
 
-        const angRad = angulos[i] * Math.PI / 180;
-        const x = cx + radioFijo * Math.cos(angRad) - el.offsetWidth / 2;
-        const y = cy + radioFijo * Math.sin(angRad) - el.offsetHeight / 2;
+        const rad = angulo * Math.PI / 180;
+        const x = cx + radio * Math.cos(rad) - el.offsetWidth / 2;
+        const y = cy + radio * Math.sin(rad) - el.offsetHeight / 2;
 
         el.style.left = `${x}px`;
         el.style.top = `${y}px`;
         el.style.position = 'fixed';
         el.style.display = 'flex';
-        iconosVisibles[iconoId] = true;
+        iconosVisibles[iconos[i]] = true;
       });
     }
 
-    function inicializarBotonesFlotantes() {
+    function inicializar() {
       Object.entries(gruposIconos).forEach(([botonId, iconoIds]) => {
         const boton = document.getElementById(botonId);
         if (!boton) return;
@@ -173,23 +148,13 @@
     function recalcularIconosVisibles() {
       Object.entries(gruposIconos).forEach(([botonId, iconoIds]) => {
         const algunoVisible = iconoIds.some(id => iconosVisibles[id]);
-        if (algunoVisible) {
-          mostrarIconos(botonId);
-        }
+        if (algunoVisible) mostrarIconos(botonId);
       });
     }
 
-    window.addEventListener('load', () => {
-      inicializarBotonesFlotantes();
-    });
-
-    window.addEventListener('resize', () => {
-      recalcularIconosVisibles();
-    });
-
-    window.addEventListener('orientationchange', () => {
-      setTimeout(() => recalcularIconosVisibles(), 200);
-    });
+    window.addEventListener('load', inicializar);
+    window.addEventListener('resize', recalcularIconosVisibles);
+    window.addEventListener('orientationchange', () => setTimeout(recalcularIconosVisibles, 200));
   </script>
 </body>
 </html>
