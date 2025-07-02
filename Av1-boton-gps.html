@@ -12,11 +12,10 @@
     user-select: none;
   }
 
-  /* Posición y estilo del botón flotante */
   #boton-gps {
     position: fixed;
     top: 10px;
-    right: 10px;
+    left: 10px;
     background: #eee;
     border-radius: 8px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.3);
@@ -25,8 +24,17 @@
     flex-direction: column;
     align-items: stretch;
     gap: 10px;
-    width: 120px;
+    width: 220px;
     z-index: 9999;
+    max-height: 90vh;
+    overflow: hidden;
+  }
+
+  #cabecera {
+    position: sticky;
+    top: 0;
+    background: #eee;
+    z-index: 10;
   }
 
   #icono-casa {
@@ -39,13 +47,8 @@
     color: white;
   }
 
-  #icono-casa.on {
-    background-color: red;
-  }
-
-  #icono-casa.off {
-    background-color: green;
-  }
+  #icono-casa.on { background-color: red; }
+  #icono-casa.off { background-color: green; }
 
   #icono-casa svg {
     width: 24px;
@@ -60,13 +63,8 @@
     user-select: none;
   }
 
-  #estado.on {
-    color: red;
-  }
-
-  #estado.off {
-    color: green;
-  }
+  #estado.on { color: red; }
+  #estado.off { color: green; }
 
   #coords {
     display: none;
@@ -89,103 +87,169 @@
     border: 1px solid #ccc;
     border-radius: 4px;
   }
+
+  #paradas {
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 200px;
+    padding-top: 4px;
+  }
+
+  .parada-btn {
+    background-color: #fff;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .parada-btn:hover {
+    background-color: #ddd;
+  }
 </style>
 </head>
 <body>
   <div id="boton-gps" role="button" tabindex="0" aria-pressed="true" aria-label="Activar simulación GPS">
-    <div id="icono-casa" class="on" aria-hidden="true">
-      <svg viewBox="0 0 24 24" focusable="false">
-        <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
-      </svg>
+    <div id="cabecera">
+      <div id="icono-casa" class="on" aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false">
+          <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+        </svg>
+      </div>
+      <div id="estado" class="on">ON</div>
+      <div id="coords">
+        <label>Latitud:
+          <input type="number" step="0.000001" id="lat" value="39.478046" aria-label="Latitud de simulación" />
+        </label>
+        <label>Longitud:
+          <input type="number" step="0.000001" id="lng" value="-0.375515" aria-label="Longitud de simulación" />
+        </label>
+      </div>
     </div>
-    <div id="estado" class="on">ON</div>
-    <div id="coords">
-      <label>Latitud:
-        <input type="number" step="0.000001" id="lat" value="39.478046" aria-label="Latitud de simulación" />
-      </label>
-      <label>Longitud:
-        <input type="number" step="0.000001" id="lng" value="-0.375515" aria-label="Longitud de simulación" />
-      </label>
-    </div>
+    <div id="paradas" style="display: none;"></div>
   </div>
 
-  <script>
-    (function(){
-      const boton = document.getElementById('boton-gps');
-      const estadoElem = document.getElementById('estado');
-      const iconoCasa = document.getElementById('icono-casa');
-      const coordsDiv = document.getElementById('coords');
-      const latInput = document.getElementById('lat');
-      const lngInput = document.getElementById('lng');
+<script>
+(function() {
+  const boton = document.getElementById('boton-gps');
+  const estadoElem = document.getElementById('estado');
+  const iconoCasa = document.getElementById('icono-casa');
+  const coordsDiv = document.getElementById('coords');
+  const latInput = document.getElementById('lat');
+  const lngInput = document.getElementById('lng');
+  const paradasDiv = document.getElementById('paradas');
 
-      let gpsActivo = true;
+  const paradas = [
+    { nombre: "Torres de Serranos", lat: 39.4795, lng: -0.3757 },
+    { nombre: "Puente de Serranos – Plaza de la crida", lat: 39.4782, lng: -0.3750 },
+    { nombre: "Cortes Valencianas (Palacio de los Borgia)", lat: 39.4788, lng: -0.3744 },
+    { nombre: "Plaza de la Virgen", lat: 39.4781, lng: -0.3766 },
+    { nombre: "Plaza de la Almoína", lat: 39.4777, lng: -0.3758 },
+    { nombre: "Catedral de València", lat: 39.4776, lng: -0.3753 },
+    { nombre: "Plaza decimo Juno Bruto", lat: 39.4771, lng: -0.3749 },
+    { nombre: "Basílica de València", lat: 39.4780, lng: -0.3754 },
+    { nombre: "Palacio Arzobispal", lat: 39.4775, lng: -0.3756 },
+    { nombre: "Plaza del Ayuntamiento", lat: 39.4698, lng: -0.3763 },
+    { nombre: "Edificio del Ayuntamiento de València", lat: 39.4695, lng: -0.3762 },
+    { nombre: "Estación de Ferrocarril (Estación del Norte)", lat: 39.4655, lng: -0.3770 },
+    { nombre: "Plaza de Toros de València", lat: 39.4652, lng: -0.3767 },
+    { nombre: "Casa estilo Árabe", lat: 39.4672, lng: -0.3759 },
+    { nombre: "Palacio de Comunicaciones (Correos)", lat: 39.4693, lng: -0.3761 },
+    { nombre: "Antigua sede del Banco de València", lat: 39.4691, lng: -0.3760 },
+    { nombre: "Palacio del Marqués de Dos Aguas", lat: 39.4703, lng: -0.3747 },
+    { nombre: "Mercado Central", lat: 39.4741, lng: -0.3780 },
+    { nombre: "San Juan del Mercado", lat: 39.4739, lng: -0.3776 },
+    { nombre: "Lonja de València", lat: 39.4742, lng: -0.3772 },
+    { nombre: "Plaza del Doctor Collado", lat: 39.4740, lng: -0.3768 },
+    { nombre: "Plaza del Negrito", lat: 39.4760, lng: -0.3755 },
+    { nombre: "Calle Caballeros", lat: 39.4768, lng: -0.3751 },
+    { nombre: "Palacio de la Generalitat", lat: 39.4784, lng: -0.3752 }
+  ];
 
-      function enviarMensaje() {
-        const lat = parseFloat(latInput.value);
-        const lng = parseFloat(lngInput.value);
+  let gpsActivo = true;
 
-        window.parent.postMessage({
-          tipo: 'gps_modo',
-          activo: gpsActivo,
-          coords: gpsActivo ? { lat, lng } : null
-        }, '*');
-      }
+  function enviarMensaje(paradaNombre = null) {
+    const lat = parseFloat(latInput.value);
+    const lng = parseFloat(lngInput.value);
 
-      function actualizarVisual() {
-        if (gpsActivo) {
-          estadoElem.textContent = 'ON';
-          estadoElem.classList.add('on');
-          estadoElem.classList.remove('off');
-          iconoCasa.classList.add('on');
-          iconoCasa.classList.remove('off');
-          boton.setAttribute('aria-pressed', 'true');
-          coordsDiv.style.display = 'flex';
-        } else {
-          estadoElem.textContent = 'OFF';
-          estadoElem.classList.remove('on');
-          estadoElem.classList.add('off');
-          iconoCasa.classList.remove('on');
-          iconoCasa.classList.add('off');
-          boton.setAttribute('aria-pressed', 'false');
-          coordsDiv.style.display = 'none';
-        }
-      }
+    window.parent.postMessage({
+      tipo: 'gps_modo',
+      activo: gpsActivo,
+      coords: gpsActivo ? { lat, lng } : { lat, lng },
+      parada: paradaNombre || null
+    }, '*');
+  }
 
-      boton.addEventListener('click', () => {
-        gpsActivo = !gpsActivo;
-        actualizarVisual();
-        enviarMensaje();
-      });
+  function actualizarVisual() {
+    if (gpsActivo) {
+      estadoElem.textContent = 'ON';
+      estadoElem.classList.add('on');
+      estadoElem.classList.remove('off');
+      iconoCasa.classList.add('on');
+      iconoCasa.classList.remove('off');
+      boton.setAttribute('aria-pressed', 'true');
+      coordsDiv.style.display = 'none';
+      paradasDiv.style.display = 'none';
+    } else {
+      estadoElem.textContent = 'OFF';
+      estadoElem.classList.remove('on');
+      estadoElem.classList.add('off');
+      iconoCasa.classList.remove('on');
+      iconoCasa.classList.add('off');
+      boton.setAttribute('aria-pressed', 'false');
+      coordsDiv.style.display = 'flex';
+      paradasDiv.style.display = 'flex';
+    }
+  }
 
-      latInput.addEventListener('change', () => {
-        if (gpsActivo) enviarMensaje();
-      });
+  boton.addEventListener('click', () => {
+    gpsActivo = !gpsActivo;
+    actualizarVisual();
+    enviarMensaje();
+  });
 
-      lngInput.addEventListener('change', () => {
-        if (gpsActivo) enviarMensaje();
-      });
+  latInput.addEventListener('change', () => {
+    if (!gpsActivo) enviarMensaje();
+  });
 
-      boton.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          boton.click();
-        }
-      });
+  lngInput.addEventListener('change', () => {
+    if (!gpsActivo) enviarMensaje();
+  });
 
-      // Recibir mensaje del padre solicitando estado GPS
-      window.addEventListener('message', e => {
-        if (e.data && e.data.tipo === 'solicitar-estado-gps') {
-          enviarMensaje();
-        }
-      });
+  boton.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      boton.click();
+    }
+  });
 
-      // Al cargarse el iframe, notifica al padre que está listo
-      window.parent.postMessage({ tipo: 'boton-gps-listo' }, '*');
-
-      // Inicializa visual y mensaje inicial
-      actualizarVisual();
+  window.addEventListener('message', e => {
+    if (e.data && e.data.tipo === 'solicitar-estado-gps') {
       enviarMensaje();
-    })();
-  </script>
+    }
+  });
+
+  window.parent.postMessage({ tipo: 'boton-gps-listo' }, '*');
+
+  paradas.forEach(p => {
+    const btn = document.createElement('button');
+    btn.className = 'parada-btn';
+    btn.textContent = p.nombre;
+    btn.addEventListener('click', () => {
+      latInput.value = p.lat;
+      lngInput.value = p.lng;
+      enviarMensaje(p.nombre);
+    });
+    paradasDiv.appendChild(btn);
+  });
+
+  actualizarVisual();
+  enviarMensaje();
+})();
+</script>
 </body>
 </html>
