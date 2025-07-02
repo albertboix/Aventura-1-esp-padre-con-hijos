@@ -27,11 +27,27 @@
     #botones-container * {
       pointer-events: auto;
     }
+    /* Estilo para iframe botón GPS */
+    #iframe-gps {
+      position: fixed;
+      top: 50%;
+      left: 10px;
+      transform: translateY(-50%);
+      width: 120px;
+      height: 160px;
+      border: none;
+      z-index: 9999;
+      background: transparent;
+      pointer-events: auto;
+    }
   </style>
 </head>
 <body>
   <div id="mapa"></div>
   <div id="botones-container"></div>
+
+  <!-- Iframe que carga el botón GPS -->
+  <iframe id="iframe-gps" src="Av1-boton-gps.html" aria-label="Botón GPS flotante"></iframe>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
@@ -41,54 +57,52 @@
       attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    const cargarHTML = (ruta) => {
-      return fetch(ruta)
-        .then(res => res.text())
-        .then(html => {
-          const tempDiv = document.createElement('div');
-          tempDiv.innerHTML = html;
+    let marcadorGps = null;
 
-          // Mover hijos al contenedor real sin borrar lo anterior
-          const container = document.getElementById('botones-container');
-          [...tempDiv.children].forEach(child => container.appendChild(child));
+    fetch('Botones-y-subfunciones.html')
+      .then(res => res.text())
+      .then(html => {
+        const container = document.getElementById('botones-container');
+        container.innerHTML = html;
 
-          // Ejecutar scripts
-          tempDiv.querySelectorAll('script').forEach(oldScript => {
-            const newScript = document.createElement('script');
-            if (oldScript.src) {
-              newScript.src = oldScript.src;
-              newScript.async = false;
-            } else {
-              newScript.textContent = oldScript.textContent;
-            }
-            document.body.appendChild(newScript);
-          });
+        container.querySelectorAll('script').forEach(oldScript => {
+          const newScript = document.createElement('script');
+          if (oldScript.src) {
+            newScript.src = oldScript.src;
+            newScript.async = false;
+          } else {
+            newScript.textContent = oldScript.textContent;
+          }
+          document.body.appendChild(newScript);
         });
-    };
 
-    Promise.all([
-      cargarHTML('Botones-y-subfunciones.html'),
-      cargarHTML('Av1-boton-gps.html')
-    ])
-    .then(() => {
-      // Inicializar botones flotantes si existe esa función
-      if (typeof inicializarBotonesFlotantes === 'function') {
-        inicializarBotonesFlotantes();
-      }
-    })
-    .catch(err => console.error('Error cargando HTMLs:', err));
+        setTimeout(() => {
+          if (typeof inicializarBotonesFlotantes === 'function') {
+            inicializarBotonesFlotantes();
+          } else {
+            console.error('Función inicializarBotonesFlotantes no encontrada.');
+          }
+        }, 100);
+      })
+      .catch(err => console.error('Error al cargar botones:', err));
 
-    // Listener para recibir mensajes desde el botón GPS
-    window.addEventListener('message', (event) => {
-      const data = event.data;
-      if (data && data.tipo === 'gps_modo') {
-        const gpsActivo = data.activo;
-        const coords = data.coords;
+    window.addEventListener('message', event => {
+      if (!event.data || event.data.tipo !== 'gps_modo') return;
 
-        console.log('Mensaje recibido del botón GPS:', gpsActivo, coords);
+      const activo = event.data.activo;
+      const coords = event.data.coords;
 
-        if (gpsActivo && coords && typeof coords.lat === 'number' && typeof coords.lng === 'number') {
-          map.setView([coords.lat, coords.lng]);
+      if (activo && coords && coords.lat != null && coords.lng != null) {
+        if (!marcadorGps) {
+          marcadorGps = L.marker([coords.lat, coords.lng], {title: "Simulación GPS"}).addTo(map);
+        } else {
+          marcadorGps.setLatLng([coords.lat, coords.lng]);
+        }
+        map.setView([coords.lat, coords.lng], 14);
+      } else {
+        if (marcadorGps) {
+          map.removeLayer(marcadorGps);
+          marcadorGps = null;
         }
       }
     });
