@@ -27,19 +27,7 @@
     #botones-container * {
       pointer-events: auto;
     }
-    /* Estilos iframe botón GPS */
-    #iframe-gps {
-      position: fixed;
-      top: 50%;
-      left: 10px;
-      transform: translateY(-50%);
-      width: 120px;
-      height: 180px; /* Altura aumentada para que se vea entero */
-      border: none;
-      z-index: 9999;
-      background: transparent;
-      pointer-events: auto;
-    }
+    /* Eliminamos estilos del iframe GPS porque ya están en el hijo */
   </style>
 </head>
 <body>
@@ -47,7 +35,7 @@
   <div id="botones-container"></div>
 
   <!-- iframe del botón GPS -->
-  <iframe id="iframe-gps" src="Av1-boton-gps.html" allowtransparency="true" scrolling="no"></iframe>
+  <iframe id="iframe-gps" src="Av1-boton-gps.html"></iframe>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
@@ -57,16 +45,15 @@
       attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    // Cargar Botones-y-subfunciones.html y ejecutar scripts en orden
+    // Cargar Botones-y-subfunciones.html con carga correcta de scripts
     fetch('Botones-y-subfunciones.html')
       .then(res => res.text())
       .then(html => {
         const container = document.getElementById('botones-container');
         container.innerHTML = html;
 
-        // Ejecutar scripts uno a uno para respetar orden y dependencia
         const scripts = container.querySelectorAll('script');
-        function loadScript(i = 0) {
+        const loadScript = (i = 0) => {
           if (i >= scripts.length) {
             // Inicializar botones flotantes tras cargar todos los scripts
             if (typeof inicializarBotonesFlotantes === 'function') {
@@ -78,16 +65,20 @@
           }
           const oldScript = scripts[i];
           const newScript = document.createElement('script');
+
           if (oldScript.src) {
             newScript.src = oldScript.src;
             newScript.onload = () => loadScript(i + 1);
             newScript.onerror = () => loadScript(i + 1);
+            document.body.appendChild(newScript);
           } else {
             newScript.textContent = oldScript.textContent;
-            loadScript(i + 1);
+            container.appendChild(newScript);
+            // For inline scripts, espera un tick para que se ejecute
+            setTimeout(() => loadScript(i + 1), 0);
           }
-          document.body.appendChild(newScript);
-        }
+        };
+
         loadScript();
       })
       .catch(err => console.error('Error al cargar botones:', err));
@@ -96,11 +87,9 @@
     window.addEventListener('message', event => {
       const data = event.data;
       if (data && data.tipo === 'gps_modo') {
-        if (data.activo && data.coords && typeof data.coords.lat === 'number' && typeof data.coords.lng === 'number') {
-          // Cambiar vista del mapa a las coordenadas recibidas
+        if (data.coords && typeof data.coords.lat === 'number' && typeof data.coords.lng === 'number') {
           map.setView([data.coords.lat, data.coords.lng], map.getZoom());
         }
-        // Aquí podrías agregar más reacciones si hace falta
       }
     });
   </script>
