@@ -3,192 +3,38 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>App Padre Limpia</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <title>Padre Audioguía</title>
   <style>
-    html, body {
-      margin: 0;
-      height: 100%;
-      overflow: hidden;
-      font-family: sans-serif;
-    }
-    #mapa {
-      width: 100vw;
-      height: 100vh;
-    }
-    #botones-container {
+    body { margin:0; padding:0; background:#eee; height:100vh; }
+    #gps-iframe, #audio-iframe {
       position: absolute;
-      top: 0; left: 0;
-      width: 100vw;
-      height: 100vh;
-      pointer-events: none;
-      z-index: 1000;
+      left: 0; width: 100vw; border: none; background: transparent;
     }
-    #botones-container * {
-      pointer-events: auto;
-    }
-    #gps-container {
-      position: absolute;
-      top: 0; left: 0;
-      width: 100vw;
-      height: 100vh;
-      pointer-events: none;
-      z-index: 1100;
-    }
-    #gps-container * {
-      pointer-events: auto;
-    }
-    /* Contenedor para el reproductor de audio hijo */
-    #audio-container {
-      position: fixed;
-      left: 50%;
-      bottom: 10px;
-      transform: translateX(-50%);
-      width: 420px; /* Ajusta el ancho según lo que necesites */
-      height: 58px;
-      z-index: 1200;
-      pointer-events: none; /* El iframe gestiona los eventos */
-      display: flex;
-      justify-content: center;
-      align-items: flex-end;
-    }
-    #audioIframe {
-      width: 100%;
-      height: 58px;
-      border: none;
-      background: transparent;
-      pointer-events: auto;
-      z-index: 1201;
-      display: block;
-    }
-    @media (max-width: 500px) {
-      #audio-container {
-        width: 98vw;
-        min-width: 180px;
-        max-width: 98vw;
-      }
-      #audioIframe {
-        width: 100%;
-      }
-    }
+    #gps-iframe { top: 0; height: 60px; z-index: 10; }
+    #audio-iframe { bottom: 0; height: 160px; z-index: 20; }
   </style>
 </head>
 <body>
-  <div id="mapa"></div>
-  <div id="botones-container"></div>
-  <div id="gps-container"></div>
-  <div id="audio-container"></div>
-
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Hijo GPS -->
+  <iframe id="gps-iframe" src="Av1-boton-gps.html"></iframe>
+  <!-- Hijo Audio -->
+  <iframe id="audio-iframe" src="Av1_audio_esp.html" allow="autoplay"></iframe>
   <script>
-    // --- Inicialización del mapa ---
-    const map = L.map('mapa').setView([39.478046, -0.375515], 14);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 25,
-      attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
-
-    // --- Gestión de marcadores de paradas GPS ---
-    let paradaMarker = null;
-    function marcarParadaEnMapa(nombre, coords) {
-      if (paradaMarker) map.removeLayer(paradaMarker);
-      paradaMarker = L.marker([coords.lat, coords.lng], {
-        title: nombre,
-        icon: L.icon({
-          iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
-          iconSize: [32, 32],
-          iconAnchor: [16, 32],
-          popupAnchor: [0, -32]
-        })
-      }).addTo(map);
-      paradaMarker.bindPopup(`<b>${nombre}</b>`).openPopup();
-      map.setView([coords.lat, coords.lng], map.getZoom());
-    }
-
-    // --- Cargar el hijo de botones flotantes ---
-    fetch('Botones-y-subfunciones.html')
-      .then(res => res.text())
-      .then(html => {
-        const container = document.getElementById('botones-container');
-        container.innerHTML = html;
-        container.querySelectorAll('script').forEach(oldScript => {
-          const newScript = document.createElement('script');
-          if (oldScript.src) {
-            newScript.src = oldScript.src;
-            newScript.async = false;
-          } else {
-            newScript.textContent = oldScript.textContent;
-          }
-          document.body.appendChild(newScript);
-        });
-        setTimeout(() => {
-          if (typeof inicializarBotonesFlotantes === 'function') {
-            inicializarBotonesFlotantes();
-            if (typeof ocultarTodos === 'function') ocultarTodos();
-          }
-        }, 200);
-      })
-      .catch(err => console.error('Error al cargar botones:', err));
-
-    // --- Cargar el hijo GPS flotante ---
-    fetch('Av1-boton-gps.html')
-      .then(res => res.text())
-      .then(html => {
-        const container = document.getElementById('gps-container');
-        container.innerHTML = html;
-        container.querySelectorAll('script').forEach(oldScript => {
-          const newScript = document.createElement('script');
-          if (oldScript.src) {
-            newScript.src = oldScript.src;
-            newScript.async = false;
-          } else {
-            newScript.textContent = oldScript.textContent;
-          }
-          document.body.appendChild(newScript);
-        });
-        setTimeout(() => {
-          if (typeof inicializarGPS === 'function') {
-            inicializarGPS();
-          }
-        }, 200);
-      })
-      .catch(err => console.error('Error al cargar GPS:', err));
-
-    // --- Cargar el hijo reproductor de audio (Av1_audio_esp.html) ---
-    function cargarAudioHijo() {
-      const audioContainer = document.getElementById('audio-container');
-      audioContainer.innerHTML = `
-        <iframe id="audioIframe"
-          src="Av1_audio_esp.html"
-          allow="autoplay"
-          style="width:100%;height:58px;border:none;background:transparent;pointer-events:auto;z-index:1201;display:block;"
-          tabindex="0"
-        ></iframe>
-      `;
-    }
-    cargarAudioHijo();
-
-    // --- Comunicación: escuchar mensajes de los hijos ---
+    // Escucha mensajes de los hijos
     window.addEventListener('message', (event) => {
       const data = event.data;
-      if (!data || typeof data !== 'object') return;
-
-      // Mensaje cuando el hijo GPS marca una parada
-      if (data.tipo === 'gps_marcar_parada') {
-        marcarParadaEnMapa(data.parada, data.coords);
+      // Si el GPS marca una parada, reenvía al hijo audio
+      if (data && data.tipo === 'gps_marcar_parada') {
+        const audioIframe = document.getElementById('audio-iframe');
+        if (audioIframe) {
+          audioIframe.contentWindow.postMessage({
+            type: 'loadAudio',
+            idAudio: data.idAudio, // debe coincidir con el id del audio en el hijo audio
+            canPlay: true
+          }, '*');
+        }
       }
-
-      // Mensaje cuando el hijo audio está listo
-      if (data.type === 'audio-hijo-listo') {
-        console.log('Audio hijo listo');
-        // Aquí puedes guardar un flag o iniciar lógica relacionada
-      }
-
-      // Mensaje cuando el usuario pulsa "Siguiente Paso"
-      if (data.type === 'audio-player-next-step') {
-        console.log('Usuario pulsó Siguiente Paso');
-        // avanzarPaso(); // Llama a tu función de avance si la tienes
-      }
+      // Puedes escuchar otros mensajes si lo necesitas
     });
   </script>
 </body>
