@@ -8,31 +8,66 @@
   <style>
     html, body { margin:0; padding:0; height:100%; }
     #mapa { width: 100vw; height: 100vh; }
+    #botones-container {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      pointer-events: none;
+      z-index: 1000;
+    }
+    #botones-container * { pointer-events: auto; }
     #gps-iframe {
-      position: fixed; top: 10px; left: 10px; width: 300px; height: 60px; border: none; background: transparent; z-index: 1001;
+      position: fixed; top: 10px; left: 10px; width: 320px; height: 60px; border: none; background: transparent; z-index: 1100;
     }
     #audio-iframe {
       position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%);
-      width: 360px; height: 160px; border: none; background: transparent; z-index: 1002;
+      width: 360px; height: 160px; border: none; background: transparent; z-index: 1200;
     }
   </style>
 </head>
 <body>
   <div id="mapa"></div>
+  <div id="botones-container"></div>
   <iframe id="gps-iframe" src="Av1-boton-gps.html"></iframe>
   <iframe id="audio-iframe" src="Av1_audio_esp.html" allow="autoplay"></iframe>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    // Inicializa el mapa (puedes cambiar el centro y zoom)
+    // Inicializa el mapa
     const map = L.map('mapa').setView([39.478046, -0.375515], 14);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 25,
       attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
+    // Cargar los botones flotantes (si los usas como HTML externo)
+    fetch('Botones-y-subfunciones.html')
+      .then(res => res.text())
+      .then(html => {
+        const container = document.getElementById('botones-container');
+        container.innerHTML = html;
+        container.querySelectorAll('script').forEach(oldScript => {
+          const newScript = document.createElement('script');
+          if (oldScript.src) {
+            newScript.src = oldScript.src;
+            newScript.async = false;
+          } else {
+            newScript.textContent = oldScript.textContent;
+          }
+          document.body.appendChild(newScript);
+        });
+        setTimeout(() => {
+          if (typeof inicializarBotonesFlotantes === 'function') {
+            inicializarBotonesFlotantes();
+            if (typeof ocultarTodos === 'function') ocultarTodos();
+          }
+        }, 200);
+      })
+      .catch(err => console.error('Error al cargar botones:', err));
+
     // Comunicación entre hijos y padre
     window.addEventListener('message', (event) => {
       const data = event.data;
+      // GPS hijo marca una parada
       if (data && data.tipo === 'gps_marcar_parada') {
         const audioIframe = document.getElementById('audio-iframe');
         if (audioIframe) {
@@ -43,6 +78,7 @@
           }, '*');
         }
       }
+      // Puedes añadir aquí otros mensajes si lo necesitas
     });
   </script>
 </body>
