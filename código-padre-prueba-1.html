@@ -38,12 +38,31 @@
     #gps-container * {
       pointer-events: auto;
     }
+    /* Contenedor para el reproductor de audio hijo */
+    #audio-container {
+      position: absolute;
+      left: 0; top: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 1200;
+    }
+    #audio-container iframe {
+      position: absolute;
+      left: 0; top: 0;
+      width: 100vw;
+      height: 100vh;
+      border: none;
+      background: transparent;
+      pointer-events: none; /* El iframe será pointer-events: auto solo en el reproductor */
+    }
   </style>
 </head>
 <body>
   <div id="mapa"></div>
   <div id="botones-container"></div>
   <div id="gps-container"></div>
+  <div id="audio-container"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
@@ -120,11 +139,45 @@
       })
       .catch(err => console.error('Error al cargar GPS:', err));
 
+    // --- Cargar el hijo reproductor de audio (Av1_audio_esp.html) ---
+    function cargarAudioHijo() {
+      const audioContainer = document.getElementById('audio-container');
+      audioContainer.innerHTML = `
+        <iframe id="audioIframe"
+          src="Av1_audio_esp.html"
+          allow="autoplay"
+          style="background: transparent; pointer-events: auto;"
+          tabindex="0"
+        ></iframe>
+      `;
+    }
+    cargarAudioHijo();
+
     // --- Comunicación: escuchar mensajes de los hijos ---
     window.addEventListener('message', (event) => {
-      if (event.data && event.data.tipo === 'gps_marcar_parada') {
-        marcarParadaEnMapa(event.data.parada, event.data.coords);
+      const data = event.data;
+      if (!data || typeof data !== 'object') return;
+
+      // Mensaje cuando el hijo GPS marca una parada
+      if (data.tipo === 'gps_marcar_parada') {
+        marcarParadaEnMapa(data.parada, data.coords);
       }
+
+      // Mensaje cuando el hijo audio está listo
+      if (data.type === 'audio-hijo-listo') {
+        // El reproductor de audio está listo para recibir comandos
+        console.log('Audio hijo listo');
+        // Aquí puedes guardar un flag o iniciar lógica relacionada
+      }
+
+      // Mensaje cuando el usuario pulsa "Siguiente Paso"
+      if (data.type === 'audio-player-next-step') {
+        // Aquí puedes avanzar al siguiente paso de la aventura
+        console.log('Usuario pulsó Siguiente Paso');
+        // avanzarPaso(); // Llama a tu función de avance si la tienes
+      }
+
+      // Puedes añadir aquí otros tipos de mensajes si lo necesitas en el futuro
     });
   </script>
 </body>
