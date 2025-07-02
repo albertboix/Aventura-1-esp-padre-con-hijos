@@ -2,94 +2,82 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>App Padre Limpia</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <title>Padre con módulos botones y GPS</title>
   <style>
-    html, body {
-      margin: 0;
-      height: 100%;
-      overflow: hidden;
-      font-family: sans-serif;
+    #gps-container, #botones-container {
+      position: relative;
+      width: 100%;
+      height: 300px;
+      border: 1px solid #ccc;
+      margin-bottom: 20px;
     }
-    #mapa {
-      width: 100vw;
-      height: 100vh;
-    }
-    #botones-container {
-      position: absolute;
-      top: 0; left: 0;
-      width: 100vw;
-      height: 100vh;
-      pointer-events: none;
-      z-index: 1000;
-    }
-    #botones-container * {
-      pointer-events: auto;
-    }
-    /* Eliminamos estilos del iframe GPS porque ya están en el hijo */
   </style>
 </head>
 <body>
-  <div id="mapa"></div>
+
+  <div id="gps-container"></div>
   <div id="botones-container"></div>
 
-  <!-- iframe del botón GPS -->
-  <iframe id="iframe-gps" src="Av1-boton-gps.html"></iframe>
-
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    const map = L.map('mapa').setView([39.478046, -0.375515], 14);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 25,
-      attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
+    async function cargarModulo(url, containerId, callbackInitName) {
+      const container = document.getElementById(containerId);
+      const response = await fetch(url);
+      const html = await response.text();
 
-    // Cargar Botones-y-subfunciones.html con carga correcta de scripts
-    fetch('Botones-y-subfunciones.html')
-      .then(res => res.text())
-      .then(html => {
-        const container = document.getElementById('botones-container');
-        container.innerHTML = html;
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = html;
 
-        const scripts = container.querySelectorAll('script');
-        const loadScript = (i = 0) => {
-          if (i >= scripts.length) {
-            // Inicializar botones flotantes tras cargar todos los scripts
-            if (typeof inicializarBotonesFlotantes === 'function') {
-              inicializarBotonesFlotantes();
-            } else {
-              console.error('Función inicializarBotonesFlotantes no encontrada.');
-            }
-            return;
-          }
-          const oldScript = scripts[i];
-          const newScript = document.createElement('script');
+      const scripts = Array.from(tempDiv.querySelectorAll('script'));
+      scripts.forEach(s => s.remove());
 
-          if (oldScript.src) {
-            newScript.src = oldScript.src;
-            newScript.onload = () => loadScript(i + 1);
-            newScript.onerror = () => loadScript(i + 1);
-            document.body.appendChild(newScript);
+      container.innerHTML = tempDiv.innerHTML;
+
+      for (const script of scripts) {
+        await new Promise((resolve, reject) => {
+          const nuevoScript = document.createElement('script');
+          if (script.src) {
+            nuevoScript.src = script.src;
+            nuevoScript.onload = resolve;
+            nuevoScript.onerror = () => reject(new Error(`Error cargando script ${script.src}`));
           } else {
-            newScript.textContent = oldScript.textContent;
-            container.appendChild(newScript);
-            // For inline scripts, espera un tick para que se ejecute
-            setTimeout(() => loadScript(i + 1), 0);
+            nuevoScript.textContent = script.textContent;
+            resolve();
           }
-        };
+          document.body.appendChild(nuevoScript);
+        });
+      }
 
-        loadScript();
-      })
-      .catch(err => console.error('Error al cargar botones:', err));
+      if (typeof window[callbackInitName] === 'function') {
+        window[callbackInitName]();
+      } else {
+        console.warn(`Función ${callbackInitName} no encontrada.`);
+      }
+    }
 
-    // Listener para mensajes postMessage desde iframe GPS
-    window.addEventListener('message', event => {
-      const data = event.data;
-      if (data && data.tipo === 'gps_modo') {
-        if (data.coords && typeof data.coords.lat === 'number' && typeof data.coords.lng === 'number') {
-          map.setView([data.coords.lat, data.coords.lng], map.getZoom());
-        }
+    window.addEventListener('load', async () => {
+      try {
+        // Carga primero el GPS
+        await cargarModulo('Av1-boton-gps.html', 'gps-container', 'inicializarGPS');
+        // Luego los botones (sin modificar)
+        await cargarModulo('Botones-y-subfunciones.html', 'botones-container', 'inicializarBotonesFlotantes');
+      } catch (e) {
+        console.error('Error cargando módulos:', e);
+      }
+    });
+
+    window.addEventListener('message', (event) => {
+      // Aquí recibes mensajes de ambos módulos
+      // Ejemplo simple: imprimirlos en consola
+      console.log('Mensaje recibido del hijo:', event.data);
+
+      if (event.data.tipo === 'gps-info') {
+        console.log('Datos GPS:', event.data.payload);
+        // Aquí puedes hacer algo con la info GPS
+      }
+
+      if (event.data.tipo === 'boton-accion') {
+        console.log('Evento botón:', event.data.payload);
+        // Aquí alguna acción desde los botones
       }
     });
   </script>
