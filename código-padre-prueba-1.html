@@ -1,11 +1,8 @@
-<!-- código-padre-prueba-1.html -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>App Padre Limpia</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <title>Padre con módulos botones y GPS</title>
   <style>
     html, body {
       margin: 0;
@@ -28,15 +25,21 @@
     #botones-container * {
       pointer-events: auto;
     }
-    /* Eliminamos estilos del iframe GPS, lo manejará el hijo */
+    /* El iframe se posiciona y dimensiona dentro del hijo (boton-gps.html) */
+    #iframe-gps {
+      position: fixed;
+      border: none;
+      background: transparent;
+      pointer-events: auto;
+    }
   </style>
 </head>
 <body>
   <div id="mapa"></div>
   <div id="botones-container"></div>
 
-  <!-- iframe del botón GPS -->
-  <iframe id="iframe-gps" src="Av1-boton-gps.html" allowtransparency="true"></iframe>
+  <!-- iframe del botón GPS (posicionado por el propio Av1-boton-gps.html) -->
+  <iframe id="iframe-gps" src="Av1-boton-gps.html"></iframe>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
@@ -79,116 +82,5 @@
       }
     });
   </script>
-</body>
-</html>
-
-
-<!-- Av1-boton-gps.html -->
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Av1-boton-gps</title>
-<style>
-  body { margin:0; font-family:sans-serif; background:transparent; user-select:none; }
-  #boton-gps {
-    position: fixed; top:10px; left:10px;
-    max-width: 15vw; max-height: 90vh;
-    overflow-y: auto; background:white; border:1px solid #ccc;
-    padding:8px; box-shadow:0 2px 8px rgba(0,0,0,0.2);
-    z-index:9999; border-radius:6px;
-  }
-  #minimizado-icono {
-    position: fixed; top:10px; left:10px;
-    width:40px; height:40px; background:white; border:1px solid #ccc;
-    border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.2);
-    display:none; align-items:center; justify-content:center;
-    cursor:pointer; z-index:10000;
-  }
-  #minimizado-icono svg { width:24px; height:24px; fill:#444; }
-  .minimizar-btn { float:right; background:none; border:none; font-size:18px; cursor:pointer; color:#555; }
-  #coords { display:flex; flex-direction:column; gap:4px; }
-</style>
-</head>
-<body>
-  <div id="minimizado-icono" title="Mostrar GPS">
-    <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
-  </div>
-  <div id="boton-gps" role="button" tabindex="0" aria-pressed="true" aria-label="Activar simulación GPS">
-    <button class="minimizar-btn" title="Minimizar GPS">−</button>
-    <div id="cabecera">
-      <div id="icono-casa" class="on" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
-      </div>
-      <div id="estado" class="on">ON</div>
-      <div id="coords">
-        <label>Latitud:
-          <input type="number" step="0.000001" id="lat" value="39.478046" />
-        </label>
-        <label>Longitud:
-          <input type="number" step="0.000001" id="lng" value="-0.375515" />
-        </label>
-      </div>
-    </div>
-    <div id="paradas" style="display:none;"></div>
-  </div>
-<script>
-function inicializarGPS() {
-  const boton = document.getElementById('boton-gps');
-  const estadoElem = document.getElementById('estado');
-  const iconoCasa = document.getElementById('icono-casa');
-  const coordsDiv = document.getElementById('coords');
-  const latInput = document.getElementById('lat');
-  const lngInput = document.getElementById('lng');
-  const paradasDiv = document.getElementById('paradas');
-  const minimizarBtn = document.querySelector('.minimizar-btn');
-  const minimizadoIcono = document.getElementById('minimizado-icono');
-
-  const paradas = [
-    { nombre: "Torres de Serranos", lat:39.4795, lng:-0.3757 },
-    { nombre: "Puente de Serranos – Plaza de la crida", lat:39.4782, lng:-0.3750 },
-    /* resto paradas */
-    { nombre: "Palacio de la Generalitat", lat:39.4784, lng:-0.3752 }
-  ];
-
-  let gpsActivo = true;
-
-  function enviarMensaje(paradaNombre=null) {
-    const lat = parseFloat(latInput.value);
-    const lng = parseFloat(lngInput.value);
-    window.parent.postMessage({ tipo:'gps_modo', activo:gpsActivo, coords:{lat,lng}, parada:paradaNombre}, '*');
-  }
-
-  function actualizarVisual() {
-    if (gpsActivo) {
-      estadoElem.textContent='ON'; iconoCasa.classList.add('on'); iconoCasa.classList.remove('off');
-      boton.setAttribute('aria-pressed','true'); coordsDiv.style.display='none'; paradasDiv.style.display='none';
-    } else {
-      estadoElem.textContent='OFF'; iconoCasa.classList.remove('on'); iconoCasa.classList.add('off');
-      boton.setAttribute('aria-pressed','false'); coordsDiv.style.display='flex'; paradasDiv.style.display='flex';
-    }
-  }
-
-  boton.addEventListener('click',()=>{ gpsActivo=!gpsActivo; actualizarVisual(); enviarMensaje(); });
-  latInput.addEventListener('change',()=>{ if(!gpsActivo) enviarMensaje(); });
-  lngInput.addEventListener('change',()=>{ if(!gpsActivo) enviarMensaje(); });
-  boton.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){e.preventDefault(); boton.click();}});
-  window.addEventListener('message',e=>{ if(e.data.tipo==='solicitar-estado-gps') enviarMensaje(); });
-  window.parent.postMessage({ tipo:'boton-gps-listo' }, '*');
-
-  paradas.forEach(p=>{
-    const btn=document.createElement('button'); btn.className='parada-btn'; btn.textContent=p.nombre;
-    btn.addEventListener('click',()=>{ latInput.value=p.lat; lngInput.value=p.lng; enviarMensaje(p.nombre); });
-    paradasDiv.appendChild(btn);
-  });
-
-  minimizarBtn.addEventListener('click',e=>{ e.stopPropagation(); boton.style.display='none'; minimizadoIcono.style.display='flex'; });
-  minimizadoIcono.addEventListener('click',()=>{ boton.style.display='block'; minimizadoIcono.style.display='none'; });
-
-  actualizarVisual(); enviarMensaje();
-}
-window.addEventListener('load', inicializarGPS);
-</script>
 </body>
 </html>
