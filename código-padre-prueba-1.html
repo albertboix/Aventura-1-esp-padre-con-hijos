@@ -1,93 +1,194 @@
+<!-- código-padre-prueba-1.html -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <title>Padre con módulos botones y GPS</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>App Padre Limpia</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    #gps-container, #botones-container {
-      position: relative;
-      width: 100%;
-      height: 300px;
-      border: 1px solid #ccc;
-      margin-bottom: 20px;
-      overflow: auto;
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      font-family: sans-serif;
     }
+    #mapa {
+      width: 100vw;
+      height: 100vh;
+    }
+    #botones-container {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 1000;
+    }
+    #botones-container * {
+      pointer-events: auto;
+    }
+    /* Eliminamos estilos del iframe GPS, lo manejará el hijo */
   </style>
 </head>
 <body>
-
-  <div id="gps-container"></div>
+  <div id="mapa"></div>
   <div id="botones-container"></div>
 
+  <!-- iframe del botón GPS -->
+  <iframe id="iframe-gps" src="Av1-boton-gps.html" allowtransparency="true"></iframe>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    async function cargarModulo(url, containerId, callbackInitName) {
-      const container = document.getElementById(containerId);
-      const response = await fetch(url);
-      const html = await response.text();
+    const map = L.map('mapa').setView([39.478046, -0.375515], 14);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 25,
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
 
-      // Crear un contenedor temporal para parsear HTML
-      const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = html;
-
-      // Extraer scripts para insertarlos manualmente después
-      const scripts = Array.from(tempDiv.querySelectorAll('script'));
-      scripts.forEach(s => s.remove());
-
-      // Insertar el HTML sin scripts en el contenedor
-      container.innerHTML = tempDiv.innerHTML;
-
-      // Cargar los scripts en orden y esperar que se ejecuten
-      for (const script of scripts) {
-        await new Promise((resolve, reject) => {
-          const nuevoScript = document.createElement('script');
-          if (script.src) {
-            nuevoScript.src = script.src;
-            nuevoScript.onload = resolve;
-            nuevoScript.onerror = () => reject(new Error(`Error cargando script ${script.src}`));
+    fetch('Botones-y-subfunciones.html')
+      .then(res => res.text())
+      .then(html => {
+        const container = document.getElementById('botones-container');
+        container.innerHTML = html;
+        const scripts = container.querySelectorAll('script');
+        function loadScript(i = 0) {
+          if (i >= scripts.length) return;
+          const old = scripts[i];
+          const s = document.createElement('script');
+          if (old.src) {
+            s.src = old.src;
+            s.onload = () => loadScript(i+1);
+            s.onerror = () => loadScript(i+1);
+            document.body.appendChild(s);
           } else {
-            nuevoScript.textContent = script.textContent;
-            // Insertar script sin src y resolver inmediatamente
-            resolve();
+            s.textContent = old.textContent;
+            container.appendChild(s);
+            setTimeout(() => loadScript(i+1), 0);
           }
-          document.body.appendChild(nuevoScript);
-        });
-      }
-
-      // Ejecutar función de inicialización si existe
-      if (typeof window[callbackInitName] === 'function') {
-        window[callbackInitName]();
-      } else {
-        console.warn(`Función ${callbackInitName} no encontrada.`);
-      }
-    }
-
-    window.addEventListener('load', async () => {
-      try {
-        await cargarModulo('Av1-boton-gps.html', 'gps-container', 'inicializarGPS');
-        await cargarModulo('Botones-y-subfunciones.html', 'botones-container', 'inicializarBotonesFlotantes');
-      } catch (e) {
-        console.error('Error cargando módulos:', e);
-      }
-    });
-
-    window.addEventListener('message', (event) => {
-      // Aquí recibes mensajes de ambos módulos
-      console.log('Mensaje recibido del hijo:', event.data);
-
-      if (event.data.tipo === 'gps_modo') {
-        console.log('GPS activo:', event.data.activo);
-        console.log('Coordenadas:', event.data.coords);
-        if (event.data.parada) {
-          console.log('Parada seleccionada:', event.data.parada);
         }
-        // Aquí puedes actualizar UI o lógica según GPS
-      }
+        loadScript();
+        if (typeof inicializarBotonesFlotantes === 'function') inicializarBotonesFlotantes();
+      })
+      .catch(err => console.error('Error al cargar botones:', err));
 
-      if (event.data.tipo === 'boton-accion') {
-        console.log('Acción botón:', event.data.payload);
-        // Lógica para botones
+    window.addEventListener('message', e => {
+      const data = e.data;
+      if (data && data.tipo === 'gps_modo' && data.coords) {
+        map.setView([data.coords.lat, data.coords.lng], map.getZoom());
       }
     });
   </script>
+</body>
+</html>
+
+
+<!-- Av1-boton-gps.html -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Av1-boton-gps</title>
+<style>
+  body { margin:0; font-family:sans-serif; background:transparent; user-select:none; }
+  #boton-gps {
+    position: fixed; top:10px; left:10px;
+    max-width: 15vw; max-height: 90vh;
+    overflow-y: auto; background:white; border:1px solid #ccc;
+    padding:8px; box-shadow:0 2px 8px rgba(0,0,0,0.2);
+    z-index:9999; border-radius:6px;
+  }
+  #minimizado-icono {
+    position: fixed; top:10px; left:10px;
+    width:40px; height:40px; background:white; border:1px solid #ccc;
+    border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.2);
+    display:none; align-items:center; justify-content:center;
+    cursor:pointer; z-index:10000;
+  }
+  #minimizado-icono svg { width:24px; height:24px; fill:#444; }
+  .minimizar-btn { float:right; background:none; border:none; font-size:18px; cursor:pointer; color:#555; }
+  #coords { display:flex; flex-direction:column; gap:4px; }
+</style>
+</head>
+<body>
+  <div id="minimizado-icono" title="Mostrar GPS">
+    <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+  </div>
+  <div id="boton-gps" role="button" tabindex="0" aria-pressed="true" aria-label="Activar simulación GPS">
+    <button class="minimizar-btn" title="Minimizar GPS">−</button>
+    <div id="cabecera">
+      <div id="icono-casa" class="on" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+      </div>
+      <div id="estado" class="on">ON</div>
+      <div id="coords">
+        <label>Latitud:
+          <input type="number" step="0.000001" id="lat" value="39.478046" />
+        </label>
+        <label>Longitud:
+          <input type="number" step="0.000001" id="lng" value="-0.375515" />
+        </label>
+      </div>
+    </div>
+    <div id="paradas" style="display:none;"></div>
+  </div>
+<script>
+function inicializarGPS() {
+  const boton = document.getElementById('boton-gps');
+  const estadoElem = document.getElementById('estado');
+  const iconoCasa = document.getElementById('icono-casa');
+  const coordsDiv = document.getElementById('coords');
+  const latInput = document.getElementById('lat');
+  const lngInput = document.getElementById('lng');
+  const paradasDiv = document.getElementById('paradas');
+  const minimizarBtn = document.querySelector('.minimizar-btn');
+  const minimizadoIcono = document.getElementById('minimizado-icono');
+
+  const paradas = [
+    { nombre: "Torres de Serranos", lat:39.4795, lng:-0.3757 },
+    { nombre: "Puente de Serranos – Plaza de la crida", lat:39.4782, lng:-0.3750 },
+    /* resto paradas */
+    { nombre: "Palacio de la Generalitat", lat:39.4784, lng:-0.3752 }
+  ];
+
+  let gpsActivo = true;
+
+  function enviarMensaje(paradaNombre=null) {
+    const lat = parseFloat(latInput.value);
+    const lng = parseFloat(lngInput.value);
+    window.parent.postMessage({ tipo:'gps_modo', activo:gpsActivo, coords:{lat,lng}, parada:paradaNombre}, '*');
+  }
+
+  function actualizarVisual() {
+    if (gpsActivo) {
+      estadoElem.textContent='ON'; iconoCasa.classList.add('on'); iconoCasa.classList.remove('off');
+      boton.setAttribute('aria-pressed','true'); coordsDiv.style.display='none'; paradasDiv.style.display='none';
+    } else {
+      estadoElem.textContent='OFF'; iconoCasa.classList.remove('on'); iconoCasa.classList.add('off');
+      boton.setAttribute('aria-pressed','false'); coordsDiv.style.display='flex'; paradasDiv.style.display='flex';
+    }
+  }
+
+  boton.addEventListener('click',()=>{ gpsActivo=!gpsActivo; actualizarVisual(); enviarMensaje(); });
+  latInput.addEventListener('change',()=>{ if(!gpsActivo) enviarMensaje(); });
+  lngInput.addEventListener('change',()=>{ if(!gpsActivo) enviarMensaje(); });
+  boton.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){e.preventDefault(); boton.click();}});
+  window.addEventListener('message',e=>{ if(e.data.tipo==='solicitar-estado-gps') enviarMensaje(); });
+  window.parent.postMessage({ tipo:'boton-gps-listo' }, '*');
+
+  paradas.forEach(p=>{
+    const btn=document.createElement('button'); btn.className='parada-btn'; btn.textContent=p.nombre;
+    btn.addEventListener('click',()=>{ latInput.value=p.lat; lngInput.value=p.lng; enviarMensaje(p.nombre); });
+    paradasDiv.appendChild(btn);
+  });
+
+  minimizarBtn.addEventListener('click',e=>{ e.stopPropagation(); boton.style.display='none'; minimizadoIcono.style.display='flex'; });
+  minimizadoIcono.addEventListener('click',()=>{ boton.style.display='block'; minimizadoIcono.style.display='none'; });
+
+  actualizarVisual(); enviarMensaje();
+}
+window.addEventListener('load', inicializarGPS);
+</script>
 </body>
 </html>
