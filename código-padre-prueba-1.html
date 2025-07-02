@@ -27,14 +27,14 @@
     #botones-container * {
       pointer-events: auto;
     }
-    /* Estilo para iframe botón GPS */
+    /* Estilos iframe botón GPS */
     #iframe-gps {
       position: fixed;
       top: 50%;
       left: 10px;
       transform: translateY(-50%);
       width: 120px;
-      height: 160px;
+      height: 180px; /* Altura aumentada para que se vea entero */
       border: none;
       z-index: 9999;
       background: transparent;
@@ -46,8 +46,8 @@
   <div id="mapa"></div>
   <div id="botones-container"></div>
 
-  <!-- Iframe que carga el botón GPS -->
-  <iframe id="iframe-gps" src="Av1-boton-gps.html" aria-label="Botón GPS flotante"></iframe>
+  <!-- iframe del botón GPS -->
+  <iframe id="iframe-gps" src="Av1-boton-gps.html" allowtransparency="true" scrolling="no"></iframe>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
@@ -57,53 +57,50 @@
       attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    let marcadorGps = null;
-
+    // Cargar Botones-y-subfunciones.html y ejecutar scripts en orden
     fetch('Botones-y-subfunciones.html')
       .then(res => res.text())
       .then(html => {
         const container = document.getElementById('botones-container');
         container.innerHTML = html;
 
-        container.querySelectorAll('script').forEach(oldScript => {
+        // Ejecutar scripts uno a uno para respetar orden y dependencia
+        const scripts = container.querySelectorAll('script');
+        function loadScript(i = 0) {
+          if (i >= scripts.length) {
+            // Inicializar botones flotantes tras cargar todos los scripts
+            if (typeof inicializarBotonesFlotantes === 'function') {
+              inicializarBotonesFlotantes();
+            } else {
+              console.error('Función inicializarBotonesFlotantes no encontrada.');
+            }
+            return;
+          }
+          const oldScript = scripts[i];
           const newScript = document.createElement('script');
           if (oldScript.src) {
             newScript.src = oldScript.src;
-            newScript.async = false;
+            newScript.onload = () => loadScript(i + 1);
+            newScript.onerror = () => loadScript(i + 1);
           } else {
             newScript.textContent = oldScript.textContent;
+            loadScript(i + 1);
           }
           document.body.appendChild(newScript);
-        });
-
-        setTimeout(() => {
-          if (typeof inicializarBotonesFlotantes === 'function') {
-            inicializarBotonesFlotantes();
-          } else {
-            console.error('Función inicializarBotonesFlotantes no encontrada.');
-          }
-        }, 100);
+        }
+        loadScript();
       })
       .catch(err => console.error('Error al cargar botones:', err));
 
+    // Listener para mensajes postMessage desde iframe GPS
     window.addEventListener('message', event => {
-      if (!event.data || event.data.tipo !== 'gps_modo') return;
-
-      const activo = event.data.activo;
-      const coords = event.data.coords;
-
-      if (activo && coords && coords.lat != null && coords.lng != null) {
-        if (!marcadorGps) {
-          marcadorGps = L.marker([coords.lat, coords.lng], {title: "Simulación GPS"}).addTo(map);
-        } else {
-          marcadorGps.setLatLng([coords.lat, coords.lng]);
+      const data = event.data;
+      if (data && data.tipo === 'gps_modo') {
+        if (data.activo && data.coords && typeof data.coords.lat === 'number' && typeof data.coords.lng === 'number') {
+          // Cambiar vista del mapa a las coordenadas recibidas
+          map.setView([data.coords.lat, data.coords.lng], map.getZoom());
         }
-        map.setView([coords.lat, coords.lng], 14);
-      } else {
-        if (marcadorGps) {
-          map.removeLayer(marcadorGps);
-          marcadorGps = null;
-        }
+        // Aquí podrías agregar más reacciones si hace falta
       }
     });
   </script>
