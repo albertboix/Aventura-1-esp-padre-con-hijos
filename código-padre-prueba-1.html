@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>App Padre Limpia</title>
+  <!-- Hoja de estilos de Leaflet para el mapa -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     html, body {
@@ -12,10 +13,12 @@
       overflow: hidden;
       font-family: sans-serif;
     }
+    /* El mapa ocupa toda la pantalla */
     #mapa {
       width: 100vw;
       height: 100vh;
     }
+    /* Contenedor para los botones flotantes */
     #botones-container {
       position: absolute;
       top: 0; left: 0;
@@ -27,27 +30,69 @@
     #botones-container * {
       pointer-events: auto;
     }
+    /* Contenedor para el GPS flotante */
+    #gps-container {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 1100; /* Encima de los botones flotantes */
+    }
+    #gps-container * {
+      pointer-events: auto;
+    }
   </style>
 </head>
 <body>
+  <!-- Mapa principal -->
   <div id="mapa"></div>
+  <!-- Contenedor para los botones flotantes (primer hijo) -->
   <div id="botones-container"></div>
+  <!-- Contenedor para el GPS flotante (segundo hijo) -->
+  <div id="gps-container"></div>
 
+  <!-- Script de Leaflet para el mapa -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
+    // --- Inicialización del mapa ---
     const map = L.map('mapa').setView([39.478046, -0.375515], 14);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 25,
       attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
+    // --- Gestión de marcadores de paradas GPS ---
+    let paradaMarker = null; // Guardamos el marcador actual de parada
+
+    function marcarParadaEnMapa(nombre, coords) {
+      // Si ya hay un marcador de parada, lo eliminamos
+      if (paradaMarker) {
+        map.removeLayer(paradaMarker);
+      }
+      // Creamos un nuevo marcador en las coordenadas recibidas
+      paradaMarker = L.marker([coords.lat, coords.lng], {
+        title: nombre,
+        icon: L.icon({
+          iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png', // Icono de marcador (puedes cambiarlo)
+          iconSize: [32, 32],
+          iconAnchor: [16, 32],
+          popupAnchor: [0, -32]
+        })
+      }).addTo(map);
+      paradaMarker.bindPopup(`<b>${nombre}</b>`).openPopup();
+      // Centrar el mapa en la parada
+      map.setView([coords.lat, coords.lng], map.getZoom());
+    }
+
+    // --- Cargar el hijo de botones flotantes ---
     fetch('Botones-y-subfunciones.html')
       .then(res => res.text())
       .then(html => {
         const container = document.getElementById('botones-container');
         container.innerHTML = html;
 
-        // Ejecutar scripts inline manualmente:
+        // Ejecutar scripts inline manualmente
         container.querySelectorAll('script').forEach(oldScript => {
           const newScript = document.createElement('script');
           if (oldScript.src) {
@@ -59,7 +104,7 @@
           document.body.appendChild(newScript);
         });
 
-        // Inicializar botones flotantes si existe la función
+        // Inicializar los botones flotantes si existe la función
         setTimeout(() => {
           if (typeof inicializarBotonesFlotantes === 'function') {
             inicializarBotonesFlotantes();
@@ -70,6 +115,46 @@
         }, 200);
       })
       .catch(err => console.error('Error al cargar botones:', err));
+
+    // --- Cargar el hijo GPS flotante ---
+    fetch('Botones-y-subfunciones-gps.html')
+      .then(res => res.text())
+      .then(html => {
+        const container = document.getElementById('gps-container');
+        container.innerHTML = html;
+
+        // Ejecutar scripts inline manualmente
+        container.querySelectorAll('script').forEach(oldScript => {
+          const newScript = document.createElement('script');
+          if (oldScript.src) {
+            newScript.src = oldScript.src;
+            newScript.async = false;
+          } else {
+            newScript.textContent = oldScript.textContent;
+          }
+          document.body.appendChild(newScript);
+        });
+
+        // Inicializar el GPS si existe la función
+        setTimeout(() => {
+          if (typeof inicializarGPS === 'function') {
+            inicializarGPS();
+          } else {
+            console.error('No se encontró función de inicialización de GPS.');
+          }
+        }, 200);
+      })
+      .catch(err => console.error('Error al cargar GPS:', err));
+
+    // --- Comunicación: escuchar mensajes de los hijos ---
+    window.addEventListener('message', (event) => {
+      // Solo aceptamos mensajes de tipo gps_marcar_parada
+      if (event.data && event.data.tipo === 'gps_marcar_parada') {
+        // Añadir marcador en el mapa en las coordenadas de la parada
+        marcarParadaEnMapa(event.data.parada, event.data.coords);
+      }
+      // Puedes añadir aquí otros tipos de mensajes si lo necesitas en el futuro
+    });
   </script>
 </body>
 </html>
