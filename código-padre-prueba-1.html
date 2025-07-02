@@ -10,6 +10,7 @@
       height: 300px;
       border: 1px solid #ccc;
       margin-bottom: 20px;
+      overflow: auto;
     }
   </style>
 </head>
@@ -24,14 +25,18 @@
       const response = await fetch(url);
       const html = await response.text();
 
+      // Crear un contenedor temporal para parsear HTML
       const tempDiv = document.createElement('div');
       tempDiv.innerHTML = html;
 
+      // Extraer scripts para insertarlos manualmente después
       const scripts = Array.from(tempDiv.querySelectorAll('script'));
       scripts.forEach(s => s.remove());
 
+      // Insertar el HTML sin scripts en el contenedor
       container.innerHTML = tempDiv.innerHTML;
 
+      // Cargar los scripts en orden y esperar que se ejecuten
       for (const script of scripts) {
         await new Promise((resolve, reject) => {
           const nuevoScript = document.createElement('script');
@@ -41,12 +46,14 @@
             nuevoScript.onerror = () => reject(new Error(`Error cargando script ${script.src}`));
           } else {
             nuevoScript.textContent = script.textContent;
+            // Insertar script sin src y resolver inmediatamente
             resolve();
           }
           document.body.appendChild(nuevoScript);
         });
       }
 
+      // Ejecutar función de inicialización si existe
       if (typeof window[callbackInitName] === 'function') {
         window[callbackInitName]();
       } else {
@@ -56,9 +63,7 @@
 
     window.addEventListener('load', async () => {
       try {
-        // Carga primero el GPS
         await cargarModulo('Av1-boton-gps.html', 'gps-container', 'inicializarGPS');
-        // Luego los botones (sin modificar)
         await cargarModulo('Botones-y-subfunciones.html', 'botones-container', 'inicializarBotonesFlotantes');
       } catch (e) {
         console.error('Error cargando módulos:', e);
@@ -67,17 +72,20 @@
 
     window.addEventListener('message', (event) => {
       // Aquí recibes mensajes de ambos módulos
-      // Ejemplo simple: imprimirlos en consola
       console.log('Mensaje recibido del hijo:', event.data);
 
-      if (event.data.tipo === 'gps-info') {
-        console.log('Datos GPS:', event.data.payload);
-        // Aquí puedes hacer algo con la info GPS
+      if (event.data.tipo === 'gps_modo') {
+        console.log('GPS activo:', event.data.activo);
+        console.log('Coordenadas:', event.data.coords);
+        if (event.data.parada) {
+          console.log('Parada seleccionada:', event.data.parada);
+        }
+        // Aquí puedes actualizar UI o lógica según GPS
       }
 
       if (event.data.tipo === 'boton-accion') {
-        console.log('Evento botón:', event.data.payload);
-        // Aquí alguna acción desde los botones
+        console.log('Acción botón:', event.data.payload);
+        // Lógica para botones
       }
     });
   </script>
