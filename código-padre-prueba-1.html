@@ -6,14 +6,26 @@
   <title>Padre Audioguía</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    html, body { margin:0; padding:0; height:100%; overflow-x: hidden; }
-    #mapa { width: 100vw; height: 100vh; }
+    /* --- Estructura base --- */
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden; /* Solución problema 1: evita scroll extra y línea blanca */
+    }
+    #mapa {
+      width: 100vw;
+      height: 100vh;
+      position: fixed;
+      top: 0; left: 0;
+      z-index: 1;
+    }
     #botones-container {
       position: absolute;
       top: 0; left: 0;
       width: 100vw; height: 100vh;
       pointer-events: none;
-      z-index: 1000;
+      z-index: 3000; /* Solución problema 5: más alto que audio */
     }
     #botones-container .boton-flotante,
     #botones-container .icono-flotante {
@@ -26,22 +38,33 @@
       height: 80vh;
       border: none;
       background: transparent;
-      z-index: 1100;
+      z-index: 2000;
       box-sizing: border-box;
+      overflow: hidden; /* Solución problema 2: evita scroll horizontal */
     }
     #audio-iframe {
       position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%);
-      width: 360px; height: 160px; border: none; background: transparent; z-index: 1200;
+      width: 360px; height: 160px; border: none; background: transparent;
+      z-index: 1200; /* Debajo de los botones flotantes, solución problema 5 */
+      pointer-events: auto;
     }
+    /* --- Fin de estilos principales --- */
   </style>
 </head>
 <body>
+  <!-- Mapa principal -->
   <div id="mapa"></div>
+  <!-- Contenedor de botones flotantes e iconos -->
   <div id="botones-container"></div>
+  <!-- Iframe GPS (ventana flotante) -->
   <iframe id="gps-iframe" src="Av1-boton-gps.html"></iframe>
+  <!-- Iframe Audio (ventana flotante trapecio) -->
   <iframe id="audio-iframe" src="Av1_audio_esp.html" allow="autoplay"></iframe>
+
+  <!-- Leaflet JS para el mapa -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
+    // --- Inicialización del mapa ---
     const map = L.map('mapa').setView([39.478046, -0.375515], 14);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 25,
@@ -50,11 +73,13 @@
 
     let ultimoMarcador = null;
 
+    // --- Carga de botones flotantes e iconos hijos ---
     fetch('Botones-y-subfunciones.html')
       .then(res => res.text())
       .then(html => {
         const container = document.getElementById('botones-container');
         container.innerHTML = html;
+        // Ejecuta scripts embebidos en el HTML de botones
         container.querySelectorAll('script').forEach(oldScript => {
           const newScript = document.createElement('script');
           if (oldScript.src) {
@@ -74,6 +99,7 @@
       })
       .catch(err => console.error('Error al cargar botones:', err));
 
+    // --- Comunicación entre padre e iframes hijos ---
     window.addEventListener('message', (event) => {
       const data = event.data;
       // --- GPS: marcador y audio ---
@@ -117,6 +143,7 @@
         }
       }
     });
+    // --- Fin de comunicación padre-hijos ---
   </script>
 </body>
 </html>
