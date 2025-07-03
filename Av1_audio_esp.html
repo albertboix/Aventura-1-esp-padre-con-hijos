@@ -6,6 +6,7 @@
     <title>Reproductor de Audio de Aventura (Hijo)</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
+        /* --- Estructura y estilos generales del reproductor --- */
         html, body {
             height: 100%;
             margin: 0;
@@ -24,9 +25,10 @@
             left: 50%;
             bottom: 0;
             transform: translateX(-50%);
-            width: 150px;
-            max-width: 96vw;
-            min-width: 100px;
+            /* Solución problema 3: ancho mínimo y máximo ajustado */
+            width: 180px;
+            max-width: 98vw;
+            min-width: 180px;
             background: rgba(255,255,255,0.82);
             clip-path: polygon(8% 0%, 92% 0%, 100% 100%, 0% 100%);
             border-radius: 18px;
@@ -93,7 +95,7 @@
             position: relative;
             margin: 0;
             min-width: 0;
-            max-width: 44px;
+            max-width: 100px; /* Solución problema 3: ajusta para que quepa en 180px */
         }
         #progressBar {
             height: 100%;
@@ -123,6 +125,7 @@
     </style>
 </head>
 <body>
+    <!-- Controles del reproductor de audio -->
     <div class="audio-player-controls" id="audioPlayerControls">
         <audio id="audioPlayer"></audio>
         <div class="player-buttons-row">
@@ -146,6 +149,7 @@
         </div>
     </div>
     <script>
+        // --- Variables y referencias a elementos del reproductor ---
         const audioPlayer = document.getElementById('audioPlayer');
         const playPauseBtn = document.getElementById('playPauseBtn');
         const prevAudioBtn = document.getElementById('prevAudioBtn');
@@ -160,6 +164,7 @@
         let currentAudioIndexInSequence = -1;
         let canPlayAudio = false;
 
+        // --- Secuencia de audios disponibles ---
         const audiosSequence = [
             {
                 id: "audio_serranos_intro",
@@ -171,9 +176,17 @@
             }
         ];
 
-        function loadAudio(id) {
+        // --- Carga y gestión del audio ---
+        function loadAudio(id, forcePlay = false) {
             const audioData = audiosSequence.find(a => a.id === id);
             if (audioData) {
+                // Si es el mismo audio y no se fuerza, solo reinicia si está parado
+                if (currentAudioId === id && !forcePlay) {
+                    if (audioPlayer.paused) {
+                        playAudio();
+                    }
+                    return;
+                }
                 audioPlayer.src = audioData.src;
                 currentAudioId = id;
                 currentAudioIndexInSequence = audiosSequence.findIndex(a => a.id === id);
@@ -185,6 +198,10 @@
                 durationSpan.textContent = '0:00';
                 updatePlayerControlsState();
                 disableNextStepBtn();
+                // Solución problema 6: reproducir aunque sea la misma parada
+                if (forcePlay) {
+                    playAudio();
+                }
             } else {
                 console.error("Audio ID no encontrado en la secuencia:", id);
                 currentAudioId = null;
@@ -194,12 +211,14 @@
             }
         }
 
+        // --- Formatea el tiempo en mm:ss ---
         function formatTime(seconds) {
             const minutes = Math.floor(seconds / 60);
             const remainingSeconds = Math.floor(seconds % 60);
             return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
         }
 
+        // --- Reproduce el audio actual ---
         function playAudio() {
             if (currentAudioId && canPlayAudio) {
                 audioPlayer.play().catch(e => {
@@ -210,11 +229,13 @@
             }
         }
 
+        // --- Pausa el audio actual ---
         function pauseAudio() {
             audioPlayer.pause();
             playPauseBtn.querySelector('i').className = 'fas fa-play';
         }
 
+        // --- Alterna entre reproducir y pausar ---
         function togglePlayPause() {
             if (audioPlayer.paused) {
                 playAudio();
@@ -223,6 +244,7 @@
             }
         }
 
+        // --- Detiene el audio y lo reinicia ---
         function stopAudio() {
             pauseAudio();
             if (audioPlayer.src) {
@@ -230,16 +252,19 @@
             }
         }
 
+        // --- Habilita el botón de siguiente paso ---
         function enableNextStepBtn() {
             nextStepBtn.disabled = false;
             nextStepBtn.classList.add('active-ready');
         }
 
+        // --- Deshabilita el botón de siguiente paso ---
         function disableNextStepBtn() {
             nextStepBtn.disabled = true;
             nextStepBtn.classList.remove('active-ready');
         }
 
+        // --- Actualiza el estado de los controles del reproductor ---
         function updatePlayerControlsState() {
             if (currentAudioId && canPlayAudio) {
                 playPauseBtn.disabled = false;
@@ -253,6 +278,7 @@
             }
         }
 
+        // --- Eventos de los controles ---
         playPauseBtn.addEventListener('click', togglePlayPause);
 
         prevAudioBtn.addEventListener('click', () => {
@@ -287,20 +313,23 @@
             audioPlayer.currentTime = (clickX / width) * duration;
         });
 
+        // --- Comunicación con el padre (mensajes postMessage) ---
         window.addEventListener('message', (event) => {
             const data = event.data;
             if (data && typeof data === 'object') {
                 if (data.tipo === 'gps_marcar_parada' && data.idAudio) {
-                    loadAudio(data.idAudio);
+                    // Solución problema 6: fuerza reproducción aunque sea la misma parada
+                    loadAudio(data.idAudio, true);
                     canPlayAudio = true;
                     updatePlayerControlsState();
-                    playAudio();
                 }
                 switch (data.type) {
                     case 'loadAudio':
-                        loadAudio(data.idAudio);
+                        // Solución problema 6: fuerza reproducción aunque sea la misma parada
+                        loadAudio(data.idAudio, data.canPlay);
                         canPlayAudio = data.canPlay;
                         updatePlayerControlsState();
+                        if (data.canPlay) playAudio();
                         break;
                     case 'playAudio':
                         playAudio();
