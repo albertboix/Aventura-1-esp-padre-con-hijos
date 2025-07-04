@@ -1,59 +1,52 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <title>Audio UI</title>
   <style>
     html, body {
       margin: 0;
       padding: 0;
-      height: 100%;
       background: transparent;
       font-family: sans-serif;
+      height: 100%;
     }
 
     .audio-player {
-      width: 100%;
-      height: 100%;
-      background: #f9f9f9;
-      padding: 12px;
-      box-sizing: border-box;
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      clip-path: polygon(10% 0%, 90% 0%, 100% 100%, 0% 100%);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      justify-content: space-between;
+      height: 100%;
+      padding: 4px 12px;
+      box-sizing: border-box;
     }
 
     .controls {
       display: flex;
       align-items: center;
       gap: 6px;
-      padding: 6px 0;
+      margin-bottom: 4px;
     }
 
     .controls button {
-      width: 80px;
-      height: 80px;
-      font-size: 2em;
-      border-radius: 50%;
-      background: red; /* cambia a verde desde JS si viene desde GPS */
-      color: white;
+      width: 55px;
+      height: 55px;
+      font-size: 1.2em;
       border: none;
+      border-radius: 50%;
+      color: white;
+      background-color: red; /* cambia dinámicamente */
       cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      transition: background-color 0.4s ease;
     }
 
     .progress-row {
       display: flex;
       align-items: center;
       width: 100%;
-      gap: 0.5em;
-      padding: 6px 0;
-      justify-content: flex-start;
+      gap: 6px;
+      font-size: 0.85em;
     }
 
     .progress-container {
@@ -63,10 +56,10 @@
     .progress-bar {
       width: 100%;
       height: 6px;
-      appearance: none;
       background: #ccc;
       border-radius: 3px;
       outline: none;
+      appearance: none;
     }
 
     .progress-bar::-webkit-slider-thumb {
@@ -76,12 +69,6 @@
       border-radius: 50%;
       background: #333;
       cursor: pointer;
-    }
-
-    #timeDisplay {
-      font-size: 0.8em;
-      white-space: nowrap;
-      user-select: none;
     }
   </style>
 </head>
@@ -96,9 +83,9 @@
       <div class="progress-container">
         <input type="range" class="progress-bar" id="progressBar" min="0" max="100" value="0">
       </div>
-      <span id="timeDisplay">
-        <span id="currentTime">0:00</span>/<span id="duration">0:00</span>
-      </span>
+      <span id="currentTime">0:00</span>
+      <span>/</span>
+      <span id="duration">0:00</span>
     </div>
   </div>
 
@@ -109,38 +96,49 @@
     const currentTimeEl = document.getElementById('currentTime');
     const durationEl = document.getElementById('duration');
 
-    const audio = new Audio();
+    let audio = new Audio();
     let playing = false;
-    let canPlayFromGPS = false;
+    let canPlay = false;
+    let currentAudioId = null;
 
-    // Controlar play/pause
-    playBtn.addEventListener('click', () => {
-      if (!audio.src) return;
+    function updatePlayButtonColor() {
+      playBtn.style.backgroundColor = canPlay ? 'green' : 'red';
+    }
 
-      if (audio.paused) {
+    function playPause() {
+      if (!canPlay || !audio.src) return;
+
+      if (!playing) {
         audio.play();
-        playBtn.textContent = "⏸";
+        playing = true;
+        playBtn.textContent = '⏸';
       } else {
         audio.pause();
-        playBtn.textContent = "▶";
+        playing = false;
+        playBtn.textContent = '▶';
       }
-    });
+    }
+
+    playBtn.addEventListener('click', playPause);
 
     nextBtn.addEventListener('click', () => {
-      alert('Función "siguiente pista" aún no implementada.');
-    });
-
-    // Actualizar progreso
-    audio.addEventListener('timeupdate', () => {
-      const current = audio.currentTime;
-      const total = audio.duration || 1;
-      progressBar.value = (current / total) * 100;
-      currentTimeEl.textContent = formatTime(current);
+      alert('Funcionalidad "siguiente pista" no implementada todavía.');
     });
 
     audio.addEventListener('loadedmetadata', () => {
       durationEl.textContent = formatTime(audio.duration);
     });
+
+    audio.addEventListener('timeupdate', () => {
+      currentTimeEl.textContent = formatTime(audio.currentTime);
+      progressBar.value = (audio.currentTime / audio.duration) * 100;
+    });
+
+    function formatTime(seconds) {
+      const m = Math.floor(seconds / 60);
+      const s = Math.floor(seconds % 60);
+      return `${m}:${String(s).padStart(2, '0')}`;
+    }
 
     progressBar.addEventListener('input', () => {
       if (audio.duration) {
@@ -148,38 +146,25 @@
       }
     });
 
-    function formatTime(sec) {
-      const m = Math.floor(sec / 60);
-      const s = Math.floor(sec % 60).toString().padStart(2, '0');
-      return `${m}:${s}`;
-    }
-
-    // Comunicación con el padre
+    // 📨 Escuchar mensajes del iframe padre
     window.addEventListener('message', (event) => {
       const data = event.data;
+      if (data.type === 'loadAudio') {
+        currentAudioId = data.idAudio;
+        canPlay = data.canPlay;
+        updatePlayButtonColor();
 
-      if (data?.type === 'loadAudio') {
-        canPlayFromGPS = !!data.canPlay;
-        playBtn.style.backgroundColor = canPlayFromGPS ? 'green' : 'red';
-
-        audio.src = obtenerRutaPorId(data.idAudio);
-        audio.load();
-        playBtn.textContent = "▶";
-      }
-
-      if (data?.type === 'pauseAudio') {
+        if (currentAudioId) {
+          audio.src = `Av1_audio_esp/${currentAudioId}`;
+          playing = false;
+          playBtn.textContent = '▶';
+        }
+      } else if (data.type === 'pauseAudio') {
         audio.pause();
-        playBtn.textContent = "▶";
+        playing = false;
+        playBtn.textContent = '▶';
       }
     });
-
-    function obtenerRutaPorId(id) {
-      const rutas = {
-        "torres": "Av1_audio_esp/02 Intro ESPAÑOL 2.mp3",
-        "puente": "Av1_audio_esp/03 Av1 Pista 3 ESPAÑOL.mp3"
-      };
-      return rutas[id] || "";
-    }
   </script>
 </body>
 </html>
