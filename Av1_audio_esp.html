@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Audio UI</title>
   <style>
     body {
@@ -16,7 +16,7 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      height: 100%;
+      height: 100vh;
       padding: 1em;
       box-sizing: border-box;
     }
@@ -47,6 +47,7 @@
       margin: 0;
       padding: 0;
       justify-content: flex-start;
+      max-width: 400px;
     }
 
     .progress-container {
@@ -61,26 +62,46 @@
       background: #ccc;
       border-radius: 3px;
       outline: none;
+      cursor: pointer;
     }
 
     .progress-bar::-webkit-slider-thumb {
       appearance: none;
-      width: 10px;
-      height: 10px;
+      width: 14px;
+      height: 14px;
       border-radius: 50%;
       background: #333;
       cursor: pointer;
+      border: none;
+      margin-top: -4px; /* centrar el thumb verticalmente */
+    }
+
+    .progress-bar::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #333;
+      cursor: pointer;
+      border: none;
     }
 
     #currentTime,
     #duration {
       font-size: 0.8em;
       white-space: nowrap;
+      width: 40px;
+      text-align: center;
+      user-select: none;
     }
   </style>
 </head>
 <body>
   <div class="audio-player">
+    <audio id="audio" preload="metadata">
+      <source src="Av1_audio_esp/02 Intro ESPAÑOL 2.mp3" type="audio/mpeg" />
+      Tu navegador no soporta audio HTML5.
+    </audio>
+
     <div class="controls">
       <button id="playBtn">▶</button>
       <button id="nextBtn">⏭</button>
@@ -88,10 +109,10 @@
 
     <div class="progress-row">
       <div class="progress-container">
-        <input type="range" class="progress-bar" id="progressBar" min="0" max="100" value="0">
+        <input type="range" class="progress-bar" id="progressBar" min="0" max="100" value="0" />
       </div>
       <span id="currentTime">0:00</span>
-      <span id="duration">3:25</span>
+      <span id="duration">0:00</span>
     </div>
   </div>
 
@@ -101,31 +122,71 @@
     const progressBar = document.getElementById('progressBar');
     const currentTimeEl = document.getElementById('currentTime');
     const durationEl = document.getElementById('duration');
+    const audio = document.getElementById('audio');
 
-    let playing = false;
+    // Lista de pistas con sus rutas
+    const pistas = [
+      "Av1_audio_esp/02 Intro ESPAÑOL 2.mp3",
+      "Av1_audio_esp/03 Av1 Pista 3 ESPAÑOL.mp3"
+    ];
+    let pistaActual = 0;
 
+    // Carga la pista actual
+    function cargarPista(indice) {
+      audio.src = pistas[indice];
+      audio.load();
+      playBtn.textContent = "▶";
+      progressBar.value = 0;
+      currentTimeEl.textContent = "0:00";
+      durationEl.textContent = "0:00";
+    }
+
+    // Actualiza duración cuando se carga metadata
+    audio.addEventListener('loadedmetadata', () => {
+      const dur = audio.duration;
+      durationEl.textContent = formatTime(dur);
+      progressBar.max = Math.floor(dur);
+    });
+
+    // Actualiza la barra y el tiempo mientras se reproduce
+    audio.addEventListener('timeupdate', () => {
+      progressBar.value = Math.floor(audio.currentTime);
+      currentTimeEl.textContent = formatTime(audio.currentTime);
+    });
+
+    // Cambia el tiempo del audio al mover la barra
+    progressBar.addEventListener('input', () => {
+      audio.currentTime = progressBar.value;
+    });
+
+    // Play/Pause
     playBtn.addEventListener('click', () => {
-      playing = !playing;
-      playBtn.textContent = playing ? '⏸' : '▶';
-      // Aquí iría la lógica de reproducción real del audio
-    });
-
-    nextBtn.addEventListener('click', () => {
-      alert('Siguiente pista (lógica aún no implementada)');
-    });
-
-    // Simulación de duración (puedes reemplazar por lógica real con audio)
-    let fakeCurrent = 0;
-    const fakeDuration = 205; // 3:25 en segundos
-    durationEl.textContent = `${Math.floor(fakeDuration / 60)}:${String(fakeDuration % 60).padStart(2, '0')}`;
-
-    setInterval(() => {
-      if (playing && fakeCurrent < fakeDuration) {
-        fakeCurrent++;
-        progressBar.value = (fakeCurrent / fakeDuration) * 100;
-        currentTimeEl.textContent = `${Math.floor(fakeCurrent / 60)}:${String(fakeCurrent % 60).padStart(2, '0')}`;
+      if (audio.paused) {
+        audio.play();
+        playBtn.textContent = "⏸";
+      } else {
+        audio.pause();
+        playBtn.textContent = "▶";
       }
-    }, 1000);
+    });
+
+    // Cambiar a la siguiente pista
+    nextBtn.addEventListener('click', () => {
+      pistaActual = (pistaActual + 1) % pistas.length;
+      cargarPista(pistaActual);
+      audio.play();
+      playBtn.textContent = "⏸";
+    });
+
+    // Formatea segundos a mm:ss
+    function formatTime(segundos) {
+      const min = Math.floor(segundos / 60);
+      const seg = Math.floor(segundos % 60);
+      return `${min}:${seg.toString().padStart(2, '0')}`;
+    }
+
+    // Carga la primera pista al iniciar
+    cargarPista(pistaActual);
   </script>
 </body>
 </html>
