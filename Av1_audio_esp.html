@@ -4,115 +4,101 @@
   <meta charset="UTF-8" />
   <title>Audio UI</title>
   <style>
-    body {
+    html, body {
       margin: 0;
       padding: 0;
-      background: #f9f9f9;
+      height: 100%;
+      background: transparent;
       font-family: sans-serif;
     }
 
     .audio-player {
+      width: 100%;
+      height: 100%;
+      background: #f9f9f9;
+      padding: 12px;
+      box-sizing: border-box;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      height: 100vh;
-      padding: 1em;
-      box-sizing: border-box;
+      clip-path: polygon(10% 0%, 90% 0%, 100% 100%, 0% 100%);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     }
 
     .controls {
       display: flex;
       align-items: center;
-      gap: 1em;
-      margin-bottom: 0.2em;
+      gap: 6px;
+      padding: 6px 0;
     }
 
     .controls button {
-      background: #333;
-      color: white;
-      border: none;
-      border-radius: 50%;
       width: 80px;
       height: 80px;
+      font-size: 2em;
+      border-radius: 50%;
+      background: red; /* cambia a verde desde JS si viene desde GPS */
+      color: white;
+      border: none;
       cursor: pointer;
-      font-size: 1.2em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .progress-row {
       display: flex;
       align-items: center;
       width: 100%;
-      gap: 0em;
-      margin: 0;
-      padding: 0;
+      gap: 0.5em;
+      padding: 6px 0;
       justify-content: flex-start;
-      max-width: 400px;
     }
 
     .progress-container {
       flex-grow: 1;
-      max-width: none;
     }
 
     .progress-bar {
       width: 100%;
-      height: 7px;
+      height: 6px;
       appearance: none;
       background: #ccc;
-      border-radius: 0px;
+      border-radius: 3px;
       outline: none;
-      cursor: pointer;
     }
 
     .progress-bar::-webkit-slider-thumb {
       appearance: none;
-      width: 14px;
-      height: 14px;
+      width: 10px;
+      height: 10px;
       border-radius: 50%;
       background: #333;
       cursor: pointer;
-      border: none;
-      margin-top: -4px; /* centrar el thumb verticalmente */
     }
 
-    .progress-bar::-moz-range-thumb {
-      width: 14px;
-      height: 14px;
-      border-radius: 50%;
-      background: #333;
-      cursor: pointer;
-      border: none;
-    }
-
-    #currentTime,
-    #duration {
+    #timeDisplay {
       font-size: 0.8em;
       white-space: nowrap;
-      width: 40px;
-      text-align: center;
       user-select: none;
     }
   </style>
 </head>
 <body>
   <div class="audio-player">
-    <audio id="audio" preload="metadata">
-      <source src="Av1_audio_esp/02 Intro ESPAÑOL 2.mp3" type="audio/mpeg" />
-      Tu navegador no soporta audio HTML5.
-    </audio>
-
     <div class="controls">
       <button id="playBtn">▶</button>
-      <button id="nextBtn">⏭</button>
+      <button id="nextBtn">↑</button>
     </div>
 
     <div class="progress-row">
       <div class="progress-container">
-        <input type="range" class="progress-bar" id="progressBar" min="0" max="100" value="0" />
+        <input type="range" class="progress-bar" id="progressBar" min="0" max="100" value="0">
       </div>
-      <span id="currentTime">0:00</span>
-      <span id="duration">0:00</span>
+      <span id="timeDisplay">
+        <span id="currentTime">0:00</span>/<span id="duration">0:00</span>
+      </span>
     </div>
   </div>
 
@@ -122,45 +108,15 @@
     const progressBar = document.getElementById('progressBar');
     const currentTimeEl = document.getElementById('currentTime');
     const durationEl = document.getElementById('duration');
-    const audio = document.getElementById('audio');
 
-    // Lista de pistas con sus rutas
-    const pistas = [
-      "Av1_audio_esp/02 Intro ESPAÑOL 2.mp3",
-      "Av1_audio_esp/03 Av1 Pista 3 ESPAÑOL.mp3"
-    ];
-    let pistaActual = 0;
+    const audio = new Audio();
+    let playing = false;
+    let canPlayFromGPS = false;
 
-    // Carga la pista actual
-    function cargarPista(indice) {
-      audio.src = pistas[indice];
-      audio.load();
-      playBtn.textContent = "▶";
-      progressBar.value = 0;
-      currentTimeEl.textContent = "0:00";
-      durationEl.textContent = "0:00";
-    }
-
-    // Actualiza duración cuando se carga metadata
-    audio.addEventListener('loadedmetadata', () => {
-      const dur = audio.duration;
-      durationEl.textContent = formatTime(dur);
-      progressBar.max = Math.floor(dur);
-    });
-
-    // Actualiza la barra y el tiempo mientras se reproduce
-    audio.addEventListener('timeupdate', () => {
-      progressBar.value = Math.floor(audio.currentTime);
-      currentTimeEl.textContent = formatTime(audio.currentTime);
-    });
-
-    // Cambia el tiempo del audio al mover la barra
-    progressBar.addEventListener('input', () => {
-      audio.currentTime = progressBar.value;
-    });
-
-    // Play/Pause
+    // Controlar play/pause
     playBtn.addEventListener('click', () => {
+      if (!audio.src) return;
+
       if (audio.paused) {
         audio.play();
         playBtn.textContent = "⏸";
@@ -170,23 +126,60 @@
       }
     });
 
-    // Cambiar a la siguiente pista
     nextBtn.addEventListener('click', () => {
-      pistaActual = (pistaActual + 1) % pistas.length;
-      cargarPista(pistaActual);
-      audio.play();
-      playBtn.textContent = "⏸";
+      alert('Función "siguiente pista" aún no implementada.');
     });
 
-    // Formatea segundos a mm:ss
-    function formatTime(segundos) {
-      const min = Math.floor(segundos / 60);
-      const seg = Math.floor(segundos % 60);
-      return `${min}:${seg.toString().padStart(2, '0')}`;
+    // Actualizar progreso
+    audio.addEventListener('timeupdate', () => {
+      const current = audio.currentTime;
+      const total = audio.duration || 1;
+      progressBar.value = (current / total) * 100;
+      currentTimeEl.textContent = formatTime(current);
+    });
+
+    audio.addEventListener('loadedmetadata', () => {
+      durationEl.textContent = formatTime(audio.duration);
+    });
+
+    progressBar.addEventListener('input', () => {
+      if (audio.duration) {
+        audio.currentTime = (progressBar.value / 100) * audio.duration;
+      }
+    });
+
+    function formatTime(sec) {
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60).toString().padStart(2, '0');
+      return `${m}:${s}`;
     }
 
-    // Carga la primera pista al iniciar
-    cargarPista(pistaActual);
+    // Comunicación con el padre
+    window.addEventListener('message', (event) => {
+      const data = event.data;
+
+      if (data?.type === 'loadAudio') {
+        canPlayFromGPS = !!data.canPlay;
+        playBtn.style.backgroundColor = canPlayFromGPS ? 'green' : 'red';
+
+        audio.src = obtenerRutaPorId(data.idAudio);
+        audio.load();
+        playBtn.textContent = "▶";
+      }
+
+      if (data?.type === 'pauseAudio') {
+        audio.pause();
+        playBtn.textContent = "▶";
+      }
+    });
+
+    function obtenerRutaPorId(id) {
+      const rutas = {
+        "torres": "Av1_audio_esp/02 Intro ESPAÑOL 2.mp3",
+        "puente": "Av1_audio_esp/03 Av1 Pista 3 ESPAÑOL.mp3"
+      };
+      return rutas[id] || "";
+    }
   </script>
 </body>
 </html>
