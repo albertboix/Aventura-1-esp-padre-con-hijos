@@ -1,263 +1,340 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <title>Mapa Aventura - Padre</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
-    #map { height: 400px; }
-    #reto { margin: 20px; padding: 15px; border: 1px solid #ccc; max-width: 600px; }
-    #iconosPuzzle {
-      display: flex; gap: 10px; margin: 20px;
-    }
-    .iconoPuzzle {
-      width: 50px; height: 50px; background: red; border-radius: 8px; display: flex;
-      align-items: center; justify-content: center; color: white; cursor: default;
-      user-select: none; font-weight: bold;
-    }
-    .btn {
-      margin-top: 10px; padding: 8px 16px; font-size: 1em; cursor: pointer;
-    }
-    #audioControl {
-      margin: 20px;
-    }
-    #audioPlayBtn {
-      background-color: red; color: white; border: none; padding: 10px 20px;
-      font-size: 1em; cursor: pointer; border-radius: 5px;
-    }
-    #audioPlayBtn.active {
-      background-color: green;
-    }
-  </style>
-
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet/dist/leaflet.css"
-  />
+<meta charset="UTF-8" />
+<title>Padre - Mapa Leaflet con Comunicación Hijo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+<style>
+  #mapa { height: 400px; }
+  #fuegos { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1000; }
+  #reto, #respuestaCorrectaTexto, #btnMostrarRespuesta, #btnNextAfterReto {
+    margin: 10px 0;
+  }
+  #btnMostrarRespuesta, #btnNextAfterReto {
+    cursor: pointer;
+    padding: 5px 15px;
+    border-radius: 5px;
+    border: none;
+    background-color: #007bff;
+    color: white;
+  }
+  #btnMostrarRespuesta:hover, #btnNextAfterReto:hover {
+    background-color: #0056b3;
+  }
+  #btnEnviar {
+    cursor: pointer;
+    padding: 5px 15px;
+    border-radius: 5px;
+    border: none;
+    background-color: #28a745;
+    color: white;
+    margin-top: 10px;
+  }
+  #btnEnviar:disabled {
+    background-color: #94d3a2;
+    cursor: not-allowed;
+  }
+  .correct { border: 2px solid green; padding: 10px; }
+  .incorrect { border: 2px solid red; padding: 10px; }
+  .respuesta { margin: 5px 0; }
+  .puzzle-active iframe { width: 100%; height: 400px; border: none; }
+</style>
 </head>
 <body>
 
-  <h1>Mapa Aventura - Padre</h1>
+<h2>Mapa y Retos</h2>
+<div id="mapa"></div>
 
-  <div id="map"></div>
+<h3>Hijo (iframe):</h3>
+<iframe id="iframeHijo" src="hijo.html" style="width:100%; height:300px; border: 1px solid #ccc;"></iframe>
 
-  <div id="audioControl">
-    <button id="audioPlayBtn" disabled>Reproducir Audio</button>
-  </div>
+<div id="reto"></div>
+<button id="btnMostrarRespuesta">Mostrar Respuesta</button>
+<div id="respuestaCorrectaTexto" style="display:none; font-weight:bold; margin-top:10px;"></div>
+<button id="btnNextAfterReto">Siguiente Reto</button>
 
-  <div id="iconosPuzzle">
-    <div class="iconoPuzzle" id="iconoPuzzle2">P2</div>
-    <div class="iconoPuzzle" id="iconoPuzzle3">P3</div>
-  </div>
+<div id="fuegos"></div>
 
-  <div id="reto"></div>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script>
+  // Variables globales
+  const mapa = L.map('mapa').setView([39.47, -0.38], 14); // Ajusta coordenadas iniciales
+  let marcadorActual = null;
+  const iframeHijo = document.getElementById('iframeHijo');
 
-  <iframe id="iframeHijo" src="hijo.html" style="width:100%; height:300px; border:none;"></iframe>
+  // Cargar mapa Leaflet con tile layer
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap'
+  }).addTo(mapa);
 
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script>
-    // --- Variables globales ---
-    const mapa = L.map('map').setView([39.4754, -0.3763], 15);
+  // Datos de paradas y sus coordenadas y audios y preguntas (ejemplo)
+  const paradasData = {
+    torres_serranos: {
+      coords: [39.4791, -0.3767],
+      audio: 'Av1_audio_esp/02 Intro ESPAÑOL 2.mp3',
+      preguntaId: 2
+    },
+    plaza_de_la_crida: {
+      coords: [39.4763, -0.3821],
+      audio: 'Av1_audio_esp/03 Av1 Pista 3 ESPAÑOL.mp3',
+      preguntaId: 3
+    }
+  };
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap'
-    }).addTo(mapa);
+  // Referencias DOM
+  const retoDiv = document.getElementById('reto');
+  const btnEnviar = document.createElement('button');
+  btnEnviar.textContent = 'Enviar';
+  btnEnviar.id = 'btnEnviar';
+  btnEnviar.style.display = 'none';
 
-    const iframeHijo = document.getElementById('iframeHijo');
+  const btnMostrarRespuesta = document.getElementById('btnMostrarRespuesta');
+  const divRespuestaCorrecta = document.getElementById('respuestaCorrectaTexto');
+  const btnNext = document.getElementById('btnNextAfterReto');
 
-    const paradaData = {
-      torres_serranos: {
-        coords: [39.4754, -0.3763],
-        audio: 'Av1_audio_esp/02 Intro ESPAÑOL 2.mp3',
-        preguntaId: 2
-      },
-      plaza_de_la_crida: {
-        coords: [39.4758, -0.3767],
-        audio: 'Av1_audio_esp/03 Av1 Pista 3 ESPAÑOL.mp3',
-        preguntaId: 3
-      }
-    };
+  // Simulación retos base (agrega tus retos aquí)
+  const retos = [
+    {}, // índice 0 vacío porque empieza en 2 (según el ejemplo)
+    {},
+    {
+      tipo: "opcion",
+      pregunta: "2. ¿Qué sostiene el niño en sus manos?",
+      opciones: ["Una paloma", "Una Concha", "Alimentos"],
+      correctas: ["Una Concha"],
+      multiple: false,
+    },
+    {
+      tipo: "opcion",
+      pregunta: "3. ¿Dónde está ubicada la Plaza de la Crida?",
+      opciones: ["Centro histórico", "Zona moderna", "Parque central"],
+      correctas: ["Centro histórico"],
+      multiple: false,
+    }
+  ];
 
-    let markerActual = null;
-    let indiceReto = -1;
-    let audioActivo = null;
-    let paradaActual = null;
+  let indiceRetoActual = null; // Para controlar reto actual
 
-    const audioPlayBtn = document.getElementById('audioPlayBtn');
-
-    // --- Funciones ---
-
-    function mostrarMarcador(coords) {
-      if (markerActual) {
-        mapa.removeLayer(markerActual);
-      }
-      markerActual = L.marker(coords, {
-        icon: L.icon({
-          iconUrl: 'icono_parada.png',
-          iconSize: [32, 32]
-        })
-      }).addTo(mapa);
-      mapa.setView(coords, 17);
+  // Función para mostrar reto
+  function mostrarReto(indice) {
+    if (!retos[indice]) {
+      retoDiv.textContent = 'No hay reto disponible.';
+      btnEnviar.style.display = 'none';
+      btnMostrarRespuesta.style.display = 'none';
+      btnNext.style.display = 'none';
+      divRespuestaCorrecta.style.display = 'none';
+      return;
     }
 
-    function onParadaSeleccionada(paradaId) {
-      const data = paradaData[paradaId];
-      if (!data) {
-        console.error('Parada no encontrada:', paradaId);
-        return;
-      }
-      paradaActual = paradaId;
-      mostrarMarcador(data.coords);
+    const reto = retos[indice];
+    retoDiv.innerHTML = '';
+    divRespuestaCorrecta.style.display = 'none';
+    divRespuestaCorrecta.textContent = '';
+    btnNext.style.display = 'none';
 
-      // Enviar orden al hijo para activar audio y UI
-      iframeHijo.contentWindow.postMessage({
-        type: 'play-audio',
-        audioSrc: data.audio,
-        preguntaId: data.preguntaId,
-        paradaId: paradaId
-      }, '*');
+    const preguntaElem = document.createElement('h3');
+    preguntaElem.textContent = reto.pregunta;
+    retoDiv.appendChild(preguntaElem);
 
-      // Configurar botón de audio
-      configurarAudio(data.audio);
-    }
-
-    function configurarAudio(src) {
-      if (audioActivo) {
-        audioActivo.pause();
-        audioActivo = null;
-      }
-
-      audioActivo = new Audio(src);
-
-      audioPlayBtn.disabled = false;
-      audioPlayBtn.classList.remove('active');
-      audioPlayBtn.textContent = "Reproducir Audio";
-
-      audioPlayBtn.onclick = () => {
-        if (audioActivo.paused) {
-          audioActivo.play();
-          audioPlayBtn.classList.add('active');
-          audioPlayBtn.textContent = "Reproduciendo...";
-        } else {
-          audioActivo.pause();
-          audioPlayBtn.classList.remove('active');
-          audioPlayBtn.textContent = "Reproducir Audio";
-        }
-      };
-
-      audioActivo.onended = () => {
-        audioPlayBtn.classList.remove('active');
-        audioPlayBtn.textContent = "Audio finalizado";
-        audioPlayBtn.disabled = true;
-
-        // Cambiar icono puzzle a verde y avisar retos
-        const data = paradaData[paradaActual];
-        activarIconoPuzzleEnPadre(data.preguntaId);
-        ejecutarPregunta(data.preguntaId);
-      };
-    }
-
-    function activarIconoPuzzleEnPadre(preguntaId) {
-      const icono = document.getElementById(`iconoPuzzle${preguntaId}`);
-      if (icono) {
-        icono.style.backgroundColor = 'green';
-      }
-    }
-
-    // Código retos (simplificado)
-    const retos = [
-      {
-        tipo: "opcion",
-        pregunta: "2. ¿Qué sostiene el niño en sus manos?",
-        opciones: ["Una paloma", "Una Concha", "Alimentos"],
-        correctas: ["Una Concha"],
-        multiple: false
-      },
-      {
-        tipo: "opcion",
-        pregunta: "3. ¿Dónde está la Plaza de la Crida?",
-        opciones: ["Centro", "Norte", "Sur"],
-        correctas: ["Centro"],
-        multiple: false
-      }
-    ];
-
-    const retoDiv = document.getElementById('reto');
-
-    function mostrarReto() {
-      retoDiv.innerHTML = "";
-      if (indiceReto < 0 || indiceReto >= retos.length) return;
-
-      const reto = retos[indiceReto];
-
-      const h3 = document.createElement('h3');
-      h3.textContent = reto.pregunta;
-      retoDiv.appendChild(h3);
+    if (reto.tipo === 'opcion' || reto.tipo === 'opcion-multiple') {
+      const tipoInput = reto.multiple ? 'checkbox' : 'radio';
 
       reto.opciones.forEach((op, i) => {
-        const div = document.createElement('div');
+        const divOpcion = document.createElement('div');
+        divOpcion.className = 'respuesta';
         const input = document.createElement('input');
-        input.type = reto.multiple ? 'checkbox' : 'radio';
-        input.name = 'respuesta';
-        input.id = `op${i}`;
+        input.type = tipoInput;
+        input.name = 'op';
+        input.id = 'opcion' + i;
         input.value = op;
 
         const label = document.createElement('label');
         label.htmlFor = input.id;
         label.textContent = op;
 
-        div.appendChild(input);
-        div.appendChild(label);
-
-        retoDiv.appendChild(div);
+        divOpcion.appendChild(input);
+        divOpcion.appendChild(label);
+        retoDiv.appendChild(divOpcion);
       });
 
-      const btnValidar = document.createElement('button');
-      btnValidar.textContent = 'Validar respuesta';
-      btnValidar.className = 'btn';
-      retoDiv.appendChild(btnValidar);
-
-      btnValidar.addEventListener('click', () => {
-        const seleccionados = Array.from(
-          retoDiv.querySelectorAll('input[name="respuesta"]:checked')
-        ).map(input => input.value);
-
-        if (seleccionados.length === 0) {
-          alert('Por favor, selecciona una opción');
-          return;
-        }
-
-        const correctas = reto.correctas;
-        const acertado =
-          reto.multiple
-            ? correctas.every(c => seleccionados.includes(c)) && seleccionados.length === correctas.length
-            : correctas.includes(seleccionados[0]);
-
-        if (acertado) {
-          alert('¡Respuesta correcta!');
-        } else {
-          alert('Respuesta incorrecta, intenta de nuevo.');
-        }
-      });
+      retoDiv.appendChild(btnEnviar);
+      btnEnviar.style.display = 'inline-block';
+      btnEnviar.disabled = false;
+    } else {
+      retoDiv.textContent = 'Tipo de reto no soportado.';
+      btnEnviar.style.display = 'none';
     }
 
-    function ejecutarPregunta(preguntaId) {
-      indiceReto = preguntaId - 2; // Ajuste índices
-      mostrarReto();
-    }
+    indiceRetoActual = indice;
+  }
 
-    // Escuchar mensajes del iframe hijo
-    window.addEventListener('message', (event) => {
-      const data = event.data;
-      if (!data || !data.type) return;
+  // Función para verificar respuesta
+  function verificar() {
+    const reto = retos[indiceRetoActual];
+    btnEnviar.disabled = true;
+    divRespuestaCorrecta.style.display = 'none';
+    divRespuestaCorrecta.textContent = '';
+    retoDiv.classList.remove('correct', 'incorrect');
 
-      if (data.type === 'parada-click') {
-        onParadaSeleccionada(data.paradaId);
+    let esCorrecto = false;
+
+    if (reto.tipo === 'opcion') {
+      const seleccion = document.querySelector('input[name="op"]:checked');
+      if (!seleccion) {
+        alert('Por favor, seleccione una opción.');
+        btnEnviar.disabled = false;
+        return;
       }
-      // Si quieres controlar que hijo avise que audio terminó, puedes hacerlo aquí (pero ya lo hace el padre con el audio nativo)
-    });
+      esCorrecto = reto.correctas.includes(seleccion.value);
+    } else if (reto.tipo === 'opcion-multiple') {
+      const seleccionadas = Array.from(document.querySelectorAll('input[name="op"]:checked')).map(i => i.value);
+      if (seleccionadas.length === 0) {
+        alert('Por favor, seleccione al menos una opción.');
+        btnEnviar.disabled = false;
+        return;
+      }
+      esCorrecto = reto.correctas.every(c => seleccionadas.includes(c)) && seleccionadas.every(s => reto.correctas.includes(s));
+    }
 
-  </script>
+    if (esCorrecto) {
+      retoDiv.classList.add('correct');
+      activarFuegosArtificiales();
+      btnNext.style.display = 'inline-block';
+      btnMostrarRespuesta.style.display = 'inline-block';
+      btnEnviar.style.display = 'none';
+    } else {
+      retoDiv.classList.add('incorrect');
+      navigator.vibrate?.(300);
+      btnEnviar.disabled = false;
+      btnMostrarRespuesta.style.display = 'inline-block';
+    }
+  }
+
+  btnEnviar.addEventListener('click', verificar);
+
+  btnMostrarRespuesta.addEventListener('click', () => {
+    if (indiceRetoActual && retos[indiceRetoActual]) {
+      divRespuestaCorrecta.textContent = 'Respuesta correcta: ' + retos[indiceRetoActual].correctas.join(', ');
+      divRespuestaCorrecta.style.display = 'block';
+    }
+  });
+
+  btnNext.addEventListener('click', () => {
+    if (indiceRetoActual) {
+      indiceRetoActual++;
+      mostrarReto(indiceRetoActual);
+    }
+  });
+
+  // Función fuegos artificiales (puedes usar la tuya)
+  const fuegosDiv = document.getElementById('fuegos');
+  const DURACION_TOTAL_MS = 3000;
+
+  function activarFuegosArtificiales() {
+    fuegosDiv.innerHTML = '';
+    fuegosDiv.style.display = 'block';
+
+    const NUM_CHISPAS = 30;
+    const NUM_EXPLOSIONES = 15;
+
+    for (let e = 0; e < NUM_EXPLOSIONES; e++) {
+      setTimeout(() => {
+        const w = fuegosDiv.offsetWidth || window.innerWidth;
+        const h = fuegosDiv.offsetHeight || window.innerHeight;
+        const startX = Math.random() * w;
+        const startY = Math.random() * h;
+
+        for (let i = 0; i < NUM_CHISPAS; i++) {
+          const chispa = document.createElement('div');
+          chispa.style.position = 'absolute';
+          chispa.style.borderRadius = '50%';
+          chispa.style.backgroundColor = `hsl(${Math.floor(Math.random() * 360)}, 100%, 70%)`;
+          chispa.style.width = '5px';
+          chispa.style.height = '5px';
+          chispa.style.left = `${startX}px`;
+          chispa.style.top = `${startY}px`;
+          chispa.style.opacity = 1;
+          chispa.style.pointerEvents = 'none';
+
+          fuegosDiv.appendChild(chispa);
+
+          setTimeout(() => {
+            chispa.style.transition = 'all 1s ease-out';
+            const angle = Math.random() * 2 * Math.PI;
+            const radius = 100 + Math.random() * 50;
+            const newX = startX + radius * Math.cos(angle);
+            const newY = startY + radius * Math.sin(angle);
+            chispa.style.left = `${newX}px`;
+            chispa.style.top = `${newY}px`;
+            chispa.style.opacity = 0;
+          }, 50);
+
+          setTimeout(() => {
+            chispa.remove();
+          }, 1050);
+        }
+      }, e * (DURACION_TOTAL_MS / NUM_EXPLOSIONES));
+    }
+
+    setTimeout(() => {
+      fuegosDiv.style.display = 'none';
+      fuegosDiv.innerHTML = '';
+    }, DURACION_TOTAL_MS);
+  }
+
+  // Función para añadir marcador en Leaflet
+  function agregarMarcador(paradaId) {
+    if (marcadorActual) {
+      mapa.removeLayer(marcadorActual);
+    }
+    const parada = paradasData[paradaId];
+    if (!parada) return;
+
+    marcadorActual = L.marker(parada.coords).addTo(mapa);
+    mapa.setView(parada.coords, 16);
+  }
+
+  // Comunicación con hijo
+  window.addEventListener('message', (event) => {
+    const data = event.data;
+    if (!data || !data.type) return;
+
+    if (data.type === 'parada-click') {
+      const paradaId = data.paradaId;
+      agregarMarcador(paradaId);
+
+      // Enviar al hijo que reproduzca el audio y active play
+      const parada = paradasData[paradaId];
+      if (!parada) return;
+
+      iframeHijo.contentWindow.postMessage({
+        type: 'play-audio',
+        audioSrc: parada.audio,
+        preguntaId: parada.preguntaId,
+        paradaId: paradaId
+      }, '*');
+    } else if (data.type === 'audio-ended') {
+      // Cambiar icono puzzle en hijo (mandar mensaje si quieres, aquí sólo log)
+      console.log('Audio terminado para pregunta', data.preguntaId);
+
+      // Aquí activar puzzle en padre (podrías cambiar UI o similar)
+      activarIconoPuzzle(data.paradaId);
+
+      // Ejecutar reto correspondiente
+      mostrarReto(data.preguntaId);
+    }
+  });
+
+  // Función para activar icono puzzle (puedes extender para que cambie icono en el iframe o padre)
+  function activarIconoPuzzle(paradaId) {
+    // Por ejemplo, mandar mensaje a iframe para activar puzzle (cambiar fondo rojo a verde)
+    iframeHijo.contentWindow.postMessage({
+      type: 'activar-puzzle',
+      paradaId
+    }, '*');
+  }
+
+</script>
 </body>
 </html>
