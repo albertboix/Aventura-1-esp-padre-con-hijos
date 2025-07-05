@@ -6,6 +6,149 @@
   <title>Padre Audioguía</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
+    /* --- Estructura base --- */
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden; /* Solución problema 1: evita scroll extra y línea blanca */
+    }
+    #mapa {
+      width: 100vw;
+      height: 100vh;
+      position: fixed;
+      top: 0; left: 0;
+      z-index: 1;
+    }
+    #botones-container {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      pointer-events: none;
+      z-index: 3000; /* Solución problema 5: más alto que audio */
+    }
+    #botones-container .boton-flotante,
+    #botones-container .icono-flotante {
+      pointer-events: auto;
+    }
+    #gps-iframe {
+      position: fixed; top: 10px; left: 10px;
+      width: 35vw;
+      max-width: calc(100vw - 20px);
+      height: 80vh;
+      border: none;
+      background: transparent;
+      z-index: 2000;
+      box-sizing: border-box;
+      overflow: hidden; /* Solución problema 2: evita scroll horizontal */
+    }
+    #audio-iframe {
+      position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%);
+      width: 360px; height: 160px; border: none; background: transparent;
+      z-index: 1200; /* Debajo de los botones flotantes, solución problema 5 */
+      pointer-events: auto;
+    }
+    /* --- Fin de estilos principales --- */
+  </style>
+</head>
+<body>
+  <!-- Mapa principal -->
+  <div id="mapa"></div>
+  <!-- Contenedor de botones flotantes e iconos -->
+  <div id="botones-container"></div>
+  <!-- Iframe GPS (ventana flotante) -->
+  <iframe id="gps-iframe" src="Av1-boton-gps.html"></iframe>
+  <!-- Iframe Audio (ventana flotante trapecio) -->
+  <iframe id="audio-iframe" src="Av1_audio_esp.html" allow="autoplay"></iframe>
+
+  <!-- Leaflet JS para el mapa -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // --- Inicialización del mapa ---
+    const map = L.map('mapa').setView([39.478046, -0.375515], 14);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 25,
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    let ultimoMarcador = null;
+
+    // --- Carga de botones flotantes e iconos hijos ---
+    fetch('Botones-y-subfunciones.html')
+      .then(res => res.text())
+      .then(html => {
+        const container = document.getElementById('botones-container');
+        container.innerHTML = html;
+        // Ejecuta scripts embebidos en el HTML de botones
+        container.querySelectorAll('script').forEach(oldScript => {
+          const newScript = document.createElement('script');
+          if (oldScript.src) {
+            newScript.src = oldScript.src;
+            newScript.async = false;
+          } else {
+            newScript.textContent = oldScript.textContent;
+          }
+          document.body.appendChild(newScript);
+        });
+        setTimeout(() => {
+          if (typeof inicializarBotonesFlotantes === 'function') {
+            inicializarBotonesFlotantes();
+            if (typeof ocultarTodos === 'function') ocultarTodos();
+          }
+        }, 200);
+      })
+      .catch(err => console.error('Error al cargar botones:', err));
+
+    // --- Comunicación entre padre e iframes hijos ---
+    window.addEventListener('message', (event) => {
+      const data = event.data;
+      // --- GPS: marcador y audio ---
+      if (data && data.tipo === 'gps_marcar_parada') {
+        // Elimina el marcador anterior si existe
+        if (ultimoMarcador) {
+          map.removeLayer(ultimoMarcador);
+        }
+        // Añadir marcador al mapa si hay coordenadas y nombre de parada
+        if (data.coords && data.parada) {
+          ultimoMarcador = L.marker([data.coords.lat, data.coords.lng])
+            .addTo(map)
+            .bindPopup(data.parada)
+            .openPopup();
+        }
+        // Enviar mensaje al hijo audio
+        const audioIframe = document.getElementById('audio-iframe');
+        if (audioIframe) {
+          audioIframe.contentWindow.postMessage({
+            type: 'loadAudio',
+            idAudio: data.idAudio,
+            canPlay: true
+          }, '*');
+        }
+      }
+      // --- PAUSAR AUDIO desde botones flotantes ---
+      if (data && data.type === 'pauseAudioFromBoton') {
+        const audioIframe = document.getElementById('audio-iframe');
+        if (audioIframe) {
+          audioIframe.contentWindow.postMessage({ type: 'pauseAudio' }, '*');
+        }
+      }
+      // --- OCULTAR ICONOS FLOTANTES desde audio ---
+      if (data && data.type === 'cerrarIconosFlotantes') {
+        // Si los botones están en el DOM principal:
+        if (typeof ocultarTodos === 'function') ocultarTodos();
+        // Si están en un iframe (ajusta el id si usas iframe para botones):
+        const botonesIframe = document.getElementById('botones-iframe');
+        if (botonesIframe) {
+          botonesIframe.contentWindow.postMessage({ type: 'ocultarTodos' }, '*');
+        }
+      }
+    });
+    // --- Fin de comunicación padre-hijos ---
+  </script>
+</body>
+</html>ía</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
     html, body { margin:0; padding:0; height:100%; overflow-x: hidden; }
     #mapa { width: 100vw; height: 100vh; }
     #botones-container {
