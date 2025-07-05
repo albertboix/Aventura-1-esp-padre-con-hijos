@@ -1,362 +1,331 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Retos/Preguntas - Aventura 1</title>
-  <style>
-    body {
-      font-family: "Book Antiqua", "Palatino Linotype", "Palatino", Georgia, serif;
-      margin: 0;
-      background: #fff;
-      color: #222;
-      font-size: 16px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      min-height: 100vh;
-      box-sizing: border-box;
-      padding: 1em;
-    }
-    h3 { margin-top: 0; margin-bottom: 0.8em; font-size: 1.5em; text-align: center; width: 100%; }
-    .opciones-container { width: 100%; max-width: 600px; text-align: left; flex-grow: 1; display: flex; flex-direction: column; justify-content: center; }
-    .respuesta { margin: 0.4em 0; font-size: 1.3em; display: flex; align-items: center; }
-    .respuesta input[type="radio"], .respuesta input[type="checkbox"] { margin-right: 0.7em; transform: scale(1.3); cursor: pointer; }
-    .respuesta input[type="text"] { flex-grow: 1; font-size: 1.3em; padding: 0.3em 0.5em; border-radius: 4px; border: 1px solid #999; width: calc(100% - 1.4em); }
-    #button-container { display: flex; flex-wrap: wrap; gap: 1em; margin-top: 1.5em; justify-content: center; width: 100%; min-height: 40px; }
-    button.btn { padding: 0.6em 1.2em; font-size: 1.1em; border: none; border-radius: 6px; cursor: pointer; background-color: #0077cc; color: white; user-select: none; transition: background-color 0.3s ease; }
-    button.btn:hover { background-color: #005699; }
-    button.btn:disabled { background-color: #999; cursor: not-allowed; }
-    #btnMostrarRespuesta { background-color: #28a745; display: none; }
-    #btnMostrarRespuesta:hover { background-color: #1e7e34; }
-    #respuestaCorrectaTexto { margin-top: 1em; font-weight: bold; text-align: center; width: 100%; background-color: rgba(255, 255, 255, 0.9); padding: 0.8em 1em; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); font-size: 1.2em; color: #222; z-index: 20; display: none; box-sizing: border-box; }
-    @media (max-width: 600px) { h3 { font-size: 1.3em; } .respuesta { font-size: 1.1em; } button.btn { font-size: 1em; padding: 0.5em 1em; } #respuestaCorrectaTexto { font-size: 1.1em; } }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reproductor de Audio de Aventura (Hijo)</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            background: transparent !important;
+        }
+        body {
+            font-family: "Book Antiqua", "Palatino Linotype", "Palatino", Georgia, serif;
+            margin: 0;
+            padding: 0;
+            background: transparent !important;
+            overflow: hidden;
+        }
+        .audio-player-controls {
+            position: fixed;
+            left: 50%;
+            bottom: 0;
+            transform: translateX(-50%);
+            width: 170px;
+            max-width: 96vw;
+            min-width: 100px;
+            background: rgba(255,255,255,0.82);
+            clip-path: polygon(8% 0%, 92% 0%, 100% 100%, 0% 100%);
+            border-radius: 18px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.13);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 0.1em;
+            z-index: 1200;
+            padding: 2px 4px;
+            border: none;
+        }
+        .player-buttons-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.12em;
+            width: 100%;
+            margin-bottom: 2px;
+        }
+        .player-button, #retosBtn {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(90deg, #cc3333 0%, #ff5555 100%);
+            color: white;
+            font-size: 1.5em;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.10);
+        }
+        .player-button:disabled, #retosBtn:disabled { background: #ccc; cursor: not-allowed; }
+        .player-button:active:not(:disabled), #retosBtn:active:not(:disabled) { transform: scale(0.95);}
+        .player-button.active, #retosBtn.active {
+            background: linear-gradient(90deg, #34c759 0%, #43e97b 100%);
+        }
+        .icon-play {
+            background: linear-gradient(90deg, #007aff 0%, #00c6ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .icon-puzzle {
+            background: linear-gradient(90deg, #007aff 0%, #00c6ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .progress-row {
+            display: flex;
+            align-items: center;
+            width: 100%;
+            gap: 0.12em;
+            margin: 0;
+            padding: 0;
+            justify-content: center;
+        }
+        .progress-container {
+            flex: 0 0 44px;
+            height: 9px;
+            background-color: #e0e0e0;
+            border-radius: 5px;
+            cursor: pointer;
+            position: relative;
+            margin: 0;
+            min-width: 0;
+            max-width: 44px;
+        }
+        #progressBar {
+            height: 100%;
+            width: 0%;
+            background-color: #0077cc;
+            border-radius: 5px;
+            transition: width 0.1s linear;
+        }
+        .time-display {
+            min-width: 38px;
+            font-size: 0.95em;
+            color: #555;
+            text-align: right;
+            user-select: none;
+            margin-left: 4px;
+            white-space: nowrap;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        @media (max-width: 400px) {
+            .audio-player-controls { width: 98vw; max-width: 98vw; padding: 2px 1px 2px 1px;}
+            .player-button, #retosBtn { width: 32px; height: 32px; font-size: 1em;}
+            .time-display { font-size: 0.92em; min-width: 28px;}
+            .progress-row, .progress-container { width: 98vw; }
+            .progress-container { max-width: 30vw; flex-basis: 30vw; }
+        }
+    </style>
 </head>
 <body>
-  <div id="reto-contenido"></div>
-  <div id="button-container">
-    <button id="btnEnviar" class="btn">Enviar</button>
-    <button id="btnMostrarRespuesta" class="btn">Mostrar Respuesta</button>
-  </div>
-  <div id="respuestaCorrectaTexto"></div>
+    <div class="audio-player-controls" id="audioPlayerControls">
+        <audio id="audioPlayer"></audio>
+        <div class="player-buttons-row">
+            <button id="playPauseBtn" class="player-button" title="Reproducir/Pausar" disabled>
+                <span class="icon-play"><i class="fas fa-play"></i></span>
+            </button>
+            <button id="retosBtn" title="Retos" class="player-button">
+                <span class="icon-puzzle">🧩</span>
+            </button>
+        </div>
+        <div class="progress-row">
+            <div class="progress-container" id="progressContainer">
+                <div id="progressBar"></div>
+            </div>
+            <span class="time-display">
+                <span id="currentTime">0:00</span> / <span id="duration">0:00</span>
+            </span>
+        </div>
+    </div>
+    <script>
+        const audioPlayer = document.getElementById('audioPlayer');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const retosBtn = document.getElementById('retosBtn');
+        const progressBar = document.getElementById('progressBar');
+        const progressContainer = document.getElementById('progressContainer');
+        const currentTimeSpan = document.getElementById('currentTime');
+        const durationSpan = document.getElementById('duration');
+        const audioPlayerControls = document.getElementById('audioPlayerControls');
 
-  <script>
-    // --- TODOS LOS RETOS DE AVENTURA 1 ---
-    const retos = [
-      {
-        tipo: "opcion",
-        pregunta: "1. ¿Cuántas Aventuras pueden hacerse con Valencia be Guides?",
-        opciones: ["4", "5", "6", "7"],
-        correctas: ["7"],
-        multiple: false
-      },
-      {
-        tipo: "opcion",
-        pregunta: "2. ¿Sabría decirme cómo se llaman estas Torres?",
-        opciones: ["Torres de Quart", "Torres de Serranos", "Torre del Miguelete", "Torre de Santa catalina"],
-        correctas: ["Torres de Serranos"],
-        multiple: false
-      },
-      {
-        tipo: "opcion",
-        pregunta: "3. ¿En la cumbre de las torres ondea la bandera de Valencia: sus colores se componen de rojo, amarillo y… ?",
-        opciones: ["Violeta", "Verde", "Azul"],
-        correctas: ["Azul"],
-        multiple: false
-      },
-      {
-        tipo: "texto",
-        pregunta: "4. ¿Sabría decirme el nombre de la calle?",
-        correctaTexto: "Calle Muro de Santa Ana"
-      },
-      {
-        tipo: "opcion",
-        pregunta: "5. ¿Qué porta San Lorenzo en la mano?",
-        opciones: ["Una Paloma", "Una cuchara", "Una parrilla"],
-        correctas: ["Una parrilla"],
-        multiple: false
-      },
-      {
-        tipo: "opcion",
-        pregunta: "6. ¿Con qué mano sujeta Neptuno la cornucopia?",
-        opciones: ["Izquierda", "Derecha"],
-        correctas: ["Derecha"],
-        multiple: false
-      },
-      {
-        tipo: "texto",
-        pregunta: "7. ¿Cuántas figuras rodean la fuente?",
-        correctaTexto: "8"
-      },
-      {
-        tipo: "opcion",
-        pregunta: "9. ¿Qué figura esculpida puede verse en el marco del cuadro?",
-        opciones: ["Un Dragón", "Un Murciélago", "Una Corona"],
-        correctas: ["Una Corona"],
-        multiple: false
-      },
-      {
-        tipo: "opcion-multiple",
-        pregunta: "10. ¿Qué puede verse dentro?",
-        opciones: ["Un Altar", "Una bandera", "Una espada"],
-        correctas: ["Un Altar", "Una bandera"],
-        multiple: true
-      },
-      {
-        tipo: "texto",
-        pregunta: "11. Sobre ésta hay una placa conmemorativa. ¿En qué año fue expuesta dicha placa?",
-        correctaTexto: "1952"
-      },
-      {
-        tipo: "texto",
-        pregunta: "12. ¿En qué año se edificó esta finca? ¡Pista! Mire en la parte superior de la fachada.",
-        correctaTexto: "1906"
-      },
-      {
-        tipo: "opcion",
-        pregunta: "13. ¿Qué puede verse dentro?",
-        opciones: ["Una Plaza de Toros", "Unos baños romanos", "Una estación de metro"],
-        correctas: ["Unos baños romanos"],
-        multiple: false
-      },
-      {
-        tipo: "opcion",
-        pregunta: "14. ¿Sabría determinar qué geometría tiene?",
-        opciones: ["hexagonal", "Octogonal", "Cuadrangular"],
-        correctas: ["hexagonal"],
-        multiple: false
-      },
-      {
-        tipo: "texto",
-        pregunta: "15. ¿Cuántos Arcos componen la puerta?",
-        correctaTexto: "6"
-      },
-      {
-        tipo: "opcion",
-        pregunta: "16. ¿Recuerda qué animal corona el escudo municipal?",
-        opciones: ["Un Dragón", "Un Murciélago", "Un Caballo"],
-        correctas: ["Un Murciélago"],
-        multiple: false
-      },
-      {
-        tipo: "opcion",
-        pregunta: "17. ¡Preste atención a la fachada de la primera torre! ¿Qué Fruta Cítrica natural de Valencia decora la fachada?",
-        opciones: ["Limones", "Pomelos", "Naranjas"],
-        correctas: ["Naranjas"],
-        multiple: false
-      },
-      {
-        tipo: "texto",
-        pregunta: "19. ¿Sabría decirme qué comercio alberga dicho edificio?",
-        correctaTexto: "?"
-      },
-      {
-        tipo: "opcion-multiple",
-        pregunta: "20. Sobre la entrada principal, en un arco de medio punto, figuras alegóricas representan a los cinco continentes. ¿Qué porta la figura central?",
-        opciones: ["Una Antorcha", "Una Espada", "Una Corona"],
-        correctas: ["Una Antorcha", "Una Espada"],
-        multiple: true
-      },
-      {
-        tipo: "opcion",
-        pregunta: "21. ¿Qué porta la figura en la mano?",
-        opciones: ["Una balanza", "Un libro", "Una pluma"],
-        correctas: ["Una balanza"],
-        multiple: false
-      },
-      {
-        tipo: "texto",
-        pregunta: "22. ¿Cuantas plantas tiene el edificio?",
-        correctaTexto: "10"
-      },
-      {
-        tipo: "opcion",
-        pregunta: "23. Busque la vidriera con los colores de la Señera valenciana en la fachada del edificio. ¿Sabría determinar qué forma tiene?",
-        opciones: ["Cuadrangular", "Redonda", "Triangular"],
-        correctas: ["Redonda"],
-        multiple: false
-      },
-      {
-        tipo: "opcion-multiple",
-        pregunta: "24. ¿Qué sostiene la virgen en su mano?",
-        opciones: ["Un Rosario", "Un niño", "Una corona"],
-        correctas: ["Un Rosario", "Un niño"],
-        multiple: true
-      },
-      {
-        tipo: "opcion",
-        pregunta: "25. ¿Qué le entrega el ángel al niño?",
-        opciones: ["Una paloma", "Un orbe", "Alimentos"],
-        correctas: ["Un orbe"],
-        multiple: false
-      },
-      {
-        tipo: "opcion-multiple",
-        pregunta: "27. El barquero que rema a contracorriente.",
-        opciones: ["Un hombre con rostro triste manejando un pequeño bote de madera escapa a contracorriente de un monstruo."],
-        correctas: ["Un hombre con rostro triste manejando un pequeño bote de madera escapa a contracorriente de un monstruo."],
-        multiple: true
-      },
-      {
-        tipo: "opcion-multiple",
-        pregunta: "28. Un árbol muerto: símbolo del Pecado, se ve entre las dos hojas de la puerta y cumple la función de parteluz.",
-        opciones: ["Observe en la copa del árbol como 4 hombres desnudos se azotan entre si."],
-        correctas: ["Observe en la copa del árbol como 4 hombres desnudos se azotan entre si."],
-        multiple: true
-      },
-      {
-        tipo: "opcion-multiple",
-        pregunta: "29. A la derecha, un ángel que muestra su pene y...",
-        opciones: ["se dispone a introducirlo en un jarrón que sostiene con la otra mano. Algo extraño e inusual ¿no le parece?"],
-        correctas: ["se dispone a introducirlo en un jarrón que sostiene con la otra mano. Algo extraño e inusual ¿no le parece?"],
-        multiple: true
-      },
-      {
-        tipo: "opcion-multiple",
-        pregunta: "30. En el centro El barbudo y el león:",
-        opciones: ["Original y contradictoria escena en la cual el manso es precisamente el león y no el anciano barbudo."],
-        correctas: ["Original y contradictoria escena en la cual el manso es precisamente el león y no el anciano barbudo."],
-        multiple: true
-      },
-      {
-        tipo: "opcion-multiple",
-        pregunta: "31. ¡Aquí va un reto extra! ¡Busque al fornicador de la lonja!",
-        opciones: ["En una de sus ventanas, hallará a un hombre tallado, no se le advierte su cabeza, pero sí sus genitales, Y muy claramente."],
-        correctas: ["En una de sus ventanas, hallará a un hombre tallado, no se le advierte su cabeza, pero sí sus genitales, Y muy claramente."],
-        multiple: true
-      },
-      {
-        tipo: "opcion",
-        pregunta: "32. ¿Qué sostiene el niño en sus manos?",
-        opciones: ["Una paloma", "Una Concha", "Alimentos"],
-        correctas: ["Una Concha"],
-        multiple: false
-      }
-    ];
+        let currentAudioId = null;
+        let currentAudioIndexInSequence = -1;
+        let canPlayAudio = false;
 
-    const retoContenidoDiv = document.getElementById("reto-contenido");
-    const btnEnviar = document.getElementById("btnEnviar");
-    const btnMostrarRespuesta = document.getElementById("btnMostrarRespuesta");
-    const divRespuestaCorrecta = document.getElementById("respuestaCorrectaTexto");
-    let currentRetoIndex = -1;
+        const audiosSequence = [
+            {
+                id: "audio_serranos_intro",
+                src: "Av1_audio_esp/02 Intro ESPAÑOL 2.mp3"
+            },
+            {
+                id: "audio_puente_serranos",
+                src: "Av1_audio_esp/03 Av1 Pista 3 ESPAÑOL.mp3"
+            }
+        ];
 
-    function renderizarReto(retoIndex) {
-      currentRetoIndex = retoIndex;
-      const reto = retos[currentRetoIndex];
-      if (!reto) {
-        retoContenidoDiv.innerHTML = "<p>Reto no encontrado.</p>";
-        return;
-      }
-      retoContenidoDiv.innerHTML = '';
-      btnEnviar.style.display = "inline-block";
-      btnEnviar.disabled = false;
-      btnMostrarRespuesta.style.display = "none";
-      divRespuestaCorrecta.style.display = "none";
-      divRespuestaCorrecta.textContent = "";
+        function loadAudio(id) {
+            const audioData = audiosSequence.find(a => a.id === id);
+            if (audioData) {
+                audioPlayer.src = audioData.src;
+                currentAudioId = id;
+                currentAudioIndexInSequence = audiosSequence.findIndex(a => a.id === id);
+                audioPlayer.load();
+                playPauseBtn.querySelector('i').className = 'fas fa-play';
+                audioPlayer.currentTime = 0;
+                progressBar.style.width = '0%';
+                currentTimeSpan.textContent = '0:00';
+                durationSpan.textContent = '0:00';
+                updatePlayerControlsState();
+                setRetosBtnActive(false);
+            } else {
+                currentAudioId = null;
+                currentAudioIndexInSequence = -1;
+                audioPlayer.src = '';
+                updatePlayerControlsState();
+                setRetosBtnActive(false);
+            }
+        }
 
-      let preguntaElem = document.createElement("h3");
-      preguntaElem.textContent = reto.pregunta;
-      retoContenidoDiv.appendChild(preguntaElem);
+        function formatTime(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = Math.floor(seconds % 60);
+            return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
+        }
 
-      if (reto.tipo === "opcion" || reto.tipo === "opcion-multiple") {
-        const opcionesContainer = document.createElement("div");
-        opcionesContainer.className = "opciones-container";
-        const inputType = reto.multiple ? "checkbox" : "radio";
-        reto.opciones.forEach((opcion, i) => {
-          const divOpcion = document.createElement("div");
-          divOpcion.className = "respuesta";
-          const input = document.createElement("input");
-          input.type = inputType;
-          input.name = "op";
-          input.value = opcion;
-          input.id = "opcion" + i;
-          divOpcion.appendChild(input);
+        function playAudio() {
+            if (currentAudioId && canPlayAudio) {
+                audioPlayer.play().catch(e => {});
+                playPauseBtn.querySelector('i').className = 'fas fa-pause';
+            }
+        }
 
-          const label = document.createElement("label");
-          label.htmlFor = input.id;
-          label.textContent = opcion;
-          divOpcion.appendChild(label);
-          opcionesContainer.appendChild(divOpcion);
+        function pauseAudio() {
+            audioPlayer.pause();
+            playPauseBtn.querySelector('i').className = 'fas fa-play';
+        }
+
+        function togglePlayPause() {
+            if (audioPlayer.paused) {
+                playAudio();
+            } else {
+                pauseAudio();
+            }
+        }
+
+        function setRetosBtnActive(active) {
+            if (active) {
+                retosBtn.classList.add('active');
+            } else {
+                retosBtn.classList.remove('active');
+            }
+        }
+
+        function updatePlayerControlsState() {
+            if (currentAudioId && canPlayAudio) {
+                playPauseBtn.disabled = false;
+                audioPlayerControls.classList.add('active');
+                playPauseBtn.classList.add('active');
+            } else {
+                playPauseBtn.disabled = true;
+                audioPlayerControls.classList.remove('active');
+                playPauseBtn.classList.remove('active');
+                pauseAudio();
+            }
+        }
+
+        playPauseBtn.addEventListener('click', togglePlayPause);
+
+        retosBtn.addEventListener('click', () => {
+            window.parent.postMessage({ type: 'audio-player-retos' }, '*');
         });
-        retoContenidoDiv.appendChild(opcionesContainer);
-      } else if (reto.tipo === "texto") {
-        const inputTexto = document.createElement("input");
-        inputTexto.type = "text";
-        inputTexto.id = "respuestaTexto";
-        inputTexto.autocomplete = "off";
-        inputTexto.spellcheck = false;
-        inputTexto.setAttribute("inputmode", "text");
-        inputTexto.placeholder = "Escriba su respuesta aquí...";
-        retoContenidoDiv.appendChild(inputTexto);
-        setTimeout(() => inputTexto.focus(), 200);
-      }
-    }
 
-    function verificar() {
-      if (currentRetoIndex === -1) return;
-      const reto = retos[currentRetoIndex];
-      btnEnviar.disabled = true;
-      divRespuestaCorrecta.style.display = "none";
-      divRespuestaCorrecta.textContent = "";
+        audioPlayer.addEventListener('loadedmetadata', () => {
+            durationSpan.textContent = formatTime(audioPlayer.duration);
+        });
 
-      let esCorrecto = false;
+        audioPlayer.addEventListener('timeupdate', () => {
+            const progress = (audioPlayer.currentTime / audioPlayer.duration) * 100;
+            progressBar.style.width = `${progress}%`;
+            currentTimeSpan.textContent = formatTime(audioPlayer.currentTime);
+        });
 
-      if (reto.tipo === "opcion") {
-        const seleccion = document.querySelector('input[name="op"]:checked');
-        if (!seleccion) {
-          alert("Por favor, seleccione una opción.");
-          btnEnviar.disabled = false;
-          return;
-        }
-        esCorrecto = reto.correctas.includes(seleccion.value);
-      } else if (reto.tipo === "opcion-multiple") {
-        const checks = Array.from(document.querySelectorAll('input[name="op"]:checked')).map(i => i.value);
-        if (checks.length === 0) {
-          alert("Por favor, seleccione al menos una opción.");
-          btnEnviar.disabled = false;
-          return;
-        }
-        esCorrecto = reto.correctas.every(c => checks.includes(c)) && checks.every(s => reto.correctas.includes(s));
-      } else if (reto.tipo === "texto") {
-        esCorrecto = true; // Puedes personalizar la validación aquí
-      }
+        audioPlayer.addEventListener('ended', () => {
+            playPauseBtn.querySelector('i').className = 'fas fa-play';
+            setRetosBtnActive(true);
+        });
 
-      if (esCorrecto) {
-        window.parent.postMessage({ type: "reto-interactivo-completado", index: currentRetoIndex }, "*");
-        divRespuestaCorrecta.textContent = "¡Correcto! Puedes continuar.";
-        divRespuestaCorrecta.style.display = "block";
-      } else {
-        btnEnviar.disabled = false;
-        btnMostrarRespuesta.style.display = "inline-block";
-        window.parent.postMessage({ type: "reto-interactivo-fallado", index: currentRetoIndex }, "*");
-      }
-    }
+        progressContainer.addEventListener('click', (e) => {
+            if (!audioPlayer.src) return;
+            const clickX = e.offsetX;
+            const width = progressContainer.offsetWidth;
+            const duration = audioPlayer.duration;
+            audioPlayer.currentTime = (clickX / width) * duration;
+        });
 
-    btnMostrarRespuesta.addEventListener("click", () => {
-      if (currentRetoIndex === -1) return;
-      const reto = retos[currentRetoIndex];
-      if (reto.tipo === "opcion" || reto.tipo === "opcion-multiple") {
-        divRespuestaCorrecta.textContent = "Respuesta correcta: " + reto.correctas.join(", ");
-      } else if (reto.tipo === "texto") {
-        divRespuestaCorrecta.textContent = "Respuesta sugerida: " + (reto.correctaTexto || "Cualquiera");
-      }
-      divRespuestaCorrecta.style.display = "block";
-      window.parent.postMessage({ type: "reto-respuesta-mostrada", index: currentRetoIndex }, "*");
-      btnEnviar.disabled = true;
-    });
+        window.addEventListener('message', (event) => {
+            const data = event.data;
+            if (data && typeof data === 'object') {
+                if (data.tipo === 'gps_marcar_parada' && data.idAudio) {
+                    loadAudio(data.idAudio);
+                    canPlayAudio = true;
+                    updatePlayerControlsState();
+                    playAudio();
+                }
+                switch (data.type) {
+                    case 'loadAudio':
+                        loadAudio(data.idAudio);
+                        canPlayAudio = data.canPlay;
+                        updatePlayerControlsState();
+                        break;
+                    case 'playAudio':
+                        playAudio();
+                        break;
+                    case 'pauseAudio':
+                        pauseAudio();
+                        break;
+                    case 'stopAudio':
+                        pauseAudio();
+                        if (audioPlayer.src) audioPlayer.currentTime = 0;
+                        break;
+                    case 'updateCanPlay':
+                        canPlayAudio = data.canPlay;
+                        updatePlayerControlsState();
+                        break;
+                    case 'changeFontSize':
+                        document.body.style.fontSize = data.size + 'px';
+                        break;
+                    case 'pauseAudioFromBoton':
+                        pauseAudio();
+                        break;
+                    case 'activarRetosBtn':
+                        setRetosBtnActive(true);
+                        break;
+                    case 'desactivarRetosBtn':
+                        setRetosBtnActive(false);
+                        break;
+                }
+            }
+        });
 
-    window.addEventListener("message", (event) => {
-      if (event.data && typeof event.data === 'object' && event.data.type === 'mostrarRetoIndex') {
-        renderizarReto(event.data.index);
-      }
-    });
+        window.addEventListener('DOMContentLoaded', () => {
+            window.parent.postMessage({ type: 'audio-hijo-listo' }, '*');
+            setRetosBtnActive(false);
+        });
 
-    btnEnviar.addEventListener("click", verificar);
-
-    window.addEventListener("DOMContentLoaded", () => {
-      window.parent.postMessage({ type: "reto-hijo-listo" }, "*");
-    });
-  </script>
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                pauseAudio();
+            }
+        });
+    </script>
 </body>
 </html>
