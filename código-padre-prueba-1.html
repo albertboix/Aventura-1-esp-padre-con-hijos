@@ -2,148 +2,262 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Padre Audioguía</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <title>Mapa Aventura - Padre</title>
   <style>
-    /* --- Estructura base --- */
-    html, body {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      overflow: hidden; /* Solución problema 1: evita scroll extra y línea blanca */
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+    #map { height: 400px; }
+    #reto { margin: 20px; padding: 15px; border: 1px solid #ccc; max-width: 600px; }
+    #iconosPuzzle {
+      display: flex; gap: 10px; margin: 20px;
     }
-    #mapa {
-      width: 100vw;
-      height: 100vh;
-      position: fixed;
-      top: 0; left: 0;
-      z-index: 1;
+    .iconoPuzzle {
+      width: 50px; height: 50px; background: red; border-radius: 8px; display: flex;
+      align-items: center; justify-content: center; color: white; cursor: default;
+      user-select: none; font-weight: bold;
     }
-    #botones-container {
-      position: absolute;
-      top: 0; left: 0;
-      width: 100vw; height: 100vh;
-      pointer-events: none;
-      z-index: 3000; /* Solución problema 5: más alto que audio */
+    .btn {
+      margin-top: 10px; padding: 8px 16px; font-size: 1em; cursor: pointer;
     }
-    #botones-container .boton-flotante,
-    #botones-container .icono-flotante {
-      pointer-events: auto;
+    #audioControl {
+      margin: 20px;
     }
-    #gps-iframe {
-      position: fixed; top: 10px; left: 10px;
-      width: 35vw;
-      max-width: calc(100vw - 20px);
-      height: 80vh;
-      border: none;
-      background: transparent;
-      z-index: 2000;
-      box-sizing: border-box;
-      overflow: hidden; /* Solución problema 2: evita scroll horizontal */
+    #audioPlayBtn {
+      background-color: red; color: white; border: none; padding: 10px 20px;
+      font-size: 1em; cursor: pointer; border-radius: 5px;
     }
-    #audio-iframe {
-      position: fixed; left: 50%; bottom: 5px; transform: translateX(-50%);
-      width: 360px; height: 180px; border: none; background: transparent;
-      z-index: 1200; /* Debajo de los botones flotantes, solución problema 5 */
-      pointer-events: auto;
+    #audioPlayBtn.active {
+      background-color: green;
     }
-    /* --- Fin de estilos principales --- */
   </style>
+
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet/dist/leaflet.css"
+  />
 </head>
 <body>
-  <!-- Mapa principal -->
-  <div id="mapa"></div>
-  <!-- Contenedor de botones flotantes e iconos -->
-  <div id="botones-container"></div>
-  <!-- Iframe GPS (ventana flotante) -->
-  <iframe id="gps-iframe" src="Av1-boton-gps.html"></iframe>
-  <!-- Iframe Audio (ventana flotante trapecio) -->
-  <iframe id="audio-iframe" src="Av1_audio_esp.html" allow="autoplay"></iframe>
 
-  <!-- Leaflet JS para el mapa -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <h1>Mapa Aventura - Padre</h1>
+
+  <div id="map"></div>
+
+  <div id="audioControl">
+    <button id="audioPlayBtn" disabled>Reproducir Audio</button>
+  </div>
+
+  <div id="iconosPuzzle">
+    <div class="iconoPuzzle" id="iconoPuzzle2">P2</div>
+    <div class="iconoPuzzle" id="iconoPuzzle3">P3</div>
+  </div>
+
+  <div id="reto"></div>
+
+  <iframe id="iframeHijo" src="hijo.html" style="width:100%; height:300px; border:none;"></iframe>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
-    // --- Inicialización del mapa ---
-    const map = L.map('mapa').setView([39.478046, -0.375515], 14);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 25,
-      attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
+    // --- Variables globales ---
+    const mapa = L.map('map').setView([39.4754, -0.3763], 15);
 
-    let ultimoMarcador = null;
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(mapa);
 
-    // --- Carga de botones flotantes e iconos hijos ---
-    fetch('Botones-y-subfunciones.html')
-      .then(res => res.text())
-      .then(html => {
-        const container = document.getElementById('botones-container');
-        container.innerHTML = html;
-        // Ejecuta scripts embebidos en el HTML de botones
-        container.querySelectorAll('script').forEach(oldScript => {
-          const newScript = document.createElement('script');
-          if (oldScript.src) {
-            newScript.src = oldScript.src;
-            newScript.async = false;
-          } else {
-            newScript.textContent = oldScript.textContent;
-          }
-          document.body.appendChild(newScript);
-        });
-        setTimeout(() => {
-          if (typeof inicializarBotonesFlotantes === 'function') {
-            inicializarBotonesFlotantes();
-            if (typeof ocultarTodos === 'function') ocultarTodos();
-          }
-        }, 500);
-      })
-      .catch(err => console.error('Error al cargar botones:', err));
+    const iframeHijo = document.getElementById('iframeHijo');
 
-    // --- Comunicación entre padre e iframes hijos ---
+    const paradaData = {
+      torres_serranos: {
+        coords: [39.4754, -0.3763],
+        audio: 'Av1_audio_esp/02 Intro ESPAÑOL 2.mp3',
+        preguntaId: 2
+      },
+      plaza_de_la_crida: {
+        coords: [39.4758, -0.3767],
+        audio: 'Av1_audio_esp/03 Av1 Pista 3 ESPAÑOL.mp3',
+        preguntaId: 3
+      }
+    };
+
+    let markerActual = null;
+    let indiceReto = -1;
+    let audioActivo = null;
+    let paradaActual = null;
+
+    const audioPlayBtn = document.getElementById('audioPlayBtn');
+
+    // --- Funciones ---
+
+    function mostrarMarcador(coords) {
+      if (markerActual) {
+        mapa.removeLayer(markerActual);
+      }
+      markerActual = L.marker(coords, {
+        icon: L.icon({
+          iconUrl: 'icono_parada.png',
+          iconSize: [32, 32]
+        })
+      }).addTo(mapa);
+      mapa.setView(coords, 17);
+    }
+
+    function onParadaSeleccionada(paradaId) {
+      const data = paradaData[paradaId];
+      if (!data) {
+        console.error('Parada no encontrada:', paradaId);
+        return;
+      }
+      paradaActual = paradaId;
+      mostrarMarcador(data.coords);
+
+      // Enviar orden al hijo para activar audio y UI
+      iframeHijo.contentWindow.postMessage({
+        type: 'play-audio',
+        audioSrc: data.audio,
+        preguntaId: data.preguntaId,
+        paradaId: paradaId
+      }, '*');
+
+      // Configurar botón de audio
+      configurarAudio(data.audio);
+    }
+
+    function configurarAudio(src) {
+      if (audioActivo) {
+        audioActivo.pause();
+        audioActivo = null;
+      }
+
+      audioActivo = new Audio(src);
+
+      audioPlayBtn.disabled = false;
+      audioPlayBtn.classList.remove('active');
+      audioPlayBtn.textContent = "Reproducir Audio";
+
+      audioPlayBtn.onclick = () => {
+        if (audioActivo.paused) {
+          audioActivo.play();
+          audioPlayBtn.classList.add('active');
+          audioPlayBtn.textContent = "Reproduciendo...";
+        } else {
+          audioActivo.pause();
+          audioPlayBtn.classList.remove('active');
+          audioPlayBtn.textContent = "Reproducir Audio";
+        }
+      };
+
+      audioActivo.onended = () => {
+        audioPlayBtn.classList.remove('active');
+        audioPlayBtn.textContent = "Audio finalizado";
+        audioPlayBtn.disabled = true;
+
+        // Cambiar icono puzzle a verde y avisar retos
+        const data = paradaData[paradaActual];
+        activarIconoPuzzleEnPadre(data.preguntaId);
+        ejecutarPregunta(data.preguntaId);
+      };
+    }
+
+    function activarIconoPuzzleEnPadre(preguntaId) {
+      const icono = document.getElementById(`iconoPuzzle${preguntaId}`);
+      if (icono) {
+        icono.style.backgroundColor = 'green';
+      }
+    }
+
+    // Código retos (simplificado)
+    const retos = [
+      {
+        tipo: "opcion",
+        pregunta: "2. ¿Qué sostiene el niño en sus manos?",
+        opciones: ["Una paloma", "Una Concha", "Alimentos"],
+        correctas: ["Una Concha"],
+        multiple: false
+      },
+      {
+        tipo: "opcion",
+        pregunta: "3. ¿Dónde está la Plaza de la Crida?",
+        opciones: ["Centro", "Norte", "Sur"],
+        correctas: ["Centro"],
+        multiple: false
+      }
+    ];
+
+    const retoDiv = document.getElementById('reto');
+
+    function mostrarReto() {
+      retoDiv.innerHTML = "";
+      if (indiceReto < 0 || indiceReto >= retos.length) return;
+
+      const reto = retos[indiceReto];
+
+      const h3 = document.createElement('h3');
+      h3.textContent = reto.pregunta;
+      retoDiv.appendChild(h3);
+
+      reto.opciones.forEach((op, i) => {
+        const div = document.createElement('div');
+        const input = document.createElement('input');
+        input.type = reto.multiple ? 'checkbox' : 'radio';
+        input.name = 'respuesta';
+        input.id = `op${i}`;
+        input.value = op;
+
+        const label = document.createElement('label');
+        label.htmlFor = input.id;
+        label.textContent = op;
+
+        div.appendChild(input);
+        div.appendChild(label);
+
+        retoDiv.appendChild(div);
+      });
+
+      const btnValidar = document.createElement('button');
+      btnValidar.textContent = 'Validar respuesta';
+      btnValidar.className = 'btn';
+      retoDiv.appendChild(btnValidar);
+
+      btnValidar.addEventListener('click', () => {
+        const seleccionados = Array.from(
+          retoDiv.querySelectorAll('input[name="respuesta"]:checked')
+        ).map(input => input.value);
+
+        if (seleccionados.length === 0) {
+          alert('Por favor, selecciona una opción');
+          return;
+        }
+
+        const correctas = reto.correctas;
+        const acertado =
+          reto.multiple
+            ? correctas.every(c => seleccionados.includes(c)) && seleccionados.length === correctas.length
+            : correctas.includes(seleccionados[0]);
+
+        if (acertado) {
+          alert('¡Respuesta correcta!');
+        } else {
+          alert('Respuesta incorrecta, intenta de nuevo.');
+        }
+      });
+    }
+
+    function ejecutarPregunta(preguntaId) {
+      indiceReto = preguntaId - 2; // Ajuste índices
+      mostrarReto();
+    }
+
+    // Escuchar mensajes del iframe hijo
     window.addEventListener('message', (event) => {
       const data = event.data;
-      // --- GPS: marcador y audio ---
-      if (data && data.tipo === 'gps_marcar_parada') {
-        // Elimina el marcador anterior si existe
-        if (ultimoMarcador) {
-          map.removeLayer(ultimoMarcador);
-        }
-        // Añadir marcador al mapa si hay coordenadas y nombre de parada
-        if (data.coords && data.parada) {
-          ultimoMarcador = L.marker([data.coords.lat, data.coords.lng])
-            .addTo(map)
-            .bindPopup(data.parada)
-            .openPopup();
-        }
-        // Enviar mensaje al hijo audio
-        const audioIframe = document.getElementById('audio-iframe');
-        if (audioIframe) {
-          audioIframe.contentWindow.postMessage({
-            type: 'loadAudio',
-            idAudio: data.idAudio,
-            canPlay: true
-          }, '*');
-        }
+      if (!data || !data.type) return;
+
+      if (data.type === 'parada-click') {
+        onParadaSeleccionada(data.paradaId);
       }
-      // --- PAUSAR AUDIO desde botones flotantes ---
-      if (data && data.type === 'pauseAudioFromBoton') {
-        const audioIframe = document.getElementById('audio-iframe');
-        if (audioIframe) {
-          audioIframe.contentWindow.postMessage({ type: 'pauseAudio' }, '*');
-        }
-      }
-      // --- OCULTAR ICONOS FLOTANTES desde audio ---
-      if (data && data.type === 'cerrarIconosFlotantes') {
-        // Si los botones están en el DOM principal:
-        if (typeof ocultarTodos === 'function') ocultarTodos();
-        // Si están en un iframe (ajusta el id si usas iframe para botones):
-        const botonesIframe = document.getElementById('botones-iframe');
-        if (botonesIframe) {
-          botonesIframe.contentWindow.postMessage({ type: 'ocultarTodos' }, '*');
-        }
-      }
+      // Si quieres controlar que hijo avise que audio terminó, puedes hacerlo aquí (pero ya lo hace el padre con el audio nativo)
     });
-    // --- Fin de comunicación padre-hijos ---
+
   </script>
 </body>
 </html>
