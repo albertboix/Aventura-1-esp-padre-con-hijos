@@ -1,200 +1,135 @@
 <!DOCTYPE html>
 <html lang="es">
-<body>
-  <!-- Botones principales -->
-  <button id="hamburguesa" class="boton-flotante" style="pointer-events:auto;">☰</button>
-  <button id="mas-opciones" class="boton-flotante" style="pointer-events:auto;">⋮</button>
-  <button id="btn-mapa" class="boton-flotante" style="pointer-events:auto;">🌍</button>
-
-  <!-- Iconos hijos -->
-  <button class="icono-flotante" id="icono-retos" style="pointer-events:auto;">🧩</button>
-  <button class="icono-flotante" id="icono-gastronomia" style="pointer-events:auto;">🍽️</button>
-  <button class="icono-flotante" id="icono-informacion" style="pointer-events:auto;">🌐</button>
-  <button class="icono-flotante" id="icono-historia" style="pointer-events:auto;">🏛️</button>
-  <button class="icono-flotante" id="icono-agradecimientos" style="pointer-events:auto;">🤝</button>
-  <button class="icono-flotante" id="icono-seguridad" style="pointer-events:auto;">🚦</button>
-  <button class="icono-flotante" id="icono-fuentes" style="pointer-events:auto;">📚</button>
-  <button class="icono-flotante" id="icono-punto" style="pointer-events:auto;">📍</button>
-  <button class="icono-flotante" id="icono-ruta" style="pointer-events:auto;">🗺️</button>
-  <button class="icono-flotante" id="icono-brujula" style="pointer-events:auto;">🧭</button>
-
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Padre Audioguía</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    .boton-flotante, .icono-flotante {
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+    }
+    #mapa {
+      width: 100vw;
+      height: 100vh;
       position: fixed;
-      background: #007acc;
-      color: white;
-      border-radius: 50%;
-      width: 56px;
-      height: 56px;
-      font-size: 2rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-      user-select: none;
-      z-index: 3300 !important;
+      top: 0; left: 0;
+      z-index: 1;
+    }
+    #botones-container {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      pointer-events: none;
+      z-index: 3000;
+    }
+    #gps-iframe {
+      position: fixed; top: 10px; left: 10px;
+      width: 35vw;
+      max-width: calc(100vw - 20px);
+      height: 80vh;
+      border: none;
+      background: transparent;
+      z-index: 2000;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+    #audio-iframe {
+      position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%);
+      width: 360px; height: 160px; border: none; background: transparent;
+      z-index: 1200;
       pointer-events: auto;
     }
-    .icono-flotante {
-      display: none;
-      width: 44px;
-      height: 44px;
-      font-size: 1.5rem;
-      z-index: 3300 !important;
-      visibility: hidden;
-      opacity: 0;
-      transition: opacity 0.3s ease;
-      pointer-events: auto;
-    }
-    #hamburguesa { bottom: 75px; left: 12px; }
-    #mas-opciones { bottom: 75px; right: 12px; }
-    #btn-mapa { top: 12px; right: 12px; }
   </style>
+</head>
+<body>
+  <div id="mapa"></div>
+  <div id="botones-container"></div>
+  <iframe id="gps-iframe" src="Av1-boton-gps.html"></iframe>
+  <iframe id="audio-iframe" src="Av1_audio_esp.html" allow="autoplay"></iframe>
 
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    // --- Configuración de grupos de iconos hijos por botón principal ---
-    const gruposIconos = {
-      hamburguesa: ['icono-retos','icono-gastronomia','icono-informacion','icono-historia'],
-      'mas-opciones': ['icono-agradecimientos','icono-seguridad','icono-fuentes'],
-      'btn-mapa': ['icono-punto','icono-ruta','icono-brujula']
-    };
-    const sectores = {
-      hamburguesa: { centro: 45, arco: 90 },
-      'mas-opciones': { centro: 135, arco: 90 },
-      'btn-mapa': { centro: 225, arco: 90 }
-    };
-    const radios = {
-      hamburguesa: 85,
-      'mas-opciones': 70,
-      'btn-mapa': 70
-    };
-    const enlacesIconos = {
-      'icono-retos': 'retos_con_puzzles_Av1_es.html',
-      'icono-gastronomia': 'Gastronomia.html',
-      'icono-informacion': 'paginas_oficiales.html',
-      'icono-historia': 'enlaces_valencia_historica.html',
-      'icono-agradecimientos': 'Agradecimientos.html',
-      'icono-seguridad': 'consejos_seguridad_vial.html',
-      'icono-fuentes': null,
-      'icono-punto': null,
-      'icono-ruta': 'Av1_mapa_completo.html',
-      'icono-brujula': 'mapas/Av1_mapa.jpg'
-    };
+    // --- Inicialización del mapa ---
+    const map = L.map('mapa').setView([39.478046, -0.375515], 14);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 25,
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
 
-    let iconosVisibles = {};
-    let ultimoBoton = null;
+    let ultimoMarcador = null;
 
-    function ocultarTodos() {
-      Object.values(gruposIconos).flat().forEach(id => {
-        const el = document.getElementById(id);
-        if (el) {
-          el.style.display = 'none';
-          el.style.visibility = 'hidden';
-          el.style.opacity = 0;
-          iconosVisibles[id] = false;
+    // --- Carga de botones flotantes e iconos hijos ---
+    fetch('Botones-y-subfunciones.html')
+      .then(res => res.text())
+      .then(html => {
+        const container = document.getElementById('botones-container');
+        container.innerHTML = html;
+
+        // --- BLOQUE CLAVE: Ejecuta scripts embebidos en el HTML de botones ---
+        container.querySelectorAll('script').forEach(oldScript => {
+          const newScript = document.createElement('script');
+          if (oldScript.src) {
+            newScript.src = oldScript.src;
+            newScript.async = false;
+          } else {
+            newScript.textContent = oldScript.textContent;
+          }
+          document.body.appendChild(newScript);
+        });
+
+        // Si la función de inicialización está disponible, la ejecuta
+        setTimeout(() => {
+          if (typeof inicializarBotonesFlotantes === 'function') {
+            inicializarBotonesFlotantes();
+            if (typeof ocultarTodos === 'function') ocultarTodos();
+          }
+        }, 200);
+      })
+      .catch(err => console.error('Error al cargar botones:', err));
+
+    // --- Comunicación entre padre e iframes hijos ---
+    window.addEventListener('message', (event) => {
+      const data = event.data;
+      // Marcar parada en el mapa y cargar audio correspondiente
+      if (data && data.tipo === 'gps_marcar_parada') {
+        if (ultimoMarcador) {
+          map.removeLayer(ultimoMarcador);
         }
-      });
-      localStorage.removeItem('ultimoBoton');
-    }
-
-    function mostrarIconos(idBoton) {
-      const iconos = gruposIconos[idBoton];
-      if (!iconos) return;
-
-      const b = document.getElementById(idBoton);
-      const rect = b.getBoundingClientRect();
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
-
-      const { centro, arco } = sectores[idBoton];
-      const total = iconos.length;
-      const inicio = centro - arco / 2;
-      const radio = radios[idBoton] || 100;
-
-      for (let i = 0; i < total; i++) {
-        const angulo = total === 1 ? centro : inicio + (arco / (total - 1)) * i;
-        const rad = angulo * Math.PI / 180;
-        const x = cx + radio * Math.cos(rad);
-        const y = cy - radio * Math.sin(rad);
-
-        const el = document.getElementById(iconos[i]);
-        if (el) {
-          el.style.display = 'flex';
-          el.style.left = `${x - el.offsetWidth / 2}px`;
-          el.style.top = `${y - el.offsetHeight / 2}px`;
-          el.style.position = 'fixed';
-          el.style.visibility = 'visible';
-          el.style.opacity = 1;
-          el.style.zIndex = 3300;
-          iconosVisibles[iconos[i]] = true;
+        if (data.coords && data.parada) {
+          ultimoMarcador = L.marker([data.coords.lat, data.coords.lng])
+            .addTo(map)
+            .bindPopup(data.parada)
+            .openPopup();
+        }
+        const audioIframe = document.getElementById('audio-iframe');
+        if (audioIframe) {
+          audioIframe.contentWindow.postMessage({
+            type: 'loadAudio',
+            idAudio: data.idAudio,
+            canPlay: true
+          }, '*');
         }
       }
-      ultimoBoton = idBoton;
-      localStorage.setItem('ultimoBoton', idBoton);
-    }
-
-    function pausarAudioHijo() {
-      window.parent.postMessage({ type: 'pauseAudioFromBoton' }, '*');
-    }
-
-    function inicializarBotonesFlotantes() {
-      Object.entries(gruposIconos).forEach(([botonId, iconoIds]) => {
-        const boton = document.getElementById(botonId);
-        if (!boton) return;
-        boton.addEventListener('click', () => {
-          pausarAudioHijo();
-          const algunoVisible = iconoIds.some(id => iconosVisibles[id]);
-          ocultarTodos();
-          if (!algunoVisible) {
-            mostrarIconos(botonId);
-          } else {
-            ultimoBoton = null;
-            localStorage.removeItem('ultimoBoton');
-          }
-        });
-      });
-
-      Object.entries(enlacesIconos).forEach(([id, url]) => {
-        const el = document.getElementById(id);
-        if (el && url) {
-          el.addEventListener('click', () => {
-            pausarAudioHijo();
-            window.open(url, '_blank');
-          });
-        } else if (el) {
-          el.addEventListener('click', pausarAudioHijo);
+      // Pausar audio desde botones hijos
+      if (data && data.type === 'pauseAudioFromBoton') {
+        const audioIframe = document.getElementById('audio-iframe');
+        if (audioIframe) {
+          audioIframe.contentWindow.postMessage({ type: 'pauseAudio' }, '*');
         }
-      });
-
-      setTimeout(() => {
-        const guardado = localStorage.getItem('ultimoBoton');
-        if (guardado && gruposIconos[guardado]) {
-          mostrarIconos(guardado);
+      }
+      // Ocultar iconos flotantes si se solicita
+      if (data && data.type === 'cerrarIconosFlotantes') {
+        if (typeof ocultarTodos === 'function') ocultarTodos();
+        const botonesIframe = document.getElementById('botones-iframe');
+        if (botonesIframe) {
+          botonesIframe.contentWindow.postMessage({ type: 'ocultarTodos' }, '*');
         }
-      }, 100);
-
-      window.addEventListener('resize', () => {
-        if (ultimoBoton) mostrarIconos(ultimoBoton);
-      });
-      window.addEventListener('orientationchange', () => {
-        setTimeout(() => {
-          if (ultimoBoton) mostrarIconos(ultimoBoton);
-        }, 200);
-      });
-
-      window.addEventListener('message', (event) => {
-        if (event.data && event.data.type === 'ocultarTodos') {
-          ocultarTodos();
-        }
-      });
-    }
-
-    if (typeof inicializarBotonesFlotantes === 'function') {
-      inicializarBotonesFlotantes();
-    } else {
-      window.addEventListener('DOMContentLoaded', inicializarBotonesFlotantes);
-    }
+      }
+    });
   </script>
 </body>
 </html>
