@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Padre Audioguía</title>
+  <title>Padre Audioguía Interactiva</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     html, body {
@@ -43,6 +43,27 @@
       z-index: 1200;
       pointer-events: auto;
     }
+    #retos-iframe {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 420px;
+      max-width: 98vw;
+      height: 420px;
+      max-height: 98vh;
+      border: 2px solid #0077cc;
+      border-radius: 16px;
+      background: #fff;
+      z-index: 4000;
+      display: none;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.18);
+    }
+    @media (max-width: 500px) {
+      #retos-iframe { width: 98vw; height: 98vh; }
+      #audio-iframe { width: 98vw; }
+      #gps-iframe { width: 98vw; left: 0; }
+    }
   </style>
 </head>
 <body>
@@ -50,6 +71,7 @@
   <div id="botones-container"></div>
   <iframe id="gps-iframe" src="Av1-boton-gps.html"></iframe>
   <iframe id="audio-iframe" src="Av1_audio_esp.html" allow="autoplay"></iframe>
+  <iframe id="retos-iframe" src="Av1-esp-retos-preguntas.html"></iframe>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
@@ -68,8 +90,6 @@
       .then(html => {
         const container = document.getElementById('botones-container');
         container.innerHTML = html;
-
-        // Ejecuta scripts embebidos en el HTML de botones
         container.querySelectorAll('script').forEach(oldScript => {
           const newScript = document.createElement('script');
           if (oldScript.src) {
@@ -80,12 +100,9 @@
           }
           document.body.appendChild(newScript);
         });
-
-        // --- Mueve los botones principales e iconos al body ---
         container.querySelectorAll('.boton-flotante, .icono-flotante').forEach(el => {
           document.body.appendChild(el);
         });
-
         setTimeout(() => {
           if (typeof inicializarBotonesFlotantes === 'function') {
             inicializarBotonesFlotantes();
@@ -95,43 +112,138 @@
       })
       .catch(err => console.error('Error al cargar botones:', err));
 
+    // --- Variables de control de flujo ---
+    let paradas = [
+      // Debes mantener el mismo orden que en el archivo de retos y audios
+      // Ejemplo:
+      // { nombre: "Torres de Serranos", lat: 39.47876, lng: -0.37626, idAudio: "audio_serranos_intro", retoIndex: 1 }
+      // ...
+    ];
+    // Si quieres, puedes cargar este array dinámicamente desde el iframe GPS usando postMessage
+
+    let paradaActual = null; // Objeto con info de la parada actual
+    let esperandoAudio = false;
+    let esperandoReto = false;
+
     // --- Comunicación entre padre e iframes hijos ---
     window.addEventListener('message', (event) => {
       const data = event.data;
-      // Marcar parada en el mapa y cargar audio correspondiente
-      if (data && data.tipo === 'gps_marcar_parada') {
-        if (ultimoMarcador) {
-          map.removeLayer(ultimoMarcador);
+
+      // --- GPS avisa de nueva parada ---
+      if (data && (data.tipo === 'gps_marcar_parada' || data.tipo === 'parada_detectada')) {
+        // Si tu GPS envía 'parada_detectada', adapta aquí el nombre/id
+        // data: { tipo: 'gps_marcar_parada', parada: "Nombre", coords: {lat, lng}, idAudio, retoIndex }
+        // Si tu GPS solo envía nombre, busca el resto en tu array de paradas
+        let parada = null;
+        if (data.parada && data.idAudio !== undefined && data.retoIndex !== undefined) {
+          parada = data;
+        } else if (data.parada) {
+          // Busca en tu array de paradas
+          parada = paradas.find(p => p.nombre === data.parada);
         }
-        if (data.coords && data.parada) {
-          ultimoMarcador = L.marker([data.coords.lat, data.coords.lng])
+        if (!parada) {
+          // Si no tienes array de paradas, usa solo el nombre y coords
+          parada = { nombre: data.parada, coords: data.coords, idAudio: data.idAudio, retoIndex: data.retoIndex };
+        }
+        paradaActual = parada;
+
+        // Marca en el mapa
+        if (ultimoMarcador) map.removeLayer(ultimoMarcador);
+        if (parada.coords) {
+          ultimoMarcador = L.marker([parada.coords.lat, parada.coords.lng])
             .addTo(map)
-            .bindPopup(data.parada)
+            .bindPopup(parada.nombre)
             .openPopup();
         }
+
+        // Activa el audio correspondiente
         const audioIframe = document.getElementById('audio-iframe');
-        if (audioIframe) {
+        if (audioIframe && parada.idAudio) {
           audioIframe.contentWindow.postMessage({
             type: 'loadAudio',
-            idAudio: data.idAudio,
+            idAudio: parada.idAudio,
             canPlay: true
           }, '*');
+          esperandoAudio = true;
+          esperandoReto = false;
+        }
+        // Oculta el reto si estuviera abierto
+        document.getElementById('retos-iframe').style.display = 'none';
+      }
+
+      // --- El audio ha terminado: activa el reto ---
+      if (data && data.type === 'audioTerminado') {
+        if (paradaActual && paradaActual.retoIndex !== undefined) {
+          const retosIframe = document.getElementById('retos-iframe');
+          retosIframe.style.display = 'block';
+          retosIframe.contentWindow.postMessage({
+            type: 'mostrarRetoIndex',
+            index: paradaActual.retoIndex
+          }, '*');
+          esperandoReto = true;
         }
       }
-      // Pausar audio desde botones hijos
+
+      // --- El usuario pulsa el botón de retos desde el audio ---
+      if (data && data.type === 'audio-player-retos') {
+        if (paradaActual && paradaActual.retoIndex !== undefined) {
+          const retosIframe = document.getElementById('retos-iframe');
+          retosIframe.style.display = 'block';
+          retosIframe.contentWindow.postMessage({
+            type: 'mostrarRetoIndex',
+            index: paradaActual.retoIndex
+          }, '*');
+          esperandoReto = true;
+        }
+      }
+
+      // --- El reto se ha completado ---
+      if (data && data.type === 'reto-interactivo-completado') {
+        // Oculta el iframe de retos
+        document.getElementById('retos-iframe').style.display = 'none';
+        // Aquí puedes activar la siguiente parada automáticamente si lo deseas
+        // O esperar a que el usuario avance manualmente
+        // Ejemplo: window.parent.postMessage({ tipo: "avanzar_parada" }, "*");
+      }
+
+      // --- Pausar audio desde botones hijos ---
       if (data && data.type === 'pauseAudioFromBoton') {
         const audioIframe = document.getElementById('audio-iframe');
         if (audioIframe) {
           audioIframe.contentWindow.postMessage({ type: 'pauseAudio' }, '*');
         }
       }
-      // Ocultar iconos flotantes si se solicita
+
+      // --- Ocultar iconos flotantes si se solicita ---
       if (data && data.type === 'cerrarIconosFlotantes') {
         if (typeof ocultarTodos === 'function') ocultarTodos();
-        const botonesIframe = document.getElementById('botones-iframe');
-        if (botonesIframe) {
-          botonesIframe.contentWindow.postMessage({ type: 'ocultarTodos' }, '*');
-        }
+        // Si tienes un iframe de botones, puedes enviarle el mensaje también
+        // const botonesIframe = document.getElementById('botones-iframe');
+        // if (botonesIframe) {
+        //   botonesIframe.contentWindow.postMessage({ type: 'ocultarTodos' }, '*');
+        // }
+      }
+    });
+
+    // --- Si quieres cargar el array de paradas desde el GPS (opcional) ---
+    window.addEventListener('message', (event) => {
+      const data = event.data;
+      if (data && data.tipo === 'coordenadas' && Array.isArray(data.puntos)) {
+        // Puedes construir aquí el array de paradas con idAudio y retoIndex
+        // Ejemplo:
+        // paradas = data.puntos.map((p, idx) => ({
+        //   nombre: p.nombre,
+        //   coords: { lat: p.lat, lng: p.lng },
+        //   idAudio: 'audio_' + idx,
+        //   retoIndex: idx
+        // }));
+      }
+    });
+
+    // --- Opcional: cerrar el reto al pulsar fuera ---
+    document.addEventListener('keydown', (e) => {
+      if (e.key === "Escape") {
+        document.getElementById('retos-iframe').style.display = 'none';
       }
     });
   </script>
