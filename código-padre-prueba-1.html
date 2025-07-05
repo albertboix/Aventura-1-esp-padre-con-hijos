@@ -1,3 +1,9 @@
+<!--
+Archivo: código-padre-prueba-1.html (versión aligerada)
+Función: Archivo principal (padre) que contiene el mapa, los botones flotantes, el iframe GPS y el iframe de audio.
+Se han eliminado todos los estilos y scripts relacionados con los botones hijos que no son imprescindibles para su funcionamiento.
+-->
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -6,12 +12,11 @@
   <title>Padre Audioguía</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    /* --- Estructura base --- */
     html, body {
       margin: 0;
       padding: 0;
       height: 100%;
-      overflow: hidden; /* Solución problema 1: evita scroll extra y línea blanca */
+      overflow: hidden;
     }
     #mapa {
       width: 100vw;
@@ -25,11 +30,7 @@
       top: 0; left: 0;
       width: 100vw; height: 100vh;
       pointer-events: none;
-      z-index: 3000; /* Solución problema 5: más alto que audio */
-    }
-    #botones-container .boton-flotante,
-    #botones-container .icono-flotante {
-      pointer-events: auto;
+      z-index: 3000;
     }
     #gps-iframe {
       position: fixed; top: 10px; left: 10px;
@@ -40,28 +41,22 @@
       background: transparent;
       z-index: 2000;
       box-sizing: border-box;
-      overflow: hidden; /* Solución problema 2: evita scroll horizontal */
+      overflow: hidden;
     }
     #audio-iframe {
       position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%);
       width: 360px; height: 160px; border: none; background: transparent;
-      z-index: 1200; /* Debajo de los botones flotantes, solución problema 5 */
+      z-index: 1200;
       pointer-events: auto;
     }
-    /* --- Fin de estilos principales --- */
   </style>
 </head>
 <body>
-  <!-- Mapa principal -->
   <div id="mapa"></div>
-  <!-- Contenedor de botones flotantes e iconos -->
   <div id="botones-container"></div>
-  <!-- Iframe GPS (ventana flotante) -->
   <iframe id="gps-iframe" src="Av1-boton-gps.html"></iframe>
-  <!-- Iframe Audio (ventana flotante trapecio) -->
   <iframe id="audio-iframe" src="Av1_audio_esp.html" allow="autoplay"></iframe>
 
-  <!-- Leaflet JS para el mapa -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     // --- Inicialización del mapa ---
@@ -102,20 +97,16 @@
     // --- Comunicación entre padre e iframes hijos ---
     window.addEventListener('message', (event) => {
       const data = event.data;
-      // --- GPS: marcador y audio ---
       if (data && data.tipo === 'gps_marcar_parada') {
-        // Elimina el marcador anterior si existe
         if (ultimoMarcador) {
           map.removeLayer(ultimoMarcador);
         }
-        // Añadir marcador al mapa si hay coordenadas y nombre de parada
         if (data.coords && data.parada) {
           ultimoMarcador = L.marker([data.coords.lat, data.coords.lng])
             .addTo(map)
             .bindPopup(data.parada)
             .openPopup();
         }
-        // Enviar mensaje al hijo audio
         const audioIframe = document.getElementById('audio-iframe');
         if (audioIframe) {
           audioIframe.contentWindow.postMessage({
@@ -125,196 +116,12 @@
           }, '*');
         }
       }
-      // --- PAUSAR AUDIO desde botones flotantes ---
       if (data && data.type === 'pauseAudioFromBoton') {
         const audioIframe = document.getElementById('audio-iframe');
         if (audioIframe) {
           audioIframe.contentWindow.postMessage({ type: 'pauseAudio' }, '*');
         }
       }
-      // --- OCULTAR ICONOS FLOTANTES desde audio ---
-      if (data && data.type === 'cerrarIconosFlotantes') {
-        // Si los botones están en el DOM principal:
-        if (typeof ocultarTodos === 'function') ocultarTodos();
-        // Si están en un iframe (ajusta el id si usas iframe para botones):
-        const botonesIframe = document.getElementById('botones-iframe');
-        if (botonesIframe) {
-          botonesIframe.contentWindow.postMessage({ type: 'ocultarTodos' }, '*');
-        }
-      }
-    });
-    // --- Fin de comunicación padre-hijos ---
-  </script>
-</body>
-</html>ía</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <style>
-    html, body { margin:0; padding:0; height:100%; overflow-x: hidden; }
-    #mapa { width: 100vw; height: 100vh; }
-    #botones-container {
-      position: absolute;
-      top: 0; left: 0;
-      width: 100vw; height: 100vh;
-      pointer-events: none;
-      z-index: 1000;
-    }
-    #botones-container .boton-flotante,
-    #botones-container .icono-flotante {
-      pointer-events: auto;
-    }
-    #gps-iframe {
-      position: fixed; top: 10px; left: 10px;
-      width: 35vw;
-      max-width: calc(100vw - 20px);
-      height: 80vh;
-      border: none;
-      background: transparent;
-      z-index: 1100;
-      box-sizing: border-box;
-    }
-    #audio-iframe {
-      position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%);
-      width: 360px; height: 160px; border: none; background: transparent; z-index: 1200;
-    }
-  </style>
-</head>
-<body>
-  <div id="mapa"></div>
-  <div id="botones-container"></div>
-  <iframe id="gps-iframe" src="Av1-boton-gps.html"></iframe>
-  <iframe id="audio-iframe" src="Av1_audio_esp.html" allow="autoplay"></iframe>
-
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script>
-    const map = L.map('mapa').setView([39.478046, -0.375515], 14);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 25,
-      attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
-
-    let ultimoMarcador = null;
-
-    // Mapeo de paradas con su audio y pregunta asociada
-    const paradasInfo = {
-      "Torres de Serranos": {
-        idAudio: "Av1_audio_esp/02 Intro ESPAÑOL 2.mp3",
-        preguntaId: 2
-      },
-      "Plaza de la Crida": {
-        idAudio: "Av1_audio_esp/03 Av1 Pista 3 ESPAÑOL.mp3",
-        preguntaId: 3
-      }
-      // Añade más paradas aquí si hace falta
-    };
-
-    fetch('Botones-y-subfunciones.html')
-      .then(res => res.text())
-      .then(html => {
-        const container = document.getElementById('botones-container');
-        container.innerHTML = html;
-        container.querySelectorAll('script').forEach(oldScript => {
-          const newScript = document.createElement('script');
-          if (oldScript.src) {
-            newScript.src = oldScript.src;
-            newScript.async = false;
-          } else {
-            newScript.textContent = oldScript.textContent;
-          }
-          document.body.appendChild(newScript);
-        });
-        setTimeout(() => {
-          if (typeof inicializarBotonesFlotantes === 'function') {
-            inicializarBotonesFlotantes();
-            if (typeof ocultarTodos === 'function') ocultarTodos();
-          }
-        }, 200);
-      })
-      .catch(err => console.error('Error al cargar botones:', err));
-
-    window.addEventListener('message', (event) => {
-      const data = event.data;
-
-      // --- Cuando el hijo GPS manda marcar parada en el mapa ---
-      if (data && data.tipo === 'gps_marcar_parada') {
-        // Borrar marcador anterior
-        if (ultimoMarcador) {
-          map.removeLayer(ultimoMarcador);
-        }
-        if (data.coords && data.parada) {
-          // Añadir nuevo marcador
-          ultimoMarcador = L.marker([data.coords.lat, data.coords.lng])
-            .addTo(map)
-            .bindPopup(data.parada)
-            .openPopup();
-
-          // Buscar info de la parada para audio y retos
-          const infoParada = paradasInfo[data.parada];
-          if (infoParada) {
-            // Enviar al iframe audio para que cargue y reproduzca el audio
-            const audioIframe = document.getElementById('audio-iframe');
-            if (audioIframe) {
-              audioIframe.contentWindow.postMessage({
-                type: 'loadAudio',
-                idAudio: infoParada.idAudio,
-                canPlay: true
-              }, '*');
-            }
-            // Guardamos la pregunta a ejecutar cuando acabe el audio
-            window.preguntaParaEjecutar = infoParada.preguntaId;
-          } else {
-            // Si no hay audio para esa parada, limpiar pregunta a ejecutar
-            window.preguntaParaEjecutar = null;
-          }
-        }
-      }
-
-      // --- Cuando el audio indica que ha terminado la reproducción ---
-      if (data && data.type === 'audioTerminado') {
-        // Activar icono puzzle en audio (cambia fondo rojo a verde)
-        const audioIframe = document.getElementById('audio-iframe');
-        if (audioIframe) {
-          audioIframe.contentWindow.postMessage({
-            type: 'activarIconoPuzzle'
-          }, '*');
-        }
-        // Mandar orden al iframe retos para que ejecute la pregunta
-        if (window.preguntaParaEjecutar) {
-          // Supongamos que el iframe retos tiene id "retos-iframe"
-          // y que está cargado en la página padre o se puede crear aquí si falta:
-          let retosIframe = document.getElementById('retos-iframe');
-          if (!retosIframe) {
-            // Crear iframe retos dinámicamente (si no existe)
-            retosIframe = document.createElement('iframe');
-            retosIframe.id = 'retos-iframe';
-            retosIframe.src = 'Av1-retos.html'; // Ajustar URL si es distinto
-            retosIframe.style.display = 'none'; // oculto, ya que es solo para lógica
-            document.body.appendChild(retosIframe);
-            // Esperar que cargue para enviar mensaje
-            retosIframe.onload = () => {
-              retosIframe.contentWindow.postMessage({
-                type: 'ejecutarPregunta',
-                idPregunta: window.preguntaParaEjecutar
-              }, '*');
-            };
-          } else {
-            // Si ya existe, enviamos el mensaje inmediatamente
-            retosIframe.contentWindow.postMessage({
-              type: 'ejecutarPregunta',
-              idPregunta: window.preguntaParaEjecutar
-            }, '*');
-          }
-        }
-      }
-
-      // --- PAUSAR AUDIO desde botones flotantes ---
-      if (data && data.type === 'pauseAudioFromBoton') {
-        const audioIframe = document.getElementById('audio-iframe');
-        if (audioIframe) {
-          audioIframe.contentWindow.postMessage({ type: 'pauseAudio' }, '*');
-        }
-      }
-
-      // --- OCULTAR ICONOS FLOTANTES desde audio ---
       if (data && data.type === 'cerrarIconosFlotantes') {
         if (typeof ocultarTodos === 'function') ocultarTodos();
         const botonesIframe = document.getElementById('botones-iframe');
