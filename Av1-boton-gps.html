@@ -56,7 +56,7 @@
       align-items: center;
       width: 96%;
       margin-bottom: 8px;
-      gap: 1.2em; /* Aumenta el espacio entre barra y temporizador */
+      gap: 1.2em;
       justify-content: center;
     }
     .progress-bar {
@@ -170,6 +170,15 @@
       max-height: var(--paradas-max-height);
       overflow-y: auto;
       overflow-x: hidden;
+      box-sizing: border-box;
+      transition: box-shadow 0.2s;
+    }
+    .paradas-float-header {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      margin-bottom: 4px;
+      gap: 6px;
     }
     .paradas-float .parada-btn {
       background: linear-gradient(90deg, #007aff 0%, #00c6ff 100%);
@@ -200,6 +209,28 @@
       background: linear-gradient(90deg, #0056b3 0%, #00aaff 100%);
       color: #e0ffe0;
     }
+    .paradas-float-min {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      width: 48px;
+      height: 48px;
+      background: rgba(255,255,255,0.97);
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.13);
+      z-index: 10002;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      border: none;
+      padding: 0;
+      transition: box-shadow 0.2s;
+    }
+    .paradas-float-min i {
+      font-size: 2em;
+      color: #007aff;
+    }
     @media (max-width: 500px) {
       :root {
         --btn-size: 48px;
@@ -226,6 +257,12 @@
         left: 2vw;
         top: 2vw;
         padding: 6px 2vw;
+        width: var(--paradas-width);
+        max-width: 98vw;
+      }
+      .paradas-float-min {
+        left: 2vw;
+        top: 2vw;
       }
     }
   </style>
@@ -263,7 +300,20 @@
     </div>
   </div>
   <!-- Ventana flotante de paradas manuales, FUERA del trapecio -->
-  <div class="paradas-float" id="paradasFloat"></div>
+  <div class="paradas-float" id="paradasFloat">
+    <div class="paradas-float-header">
+      <button id="minParadasBtn" title="Minimizar" style="background:none;border:none;cursor:pointer;">
+        <i class="fa-solid fa-window-minimize"></i>
+      </button>
+      <button id="closeParadasBtn" title="Cerrar" style="background:none;border:none;cursor:pointer;">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <!-- Aquí van los botones de paradas -->
+  </div>
+  <button class="paradas-float-min" id="paradasFloatMinBtn" style="display:none;">
+    <i class="fa-solid fa-house"></i>
+  </button>
   <script>
     // --- Parámetros de configuración rápida ---
     // Cambia los valores de :root en el CSS para tamaño de botones, iconos, barra, etc.
@@ -301,7 +351,12 @@
     const btnGps = document.getElementById('btnGps');
     const gpsLabel = document.getElementById('gpsLabel');
     const paradasFloat = document.getElementById('paradasFloat');
+    const paradasFloatMinBtn = document.getElementById('paradasFloatMinBtn');
+    const minParadasBtn = document.getElementById('minParadasBtn');
+    const closeParadasBtn = document.getElementById('closeParadasBtn');
     let gpsActivo = true;
+    let paradasMinimized = false;
+    let paradasClosed = false;
 
     // --- Lógica del botón GPS ON/OFF y mostrar/ocultar ventana de paradas manuales ---
     btnGps.addEventListener('click', () => {
@@ -311,15 +366,27 @@
         btnGps.classList.remove('gps-off');
         gpsLabel.textContent = 'ON';
         paradasFloat.style.display = 'none';
+        paradasFloatMinBtn.style.display = 'none';
+        paradasMinimized = false;
+        paradasClosed = false;
       } else {
         btnGps.classList.remove('gps-on');
         btnGps.classList.add('gps-off');
         gpsLabel.textContent = 'OFF';
-        paradasFloat.style.display = 'block';
+        if (!paradasClosed) {
+          if (paradasMinimized) {
+            paradasFloat.style.display = 'none';
+            paradasFloatMinBtn.style.display = 'flex';
+          } else {
+            paradasFloat.style.display = 'flex';
+            paradasFloatMinBtn.style.display = 'none';
+          }
+        }
       }
     });
 
     // --- Crear botones de paradas en la ventana flotante manual ---
+    const paradasListContainer = document.createElement('div');
     paradas.forEach((parada, idx) => {
       const btn = document.createElement('button');
       btn.className = 'parada-btn';
@@ -333,7 +400,28 @@
           lng: parada.lng
         }, '*');
       });
-      paradasFloat.appendChild(btn);
+      paradasListContainer.appendChild(btn);
+    });
+    paradasFloat.appendChild(paradasListContainer);
+
+    // --- Minimizar y restaurar ventana de paradas ---
+    minParadasBtn.addEventListener('click', () => {
+      paradasMinimized = true;
+      paradasFloat.style.display = 'none';
+      paradasFloatMinBtn.style.display = 'flex';
+    });
+    paradasFloatMinBtn.addEventListener('click', () => {
+      paradasMinimized = false;
+      paradasClosed = false;
+      paradasFloat.style.display = 'flex';
+      paradasFloatMinBtn.style.display = 'none';
+    });
+
+    // --- Cerrar ventana de paradas ---
+    closeParadasBtn.addEventListener('click', () => {
+      paradasClosed = true;
+      paradasFloat.style.display = 'none';
+      paradasFloatMinBtn.style.display = 'none';
     });
 
     // --- Barra de progreso demo (puedes adaptar a tu lógica real) ---
