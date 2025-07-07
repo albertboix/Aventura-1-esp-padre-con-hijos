@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Av1-boton-gps</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: sans-serif;
+      background: transparent;
+      user-select: none;
+      overflow: hidden;
+    }
+    #boton-gps {
+  position: relative;      /* Cambiado de fixed a relative */
+  width: 100%;             /* Ocupa todo el ancho del iframe */
+  max-width: 100vw;        /* Nunca más ancho que la ventana */
+  max-height: 150vh;
+  overflow-y: auto;
+  background: white;
+  border: 1px solid #ccc;
+  padding: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  z-index: 9999;
+  border-radius: 6px;
+  display: block;
+  margin: 0;               /* Sin margen para evitar desplazamientos */
+  left: 0;                 /* Elimina desplazamiento lateral */
+  top: 0;                  /* Elimina desplazamiento vertical */
+}
+    #minimizado-icono {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      width: 40px;
+      height: 40px;
+      background: white;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 10000;
+    }
+    #minimizado-icono svg {
+      width: 24px;
+      height: 24px;
+      fill: #444;
+    }
+    .minimizar-btn {
+      float: right;
+      background: none;
+      border: none;
+      font-size: 18px;
+      cursor: pointer;
+      color: #555;
+      padding: 0 5px;
+    }
+    #cabecera {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    #gps-estado-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      margin-left: 8px;
+    }
+    #gps-label {
+      font-size: 1.1rem;
+      font-weight: bold;
+      color: #222;
+      margin-bottom: 2px;
+      letter-spacing: 1px;
+    }
+    #estado.on {
+      color: #e53935;
+      font-weight: bold;
+      font-size: 1.2rem;
+    }
+    #estado.off {
+      color: #43a047;
+      font-weight: bold;
+      font-size: 1.2rem;
+    }
+    #icono-casa.on svg {
+      fill: #e53935;
+    }
+    #icono-casa.off svg {
+      fill: #43a047;
+    }
+    #coords {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      background: white;
+      padding: 0;
+      margin-bottom: 8px;
+    }
+    #paradas {
+      display: none;
+      flex-direction: column;
+      gap: 4px;
+      background: white;
+      max-height: 30vh;
+      overflow-y: auto;
+      margin-top: 8px;
+      padding: 0;
+    }
+    .parada-btn {
+      width: 80%;
+      max-width: 220px;
+      min-width: 100px;
+      display: block;
+      margin: 0 auto 4px auto;
+      white-space: normal;
+      overflow-wrap: break-word;
+      background: #f5f5f5;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      padding: 4px 8px;
+      cursor: pointer;
+      text-align: left;
+      font-size: 1rem;
+      transition: background 0.2s;
+    }
+    .parada-btn:hover {
+      background: #e0e0e0;
+    }
+  </style>
+</head>
+<body>
+  <div id="minimizado-icono" title="Mostrar GPS">
+    <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+  </div>
+  <div id="boton-gps" role="button" tabindex="0" aria-pressed="true" aria-label="Activar simulación GPS">
+    <button class="minimizar-btn" title="Minimizar GPS">−</button>
+    <div id="cabecera">
+      <div id="icono-casa" class="on" aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false">
+          <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+        </svg>
+      </div>
+      <div id="gps-estado-container">
+        <span id="gps-label">GPS</span>
+        <span id="estado" class="on">ON</span>
+      </div>
+    </div>
+    <div id="coords">
+      <label>Latitud:
+        <input type="number" step="0.000001" id="lat" value="39.47876" aria-label="Latitud de simulación" />
+      </label>
+      <label>Longitud:
+        <input type="number" step="0.000001" id="lng" value="-0.37626" aria-label="Longitud de simulación" />
+      </label>
+    </div>
+    <div id="paradas"></div>
+  </div>
+  <script>
+    // --- Paradas con idAudio actualizado ---
+    const paradas = [
+      { nombre: "Torres de Serranos (start)", lat: 39.47876, lng: -0.37626, idAudio: "audio_serranos_intro" },
+      { nombre: "Puente de Serranos – Plaza de la crida", lat: 39.47959, lng: -0.37583, idAudio: "audio_puente_serranos" },
+      { nombre: "Cortes Valencianas (Palacio de los Borgia)", lat: 39.47785, lng: -0.37485, idAudio: "audio_cortes_valencianas" },
+      { nombre: "Plaza de la Virgen", lat: 39.47656, lng: -0.37529, idAudio: "audio_plaza_virgen" },
+      { nombre: "Plaza de la Almoína", lat: 39.47604, lng: -0.37451, idAudio: "audio_plaza_almoina" },
+      { nombre: "Catedral de València", lat: 39.47594, lng: -0.37474, idAudio: "audio_catedral" },
+      { nombre: "Plaza decimo Juno Bruto (Museo Arqueológico de la Almoína)", lat: 39.4762, lng: -0.37412, idAudio: "audio_juno_bruto" },
+      { nombre: "Basílica de València", lat: 39.47611, lng: -0.37478, idAudio: "audio_basilica" },
+      { nombre: "Palacio Arzobispal", lat: 39.4755, lng: -0.37436, idAudio: "audio_palacio_arzobispal" },
+      { nombre: "Plaza del Ayuntamiento", lat: 39.47056, lng: -0.37677, idAudio: "audio_plaza_ayuntamiento" },
+      { nombre: "Edificio del Ayuntamiento de València", lat: 39.46971, lng: -0.37693, idAudio: "audio_edificio_ayuntamiento" },
+      { nombre: "Estación de Ferrocarril (Estación del Norte)", lat: 39.46722, lng: -0.37702, idAudio: "audio_estacion_norte" },
+      { nombre: "Plaza de Toros de València", lat: 39.46709, lng: -0.37595, idAudio: "audio_plaza_toros" },
+      { nombre: "Casa estilo Árabe", lat: 39.46753, lng: -0.37511, idAudio: "audio_casa_arabe" },
+      { nombre: "Palacio de Comunicaciones (Correos)", lat: 39.46942, lng: -0.37559, idAudio: "audio_correos" },
+      { nombre: "Antigua sede del Banco de València", lat: 39.47061, lng: -0.37408, idAudio: "audio_banco_valencia" },
+      { nombre: "Palacio del Marqués de Dos Aguas (Museo Nacional de Crámica)", lat: 39.47276, lng: -0.37467, idAudio: "audio_dos_aguas" },
+      { nombre: "Mercado Central", lat: 39.47377, lng: -0.37832, idAudio: "audio_mercado_central" },
+      { nombre: "San Juan del Mercado (Iglesia de los Santos Juanes)", lat: 39.47425, lng: -0.37895, idAudio: "audio_san_juan" },
+      { nombre: "Lonja de València (Mercado de la Seda)", lat: 39.47426, lng: -0.37862, idAudio: "audio_lonja" },
+      { nombre: "Plaza del Doctor Collado", lat: 39.47444, lng: -0.3779, idAudio: "audio_doctor_collado" },
+      { nombre: "Plaza del Negrito (Fuente del Negrito)", lat: 39.47611, lng: -0.37741, idAudio: "audio_negrito" },
+      { nombre: "Calle Caballeros", lat: 39.47663, lng: -0.3773, idAudio: "audio_caballeros" },
+      { nombre: "Palacio de la Generalitat", lat: 39.47668, lng: -0.37671, idAudio: "audio_generalitat" },
+      { nombre: "Calle de los Serranos (end)", lat: 39.47773, lng: -0.37671, idAudio: "audio_calle_serranos_end" }
+    ];
+
+    function inicializarGPS() {
+      const boton = document.getElementById('boton-gps');
+      const estadoElem = document.getElementById('estado');
+      const iconoCasa = document.getElementById('icono-casa');
+      const coordsDiv = document.getElementById('coords');
+      const latInput = document.getElementById('lat');
+      const lngInput = document.getElementById('lng');
+      const paradasDiv = document.getElementById('paradas');
+      const minimizarBtn = document.querySelector('.minimizar-btn');
+      const minimizadoIcono = document.getElementById('minimizado-icono');
+
+      let gpsActivo = true;
+
+      function enviarMensaje(paradaNombre = null, idAudio = null) {
+        const lat = parseFloat(latInput.value);
+        const lng = parseFloat(lngInput.value);
+        window.parent.postMessage({
+          tipo: 'gps_modo',
+          activo: gpsActivo,
+          coords: { lat, lng },
+          parada: paradaNombre || null,
+          idAudio: idAudio || null
+        }, '*');
+      }
+
+      function marcarParada(parada) {
+        if (!gpsActivo) {
+          window.parent.postMessage({
+            tipo: 'gps_marcar_parada',
+            parada: parada.nombre,
+            coords: { lat: parada.lat, lng: parada.lng },
+            idAudio: parada.idAudio
+          }, '*');
+        }
+      }
+
+      function actualizarVisual() {
+        if (gpsActivo) {
+          estadoElem.textContent = 'ON';
+          estadoElem.classList.add('on');
+          estadoElem.classList.remove('off');
+          iconoCasa.classList.add('on');
+          iconoCasa.classList.remove('off');
+          boton.setAttribute('aria-pressed', 'true');
+          coordsDiv.style.display = 'none';
+          paradasDiv.style.display = 'none';
+        } else {
+          estadoElem.textContent = 'OFF';
+          estadoElem.classList.remove('on');
+          estadoElem.classList.add('off');
+          iconoCasa.classList.remove('on');
+          iconoCasa.classList.add('off');
+          boton.setAttribute('aria-pressed', 'false');
+          coordsDiv.style.display = 'flex';
+          paradasDiv.style.display = 'flex';
+        }
+      }
+
+      boton.addEventListener('click', (e) => {
+        if (
+          e.target === boton ||
+          e.target === document.getElementById('cabecera') ||
+          e.target === document.getElementById('icono-casa') ||
+          e.target === document.getElementById('gps-label') ||
+          e.target === estadoElem
+        ) {
+          gpsActivo = !gpsActivo;
+          actualizarVisual();
+          enviarMensaje();
+        }
+      });
+
+      latInput.addEventListener('change', () => {
+        if (!gpsActivo) {
+          enviarMensaje();
+        }
+      });
+
+      lngInput.addEventListener('change', () => {
+        if (!gpsActivo) {
+          enviarMensaje();
+        }
+      });
+
+      boton.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          if (document.activeElement === boton) {
+            gpsActivo = !gpsActivo;
+            actualizarVisual();
+            enviarMensaje();
+          }
+        }
+      });
+
+      window.addEventListener('message', (e) => {
+        if (e.data.tipo === 'solicitar-estado-gps') {
+          enviarMensaje();
+        }
+      });
+
+      window.parent.postMessage({ tipo: 'boton-gps-listo' }, '*');
+
+      paradas.forEach((p) => {
+        const btn = document.createElement('button');
+        btn.className = 'parada-btn';
+        btn.textContent = p.nombre;
+        btn.addEventListener('click', (ev) => {
+          latInput.value = p.lat;
+          lngInput.value = p.lng;
+          enviarMensaje(p.nombre, p.idAudio);
+          marcarParada(p);
+        });
+        paradasDiv.appendChild(btn);
+      });
+
+      minimizarBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        boton.style.display = 'none';
+        minimizadoIcono.style.display = 'flex';
+      });
+
+      minimizadoIcono.addEventListener('click', () => {
+        boton.style.display = 'block';
+        minimizadoIcono.style.display = 'none';
+      });
+
+      actualizarVisual();
+      enviarMensaje();
+    }
+
+    window.addEventListener('load', inicializarGPS);
+  </script>
+</body>
+</html>
