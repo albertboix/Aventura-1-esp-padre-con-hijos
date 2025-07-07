@@ -38,7 +38,6 @@
             left: 50%;
             bottom: 0;
             transform: translateX(-50%);
-
             width: var(--trapecio-width);
             max-width: 98vw;
             min-width: 180px;
@@ -60,7 +59,7 @@
             display: flex;
             align-items: center;
             width: 96%;
-            gap: 1.2em; /* Aumenta el espacio entre barra y temporizador */
+            gap: 1.2em;
             margin: 0 0 8px 0;
             padding: 0;
             justify-content: center;
@@ -107,7 +106,29 @@
             width: 100%;
             margin-bottom: 2px;
         }
-        .player-button, #retosBtn {
+        /* Cambia solo el botón de play para que siempre sea rojo, incluso deshabilitado */
+        #playPauseBtn {
+            width: var(--btn-size);
+            height: var(--btn-size);
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(90deg, #cc3333 0%, #ff5555 100%) !important;
+            color: white;
+            font-size: var(--icon-size);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.10);
+            padding: 0;
+        }
+        #playPauseBtn:active:not(:disabled) { transform: scale(0.95); }
+        #playPauseBtn.active {
+            background: linear-gradient(90deg, #34c759 0%, #43e97b 100%) !important;
+        }
+        /* El resto de botones mantiene el comportamiento original */
+        .player-button:not(#playPauseBtn), #retosBtn {
             width: var(--btn-size);
             height: var(--btn-size);
             border-radius: 50%;
@@ -123,9 +144,9 @@
             box-shadow: 0 2px 6px rgba(0,0,0,0.10);
             padding: 0;
         }
-        .player-button:disabled, #retosBtn:disabled { background: #ccc; cursor: not-allowed; }
-        .player-button:active:not(:disabled), #retosBtn:active:not(:disabled) { transform: scale(0.95);}
-        .player-button.active, #retosBtn.active {
+        .player-button:disabled:not(#playPauseBtn), #retosBtn:disabled { background: #ccc; cursor: not-allowed; }
+        .player-button:active:not(:disabled):not(#playPauseBtn), #retosBtn:active:not(:disabled) { transform: scale(0.95);}
+        .player-button.active:not(#playPauseBtn), #retosBtn.active {
             background: linear-gradient(90deg, #34c759 0%, #43e97b 100%);
         }
         .icon-play, .icon-puzzle {
@@ -178,212 +199,7 @@
         </div>
     </div>
     <script>
-        // --- Parámetros de configuración rápida ---
-        // Cambia los valores de :root en el CSS para tamaño de botones, iconos, barra, etc.
-
-        const audioPlayer = document.getElementById('audioPlayer');
-        const playPauseBtn = document.getElementById('playPauseBtn');
-        const retosBtn = document.getElementById('retosBtn');
-        const progressBar = document.getElementById('progressBar');
-        const progressContainer = document.getElementById('progressContainer');
-        const currentTimeSpan = document.getElementById('currentTime');
-        const durationSpan = document.getElementById('duration');
-        const audioPlayerControls = document.getElementById('audioPlayerControls');
-
-        let currentAudioId = null;
-        let currentAudioIndexInSequence = -1;
-        let canPlayAudio = false;
-        let isDragging = false;
-
-        const audiosSequence = [
-            {
-                id: "audio_serranos_intro",
-                src: "Av1_audio_esp/02 Intro ESPAÑOL 2.mp3"
-            },
-            {
-                id: "audio_puente_serranos",
-                src: "Av1_audio_esp/03 Av1 Pista 3 ESPAÑOL.mp3"
-            }
-        ];
-
-        function loadAudio(id) {
-            const audioData = audiosSequence.find(a => a.id === id);
-            if (audioData) {
-                audioPlayer.src = audioData.src;
-                currentAudioId = id;
-                currentAudioIndexInSequence = audiosSequence.findIndex(a => a.id === id);
-                audioPlayer.load();
-                playPauseBtn.querySelector('i').className = 'fas fa-play';
-                audioPlayer.currentTime = 0;
-                progressBar.style.width = '0%';
-                currentTimeSpan.textContent = '0:00';
-                durationSpan.textContent = '0:00';
-                updatePlayerControlsState();
-                setRetosBtnActive(false);
-            } else {
-                currentAudioId = null;
-                currentAudioIndexInSequence = -1;
-                audioPlayer.src = '';
-                updatePlayerControlsState();
-                setRetosBtnActive(false);
-            }
-        }
-
-        function formatTime(seconds) {
-            const minutes = Math.floor(seconds / 60);
-            const remainingSeconds = Math.floor(seconds % 60);
-            return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
-        }
-
-        function playAudio() {
-            if (currentAudioId && canPlayAudio) {
-                audioPlayer.play().catch(e => {});
-                playPauseBtn.querySelector('i').className = 'fas fa-pause';
-            }
-        }
-
-        function pauseAudio() {
-            audioPlayer.pause();
-            playPauseBtn.querySelector('i').className = 'fas fa-play';
-        }
-
-        function togglePlayPause() {
-            if (audioPlayer.paused) {
-                playAudio();
-            } else {
-                pauseAudio();
-            }
-        }
-
-        function setRetosBtnActive(active) {
-            if (active) {
-                retosBtn.classList.add('active');
-            } else {
-                retosBtn.classList.remove('active');
-            }
-        }
-
-        function updatePlayerControlsState() {
-            if (currentAudioId && canPlayAudio) {
-                playPauseBtn.disabled = false;
-                audioPlayerControls.classList.add('active');
-                playPauseBtn.classList.add('active');
-            } else {
-                playPauseBtn.disabled = true;
-                audioPlayerControls.classList.remove('active');
-                playPauseBtn.classList.remove('active');
-                pauseAudio();
-            }
-        }
-
-        playPauseBtn.addEventListener('click', togglePlayPause);
-
-        retosBtn.addEventListener('click', () => {
-            window.parent.postMessage({ type: 'audio-player-retos' }, '*');
-        });
-
-        audioPlayer.addEventListener('loadedmetadata', () => {
-            durationSpan.textContent = formatTime(audioPlayer.duration);
-        });
-
-        audioPlayer.addEventListener('timeupdate', () => {
-            if (!isDragging) {
-                const progress = (audioPlayer.currentTime / audioPlayer.duration) * 100;
-                progressBar.style.width = `${progress}%`;
-                currentTimeSpan.textContent = formatTime(audioPlayer.currentTime);
-            }
-        });
-
-        audioPlayer.addEventListener('ended', () => {
-            playPauseBtn.querySelector('i').className = 'fas fa-play';
-            setRetosBtnActive(true);
-        });
-
-        // --- Permite arrastrar la barra de progreso ---
-        function seekTo(e) {
-            const rect = progressContainer.getBoundingClientRect();
-            const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-            const width = rect.width;
-            const duration = audioPlayer.duration;
-            if (duration) {
-                let percent = Math.max(0, Math.min(1, x / width));
-                audioPlayer.currentTime = percent * duration;
-            }
-        }
-        progressContainer.addEventListener('mousedown', (e) => {
-            isDragging = true;
-            seekTo(e);
-            document.addEventListener('mousemove', seekTo);
-            document.addEventListener('mouseup', () => {
-                isDragging = false;
-                document.removeEventListener('mousemove', seekTo);
-            }, { once: true });
-        });
-        progressContainer.addEventListener('touchstart', (e) => {
-            isDragging = true;
-            seekTo(e);
-            document.addEventListener('touchmove', seekTo);
-            document.addEventListener('touchend', () => {
-                isDragging = false;
-                document.removeEventListener('touchmove', seekTo);
-            }, { once: true });
-        });
-
-        window.addEventListener('message', (event) => {
-            const data = event.data;
-            if (data && typeof data === 'object') {
-                if (data.tipo === 'gps_marcar_parada' && data.idAudio) {
-                    loadAudio(data.idAudio);
-                    canPlayAudio = true;
-                    updatePlayerControlsState();
-                    playAudio();
-                }
-                switch (data.type) {
-                    case 'loadAudio':
-                        loadAudio(data.idAudio);
-                        canPlayAudio = data.canPlay;
-                        updatePlayerControlsState();
-                        break;
-                    case 'playAudio':
-                        playAudio();
-                        break;
-                    case 'pauseAudio':
-                        pauseAudio();
-                        break;
-                    case 'stopAudio':
-                        pauseAudio();
-                        if (audioPlayer.src) audioPlayer.currentTime = 0;
-                        break;
-                    case 'updateCanPlay':
-                        canPlayAudio = data.canPlay;
-                        updatePlayerControlsState();
-                        break;
-                    case 'changeFontSize':
-                        document.body.style.fontSize = data.size + 'px';
-                        break;
-                    case 'pauseAudioFromBoton':
-                        pauseAudio();
-                        break;
-                    case 'activarRetosBtn':
-                        setRetosBtnActive(true);
-                        break;
-                    case 'desactivarRetosBtn':
-                        setRetosBtnActive(false);
-                        break;
-                }
-            }
-        });
-
-        window.addEventListener('DOMContentLoaded', () => {
-            window.parent.postMessage({ type: 'audio-hijo-listo' }, '*');
-            setRetosBtnActive(false);
-        });
-
-        document.addEventListener('visibilitychange', () => {
-            if (document.hidden) {
-                pauseAudio();
-            }
-        });
+        // ...existing code...
     </script>
 </body>
 </html>
