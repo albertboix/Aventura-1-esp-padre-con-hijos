@@ -1,12 +1,12 @@
 <!DOCTYPE html>
 <html lang="es">
 <body>
-  <!-- Botones principales flotantes -->
+  <!-- Botones principales -->
   <button id="hamburguesa" class="boton-flotante" style="pointer-events:auto;">☰</button>
   <button id="mas-opciones" class="boton-flotante" style="pointer-events:auto;">⋮</button>
   <button id="btn-mapa" class="boton-flotante" style="pointer-events:auto;">🌍</button>
 
-  <!-- Iconos hijos flotantes (se muestran al pulsar un botón principal) -->
+  <!-- Iconos hijos -->
   <button class="icono-flotante" id="icono-retos" style="pointer-events:auto;">🧩</button>
   <button class="icono-flotante" id="icono-gastronomia" style="pointer-events:auto;">🍽️</button>
   <button class="icono-flotante" id="icono-informacion" style="pointer-events:auto;">🌐</button>
@@ -33,40 +33,42 @@
       cursor: pointer;
       box-shadow: 0 2px 6px rgba(0,0,0,0.3);
       user-select: none;
-      z-index: 3300 !important;
+      z-index: 1300 !important;
       pointer-events: auto;
-      border: none;
-      outline: none;
-      line-height: 1;
-      padding: 0;
     }
     .icono-flotante {
+      display: none;
       width: 44px;
       height: 44px;
       font-size: 1.5rem;
-      z-index: 3300 !important;
+      z-index: 1300 !important;
+      visibility: hidden;
+      opacity: 0;
       transition: opacity 0.3s ease;
       pointer-events: auto;
-      display: none;
-      opacity: 0;
-      visibility: hidden;
-      left: unset !important;
-      top: unset !important;
     }
-    #hamburguesa { bottom: 75px; left: 12px; }
-    #mas-opciones { bottom: 75px; right: 12px; }
+    #hamburguesa { bottom: 12px; left: 12px; }
+    #mas-opciones { bottom: 12px; right: 12px; }
     #btn-mapa { top: 12px; right: 12px; }
   </style>
 
   <script>
-    // --- Configuración de los grupos de iconos hijos por cada botón principal ---
+    // --- Configuración ---
     const gruposIconos = {
       hamburguesa: ['icono-retos','icono-gastronomia','icono-informacion','icono-historia'],
       'mas-opciones': ['icono-agradecimientos','icono-seguridad','icono-fuentes'],
       'btn-mapa': ['icono-punto','icono-ruta','icono-brujula']
     };
-
-    // --- Enlaces asociados a cada icono hijo (null si no hay enlace) ---
+    const sectores = {
+      hamburguesa: { centro: 45, arco: 90 },
+      'mas-opciones': { centro: 135, arco: 90 },
+      'btn-mapa': { centro: 225, arco: 90 }
+    };
+    const radios = {
+      hamburguesa: 85,
+      'mas-opciones': 70,
+      'btn-mapa': 70
+    };
     const enlacesIconos = {
       'icono-retos': 'retos_con_puzzles_Av1_es.html',
       'icono-gastronomia': 'Gastronomia.html',
@@ -80,7 +82,9 @@
       'icono-brujula': 'mapas/Av1_mapa.jpg'
     };
 
-    // --- Oculta todos los iconos hijos ---
+    let iconosVisibles = {};
+    let ultimoBoton = null;
+
     function ocultarTodos() {
       Object.values(gruposIconos).flat().forEach(id => {
         const el = document.getElementById(id);
@@ -88,57 +92,109 @@
           el.style.display = 'none';
           el.style.visibility = 'hidden';
           el.style.opacity = 0;
+          iconosVisibles[id] = false;
         }
       });
+      localStorage.removeItem('ultimoBoton');
     }
 
-    // --- Muestra los iconos hijos del grupo correspondiente ---
-    function mostrarGrupo(botonId) {
-      if (!gruposIconos[botonId]) return;
-      gruposIconos[botonId].forEach(id => {
-        const el = document.getElementById(id);
+    function mostrarIconos(idBoton) {
+      const iconos = gruposIconos[idBoton];
+      if (!iconos) return;
+
+      const b = document.getElementById(idBoton);
+      const rect = b.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+
+      const { centro, arco } = sectores[idBoton];
+      const total = iconos.length;
+      const inicio = centro - arco / 2;
+      const radio = radios[idBoton] || 100;
+
+      for (let i = 0; i < total; i++) {
+        const angulo = total === 1 ? centro : inicio + (arco / (total - 1)) * i;
+        const rad = angulo * Math.PI / 180;
+        const x = cx + radio * Math.cos(rad);
+        const y = cy - radio * Math.sin(rad);
+
+        const el = document.getElementById(iconos[i]);
         if (el) {
           el.style.display = 'flex';
+          el.style.left = `${x - el.offsetWidth / 2}px`;
+          el.style.top = `${y - el.offsetHeight / 2}px`;
+          el.style.position = 'fixed';
           el.style.visibility = 'visible';
           el.style.opacity = 1;
+          el.style.zIndex = 1300;
+          iconosVisibles[iconos[i]] = true;
+        }
+      }
+      ultimoBoton = idBoton;
+      localStorage.setItem('ultimoBoton', idBoton);
+    }
+
+    function pausarAudioHijo() {
+      window.parent.postMessage({ type: 'pauseAudioFromBoton' }, '*');
+    }
+
+    function inicializarBotonesFlotantes() {
+      Object.entries(gruposIconos).forEach(([botonId, iconoIds]) => {
+        const boton = document.getElementById(botonId);
+        if (!boton) return;
+        boton.addEventListener('click', () => {
+          pausarAudioHijo();
+          const algunoVisible = iconoIds.some(id => iconosVisibles[id]);
+          ocultarTodos();
+          if (!algunoVisible) {
+            mostrarIconos(botonId);
+          } else {
+            ultimoBoton = null;
+            localStorage.removeItem('ultimoBoton');
+          }
+        });
+      });
+
+      Object.entries(enlacesIconos).forEach(([id, url]) => {
+        const el = document.getElementById(id);
+        if (el && url) {
+          el.addEventListener('click', () => {
+            pausarAudioHijo();
+            window.open(url, '_blank');
+          });
+        } else if (el) {
+          el.addEventListener('click', pausarAudioHijo);
+        }
+      });
+
+      setTimeout(() => {
+        const guardado = localStorage.getItem('ultimoBoton');
+        if (guardado && gruposIconos[guardado]) {
+          mostrarIconos(guardado);
+        }
+      }, 100);
+
+      window.addEventListener('resize', () => {
+        if (ultimoBoton) mostrarIconos(ultimoBoton);
+      });
+      window.addEventListener('orientationchange', () => {
+        setTimeout(() => {
+          if (ultimoBoton) mostrarIconos(ultimoBoton);
+        }, 200);
+      });
+
+      window.addEventListener('message', (event) => {
+        if (event.data && event.data.type === 'ocultarTodos') {
+          ocultarTodos();
         }
       });
     }
 
-    // --- Inicializa los eventos de los botones principales e iconos hijos ---
-    function inicializarBotonesFlotantes() {
-      // Botones principales
-      Object.keys(gruposIconos).forEach(botonId => {
-        const boton = document.getElementById(botonId);
-        if (!boton) return;
-        boton.addEventListener('click', function(e) {
-          ocultarTodos();
-          mostrarGrupo(botonId);
-          window.parent.postMessage({ type: 'pauseAudioFromBoton' }, '*');
-          e.stopPropagation();
-        });
-      });
-
-      // Iconos hijos
-      Object.entries(enlacesIconos).forEach(([id, url]) => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        el.addEventListener('click', function(e) {
-          ocultarTodos();
-          window.parent.postMessage({ type: 'pauseAudioFromBoton' }, '*');
-          if (url) window.open(url, '_blank');
-          e.stopPropagation();
-        });
-      });
-
-      // Oculta todos los iconos al cargar
-      ocultarTodos();
-
-      // Oculta iconos si haces click fuera
-      document.body.addEventListener('click', ocultarTodos);
+    if (typeof inicializarBotonesFlotantes === 'function') {
+      inicializarBotonesFlotantes();
+    } else {
+      window.addEventListener('DOMContentLoaded', inicializarBotonesFlotantes);
     }
-
-    window.addEventListener('DOMContentLoaded', inicializarBotonesFlotantes);
   </script>
 </body>
 </html>
