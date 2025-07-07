@@ -1,342 +1,386 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GPS y Paradas Unificado</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-  <style>
-    :root {
-      --btn-size: 64px;
-      --icon-size: 2em;
-      --progress-thick: 12px;
-      --timer-size: 1.1em;
-    }
-    body {
-      margin: 0;
-      padding: 0;
-      background: transparent;
-      font-family: 'Book Antiqua', 'Palatino Linotype', 'Palatino', Georgia, serif;
-    }
-    .trapezoid-float {
-      position: fixed;
-      left: 50%;
-      bottom: 0;
-      transform: translateX(-50%);
-      width: 170px;
-      max-width: 96vw;
-      min-width: 100px;
-      height: 120px;
-      background: rgba(255,255,255,0.82);
-      clip-path: polygon(0 0, 100% 0, 92% 100%, 8% 100%);
-      border-radius: 18px;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.13);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-end;
-      gap: 0.1em;
-      z-index: 9999;
-      padding: 2px 4px;
-      border: none;
-    }
-    .progress-row {
-      display: flex;
-      align-items: center;
-      width: 98%;
-      margin-bottom: 4px;
-      gap: 0.4em;
-      justify-content: center;
-    }
-    .progress-bar {
-      flex: 1 1 auto;
-      height: var(--progress-thick);
-      background: #eee;
-      border-radius: 5px;
-      overflow: hidden;
-      cursor: pointer;
-      min-width: 0;
-      max-width: 90px;
-      margin-right: 0.2em;
-    }
-    .progress-bar-fill {
-      height: 100%;
-      width: 0%;
-      background: linear-gradient(90deg, #34c759, #00ff99);
-      transition: width 0.25s linear;
-    }
-    .timer {
-      font-size: var(--timer-size);
-      color: #444;
-      user-select: none;
-      white-space: nowrap;
-      min-width: 60px;
-      text-align: right;
-      font-variant-numeric: tabular-nums;
-    }
-    .iconos-row {
-      display: flex;
-      justify-content: space-evenly;
-      align-items: center;
-      width: 100%;
-      margin-bottom: 2px;
-      gap: 0.3em;
-      padding: 0 4px;
-    }
-    .icon-btn {
-      width: var(--btn-size);
-      height: var(--btn-size);
-      border-radius: 50%;
-      border: none;
-      background: linear-gradient(90deg, #007aff 0%, #00c6ff 100%);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      font-size: var(--icon-size);
-      cursor: pointer;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.10);
-      color: white;
-      position: relative;
-      transition: background 0.2s, transform 0.1s;
-      padding: 0;
-      margin: 0;
-    }
-    .icon-btn:active { transform: scale(0.95); }
-    .gps-on { color: #34c759 !important; }
-    .gps-off { color: #e53935 !important; }
-    .gps-label {
-      font-size: 0.9em;
-      font-weight: bold;
-      margin-top: 2px;
-      letter-spacing: 1px;
-      text-align: center;
-      display: block;
-    }
-    .icon-svg {
-      width: 1.5em;
-      height: 1.5em;
-      display: block;
-      margin: 0 auto;
-    }
-    .cam-flecha {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      margin-top: 2px;
-    }
-    .cam-flecha svg {
-      width: 1.2em;
-      height: 1.2em;
-      display: block;
-    }
-    .video-emoji {
-      font-size: 1.5em;
-      display: block;
-      transform: scaleX(-1);
-    }
-    /* Ventana flotante de paradas manuales arriba a la izquierda */
-    .paradas-float {
-      position: fixed;
-      top: 12px;
-      left: 12px;
-      background: rgba(255,255,255,0.97);
-      border-radius: 12px;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.13);
-      padding: 8px 10px 8px 10px;
-      z-index: 10001;
-      min-width: 180px;
-      max-width: 45vw;
-      width: auto;
-      display: none;
-      flex-direction: column;
-      gap: 6px;
-      max-height: 8.2em; /* 3 botones + padding */
-      overflow-y: auto;
-      overflow-x: hidden;
-    }
-    .paradas-float .parada-btn {
-      background: linear-gradient(90deg, #007aff 0%, #00c6ff 100%);
-      color: #fff;
-      border: none;
-      border-radius: 7px;
-      padding: 6px 10px;
-      font-size: 1em;
-      cursor: pointer;
-      margin: 0;
-      text-align: left;
-      transition: background 0.18s, color 0.18s, font-size 0.18s;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.07);
-      font-family: inherit;
-      word-break: break-word;
-      white-space: normal;
-      line-height: 1.2;
-      min-width: 0;
-      max-width: 100%;
-      overflow-wrap: break-word;
-    }
-    .paradas-float .parada-btn.long {
-      font-size: 0.92em;
-    }
-    .paradas-float .parada-btn:hover {
-      background: linear-gradient(90deg, #0056b3 0%, #00aaff 100%);
-      color: #e0ffe0;
-    }
-    @media (max-width: 500px) {
-      :root {
-        --btn-size: 32px;
-        --icon-size: 1em;
-        --progress-thick: 7px;
-        --timer-size: 0.92em;
-      }
-      .trapezoid-float {
-        width: 98vw;
-        padding: 2px 1px;
-        height: auto;
-      }
-      .paradas-float {
-        min-width: 90vw;
-        max-width: 98vw;
-        left: 2vw;
-        top: 2vw;
-        padding: 6px 2vw;
-      }
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reproductor de Audio de Aventura (Hijo)</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        :root {
+            /* Ajusta aquí el tamaño de los botones y la barra de progreso */
+            --btn-size: 80px;
+            --icon-size: 2.7em;
+            --progress-thick: 16px;
+            --trapecio-width: 340px;
+            --trapecio-height: 120px;
+            --trapecio-bg: rgba(255,255,255,0.85);
+            --trapecio-shadow: 0 2px 12px rgba(0,0,0,0.13);
+            --trapecio-radius: 18px;
+            --progress-color: #0077cc;
+            --progress-bg: #e0e0e0;
+            --timer-font-size: 1.3em;
+            --timer-color: #444;
+        }
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            background: transparent !important;
+        }
+        body {
+            font-family: "Book Antiqua", "Palatino Linotype", "Palatino", Georgia, serif;
+            margin: 0;
+            padding: 0;
+            background: transparent !important;
+            overflow: hidden;
+        }
+        /* Trapecio: parte corta ARRIBA */
+        .audio-player-controls {
+            position: fixed;
+            left: 50%;
+            bottom: 0;
+            transform: translateX(-50%);
+            width: var(--trapecio-width);
+            max-width: 98vw;
+            min-width: 180px;
+            height: var(--trapecio-height);
+            background: var(--trapecio-bg);
+            clip-path: polygon(8% 0%, 92% 0%, 100% 100%, 0% 100%);
+            border-radius: var(--trapecio-radius);
+            box-shadow: var(--trapecio-shadow);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 0.1em;
+            z-index: 1200;
+            padding: 2px 4px;
+            border: none;
+        }
+        /* Barra de progreso */
+        .progress-row {
+            display: flex;
+            align-items: center;
+            width: 96%;
+            gap: 0.5em;
+            margin: 0 0 8px 0;
+            padding: 0;
+            justify-content: center;
+        }
+        .progress-container {
+            flex: 1 1 auto;
+            height: var(--progress-thick);
+            background-color: var(--progress-bg);
+            border-radius: 5px;
+            cursor: pointer;
+            position: relative;
+            margin: 0;
+            min-width: 0;
+            max-width: none;
+            width: 100%;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+        }
+        #progressBar {
+            height: 100%;
+            width: 0%;
+            background-color: var(--progress-color);
+            border-radius: 5px;
+            transition: width 0.1s linear;
+        }
+        .time-display {
+            min-width: 70px;
+            font-size: var(--timer-font-size);
+            color: var(--timer-color);
+            text-align: right;
+            user-select: none;
+            margin-left: 8px;
+            white-space: nowrap;
+            display: inline-block;
+            vertical-align: middle;
+            font-family: inherit;
+        }
+        /* Botones */
+        .player-buttons-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.2em; /* Mínima separación */
+            width: 100%;
+            margin-bottom: 2px;
+        }
+        .player-button, #retosBtn {
+            width: var(--btn-size);
+            height: var(--btn-size);
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(90deg, #cc3333 0%, #ff5555 100%);
+            color: white;
+            font-size: var(--icon-size);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.10);
+            padding: 0;
+        }
+        .player-button:disabled, #retosBtn:disabled { background: #ccc; cursor: not-allowed; }
+        .player-button:active:not(:disabled), #retosBtn:active:not(:disabled) { transform: scale(0.95);}
+        .player-button.active, #retosBtn.active {
+            background: linear-gradient(90deg, #34c759 0%, #43e97b 100%);
+        }
+        .icon-play, .icon-puzzle {
+            font-size: var(--icon-size);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        /* Permite arrastrar la barra de progreso */
+        .progress-container:active, .progress-container.dragging {
+            cursor: grabbing;
+        }
+        @media (max-width: 500px) {
+            :root {
+                --btn-size: 48px;
+                --icon-size: 1.5em;
+                --trapecio-width: 98vw;
+                --trapecio-height: 90px;
+                --progress-thick: 10px;
+                --timer-font-size: 1em;
+            }
+            .audio-player-controls { width: var(--trapecio-width); }
+        }
+    </style>
 </head>
 <body>
-  <!-- Ventana flotante principal trapezoidal con barra de progreso y botones principales -->
-  <div class="trapezoid-float" id="trapezoidFloat">
-    <div class="progress-row">
-      <div class="progress-bar" id="progressBar">
-        <div class="progress-bar-fill" id="progressFill"></div>
-      </div>
-      <div class="timer" id="timer">00:00 / 00:30</div>
+    <div class="audio-player-controls" id="audioPlayerControls">
+        <audio id="audioPlayer"></audio>
+        <div class="progress-row">
+            <div class="progress-container" id="progressContainer">
+                <div id="progressBar"></div>
+            </div>
+            <span class="time-display">
+                <span id="currentTime">0:00</span> / <span id="duration">0:00</span>
+            </span>
+        </div>
+        <div class="player-buttons-row">
+            <button id="playPauseBtn" class="player-button" title="Reproducir/Pausar" disabled>
+                <span class="icon-play"><i class="fas fa-play"></i></span>
+            </button>
+            <button id="retosBtn" title="Retos" class="player-button">
+                <span class="icon-puzzle">🧩</span>
+            </button>
+        </div>
     </div>
-    <div class="iconos-row">
-      <button id="btnGps" class="icon-btn gps-on" title="GPS ON">
-        <i class="fa-solid fa-house"></i>
-        <span class="gps-label" id="gpsLabel">ON</span>
-      </button>
-      <button id="btnCamara" class="icon-btn" title="Foto">
-        <span class="cam-flecha">
-          <svg class="icon-svg" viewBox="0 0 32 32">
-            <rect x="7" y="11" width="14" height="10" rx="2" fill="none" stroke="white" stroke-width="2"/>
-            <circle cx="14" cy="16" r="3" fill="none" stroke="white" stroke-width="2"/>
-            <rect x="11" y="8" width="6" height="4" rx="1" fill="none" stroke="white" stroke-width="2"/>
-          </svg>
-          <svg viewBox="0 0 32 16">
-            <polyline points="8,8 24,8 20,4" fill="none" stroke="#34c759" stroke-width="2"/>
-            <polyline points="24,8 20,12" fill="none" stroke="#34c759" stroke-width="2"/>
-          </svg>
-        </span>
-      </button>
-      <button id="btnVideo" class="icon-btn" title="Video">
-        <span class="video-emoji">🚶‍♂️</span>
-      </button>
-    </div>
-  </div>
-  <!-- Ventana flotante de paradas manuales arriba a la izquierda -->
-  <div class="paradas-float" id="paradasFloat"></div>
-  <script>
-    // --- Array de paradas (solo las de tipo parada) ---
-    const paradas = [
-      { tipo: "parada", nombre: "Torres de Serranos (start)", lat: 39.47876, lng: -0.37626 },
-      { tipo: "parada", nombre: "Puente de Serranos – Plaza de la crida", lat: 39.47959, lng: -0.37583 },
-      { tipo: "parada", nombre: "Cortes Valencianas (Palacio de los Borgia)", lat: 39.47785, lng: -0.37485 },
-      { tipo: "parada", nombre: "Plaza de la Virgen", lat: 39.47656, lng: -0.37529 },
-      { tipo: "parada", nombre: "Plaza de la Almoína", lat: 39.47604, lng: -0.37451 },
-      { tipo: "parada", nombre: "Catedral de València", lat: 39.47594, lng: -0.37474 },
-      { tipo: "parada", nombre: "Plaza decimo Juno Bruto (Museo Arqueológico de la Almoína)", lat: 39.4762, lng: -0.37412 },
-      { tipo: "parada", nombre: "Basílica de València", lat: 39.47611, lng: -0.37478 },
-      { tipo: "parada", nombre: "Palacio Arzobispal", lat: 39.4755, lng: -0.37436 },
-      { tipo: "parada", nombre: "Plaza del Ayuntamiento", lat: 39.47056, lng: -0.37677 },
-      { tipo: "parada", nombre: "Edificio del Ayuntamiento de València", lat: 39.46971, lng: -0.37693 },
-      { tipo: "parada", nombre: "Estación de Ferrocarril (Estación del Norte)", lat: 39.46722, lng: -0.37702 },
-      { tipo: "parada", nombre: "Plaza de Toros de València", lat: 39.46709, lng: -0.37595 },
-      { tipo: "parada", nombre: "Casa estilo Árabe", lat: 39.46753, lng: -0.37511 },
-      { tipo: "parada", nombre: "Palacio de Comunicaciones (Correos)", lat: 39.46942, lng: -0.37559 },
-      { tipo: "parada", nombre: "Antigua sede del Banco de València", lat: 39.47061, lng: -0.37408 },
-      { tipo: "parada", nombre: "Palacio del Marqués de Dos Aguas (Museo Nacional de Crámica)", lat: 39.47276, lng: -0.37467 },
-      { tipo: "parada", nombre: "Mercado Central", lat: 39.47377, lng: -0.37832 },
-      { tipo: "parada", nombre: "San Juan del Mercado (Iglesia de los Santos Juanes)", lat: 39.47425, lng: -0.37895 },
-      { tipo: "parada", nombre: "Lonja de València (Mercado de la Seda)", lat: 39.47426, lng: -0.37862 },
-      { tipo: "parada", nombre: "Plaza del Doctor Collado", lat: 39.47444, lng: -0.3779 },
-      { tipo: "parada", nombre: "Plaza del Negrito (Fuente del Negrito)", lat: 39.47611, lng: -0.37741 },
-      { tipo: "parada", nombre: "Calle Caballeros", lat: 39.47663, lng: -0.3773 },
-      { tipo: "parada", nombre: "Palacio de la Generalitat", lat: 39.47668, lng: -0.37671 },
-      { tipo: "parada", nombre: "Calle de los Serranos (end)", lat: 39.47773, lng: -0.37671 }
-    ];
+    <script>
+        // --- Parámetros de configuración rápida ---
+        // Cambia los valores de :root en el CSS para tamaño de botones, iconos, barra, etc.
 
-    // --- Estado y elementos principales ---
-    const btnGps = document.getElementById('btnGps');
-    const gpsLabel = document.getElementById('gpsLabel');
-    const paradasFloat = document.getElementById('paradasFloat');
-    let gpsActivo = true;
+        const audioPlayer = document.getElementById('audioPlayer');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const retosBtn = document.getElementById('retosBtn');
+        const progressBar = document.getElementById('progressBar');
+        const progressContainer = document.getElementById('progressContainer');
+        const currentTimeSpan = document.getElementById('currentTime');
+        const durationSpan = document.getElementById('duration');
+        const audioPlayerControls = document.getElementById('audioPlayerControls');
 
-    // --- Lógica del botón GPS ON/OFF y mostrar/ocultar ventana de paradas manuales ---
-    btnGps.addEventListener('click', () => {
-      gpsActivo = !gpsActivo;
-      if (gpsActivo) {
-        btnGps.classList.add('gps-on');
-        btnGps.classList.remove('gps-off');
-        gpsLabel.textContent = 'ON';
-        paradasFloat.style.display = 'none';
-      } else {
-        btnGps.classList.remove('gps-on');
-        btnGps.classList.add('gps-off');
-        gpsLabel.textContent = 'OFF';
-        paradasFloat.style.display = 'flex';
-      }
-    });
+        let currentAudioId = null;
+        let currentAudioIndexInSequence = -1;
+        let canPlayAudio = false;
+        let isDragging = false;
 
-    // --- Crear botones de paradas en la ventana flotante manual ---
-    paradas.forEach((parada, idx) => {
-      const btn = document.createElement('button');
-      btn.className = 'parada-btn';
-      btn.textContent = parada.nombre;
-      // Si el nombre es largo, reduce la fuente
-      if (parada.nombre.length > 32) btn.classList.add('long');
-      btn.addEventListener('click', () => {
-        // Enviar mensaje al padre con nombre y coordenadas de la parada
-        window.parent.postMessage({
-          tipo: 'marcar_parada_manual',
-          nombre: parada.nombre,
-          lat: parada.lat,
-          lng: parada.lng
-        }, '*');
-      });
-      paradasFloat.appendChild(btn);
-    });
+        const audiosSequence = [
+            {
+                id: "audio_serranos_intro",
+                src: "Av1_audio_esp/02 Intro ESPAÑOL 2.mp3"
+            },
+            {
+                id: "audio_puente_serranos",
+                src: "Av1_audio_esp/03 Av1 Pista 3 ESPAÑOL.mp3"
+            }
+        ];
 
-    // --- Barra de progreso demo (puedes adaptar a tu lógica real) ---
-    const progressBarFill = document.getElementById('progressFill');
-    const timerDisplay = document.getElementById('timer');
-    let duration = 30; // segundos
-    let current = 0;
-    let interval;
-    function formatTime(s) {
-      const mins = Math.floor(s / 60).toString().padStart(2, "0");
-      const secs = (s % 60).toString().padStart(2, "0");
-      return `${mins}:${secs}`;
-    }
-    function updateProgress() {
-      current++;
-      if (current > duration) {
-        clearInterval(interval);
-        return;
-      }
-      let percent = (current / duration) * 100;
-      progressBarFill.style.width = `${percent}%`;
-      timerDisplay.textContent = `${formatTime(current)} / ${formatTime(duration)}`;
-    }
-    document.getElementById("btnVideo").addEventListener("click", () => {
-      clearInterval(interval);
-      current = 0;
-      progressBarFill.style.width = "0%";
-      timerDisplay.textContent = `00:00 / ${formatTime(duration)}`;
-      interval = setInterval(updateProgress, 1000);
-    });
-  </script>
+        function loadAudio(id) {
+            const audioData = audiosSequence.find(a => a.id === id);
+            if (audioData) {
+                audioPlayer.src = audioData.src;
+                currentAudioId = id;
+                currentAudioIndexInSequence = audiosSequence.findIndex(a => a.id === id);
+                audioPlayer.load();
+                playPauseBtn.querySelector('i').className = 'fas fa-play';
+                audioPlayer.currentTime = 0;
+                progressBar.style.width = '0%';
+                currentTimeSpan.textContent = '0:00';
+                durationSpan.textContent = '0:00';
+                updatePlayerControlsState();
+                setRetosBtnActive(false);
+            } else {
+                currentAudioId = null;
+                currentAudioIndexInSequence = -1;
+                audioPlayer.src = '';
+                updatePlayerControlsState();
+                setRetosBtnActive(false);
+            }
+        }
+
+        function formatTime(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = Math.floor(seconds % 60);
+            return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
+        }
+
+        function playAudio() {
+            if (currentAudioId && canPlayAudio) {
+                audioPlayer.play().catch(e => {});
+                playPauseBtn.querySelector('i').className = 'fas fa-pause';
+            }
+        }
+
+        function pauseAudio() {
+            audioPlayer.pause();
+            playPauseBtn.querySelector('i').className = 'fas fa-play';
+        }
+
+        function togglePlayPause() {
+            if (audioPlayer.paused) {
+                playAudio();
+            } else {
+                pauseAudio();
+            }
+        }
+
+        function setRetosBtnActive(active) {
+            if (active) {
+                retosBtn.classList.add('active');
+            } else {
+                retosBtn.classList.remove('active');
+            }
+        }
+
+        function updatePlayerControlsState() {
+            if (currentAudioId && canPlayAudio) {
+                playPauseBtn.disabled = false;
+                audioPlayerControls.classList.add('active');
+                playPauseBtn.classList.add('active');
+            } else {
+                playPauseBtn.disabled = true;
+                audioPlayerControls.classList.remove('active');
+                playPauseBtn.classList.remove('active');
+                pauseAudio();
+            }
+        }
+
+        playPauseBtn.addEventListener('click', togglePlayPause);
+
+        retosBtn.addEventListener('click', () => {
+            window.parent.postMessage({ type: 'audio-player-retos' }, '*');
+        });
+
+        audioPlayer.addEventListener('loadedmetadata', () => {
+            durationSpan.textContent = formatTime(audioPlayer.duration);
+        });
+
+        audioPlayer.addEventListener('timeupdate', () => {
+            if (!isDragging) {
+                const progress = (audioPlayer.currentTime / audioPlayer.duration) * 100;
+                progressBar.style.width = `${progress}%`;
+                currentTimeSpan.textContent = formatTime(audioPlayer.currentTime);
+            }
+        });
+
+        audioPlayer.addEventListener('ended', () => {
+            playPauseBtn.querySelector('i').className = 'fas fa-play';
+            setRetosBtnActive(true);
+        });
+
+        // --- Permite arrastrar la barra de progreso ---
+        function seekTo(e) {
+            const rect = progressContainer.getBoundingClientRect();
+            const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+            const width = rect.width;
+            const duration = audioPlayer.duration;
+            if (duration) {
+                let percent = Math.max(0, Math.min(1, x / width));
+                audioPlayer.currentTime = percent * duration;
+            }
+        }
+        progressContainer.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            seekTo(e);
+            document.addEventListener('mousemove', seekTo);
+            document.addEventListener('mouseup', () => {
+                isDragging = false;
+                document.removeEventListener('mousemove', seekTo);
+            }, { once: true });
+        });
+        progressContainer.addEventListener('touchstart', (e) => {
+            isDragging = true;
+            seekTo(e);
+            document.addEventListener('touchmove', seekTo);
+            document.addEventListener('touchend', () => {
+                isDragging = false;
+                document.removeEventListener('touchmove', seekTo);
+            }, { once: true });
+        });
+
+        window.addEventListener('message', (event) => {
+            const data = event.data;
+            if (data && typeof data === 'object') {
+                if (data.tipo === 'gps_marcar_parada' && data.idAudio) {
+                    loadAudio(data.idAudio);
+                    canPlayAudio = true;
+                    updatePlayerControlsState();
+                    playAudio();
+                }
+                switch (data.type) {
+                    case 'loadAudio':
+                        loadAudio(data.idAudio);
+                        canPlayAudio = data.canPlay;
+                        updatePlayerControlsState();
+                        break;
+                    case 'playAudio':
+                        playAudio();
+                        break;
+                    case 'pauseAudio':
+                        pauseAudio();
+                        break;
+                    case 'stopAudio':
+                        pauseAudio();
+                        if (audioPlayer.src) audioPlayer.currentTime = 0;
+                        break;
+                    case 'updateCanPlay':
+                        canPlayAudio = data.canPlay;
+                        updatePlayerControlsState();
+                        break;
+                    case 'changeFontSize':
+                        document.body.style.fontSize = data.size + 'px';
+                        break;
+                    case 'pauseAudioFromBoton':
+                        pauseAudio();
+                        break;
+                    case 'activarRetosBtn':
+                        setRetosBtnActive(true);
+                        break;
+                    case 'desactivarRetosBtn':
+                        setRetosBtnActive(false);
+                        break;
+                }
+            }
+        });
+
+        window.addEventListener('DOMContentLoaded', () => {
+            window.parent.postMessage({ type: 'audio-hijo-listo' }, '*');
+            setRetosBtnActive(false);
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                pauseAudio();
+            }
+        });
+    </script>
 </body>
 </html>
