@@ -19,7 +19,6 @@
   <button class="icono-flotante" id="icono-brujula" style="pointer-events:auto;">🧭</button>
 
   <style>
-    /* Estilos generales para botones principales e iconos hijos */
     .boton-flotante, .icono-flotante {
       position: fixed;
       background: #007acc;
@@ -36,8 +35,9 @@
       user-select: none;
       z-index: 3300 !important;
       pointer-events: auto;
+      border: none;
+      outline: none;
     }
-    /* Iconos hijos: ocultos por defecto solo con opacity y visibility */
     .icono-flotante {
       width: 44px;
       height: 44px;
@@ -45,11 +45,10 @@
       z-index: 3300 !important;
       transition: opacity 0.3s ease;
       pointer-events: auto;
-      display: none;         /* Ocultos por defecto */
+      display: none;
       opacity: 0;
       visibility: hidden;
     }
-    /* Posición de los botones principales */
     #hamburguesa { bottom: 75px; left: 12px; }
     #mas-opciones { bottom: 75px; right: 12px; }
     #btn-mapa { top: 12px; right: 12px; }
@@ -61,18 +60,6 @@
       hamburguesa: ['icono-retos','icono-gastronomia','icono-informacion','icono-historia'],
       'mas-opciones': ['icono-agradecimientos','icono-seguridad','icono-fuentes'],
       'btn-mapa': ['icono-punto','icono-ruta','icono-brujula']
-    };
-
-    // --- Ángulos y radios para la disposición de los iconos hijos alrededor del botón principal ---
-    const sectores = {
-      hamburguesa: { centro: 45, arco: 90 },
-      'mas-opciones': { centro: 135, arco: 90 },
-      'btn-mapa': { centro: 225, arco: 90 }
-    };
-    const radios = {
-      hamburguesa: 85,
-      'mas-opciones': 70,
-      'btn-mapa': 70
     };
 
     // --- Enlaces asociados a cada icono hijo (null si no hay enlace) ---
@@ -89,10 +76,6 @@
       'icono-brujula': 'mapas/Av1_mapa.jpg'
     };
 
-    // --- Variables de control de estado ---
-    let iconosVisibles = {};
-    let ultimoBoton = null;
-
     // --- Oculta todos los iconos hijos ---
     function ocultarTodos() {
       Object.values(gruposIconos).flat().forEach(id => {
@@ -101,120 +84,38 @@
           el.style.display = 'none';
           el.style.visibility = 'hidden';
           el.style.opacity = 0;
-          iconosVisibles[id] = false;
         }
       });
-      localStorage.removeItem('ultimoBoton');
-    }
-
-    // --- Muestra los iconos hijos del botón principal pulsado ---
-    function mostrarIconos(idBoton) {
-      const iconos = gruposIconos[idBoton];
-      if (!iconos) return;
-
-      // Calcula la posición central del botón principal
-      const b = document.getElementById(idBoton);
-      const rect = b.getBoundingClientRect();
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
-
-      // Calcula la disposición circular de los iconos hijos
-      const { centro, arco } = sectores[idBoton];
-      const total = iconos.length;
-      const inicio = centro - arco / 2;
-      const radio = radios[idBoton] || 100;
-
-      for (let i = 0; i < total; i++) {
-        const angulo = total === 1 ? centro : inicio + (arco / (total - 1)) * i;
-        const rad = angulo * Math.PI / 180;
-        const x = cx + radio * Math.cos(rad);
-        const y = cy - radio * Math.sin(rad);
-
-        const el = document.getElementById(iconos[i]);
-        if (el) {
-          el.style.display = 'flex';
-          el.style.visibility = 'visible';
-          el.style.opacity = 1;
-          el.style.left = `${x - el.offsetWidth / 2}px`;
-          el.style.top = `${y - el.offsetHeight / 2}px`;
-          el.style.position = 'fixed';
-          el.style.zIndex = 3300;
-          iconosVisibles[iconos[i]] = true;
-        }
-      }
-      ultimoBoton = idBoton;
-      localStorage.setItem('ultimoBoton', idBoton);
-    }
-
-    // --- Pausa el audio del iframe hijo al pulsar un botón ---
-    function pausarAudioHijo() {
-      window.parent.postMessage({ type: 'pauseAudioFromBoton' }, '*');
     }
 
     // --- Inicializa los eventos de los botones principales e iconos hijos ---
     function inicializarBotonesFlotantes() {
-      // Eventos para los botones principales
-      Object.entries(gruposIconos).forEach(([botonId, iconoIds]) => {
+      // Botones principales
+      Object.keys(gruposIconos).forEach(botonId => {
         const boton = document.getElementById(botonId);
         if (!boton) return;
-        boton.addEventListener('click', () => {
-          pausarAudioHijo();
-          const algunoVisible = iconoIds.some(id => iconosVisibles[id]);
+        boton.addEventListener('click', function() {
           ocultarTodos();
-          if (!algunoVisible) {
-            mostrarIconos(botonId);
-          } else {
-            ultimoBoton = null;
-            localStorage.removeItem('ultimoBoton');
-          }
+          window.parent.postMessage({ type: 'pauseAudioFromBoton' }, '*');
         });
       });
 
-      // Eventos para los iconos hijos (abrir enlaces o pausar audio)
+      // Iconos hijos
       Object.entries(enlacesIconos).forEach(([id, url]) => {
         const el = document.getElementById(id);
-        if (el && url) {
-          el.addEventListener('click', () => {
-            pausarAudioHijo();
-            window.open(url, '_blank');
-          });
-        } else if (el) {
-          el.addEventListener('click', pausarAudioHijo);
-        }
-      });
-
-      // Si hay un botón guardado en localStorage, muestra sus iconos al cargar
-      setTimeout(() => {
-        const guardado = localStorage.getItem('ultimoBoton');
-        if (guardado && gruposIconos[guardado]) {
-          mostrarIconos(guardado);
-        }
-      }, 100);
-
-      // Recoloca los iconos al cambiar el tamaño de la ventana o la orientación
-      window.addEventListener('resize', () => {
-        if (ultimoBoton) mostrarIconos(ultimoBoton);
-      });
-      window.addEventListener('orientationchange', () => {
-        setTimeout(() => {
-          if (ultimoBoton) mostrarIconos(ultimoBoton);
-        }, 200);
-      });
-
-      // Permite ocultar todos los iconos desde mensajes externos
-      window.addEventListener('message', (event) => {
-        if (event.data && event.data.type === 'ocultarTodos') {
+        if (!el) return;
+        el.addEventListener('click', function() {
           ocultarTodos();
-        }
+          window.parent.postMessage({ type: 'pauseAudioFromBoton' }, '*');
+          if (url) window.open(url, '_blank');
+        });
       });
+
+      // Oculta todos los iconos al cargar
+      ocultarTodos();
     }
 
-    // --- Inicializa los botones flotantes al cargar el documento ---
-    if (typeof inicializarBotonesFlotantes === 'function') {
-      inicializarBotonesFlotantes();
-    } else {
-      window.addEventListener('DOMContentLoaded', inicializarBotonesFlotantes);
-    }
+    window.addEventListener('DOMContentLoaded', inicializarBotonesFlotantes);
   </script>
 </body>
 </html>
