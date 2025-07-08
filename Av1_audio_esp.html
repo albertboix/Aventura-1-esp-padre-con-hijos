@@ -126,7 +126,7 @@
         #playPauseBtn.active {
             background: linear-gradient(90deg, #34c759 0%, #43e97b 100%) !important;
         }
-        .player-button:not(#playPauseBtn), #retosBtn, #puzzleBtn {
+        #accionBtn {
             width: var(--btn-size);
             height: var(--btn-size);
             border-radius: 50%;
@@ -142,16 +142,16 @@
             box-shadow: 0 2px 6px rgba(0,0,0,0.10);
             padding: 0;
         }
-        .player-button:disabled:not(#playPauseBtn), #retosBtn:disabled, #puzzleBtn:disabled { background: #ccc; cursor: not-allowed; }
-        .player-button:active:not(:disabled):not(#playPauseBtn), #retosBtn:active:not(:disabled), #puzzleBtn:active:not(:disabled) { transform: scale(0.95);}
-        .player-button.active:not(#playPauseBtn), #retosBtn.active, #puzzleBtn.active {
+        #accionBtn:active:not(:disabled) { transform: scale(0.95);}
+        #accionBtn.active {
             background: linear-gradient(90deg, #34c759 0%, #43e97b 100%);
         }
-        .icon-play, .icon-puzzle, .icon-puzzle2 {
-            font-size: var(--icon-size);
-            display: flex;
-            align-items: center;
-            justify-content: center;
+        #playPauseBtn .icon-play i,
+        #accionBtn .icon-puzzle {
+            background: linear-gradient(90deg, #007aff 0%, #00c6ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
         .progress-container:active, .progress-container.dragging {
             cursor: grabbing;
@@ -188,11 +188,8 @@
             <button id="playPauseBtn" class="player-button" title="Reproducir/Pausar" disabled>
                 <span class="icon-play"><i class="fas fa-play"></i></span>
             </button>
-            <button id="retosBtn" title="Reto" class="player-button" disabled>
+            <button id="accionBtn" title="Reto o Puzzle" class="player-button" disabled>
                 <span class="icon-puzzle">🧩</span>
-            </button>
-            <button id="puzzleBtn" title="Puzzle" class="player-button" disabled>
-                <span class="icon-puzzle2">🧩</span>
             </button>
         </div>
         <div class="progress-row">
@@ -246,8 +243,7 @@
 
     const audioPlayer = document.getElementById('audioPlayer');
     const playPauseBtn = document.getElementById('playPauseBtn');
-    const retosBtn = document.getElementById('retosBtn');
-    const puzzleBtn = document.getElementById('puzzleBtn');
+    const accionBtn = document.getElementById('accionBtn');
     const progressBar = document.getElementById('progressBar');
     const progressContainer = document.getElementById('progressContainer');
     const currentTimeElem = document.getElementById('currentTime');
@@ -258,17 +254,13 @@
 
     // --- Control de mensajes del padre ---
     window.addEventListener('message', (event) => {
-      // Validar origen si es necesario
       // if (event.origin !== window.location.origin) return;
       const data = event.data;
       if (data && data.type === 'setAudioParada' && typeof data.index === 'number') {
         cargarParada(data.index);
       }
-      if (data && data.type === 'activarReto') {
-        activarReto();
-      }
-      if (data && data.type === 'activarPuzzle') {
-        activarPuzzle();
+      if (data && data.type === 'activarAccion') {
+        activarAccion();
       }
     });
 
@@ -279,17 +271,15 @@
       playPauseBtn.disabled = false;
       playPauseBtn.classList.remove('active');
       playPauseBtn.style.background = 'linear-gradient(90deg, #cc3333 0%, #ff5555 100%)';
-      retosBtn.disabled = true;
-      retosBtn.classList.remove('active');
-      puzzleBtn.disabled = true;
-      puzzleBtn.classList.remove('active');
+      accionBtn.disabled = true;
+      accionBtn.classList.remove('active');
+      accionBtn.style.background = 'linear-gradient(90deg, #cc3333 0%, #ff5555 100%)';
       audioReady = false;
       progressBar.style.width = '0%';
       currentTimeElem.textContent = '0:00';
       durationElem.textContent = '0:00';
     }
 
-    // --- Control de audio ---
     audioPlayer.addEventListener('loadedmetadata', () => {
       durationElem.textContent = formatTime(audioPlayer.duration);
       playPauseBtn.classList.add('active');
@@ -328,29 +318,22 @@
     });
 
     audioPlayer.addEventListener('ended', () => {
-      // Al terminar el audio, notifica al padre para que active el reto/puzzle
       window.parent.postMessage({ type: 'audioFinalizado', parada: paradaActual ? paradaActual.nombre : null }, '*');
     });
 
-    function activarReto() {
-      retosBtn.disabled = false;
-      retosBtn.classList.add('active');
-    }
-    function activarPuzzle() {
-      if (paradaActual && paradaActual.puzzle) {
-        puzzleBtn.disabled = false;
-        puzzleBtn.classList.add('active');
-      }
+    function activarAccion() {
+      accionBtn.disabled = false;
+      accionBtn.classList.add('active');
+      accionBtn.style.background = 'linear-gradient(90deg, #34c759 0%, #43e97b 100%)';
     }
 
-    retosBtn.addEventListener('click', () => {
+    accionBtn.addEventListener('click', () => {
       if (!paradaActual) return;
-      window.open(paradaActual.reto, '_blank');
-    });
-
-    puzzleBtn.addEventListener('click', () => {
-      if (!paradaActual || !paradaActual.puzzle) return;
-      window.open(paradaActual.puzzle, '_blank');
+      if (paradaActual.puzzle) {
+        window.open(paradaActual.puzzle, '_blank');
+      } else if (paradaActual.reto) {
+        window.open(paradaActual.reto, '_blank');
+      }
     });
 
     function formatTime(sec) {
@@ -360,10 +343,10 @@
       return `${m}:${s.toString().padStart(2, '0')}`;
     }
 
-    // --- Inicialización: desactivar controles hasta que el padre indique parada ---
     playPauseBtn.disabled = true;
-    retosBtn.disabled = true;
-    puzzleBtn.disabled = true;
+    accionBtn.disabled = true;
+    accionBtn.classList.remove('active');
+    accionBtn.style.background = 'linear-gradient(90deg, #cc3333 0%, #ff5555 100%)';
     </script>
 </body>
 </html>
