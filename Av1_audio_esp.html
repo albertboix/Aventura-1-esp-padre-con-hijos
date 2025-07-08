@@ -106,7 +106,6 @@
             width: 100%;
             margin-bottom: 2px;
         }
-        /* Cambia solo el botón de play para que siempre sea rojo, incluso deshabilitado */
         #playPauseBtn {
             width: var(--btn-size);
             height: var(--btn-size);
@@ -127,8 +126,7 @@
         #playPauseBtn.active {
             background: linear-gradient(90deg, #34c759 0%, #43e97b 100%) !important;
         }
-        /* El resto de botones mantiene el comportamiento original */
-        .player-button:not(#playPauseBtn), #retosBtn {
+        .player-button:not(#playPauseBtn), #retosBtn, #puzzleBtn {
             width: var(--btn-size);
             height: var(--btn-size);
             border-radius: 50%;
@@ -144,12 +142,12 @@
             box-shadow: 0 2px 6px rgba(0,0,0,0.10);
             padding: 0;
         }
-        .player-button:disabled:not(#playPauseBtn), #retosBtn:disabled { background: #ccc; cursor: not-allowed; }
-        .player-button:active:not(:disabled):not(#playPauseBtn), #retosBtn:active:not(:disabled) { transform: scale(0.95);}
-        .player-button.active:not(#playPauseBtn), #retosBtn.active {
+        .player-button:disabled:not(#playPauseBtn), #retosBtn:disabled, #puzzleBtn:disabled { background: #ccc; cursor: not-allowed; }
+        .player-button:active:not(:disabled):not(#playPauseBtn), #retosBtn:active:not(:disabled), #puzzleBtn:active:not(:disabled) { transform: scale(0.95);}
+        .player-button.active:not(#playPauseBtn), #retosBtn.active, #puzzleBtn.active {
             background: linear-gradient(90deg, #34c759 0%, #43e97b 100%);
         }
-        .icon-play, .icon-puzzle {
+        .icon-play, .icon-puzzle, .icon-puzzle2 {
             font-size: var(--icon-size);
             display: flex;
             align-items: center;
@@ -190,8 +188,11 @@
             <button id="playPauseBtn" class="player-button" title="Reproducir/Pausar" disabled>
                 <span class="icon-play"><i class="fas fa-play"></i></span>
             </button>
-            <button id="retosBtn" title="Retos" class="player-button">
+            <button id="retosBtn" title="Reto" class="player-button" disabled>
                 <span class="icon-puzzle">🧩</span>
+            </button>
+            <button id="puzzleBtn" title="Puzzle" class="player-button" disabled>
+                <span class="icon-puzzle2">🧩</span>
             </button>
         </div>
         <div class="progress-row">
@@ -204,7 +205,165 @@
         </div>
     </div>
     <script>
-        // ...existing code...
+    // --- Configuración de paradas ---
+    // Para cada parada, especifica:
+    // - nombre: Nombre de la parada
+    // - audio: Ruta del archivo de audio
+    // - reto: Ruta del archivo de reto (puede ser Av1-esp-retos-preguntas.html?reto=NUM o el que corresponda)
+    // - puzzle: Ruta del archivo de puzzle (puede ser null si no hay puzzle en esa parada)
+    const PARADAS = [
+      { nombre: "1 - Torres de Serranos (start)", audio: "audios/1-torres-serranos.mp3", reto: "Av1-esp-retos-preguntas.html?reto=1", puzzle: null },
+      { nombre: "2 - Puente de Serranos – Plaza de la crida", audio: "audios/2-puente-serranos.mp3", reto: "Av1-esp-retos-preguntas.html?reto=2", puzzle: null },
+      { nombre: "3 - Cortes Valencianas (Palacio de los Borgia)", audio: "audios/3-cortes-valencianas.mp3", reto: "Av1-esp-retos-preguntas.html?reto=3", puzzle: null },
+      { nombre: "4 - Plaza de la Virgen", audio: "audios/4-plaza-virgen.mp3", reto: "Av1-esp-retos-preguntas.html?reto=4", puzzle: "P8_puzzle_plaza_virgen.html" },
+      { nombre: "5 - Plaza de la Almoína", audio: "audios/5-plaza-almoinia.mp3", reto: "Av1-esp-retos-preguntas.html?reto=5", puzzle: null },
+      { nombre: "6 - Catedral de València", audio: "audios/6-catedral.mp3", reto: "Av1-esp-retos-preguntas.html?reto=6", puzzle: null },
+      { nombre: "7 - Plaza decimo Juno Bruto (Museo Arqueológico de la Almoína)", audio: "audios/7-juno-bruto.mp3", reto: "Av1-esp-retos-preguntas.html?reto=7", puzzle: null },
+      { nombre: "8 - Basílica de València", audio: "audios/8-basilica.mp3", reto: "Av1-esp-retos-preguntas.html?reto=8", puzzle: null },
+      { nombre: "9 - Palacio Arzobispal", audio: "audios/9-arzobispal.mp3", reto: "Av1-esp-retos-preguntas.html?reto=9", puzzle: null },
+      { nombre: "10 - Plaza del Ayuntamiento", audio: "audios/10-ayuntamiento.mp3", reto: "Av1-esp-retos-preguntas.html?reto=10", puzzle: null },
+      { nombre: "11 - Edificio del Ayuntamiento de València", audio: "audios/11-edificio-ayuntamiento.mp3", reto: "Av1-esp-retos-preguntas.html?reto=11", puzzle: null },
+      { nombre: "12 - Estación de Ferrocarril (Estación del Norte)", audio: "audios/12-estacion-norte.mp3", reto: "Av1-esp-retos-preguntas.html?reto=12", puzzle: null },
+      { nombre: "13 - Plaza de Toros de València", audio: "audios/13-plaza-toros.mp3", reto: "Av1-esp-retos-preguntas.html?reto=13", puzzle: "P18_puzzle_plaza_de_Toros_y_estacion_norte.html" },
+      { nombre: "14 - Casa estilo Árabe", audio: "audios/14-casa-arabe.mp3", reto: "Av1-esp-retos-preguntas.html?reto=14", puzzle: null },
+      { nombre: "15 - Palacio de Comunicaciones (Correos)", audio: "audios/15-correos.mp3", reto: "Av1-esp-retos-preguntas.html?reto=15", puzzle: null },
+      { nombre: "16 - Antigua sede del Banco de València", audio: "audios/16-banco-valencia.mp3", reto: "Av1-esp-retos-preguntas.html?reto=16", puzzle: null },
+      { nombre: "17 - Palacio del Marqués de Dos Aguas (Museo Nacional de Crámica)", audio: "audios/17-dos-aguas.mp3", reto: "Av1-esp-retos-preguntas.html?reto=17", puzzle: null },
+      { nombre: "18 - Mercado Central", audio: "audios/18-mercado-central.mp3", reto: "Av1-esp-retos-preguntas.html?reto=18", puzzle: null },
+      { nombre: "19 - San Juan del Mercado (Iglesia de los Santos Juanes)", audio: "audios/19-san-juan.mp3", reto: "Av1-esp-retos-preguntas.html?reto=19", puzzle: null },
+      { nombre: "20 - Lonja de València (Mercado de la Seda)", audio: "audios/20-lonja.mp3", reto: "Av1-esp-retos-preguntas.html?reto=20", puzzle: "P26_puzzle_lonja.html" },
+      { nombre: "21 - Plaza del Doctor Collado", audio: "audios/21-collado.mp3", reto: "Av1-esp-retos-preguntas.html?reto=21", puzzle: null },
+      { nombre: "22 - Plaza del Negrito (Fuente del Negrito)", audio: "audios/22-negrito.mp3", reto: "Av1-esp-retos-preguntas.html?reto=22", puzzle: null },
+      { nombre: "23 - Calle Caballeros", audio: "audios/23-caballeros.mp3", reto: "Av1-esp-retos-preguntas.html?reto=23", puzzle: null },
+      { nombre: "24 - Palacio de la Generalitat", audio: "audios/24-generalitat.mp3", reto: "Av1-esp-retos-preguntas.html?reto=24", puzzle: null },
+      { nombre: "25 - Calle de los Serranos (end)", audio: "audios/25-serranos-end.mp3", reto: "Av1-esp-retos-preguntas.html?reto=25", puzzle: null },
+      { nombre: "26 - Parada extra 1", audio: "audios/26-extra1.mp3", reto: "Av1-esp-retos-preguntas.html?reto=26", puzzle: null },
+      { nombre: "27 - Parada extra 2", audio: "audios/27-extra2.mp3", reto: "Av1-esp-retos-preguntas.html?reto=27", puzzle: null },
+      { nombre: "28 - Parada extra 3", audio: "audios/28-extra3.mp3", reto: "Av1-esp-retos-preguntas.html?reto=28", puzzle: null },
+      { nombre: "29 - Parada extra 4", audio: "audios/29-extra4.mp3", reto: "Av1-esp-retos-preguntas.html?reto=29", puzzle: null },
+      { nombre: "30 - Parada extra 5", audio: "audios/30-extra5.mp3", reto: "Av1-esp-retos-preguntas.html?reto=30", puzzle: null }
+    ];
+
+    const audioPlayer = document.getElementById('audioPlayer');
+    const playPauseBtn = document.getElementById('playPauseBtn');
+    const retosBtn = document.getElementById('retosBtn');
+    const puzzleBtn = document.getElementById('puzzleBtn');
+    const progressBar = document.getElementById('progressBar');
+    const progressContainer = document.getElementById('progressContainer');
+    const currentTimeElem = document.getElementById('currentTime');
+    const durationElem = document.getElementById('duration');
+
+    let paradaActual = null;
+    let audioReady = false;
+
+    // --- Control de mensajes del padre ---
+    window.addEventListener('message', (event) => {
+      // Validar origen si es necesario
+      // if (event.origin !== window.location.origin) return;
+      const data = event.data;
+      if (data && data.type === 'setAudioParada' && typeof data.index === 'number') {
+        cargarParada(data.index);
+      }
+      if (data && data.type === 'activarReto') {
+        activarReto();
+      }
+      if (data && data.type === 'activarPuzzle') {
+        activarPuzzle();
+      }
+    });
+
+    function cargarParada(index) {
+      paradaActual = PARADAS[index];
+      if (!paradaActual) return;
+      audioPlayer.src = paradaActual.audio;
+      playPauseBtn.disabled = false;
+      playPauseBtn.classList.remove('active');
+      playPauseBtn.style.background = 'linear-gradient(90deg, #cc3333 0%, #ff5555 100%)';
+      retosBtn.disabled = true;
+      retosBtn.classList.remove('active');
+      puzzleBtn.disabled = true;
+      puzzleBtn.classList.remove('active');
+      audioReady = false;
+      progressBar.style.width = '0%';
+      currentTimeElem.textContent = '0:00';
+      durationElem.textContent = '0:00';
+    }
+
+    // --- Control de audio ---
+    audioPlayer.addEventListener('loadedmetadata', () => {
+      durationElem.textContent = formatTime(audioPlayer.duration);
+      playPauseBtn.classList.add('active');
+      playPauseBtn.style.background = 'linear-gradient(90deg, #34c759 0%, #43e97b 100%)';
+      audioReady = true;
+    });
+
+    playPauseBtn.addEventListener('click', () => {
+      if (!audioReady) return;
+      if (audioPlayer.paused) {
+        audioPlayer.play();
+      } else {
+        audioPlayer.pause();
+      }
+    });
+
+    audioPlayer.addEventListener('play', () => {
+      playPauseBtn.querySelector('i').className = 'fas fa-pause';
+    });
+    audioPlayer.addEventListener('pause', () => {
+      playPauseBtn.querySelector('i').className = 'fas fa-play';
+    });
+
+    audioPlayer.addEventListener('timeupdate', () => {
+      currentTimeElem.textContent = formatTime(audioPlayer.currentTime);
+      if (audioPlayer.duration) {
+        progressBar.style.width = `${(audioPlayer.currentTime / audioPlayer.duration) * 100}%`;
+      }
+    });
+
+    progressContainer.addEventListener('click', (e) => {
+      if (!audioReady) return;
+      const rect = progressContainer.getBoundingClientRect();
+      const percent = (e.clientX - rect.left) / rect.width;
+      audioPlayer.currentTime = percent * audioPlayer.duration;
+    });
+
+    audioPlayer.addEventListener('ended', () => {
+      // Al terminar el audio, notifica al padre para que active el reto/puzzle
+      window.parent.postMessage({ type: 'audioFinalizado', parada: paradaActual ? paradaActual.nombre : null }, '*');
+    });
+
+    function activarReto() {
+      retosBtn.disabled = false;
+      retosBtn.classList.add('active');
+    }
+    function activarPuzzle() {
+      if (paradaActual && paradaActual.puzzle) {
+        puzzleBtn.disabled = false;
+        puzzleBtn.classList.add('active');
+      }
+    }
+
+    retosBtn.addEventListener('click', () => {
+      if (!paradaActual) return;
+      window.open(paradaActual.reto, '_blank');
+    });
+
+    puzzleBtn.addEventListener('click', () => {
+      if (!paradaActual || !paradaActual.puzzle) return;
+      window.open(paradaActual.puzzle, '_blank');
+    });
+
+    function formatTime(sec) {
+      sec = Math.floor(sec);
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      return `${m}:${s.toString().padStart(2, '0')}`;
+    }
+
+    // --- Inicialización: desactivar controles hasta que el padre indique parada ---
+    playPauseBtn.disabled = true;
+    retosBtn.disabled = true;
+    puzzleBtn.disabled = true;
     </script>
 </body>
 </html>
