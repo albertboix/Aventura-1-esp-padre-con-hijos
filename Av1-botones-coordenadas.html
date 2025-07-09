@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Botones gps</title>
+  <title>Botones GPS Mejorados</title>
   <style>
     :root {
       --trapecio-width: 340px;
-      --trapecio-height: 280px; /* Ajusta según lo que necesites */
+      --trapecio-height: 210px;
       --trapecio-bg: rgba(255,255,255,0.85);
       --trapecio-shadow: 0 2px 12px rgba(0,0,0,0.13);
       --trapecio-radius: 18px;
@@ -24,6 +24,7 @@
       padding: 0;
       background: transparent !important;
       overflow: hidden;
+      font-size: 16px;
     }
     .botones-flotantes {
       position: fixed;
@@ -76,6 +77,7 @@
       border-radius: 5px;
       transition: width 0.1s linear;
     }
+    /* COPIADO DEL AUDIO: */
     .time-display {
       min-width: 80px;
       font-size: 1.1em;
@@ -228,8 +230,107 @@
     </div>
   </div>
   <script>
-    // Aquí va tu lógica JS habitual para los botones y la comunicación con el padre
-    // ...
+    // Secuencia de paradas y waypoints (con nombre, lat, lng, video, imagen para paradas)
+    const secuencia = [
+      { tipo: "parada", nombre: "Torres de Serranos (start)", lat: 39.47876, lng: -0.37626 },
+      { tipo: "waypoint", lat: 39.47905, lng: -0.37613 },
+      { tipo: "waypoint", lat: 39.47933, lng: -0.37647 },
+      { tipo: "waypoint", lat: 39.47943, lng: -0.37636 },
+      { tipo: "parada", nombre: "Puente de Serranos – Plaza de la crida", lat: 39.47959, lng: -0.37583 },
+      // ... (resto de la secuencia igual que antes)
+    ];
+
+    // Solo las paradas para acceso rápido
+    const paradas = secuencia.filter(p => p.tipo === 'parada');
+
+    let estadoBotones = { gps: false, caminar: false, camara: false };
+    let paradaOrigen = null;
+    let paradaDestino = null;
+
+    window.addEventListener('message', (event) => {
+      const data = event.data;
+      if (data && data.tipo === 'navegar-de-a-b') {
+        if (
+          typeof data.origen === 'number' && data.origen >= 0 && data.origen < paradas.length &&
+          typeof data.destino === 'number' && data.destino >= 0 && data.destino < paradas.length
+        ) {
+          paradaOrigen = data.origen;
+          paradaDestino = data.destino;
+          estadoBotones.gps = true;
+          estadoBotones.caminar = true;
+          estadoBotones.camara = true;
+          document.getElementById('btn-gps').classList.add('activo');
+          document.getElementById('btn-caminar').classList.add('activo');
+          document.getElementById('btn-camara').classList.add('activo');
+        }
+      } else if (data && data.tipo === 'llegada-a-destino') {
+        desactivarBotones();
+      } else if (data && data.tipo === 'orientacion-usuario') {
+        mostrarFlechaOrientacion(data.angulo);
+      }
+    });
+
+    function desactivarBotones() {
+      estadoBotones.gps = false;
+      estadoBotones.caminar = false;
+      estadoBotones.camara = false;
+      document.getElementById('btn-gps').classList.remove('activo');
+      document.getElementById('btn-caminar').classList.remove('activo');
+      document.getElementById('btn-camara').classList.remove('activo');
+      ocultarFlechaOrientacion();
+    }
+
+    document.getElementById('btn-gps').addEventListener('click', () => {
+      if (!estadoBotones.gps || paradaOrigen === null || paradaDestino === null) return;
+      // Calcula la ruta de waypoints entre origen y destino
+      const idxA = secuencia.findIndex(p => p.tipo === 'parada' && p.nombre === paradas[paradaOrigen].nombre);
+      const idxB = secuencia.findIndex(p => p.tipo === 'parada' && p.nombre === paradas[paradaDestino].nombre);
+      let ruta = [];
+      if (idxA !== -1 && idxB !== -1 && idxA < idxB) {
+        ruta = secuencia.slice(idxA, idxB + 1);
+      }
+      window.parent.postMessage({
+        tipo: 'mostrar-mapa-gps',
+        origen: paradaOrigen,
+        destino: paradaDestino,
+        ruta: ruta,
+        paradaDestino: paradas[paradaDestino]
+      }, '*');
+    });
+
+    document.getElementById('btn-caminar').addEventListener('click', () => {
+      if (!estadoBotones.caminar || paradaDestino === null) return;
+      window.parent.postMessage({
+        tipo: 'mostrar-zoom-streetview',
+        parada: paradaDestino,
+        info: paradas[paradaDestino]
+      }, '*');
+    });
+
+    document.getElementById('btn-camara').addEventListener('click', () => {
+      if (!estadoBotones.camara || paradaDestino === null) return;
+      window.parent.postMessage({
+        tipo: 'mostrar-imagen',
+        parada: paradaDestino,
+        info: paradas[paradaDestino]
+      }, '*');
+    });
+
+    function llegadaADestino() {
+      desactivarBotones();
+      if (paradaDestino !== null) {
+        window.parent.postMessage({ tipo: 'ya-estoy-aqui', parada: paradaDestino, info: paradas[paradaDestino] }, '*');
+      }
+    }
+
+    function mostrarFlechaOrientacion(angulo) {
+      const flecha = document.getElementById('flecha-orientacion');
+      flecha.style.display = 'block';
+      flecha.style.transform = `rotate(${angulo}deg)`;
+    }
+    function ocultarFlechaOrientacion() {
+      document.getElementById('flecha-orientacion').style.display = 'none';
+    }
   </script>
 </body>
 </html>
