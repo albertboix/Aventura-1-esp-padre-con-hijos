@@ -3,83 +3,27 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Aventura 1 - Padre Mejorado</title>
+  <title>Aventura 1 - Padre</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     html, body { height: 100%; margin: 0; padding: 0; }
-    #mapa { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
-
-    /* --- Mejora 1: Control individual de posición y tamaño de cada hijo --- */
-    #hijo1 { /* Botones y subfunciones */
+    #mapa {
       position: fixed;
-      left: 24px;
-      top: 24px;
-      width: 120px;
-      height: 120px;
-      z-index: 1001; /* Mejora 2: z-index alto */
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      z-index: 1;
+    }
+    iframe {
+      position: fixed;
       border: none;
       background: transparent;
+      z-index: 1000;
       pointer-events: auto;
-    }
-    #hijo2 { /* GPS */
-      position: fixed;
-      right: 24px;
-      top: 24px;
-      width: 210px;
-      height: 210px;
-      z-index: 1002;
-      border: none;
-      background: transparent;
-      pointer-events: auto;
-    }
-    #hijo3 { /* Audio */
-      position: fixed;
-      left: 50%;
-      bottom: 24px;
-      width: 340px;
-      height: 140px;
-      transform: translateX(-50%);
-      z-index: 1003;
-      border: none;
-      background: transparent;
-      pointer-events: auto;
-    }
-    #hijo4 { /* Retos */
-      position: fixed;
-      top: 10vh;
-      left: 50vw;
-      width: 600px;
-      height: 60vh;
-      transform: translate(-50%, 0);
-      z-index: 1004;
-      border: none;
-      background: transparent;
-      pointer-events: auto;
-    }
-    #hijo5 { /* Botón casa */
-      position: fixed;
-      left: 24px;
-      bottom: 24px;
-      width: 90px;
-      height: 90px;
-      z-index: 1005;
-      border: none;
-      background: transparent;
-      pointer-events: auto;
-    }
-    @media (max-width: 600px) {
-      #hijo1 { left: 8px; top: 8px; width: 80px; height: 80px; }
-      #hijo2 { right: 8px; top: 8px; width: 120px; height: 120px; }
-      #hijo3 { width: 98vw; left: 1vw; transform: none; bottom: 8px; height: 110px; }
-      #hijo4 { max-width: 98vw; width: 98vw; left: 1vw; transform: none; }
-      #hijo5 { left: 8px; bottom: 8px; width: 60px; height: 60px; }
     }
   </style>
 </head>
 <body>
   <div id="mapa"></div>
-  <!-- Hijos (iframes) -->
-  <iframe id="hijo1" src="Botones-y-subfunciones.html" allow="autoplay"></iframe>
+  <iframe id="hijo1" src="Botones-y-subfunciones.html"></iframe>
   <iframe id="hijo2" src="Av1-botones-coordenadas.html"></iframe>
   <iframe id="hijo3" src="Av1_audio_esp.html"></iframe>
   <iframe id="hijo4" src="Av1-esp-retos-preguntas.html"></iframe>
@@ -87,11 +31,6 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    // --- Estado global ---
-    let gpsOn = true;
-    let polyline = null;
-    let markerA = null, markerB = null;
-
     // --- Inicializar mapa ---
     const map = L.map('mapa').setView([39.478046, -0.375515], 14);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -99,25 +38,27 @@
       attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    // --- Funciones de control de hijos ---
-    const hijos = {
-      1: document.getElementById('hijo1'),
-      2: document.getElementById('hijo2'),
-      3: document.getElementById('hijo3'),
-      4: document.getElementById('hijo4'),
-      5: document.getElementById('hijo5')
-    };
+    // --- Estado global ---
+    let paradas = []; // Array de paradas con {lat, lng, nombre}
+    let waypoints = []; // Array de waypoints entre paradas
+    let paradaActual = 0;
+    let gpsOn = true;
+    let polyline = null;
+    let markerA = null, markerB = null;
+    let tramosRecorridos = [];
 
     // --- Comunicación con hijos ---
     window.addEventListener('message', (event) => {
       const data = event.data;
-      // Hijo 1: Botones y subfunciones
+
+      // HIJO 1: Botones y subfunciones
       if (data && data.type === 'pauseAudioFromBoton') {
-        hijos[3].contentWindow.postMessage({ type: 'pauseAudio' }, '*');
+        document.getElementById('hijo3').contentWindow.postMessage({ type: 'pauseAudio' }, '*');
       }
-      // Hijo 2: Botones coordenadas pide mostrar mapa/ruta
+
+      // HIJO 2: Coordenadas (GPS)
       if (data && data.tipo === 'mostrar-mapa-gps') {
-        mostrarRutaEnMapa(data.ruta);
+        mostrarRutaEnMapa(data.ruta, data.origen, data.destino);
       }
       if (data && data.tipo === 'mostrar-zoom-streetview') {
         mostrarStreetView(data.info);
@@ -125,22 +66,24 @@
       if (data && data.tipo === 'mostrar-imagen') {
         mostrarImagenParada(data.info);
       }
-      // Hijo 2: Llegada a destino
       if (data && data.tipo === 'ya-estoy-aqui') {
         avanzarAParada(data.parada);
       }
-      // Hijo 3: Audio finalizado
+
+      // HIJO 3: Audio
       if (data && data.type === 'audioFinalizado') {
         activarReto(data.paradaIndex !== undefined ? data.paradaIndex : null);
       }
-      // Hijo 4: Reto completado o continuar aventura
+
+      // HIJO 4: Retos/preguntas
       if (data && data.type === 'reto-interactivo-completado') {
         avanzarRuta();
       }
       if (data && data.type === 'reto-respuesta-mostrada') {
         // El usuario ha pedido ver la respuesta, puedes decidir si avanzar o esperar acción manual
       }
-      // Hijo 5: GPS Casa ON/OFF
+
+      // HIJO 5: GPS Casa (modo off)
       if (data && data.type === 'gpsStatus') {
         gpsOn = data.on;
         if (!gpsOn) {
@@ -155,41 +98,52 @@
       }
     });
 
-    // --- Funciones de lógica principal ---
+    // --- Funciones principales ---
     function iniciarAventura() {
-      hijos[2].contentWindow.postMessage({ tipo: 'iniciar-aventura' }, '*');
+      // El padre inicia la secuencia en la primera parada
+      paradaActual = 0;
+      enviarGPSaHijo2(paradaActual, paradaActual + 1);
     }
 
     function avanzarRuta() {
-      hijos[2].contentWindow.postMessage({ tipo: 'avanzar-ruta' }, '*');
+      // Avanza a la siguiente parada
+      paradaActual++;
+      if (paradaActual < paradas.length - 1) {
+        enviarGPSaHijo2(paradaActual, paradaActual + 1);
+      }
     }
 
     function avanzarAParada(paradaIndex) {
-      hijos[3].contentWindow.postMessage({ type: 'setAudioParada', index: paradaIndex }, '*');
+      // Activa el audio de la parada correspondiente
+      document.getElementById('hijo3').contentWindow.postMessage({ type: 'setAudioParada', index: paradaIndex }, '*');
     }
 
     function activarReto(paradaIndex) {
-      hijos[4].style.display = 'block';
-      hijos[4].contentWindow.postMessage({ type: 'mostrarRetoIndex', index: paradaIndex }, '*');
+      // Activa el reto/puzzle correspondiente a la parada
+      document.getElementById('hijo4').style.display = 'block';
+      document.getElementById('hijo4').contentWindow.postMessage({ type: 'mostrarRetoIndex', index: paradaIndex }, '*');
     }
 
     function activarTodosLosBotones() {
-      hijos[2].contentWindow.postMessage({ tipo: 'activar-todos-botones' }, '*');
-      hijos[3].contentWindow.postMessage({ type: 'setAudioParada', index: 0 }, '*');
+      document.getElementById('hijo2').contentWindow.postMessage({ tipo: 'activar-todos-botones' }, '*');
+      document.getElementById('hijo3').contentWindow.postMessage({ type: 'setAudioParada', index: 0 }, '*');
     }
 
     function activarModoCasa() {
-      hijos[2].contentWindow.postMessage({ tipo: 'activar-modo-casa' }, '*');
-      hijos[3].contentWindow.postMessage({ type: 'setAudioParada', index: 0 }, '*');
+      document.getElementById('hijo2').contentWindow.postMessage({ tipo: 'activar-modo-casa' }, '*');
+      document.getElementById('hijo3').contentWindow.postMessage({ type: 'setAudioParada', index: 0 }, '*');
     }
 
-    function mostrarRutaEnMapa(ruta) {
+    function mostrarRutaEnMapa(ruta, origen, destino) {
+      // Limpia rutas anteriores
       if (polyline) { map.removeLayer(polyline); }
       if (markerA) { map.removeLayer(markerA); }
       if (markerB) { map.removeLayer(markerB); }
       if (!ruta || !Array.isArray(ruta) || ruta.length < 2) return;
+      // Dibuja polyline
       const latlngs = ruta.map(p => [p.lat, p.lng]);
       polyline = L.polyline(latlngs, { color: 'red', weight: 6 }).addTo(map);
+      // Marca puntos A y B
       markerA = L.marker([ruta[0].lat, ruta[0].lng], { icon: L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png', iconSize: [32, 32] }) }).addTo(map);
       markerB = L.marker([ruta[ruta.length - 1].lat, ruta[ruta.length - 1].lng], { icon: L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684912.png', iconSize: [32, 32] }) }).addTo(map);
       map.fitBounds(polyline.getBounds(), { padding: [40, 40] });
@@ -197,10 +151,12 @@
 
     function mostrarStreetView(info) {
       alert('Mostrar StreetView de: ' + (info && info.nombre ? info.nombre : ''));
+      // Aquí puedes integrar un visor de StreetView si lo deseas
     }
 
     function mostrarImagenParada(info) {
       alert('Mostrar imagen de: ' + (info && info.nombre ? info.nombre : ''));
+      // Aquí puedes mostrar la imagen asociada a la parada
     }
 
     function mostrarParadaEnMapa(index, parada) {
@@ -210,6 +166,16 @@
       map.setView([parada.lat, parada.lng], 16);
     }
 
+    function enviarGPSaHijo2(origen, destino) {
+      // El padre le dice al hijo2: estamos en A, ve a B
+      document.getElementById('hijo2').contentWindow.postMessage({
+        tipo: 'navegar-de-a-b',
+        origen: origen,
+        destino: destino
+      }, '*');
+    }
+
+    // --- Iniciar la aventura al cargar ---
     window.onload = iniciarAventura;
   </script>
 </body>
