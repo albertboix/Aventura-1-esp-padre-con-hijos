@@ -1,179 +1,46 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Aventura 1 - Padre</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <meta charset="UTF-8">
+  <title>Padre con control de menús</title>
   <style>
-    html, body { height: 100%; margin: 0; padding: 0; }
-    #mapa {
-      position: fixed;
-      top: 0; left: 0; width: 100vw; height: 100vh;
-      z-index: 1;
-    }
-    /* No pongas reglas globales para iframe aquí */
+    body { margin: 0; padding: 0; background: #eee; }
+    /* Opcional: para ver los iframes */
+    iframe { border: 1px solid #007acc; background: transparent; }
   </style>
 </head>
 <body>
-  <div id="mapa"></div>
+  <!-- Ajusta el tamaño y posición de los iframes según tu diseño -->
+  <iframe id="iframe-hamburguesa" src="botones-y-subfunciones-hamburguesa.html"
+    style="position:fixed; left:20px; top:20px; width:55px; height:260px; z-index:1000;"></iframe>
+  <iframe id="iframe-masopciones" src="botones-y-subfunciones-masopciones.html"
+    style="position:fixed; right:20px; top:20px; width:55px; height:260px; z-index:1000;"></iframe>
+  <iframe id="iframe-mapa" src="botones-y-subfunciones-mapa.html"
+    style="position:fixed; right:20px; bottom:20px; width:55px; height:200px; z-index:1000;"></iframe>
 
-  <!-- Botón hamburguesa (esquina inferior izquierda, responsive) -->
-  <iframe id="hijo1-hamburguesa" src="botones-y-subfunciones-hamburguesa.html"
-    style="position:fixed; left:1vw; bottom:0vw; height: 248px; width:57px; z-index:1000; border:2px solid red; background:transparent; pointer-events:auto;"></iframe>
-
-  <!-- Botón más opciones (esquina inferior derecha, responsive) -->
-  <iframe id="hijo1-opciones" src="botones-y-subfunciones-opciones.html"
-    style="position:fixed; right:1vw; bottom:0vw; height: 248px; width:57px; z-index:1000; border:2px solid red; background:transparent; pointer-events:auto;"></iframe>
-
-  <!-- Botón mapa (esquina superior derecha, responsive) -->
-  <iframe id="hijo1-mapa" src="botones-y-subfunciones-mapa.html"
-    style="position:fixed; right:1vw; top:0vw; height: 200px; width:57px; z-index:1000; border:2px solid red; background:transparent; pointer-events:auto;"></iframe>
-
-  <!--
-  <iframe id="hijo2" src="Av1-botones-coordenadas.html"></iframe>
-  <iframe id="hijo3" src="Av1_audio_esp.html"></iframe>
-  <iframe id="hijo4" src="Av1-esp-retos-preguntas.html"></iframe>
-  <iframe id="hijo5" src="Av1-boton-casa.html"></iframe>
-  -->
-
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    // --- Inicializar mapa ---
-    const map = L.map('mapa').setView([39.478046, -0.375515], 14);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 40,
-      attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
+    // IDs y nombres de los menús
+    const iframes = [
+      { id: 'iframe-hamburguesa', menu: 'hamburguesa' },
+      { id: 'iframe-masopciones', menu: 'mas-opciones' },
+      { id: 'iframe-mapa', menu: 'mapa' }
+    ];
 
-    // --- Estado global ---
-    let paradas = []; // Array de paradas con {lat, lng, nombre}
-    let waypoints = []; // Array de waypoints entre paradas
-    let paradaActual = 0;
-    let gpsOn = true;
-    let polyline = null;
-    let markerA = null, markerB = null;
-    let tramosRecorridos = [];
-
-    // --- Comunicación con hijos ---
-    window.addEventListener('message', (event) => {
-      const data = event.data;
-
-      // HIJO 1: Botones y subfunciones
-      if (data && data.type === 'pauseAudioFromBoton') {
-        document.getElementById('hijo3')?.contentWindow.postMessage({ type: 'pauseAudio' }, '*');
+    // Escucha mensajes de los iframes hijos
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'closeOtherMenus') {
+        // Cierra todos los menús excepto el que se acaba de abrir
+        iframes.forEach(({ id, menu }) => {
+          if (menu !== e.data.except) {
+            const iframe = document.getElementById(id);
+            if (iframe && iframe.contentWindow) {
+              iframe.contentWindow.postMessage({ type: 'closeMenu', menu: e.data.except }, '*');
+            }
+          }
+        });
       }
-
-      // HIJO 2: Coordenadas (GPS)
-      if (data && data.tipo === 'mostrar-mapa-gps') {
-        mostrarRutaEnMapa(data.ruta, data.origen, data.destino);
-      }
-      if (data && data.tipo === 'mostrar-zoom-streetview') {
-        mostrarStreetView(data.info);
-      }
-      if (data && data.tipo === 'mostrar-imagen') {
-        mostrarImagenParada(data.info);
-      }
-      if (data && data.tipo === 'ya-estoy-aqui') {
-        avanzarAParada(data.parada);
-      }
-
-      // HIJO 3: Audio
-      if (data && data.type === 'audioFinalizado') {
-        activarReto(data.paradaIndex !== undefined ? data.paradaIndex : null);
-      }
-
-      // HIJO 4: Retos/preguntas
-      if (data && data.type === 'reto-interactivo-completado') {
-        avanzarRuta();
-      }
-      if (data && data.type === 'reto-respuesta-mostrada') {
-        // El usuario ha pedido ver la respuesta, puedes decidir si avanzar o esperar acción manual
-      }
-
-      // HIJO 5: GPS Casa (modo off)
-      if (data && data.type === 'gpsStatus') {
-        gpsOn = data.on;
-        if (!gpsOn) {
-          activarModoCasa();
-        } else {
-          iniciarAventura();
-        }
-      }
-      if (data && data.type === 'seleccionParada') {
-        mostrarParadaEnMapa(data.index, data.parada);
-        activarTodosLosBotones();
-      }
+      // Puedes añadir aquí otros mensajes si lo necesitas
     });
-
-    // --- Funciones principales ---
-    function iniciarAventura() {
-      paradaActual = 0;
-      enviarGPSaHijo2(paradaActual, paradaActual + 1);
-    }
-
-    function avanzarRuta() {
-      paradaActual++;
-      if (paradaActual < paradas.length - 1) {
-        enviarGPSaHijo2(paradaActual, paradaActual + 1);
-      }
-    }
-
-    function avanzarAParada(paradaIndex) {
-      document.getElementById('hijo3')?.contentWindow.postMessage({ type: 'setAudioParada', index: paradaIndex }, '*');
-    }
-
-    function activarReto(paradaIndex) {
-      document.getElementById('hijo4').style.display = 'block';
-      document.getElementById('hijo4').contentWindow.postMessage({ type: 'mostrarRetoIndex', index: paradaIndex }, '*');
-    }
-
-    function activarTodosLosBotones() {
-      document.getElementById('hijo2')?.contentWindow.postMessage({ tipo: 'activar-todos-botones' }, '*');
-      document.getElementById('hijo3')?.contentWindow.postMessage({ type: 'setAudioParada', index: 0 }, '*');
-    }
-
-    function activarModoCasa() {
-      document.getElementById('hijo2')?.contentWindow.postMessage({ tipo: 'activar-modo-casa' }, '*');
-      document.getElementById('hijo3')?.contentWindow.postMessage({ type: 'setAudioParada', index: 0 }, '*');
-    }
-
-    function mostrarRutaEnMapa(ruta, origen, destino) {
-      if (polyline) { map.removeLayer(polyline); }
-      if (markerA) { map.removeLayer(markerA); }
-      if (markerB) { map.removeLayer(markerB); }
-      if (!ruta || !Array.isArray(ruta) || ruta.length < 2) return;
-      const latlngs = ruta.map(p => [p.lat, p.lng]);
-      polyline = L.polyline(latlngs, { color: 'red', weight: 6 }).addTo(map);
-      markerA = L.marker([ruta[0].lat, ruta[0].lng], { icon: L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png', iconSize: [32, 32] }) }).addTo(map);
-      markerB = L.marker([ruta[ruta.length - 1].lat, ruta[ruta.length - 1].lng], { icon: L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684912.png', iconSize: [32, 32] }) }).addTo(map);
-      map.fitBounds(polyline.getBounds(), { padding: [40, 40] });
-    }
-
-    function mostrarStreetView(info) {
-      alert('Mostrar StreetView de: ' + (info && info.nombre ? info.nombre : ''));
-    }
-
-    function mostrarImagenParada(info) {
-      alert('Mostrar imagen de: ' + (info && info.nombre ? info.nombre : ''));
-    }
-
-    function mostrarParadaEnMapa(index, parada) {
-      if (!parada) return;
-      if (markerA) { map.removeLayer(markerA); }
-      markerA = L.marker([parada.lat, parada.lng], { icon: L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png', iconSize: [32, 32] }) }).addTo(map);
-      map.setView([parada.lat, parada.lng], 16);
-    }
-
-    function enviarGPSaHijo2(origen, destino) {
-      document.getElementById('hijo2')?.contentWindow.postMessage({
-        tipo: 'navegar-de-a-b',
-        origen: origen,
-        destino: destino
-      }, '*');
-    }
-
-    window.onload = iniciarAventura;
   </script>
 </body>
 </html>
