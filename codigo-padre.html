@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
@@ -223,6 +223,52 @@
     }
 
     window.onload = iniciarAventura;
+
+    // --- INTEGRACIÓN: Comunicación entre padre e iframes hijos (añadido, sin modificar nada tuyo) ---
+    // Este bloque permite la coordinación entre hijo 5 (casa), hijo 3 (audio) e hijo 4 (retos)
+    // cuando el GPS está OFF y se selecciona una parada.
+    let gpsActivoIntegracion = true;
+    let paradaSeleccionadaIntegracion = null;
+    let esperandoAudioIntegracion = false;
+
+    window.addEventListener('message', function(event) {
+      const data = event.data;
+
+      // Mensaje de hijo 5: cambio de GPS o selección de parada
+      if (data && data.tipo === 'gps-estado') {
+        gpsActivoIntegracion = !!data.activo;
+      }
+      if (data && data.tipo === 'seleccion-parada') {
+        paradaSeleccionadaIntegracion = data.parada;
+        if (!gpsActivoIntegracion && paradaSeleccionadaIntegracion != null) {
+          esperandoAudioIntegracion = true;
+          document.getElementById('hijo3')?.contentWindow.postMessage({
+            tipo: 'reproducir-audio',
+            parada: paradaSeleccionadaIntegracion
+          }, '*');
+          document.getElementById('hijo4')?.contentWindow.postMessage({
+            tipo: 'ocultar-reto'
+          }, '*');
+        }
+      }
+
+      // Mensaje de hijo 3: audio finalizado
+      if (data && data.tipo === 'audio-finalizado') {
+        if (esperandoAudioIntegracion && paradaSeleccionadaIntegracion != null) {
+          esperandoAudioIntegracion = false;
+          document.getElementById('hijo4')?.contentWindow.postMessage({
+            tipo: 'mostrar-reto',
+            parada: paradaSeleccionadaIntegracion
+          }, '*');
+        }
+      }
+
+      // Mensaje de hijo 4: reto completado
+      if (data && data.tipo === 'reto-completado') {
+        paradaSeleccionadaIntegracion = null;
+      }
+    });
+    // --- Fin del bloque de integración ---
   </script>
 </body>
 </html>
