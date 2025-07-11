@@ -397,6 +397,13 @@ const fuegosDiv = document.getElementById("fuegos");
 let currentRetoIndex = -1;
 const DURACION_TOTAL_MS = 3000;
 
+// --- FUNCIONES DE MENSAJERÍA PADRE-HIJO ---
+function enviarAlPadre(mensaje) {
+    // Cambia '"*"' por la URL de tu padre en producción para máxima seguridad
+    window.parent.postMessage(mensaje, "*");
+    //console.log("Mensaje enviado al padre:", mensaje);
+}
+
 // --- EFECTO: Fuegos artificiales al acertar ---
 function fuegosArtificiales() {
     const NUM_CHISPAS_POR_FUEGO = 30;
@@ -456,7 +463,7 @@ function renderizarReto(retoIndex) {
     const reto = retosAventura1Es[currentRetoIndex];
     if (!reto) {
         console.error("Reto no encontrado para el índice:", retoIndex);
-        window.parent.postMessage({ type: "reto-hijo-error", message: "Reto no encontrado" }, "*");
+        enviarAlPadre({ type: "reto-hijo-error", message: "Reto no encontrado", index: retoIndex });
         return;
     }
     retoContenidoDiv.innerHTML = '';
@@ -501,6 +508,8 @@ function renderizarReto(retoIndex) {
         retoContenidoDiv.appendChild(inputTexto);
         setTimeout(() => inputTexto.focus(), 200);
     }
+    // Notificar al padre que el reto ha sido renderizado
+    enviarAlPadre({ type: "reto-renderizado", index: currentRetoIndex });
 }
 
 // --- VERIFICAR LA RESPUESTA DEL USUARIO ---
@@ -534,13 +543,13 @@ function verificar() {
     if (esCorrecto) {
         fuegosArtificiales();
         setTimeout(() => {
-            window.parent.postMessage({ type: "reto-interactivo-completado", index: currentRetoIndex }, "*");
+            enviarAlPadre({ type: "reto-interactivo-completado", index: currentRetoIndex });
         }, DURACION_TOTAL_MS + 100);
     } else {
         vibrar();
         btnEnviar.disabled = false;
         btnMostrarRespuesta.style.display = "inline-block";
-        window.parent.postMessage({ type: "reto-interactivo-fallado", index: currentRetoIndex }, "*");
+        enviarAlPadre({ type: "reto-interactivo-fallado", index: currentRetoIndex });
     }
 }
 
@@ -554,15 +563,19 @@ btnMostrarRespuesta.addEventListener("click", () => {
         divRespuestaCorrecta.textContent = "Puede continuar con la aventura.";
     }
     divRespuestaCorrecta.style.display = "block";
-    window.parent.postMessage({ type: "reto-respuesta-mostrada", index: currentRetoIndex }, "*");
+    enviarAlPadre({ type: "reto-respuesta-mostrada", index: currentRetoIndex });
     btnEnviar.disabled = true;
 });
 
 // --- ESCUCHAR MENSAJES DEL PADRE ---
 window.addEventListener("message", (event) => {
-    // En producción, verifica event.origin para seguridad.
-    if (event.data && typeof event.data === 'object' && event.data.type === 'mostrarRetoIndex') {
-        renderizarReto(event.data.index);
+    // En producción, descomenta y pon la URL de tu padre:
+    // if (event.origin !== "https://TU_DOMINIO_PADRE") return;
+    if (event.data && typeof event.data === 'object') {
+        if (event.data.type === 'mostrarRetoIndex' && typeof event.data.index === 'number') {
+            renderizarReto(event.data.index);
+        }
+        // Puedes añadir aquí otros tipos de mensajes si el padre los necesita
     }
 });
 
@@ -571,7 +584,7 @@ btnEnviar.addEventListener("click", verificar);
 
 // --- NOTIFICAR AL PADRE QUE EL HIJO ESTÁ LISTO ---
 window.addEventListener("DOMContentLoaded", () => {
-    window.parent.postMessage({ type: "reto-hijo-listo" }, "*");
+    enviarAlPadre({ type: "reto-hijo-listo" });
 });
 </script>
 </body>
