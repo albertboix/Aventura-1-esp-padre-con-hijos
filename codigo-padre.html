@@ -87,6 +87,8 @@
 
 <script>
 // ================== ARRAY DE 40 PARADAS ==================
+// Este array solo necesita el nombre y otros datos, no lat/lng,
+// ya que el hijo5 enviará las coordenadas directamente.
 const PARADAS = [
   { parada: 1, nombre: "Torres de Serranos (start)", audio: "audio_1.mp3", reto: 0, foto: "img_1.jpg", video: "video_1.mp4" },
   { parada: 2, nombre: "Puente de Serranos – Plaza de la crida", audio: "audio_2.mp3", reto: 1, foto: "img_2.jpg", video: "video_2.mp4" },
@@ -163,7 +165,7 @@ function avanzarParada() { // Esta función parece de prueba, la principal es av
 
 // Eliminada la llamada a mostrarParadaActual en window.onload para control manual
 // window.onload = function() {
-//   // mostrarParadaActual();
+//    // mostrarParadaActual();
 // };
 
 // Ejemplo de cómo el hijo podría llamar a esta función:
@@ -291,12 +293,20 @@ function avanzarParada() { // Esta función parece de prueba, la principal es av
         }
       }
       if (data && data.type === 'seleccionParada') {
-        // Asumiendo que `PARADAS` es accesible aquí, y `data.index` es el índice del array
-        const selectedParada = PARADAS[data.index];
-        mostrarParadaEnMapa(data.index, selectedParada);
-        // Opcional: Mostrar la info de la parada seleccionada manualmente desde el hijo5
-        window.paradaActual = data.index; // Sincroniza
-        mostrarParadaActual(); // Muestra la info de la parada seleccionada
+        // --- INICIO DEL CAMBIO IMPORTANTE AQUÍ ---
+        // Usamos las coordenadas (lat, lng) que vienen directamente del mensaje de hijo5
+        // Y obtenemos el nombre de la parada de nuestro array PARADAS local.
+        const paradaConCoordenadas = { 
+            lat: data.lat, 
+            lng: data.lng, 
+            nombre: PARADAS[data.index]?.nombre || 'Parada seleccionada' 
+        };
+        mostrarParadaEnMapa(data.index, paradaConCoordenadas);
+        // --- FIN DEL CAMBIO IMPORTANTE ---
+
+        // Sincronizamos la paradaActual y mostramos la info en el div
+        window.paradaActual = data.index; 
+        mostrarParadaActual(); // Muestra la info de la parada seleccionada en el div #info-parada
         activarTodosLosBotones();
       }
       if (data && data.type === 'cerrarParadas') {
@@ -317,7 +327,12 @@ function avanzarParada() { // Esta función parece de prueba, la principal es av
     // --- Funciones principales ---
     function iniciarAventura() {
       window.paradaActual = 0; // Se inicializa la primera parada
-      enviarGPSaHijo2(window.paradaActual, window.paradaActual + 1);
+      // Asegúrate de que el iframe hijo2 exista antes de intentar enviarle un mensaje
+      if (document.getElementById('hijo2')) {
+        enviarGPSaHijo2(window.paradaActual, window.paradaActual + 1);
+      } else {
+        console.warn("Advertencia: Iframe 'hijo2' no encontrado. La función GPS no podrá iniciarse.");
+      }
       ocultarInfoParada(); // Oculta la info si ya estaba visible al iniciar la aventura
     }
     function avanzarRuta() {
@@ -325,7 +340,12 @@ function avanzarParada() { // Esta función parece de prueba, la principal es av
       ocultarInfoParada(); // Oculta la info de la parada después de completar un reto
       window.paradaActual++;
       if (window.paradaActual < PARADAS.length - 1) {
-        enviarGPSaHijo2(window.paradaActual, window.paradaActual + 1);
+        // Asegúrate de que el iframe hijo2 exista antes de intentar enviarle un mensaje
+        if (document.getElementById('hijo2')) {
+          enviarGPSaHijo2(window.paradaActual, window.paradaActual + 1);
+        } else {
+          console.warn("Advertencia: Iframe 'hijo2' no encontrado. La ruta no puede avanzar.");
+        }
       } else {
         console.log('¡Has completado todas las paradas de la aventura!');
         // Aquí podrías añadir lógica para el final de la aventura
@@ -338,12 +358,22 @@ function avanzarParada() { // Esta función parece de prueba, la principal es av
       // La llamada a `mostrarParadaActual()` ya se hace en el listener de 'ya-estoy-aqui'
     }
     function activarTodosLosBotones() {
-      document.getElementById('hijo2')?.contentWindow.postMessage({ tipo: 'activar-todos-botones' }, '*');
+      // Asegúrate de que el iframe hijo2 exista antes de intentar enviarle un mensaje
+      if (document.getElementById('hijo2')) {
+        document.getElementById('hijo2').contentWindow.postMessage({ tipo: 'activar-todos-botones' }, '*');
+      } else {
+        console.warn("Advertencia: Iframe 'hijo2' no encontrado. No se pueden activar botones.");
+      }
       // No necesitas audio aquí a menos que sea un sonido de "listo"
       // document.getElementById('hijo3')?.contentWindow.postMessage({ type: 'setAudioParada', index: 0 }, '*');
     }
     function activarModoCasa() {
-      document.getElementById('hijo2')?.contentWindow.postMessage({ tipo: 'activar-modo-casa' }, '*');
+      // Asegúrate de que el iframe hijo2 exista antes de intentar enviarle un mensaje
+      if (document.getElementById('hijo2')) {
+        document.getElementById('hijo2').contentWindow.postMessage({ tipo: 'activar-modo-casa' }, '*');
+      } else {
+        console.warn("Advertencia: Iframe 'hijo2' no encontrado. No se puede activar modo casa.");
+      }
       // No necesitas audio aquí a menos que sea un sonido de "modo casa activado"
       // document.getElementById('hijo3')?.contentWindow.postMessage({ type: 'setAudioParada', index: 0 }, '*');
       ocultarInfoParada(); // Oculta la info de parada al activar modo casa
@@ -376,7 +406,12 @@ function avanzarParada() { // Esta función parece de prueba, la principal es av
         console.error("Mapa no inicializado aún.");
         return;
       }
-      if (!parada) return;
+      // Importante: 'parada' aquí es el objeto que contiene lat y lng,
+      // que viene directamente del mensaje de hijo5.
+      if (!parada || typeof parada.lat === 'undefined' || typeof parada.lng === 'undefined') {
+          console.error("Error: Las coordenadas de la parada no están definidas para el marcador.");
+          return;
+      }
       if (markerParada) { map.removeLayer(markerParada); markerParada = null; }
       markerParada = L.marker([parada.lat, parada.lng], { icon: L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png', iconSize: [32, 32] }) }).addTo(map);
       map.setView([parada.lat, parada.lng], 16);
@@ -386,7 +421,12 @@ function avanzarParada() { // Esta función parece de prueba, la principal es av
       if (markerParada) { map.removeLayer(markerParada); markerParada = null; }
     }
     function enviarGPSaHijo2(origen, destino) {
-      document.getElementById('hijo2')?.contentWindow.postMessage({ tipo: 'navegar-de-a-b', origen: origen, destino: destino }, '*');
+      // Asegúrate de que el iframe hijo2 exista antes de intentar enviarle un mensaje
+      if (document.getElementById('hijo2')) {
+        document.getElementById('hijo2').contentWindow.postMessage({ tipo: 'navegar-de-a-b', origen: origen, destino: destino }, '*');
+      } else {
+        console.warn("Advertencia: Iframe 'hijo2' no encontrado. No se puede enviar GPS.");
+      }
     }
   </script>
 </body>
