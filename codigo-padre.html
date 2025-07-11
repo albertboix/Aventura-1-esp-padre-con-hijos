@@ -48,19 +48,32 @@
       box-shadow: 0 2px 6px rgba(0,0,0,0.2);
     }
     /* Recordatorio de tus preferencias: los bordes deben ser siempre de igual grosor. */
-    /* Asegúrate de que los bordes de tus iframes, si varían, sigan tu regla de consistencia de grosor. */
     iframe {
         /* Ejemplo para aplicar grosor consistente: */
         /* border-width: 2px; */
         /* border-style: solid; */
         /* Puedes elegir un color aquí o mantener el que ya tienes en línea */
     }
+    /* ESTILO ACTUALIZADO PARA info-parada */
+    #info-parada {
+      font-weight:bold;
+      margin:10px;
+      padding: 5px;
+      background-color: rgba(255,255,255,0.7);
+      border-radius: 5px;
+      position: fixed;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 200;
+      display: none; /* Oculto por defecto, se muestra por JS */
+    }
   </style>
 </head>
 <body>
   <div id="mapa"></div>
   
-  <div id="info-parada" style="font-weight:bold; margin:10px; padding: 5px; background-color: rgba(255,255,255,0.7); border-radius: 5px; position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 200;"></div>
+  <div id="info-parada"></div>
   
   <iframe id="hijo1-hamburguesa" src="botones-y-subfunciones-hamburguesa.html" style="position:fixed; left:1vw; bottom:0vw; height: 265px; width:57px; z-index:1000; border:2px solid red; background:transparent; pointer-events:auto;"></iframe>
   <iframe id="hijo1-opciones" src="botones-y-subfunciones-opciones.html" style="position:fixed; right:1vw; bottom:0vw; height: 265px; width:57px; z-index:1000; border:2px solid red; background:transparent; pointer-events:auto;"></iframe>
@@ -119,30 +132,39 @@ const PARADAS = [
 
 let paradaActual = 0; // Índice de la parada actual
 
-// Mostrar la parada actual en la interfaz
+// Mostrar la parada actual en la interfaz y hacer visible el div
 function mostrarParadaActual() {
   const info = document.getElementById('info-parada');
-  if (info) {
+  if (info && PARADAS[paradaActual]) { // Asegúrate de que PARADAS[paradaActual] exista
     info.textContent = `Parada ${paradaActual + 1}, nombre: ${PARADAS[paradaActual].nombre}`;
+    info.style.display = 'block'; // Hace visible el div cuando se llama esta función
   }
 }
 
-// Llamar a mostrarParadaActual al avanzar
-function avanzarParada() {
+// Ocultar la información de la parada
+function ocultarInfoParada() {
+  const info = document.getElementById('info-parada');
+  if (info) {
+    info.style.display = 'none'; // Oculta el div
+  }
+}
+
+// Llamar a mostrarParadaActual al avanzar (ejemplo de uso si lo quieres activar desde aquí)
+function avanzarParada() { // Esta función parece de prueba, la principal es avanzarAParada
   if (paradaActual < PARADAS.length - 1) {
     paradaActual++;
-    mostrarParadaActual();
+    mostrarParadaActual(); // Llama para mostrar y actualizar
     console.log(`Ahora debes ir a la parada ${paradaActual + 1}: ${PARADAS[paradaActual].nombre}`);
   } else {
-    mostrarParadaActual();
+    mostrarParadaActual(); // Llama para mostrar y actualizar
     console.log('¡Has completado todas las paradas!');
   }
 }
 
-// Mostrar la parada al cargar la página
-window.onload = function() {
-  mostrarParadaActual();
-};
+// Eliminada la llamada a mostrarParadaActual en window.onload para control manual
+// window.onload = function() {
+//   // mostrarParadaActual();
+// };
 
 // Ejemplo de cómo el hijo podría llamar a esta función:
 // avanzarParada();
@@ -151,19 +173,31 @@ window.onload = function() {
   
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
+    // Envuelve la inicialización del mapa en un DOMContentLoaded listener
+    // Esto asegura que el DOM esté completamente cargado antes de inicializar el mapa
+    let map; // Declara 'map' fuera del listener para que sea accesible globalmente
 
-    // --- Inicializar mapa ---
-    const map = L.map('mapa').setView([39.478046, -0.375515], 14);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 40, attribution: '© OpenStreetMap contributors' }).addTo(map);
+    document.addEventListener('DOMContentLoaded', function() {
+      map = L.map('mapa').setView([39.478046, -0.375515], 14);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 40, attribution: '© OpenStreetMap contributors' }).addTo(map);
+
+      // Opcional: forzar un redibujado del mapa después de un pequeño retraso
+      // Esto es útil si el mapa aparece "gris" o incompleto
+      setTimeout(() => {
+        map.invalidateSize();
+      }, 100); // Pequeño retraso de 100ms
+    });
+    
     // --- Estado global ---
-    let paradas = []; // Array de paradas con {lat, lng, nombre}
+    let paradas = []; // Array de paradas con {lat, lng, nombre} (este parece ser duplicado, usa PARADAS global)
     let waypoints = []; // Array de waypoints entre paradas
-    let paradaActual = 0;
+    // let paradaActual = 0; // Esta variable ya está declarada en el primer script
     let gpsOn = true;
     let polyline = null;
     let markerA = null, markerB = null;
     let tramosRecorridos = [];
     let markerParada = null; // NUEVO: marcador de parada seleccionada
+
     // ================== CONTROL DE VISIBILIDAD HIJO 4 ==================
     const iframeHijo4 = document.getElementById('hijo4');
     function mostrarRetoEnHijo4(index) {
@@ -172,10 +206,12 @@ window.onload = function() {
         index: index
       }, '*');
       iframeHijo4.style.display = 'block';
+      ocultarInfoParada(); // Oculta la info de la parada cuando se muestra un reto
     }
     function ocultarHijo4() {
       iframeHijo4.style.display = 'none';
     }
+
     // ================== ESCUCHA MENSAJES DE LOS HIJOS ==================
     window.addEventListener('message', (event) => {
       const data = event.data;
@@ -217,11 +253,17 @@ window.onload = function() {
         mostrarImagenParada(data.info);
       }
       if (data && data.tipo === 'ya-estoy-aqui') {
-        avanzarAParada(data.parada);
+        // Cuando el GPS confirma que has llegado a una parada
+        // Sincroniza la variable global paradaActual del primer script
+        // Asegúrate de que data.parada sea el índice correcto de la parada a la que se ha llegado
+        window.paradaActual = data.parada; // Usa window.paradaActual para acceder a la global
+        avanzarAParada(data.parada); // Esta función reproduce el audio
+        mostrarParadaActual(); // Llama a la función para actualizar y mostrar el div de info
       }
       // HIJO 3: Audio
       if (data && data.type === 'audioFinalizado') {
-        mostrarRetoEnHijo4(data.paradaIndex !== undefined ? data.paradaIndex : null);
+        // Asegúrate de que PARADAS[window.paradaActual] no sea undefined si el índice no existe
+        mostrarRetoEnHijo4(PARADAS[window.paradaActual] ? PARADAS[window.paradaActual].reto : null);
       }
       // HIJO 4: Retos/preguntas
       if (data && data.type === 'reto-interactivo-completado') {
@@ -249,42 +291,69 @@ window.onload = function() {
         }
       }
       if (data && data.type === 'seleccionParada') {
-        mostrarParadaEnMapa(data.index, data.parada);
+        // Asumiendo que `PARADAS` es accesible aquí, y `data.index` es el índice del array
+        const selectedParada = PARADAS[data.index];
+        mostrarParadaEnMapa(data.index, selectedParada);
+        // Opcional: Mostrar la info de la parada seleccionada manualmente desde el hijo5
+        window.paradaActual = data.index; // Sincroniza
+        mostrarParadaActual(); // Muestra la info de la parada seleccionada
         activarTodosLosBotones();
       }
       if (data && data.type === 'cerrarParadas') {
         borrarParadaEnMapa();
+        ocultarInfoParada(); // Oculta la info de la parada al cerrar el menú de paradas
       }
     });
+
     // ================== BOTÓN DE PRUEBA PARA MOSTRAR RETO 4 ==================
     document.getElementById('boton-reto4').addEventListener('click', function() {
       mostrarRetoEnHijo4(3); // Muestra el reto 4 (índice 3)
     });
-    // ================== INICIALIZACIÓN ==================
-    ocultarHijo4();
+
+    // ================== INICIALIZACIÓN Y FUNCIONES PRINCIPALES ==================
+    ocultarHijo4(); // Oculta el iframe de retos al inicio
+    ocultarInfoParada(); // Asegúrate de que la info de la parada esté oculta al inicio
+
     // --- Funciones principales ---
     function iniciarAventura() {
-      paradaActual = 0;
-      enviarGPSaHijo2(paradaActual, paradaActual + 1);
+      window.paradaActual = 0; // Se inicializa la primera parada
+      enviarGPSaHijo2(window.paradaActual, window.paradaActual + 1);
+      ocultarInfoParada(); // Oculta la info si ya estaba visible al iniciar la aventura
     }
     function avanzarRuta() {
-      paradaActual++;
-      if (paradaActual < paradas.length - 1) {
-        enviarGPSaHijo2(paradaActual, paradaActual + 1);
+      // Se llama después de completar un reto
+      ocultarInfoParada(); // Oculta la info de la parada después de completar un reto
+      window.paradaActual++;
+      if (window.paradaActual < PARADAS.length - 1) {
+        enviarGPSaHijo2(window.paradaActual, window.paradaActual + 1);
+      } else {
+        console.log('¡Has completado todas las paradas de la aventura!');
+        // Aquí podrías añadir lógica para el final de la aventura
       }
     }
     function avanzarAParada(paradaIndex) {
+      // Esta función se llama cuando se confirma la llegada a una parada (mensaje 'ya-estoy-aqui')
+      // Ya hemos actualizado window.paradaActual en el listener, ahora reproducimos el audio
       document.getElementById('hijo3')?.contentWindow.postMessage({ type: 'setAudioParada', index: paradaIndex }, '*');
+      // La llamada a `mostrarParadaActual()` ya se hace en el listener de 'ya-estoy-aqui'
     }
     function activarTodosLosBotones() {
       document.getElementById('hijo2')?.contentWindow.postMessage({ tipo: 'activar-todos-botones' }, '*');
-      document.getElementById('hijo3')?.contentWindow.postMessage({ type: 'setAudioParada', index: 0 }, '*');
+      // No necesitas audio aquí a menos que sea un sonido de "listo"
+      // document.getElementById('hijo3')?.contentWindow.postMessage({ type: 'setAudioParada', index: 0 }, '*');
     }
     function activarModoCasa() {
       document.getElementById('hijo2')?.contentWindow.postMessage({ tipo: 'activar-modo-casa' }, '*');
-      document.getElementById('hijo3')?.contentWindow.postMessage({ type: 'setAudioParada', index: 0 }, '*');
+      // No necesitas audio aquí a menos que sea un sonido de "modo casa activado"
+      // document.getElementById('hijo3')?.contentWindow.postMessage({ type: 'setAudioParada', index: 0 }, '*');
+      ocultarInfoParada(); // Oculta la info de parada al activar modo casa
     }
     function mostrarRutaEnMapa(ruta, origen, destino) {
+      // Asegúrate de que 'map' esté definido, ya que se inicializa en DOMContentLoaded
+      if (!map) {
+        console.error("Mapa no inicializado aún.");
+        return;
+      }
       if (polyline) { map.removeLayer(polyline); }
       if (markerA) { map.removeLayer(markerA); }
       if (markerB) { map.removeLayer(markerB); }
@@ -302,12 +371,17 @@ window.onload = function() {
       alert('Mostrar imagen de: ' + (info && info.nombre ? info.nombre : ''));
     }
     function mostrarParadaEnMapa(index, parada) {
+      // Asegúrate de que 'map' esté definido
+      if (!map) {
+        console.error("Mapa no inicializado aún.");
+        return;
+      }
       if (!parada) return;
       if (markerParada) { map.removeLayer(markerParada); markerParada = null; }
       markerParada = L.marker([parada.lat, parada.lng], { icon: L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png', iconSize: [32, 32] }) }).addTo(map);
       map.setView([parada.lat, parada.lng], 16);
     }
-    // NUEVO: función para borrar el icono de parada seleccionada
+    // Función para borrar el icono de parada seleccionada
     function borrarParadaEnMapa() {
       if (markerParada) { map.removeLayer(markerParada); markerParada = null; }
     }
