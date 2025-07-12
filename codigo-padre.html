@@ -1,544 +1,457 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Aventura 1 - Padre</title>
-  
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  
-  <style>
-    html, body {
-      height: 100%;
-      margin: 0;
-      padding: 0;
-      overflow: hidden; /* Evita scroll no deseado */
-    }
-    #mapa {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      z-index: 1; /* Bajo z-index para que sea el fondo */
-    }
-    body {
-      margin: 0;
-      padding: 0;
-      background: transparent; /* MUY IMPORTANTE: Para que el mapa se vea a través del body */
-    }
-    /* Estilo base para todos los iframes, si no se sobreescribe */
-    iframe {
-      background: transparent; /* Asegura que los iframes no tapen el mapa con un fondo opaco */
-    }
-
-    /* ================== VARIABLES Y ESTILO HIJO 4 (RETOS) ================== */
-    :root {
-      --iframe-hijo4-width: 60vw;
-      --iframe-hijo4-height: 40vh;
-      --iframe-hijo4-top: 10vh;
-      --iframe-hijo4-left: 50%;
-      --iframe-hijo4-translate-x: -50%;
-      --iframe-hijo4-z: 2000;
-    }
-    #hijo4 {
-      position: fixed;
-      top: var(--iframe-hijo4-top);
-      left: var(--iframe-hijo4-left);
-      width: var(--iframe-hijo4-width);
-      height: var(--iframe-hijo4-height);
-      transform: translateX(var(--iframe-hijo4-translate-x));
-      z-index: var(--iframe-hijo4-z);
-      border: 2px solid red; /* Borde consistente */
-      background: transparent;
-      pointer-events: auto;
-      display: none; /* Oculto por defecto, se muestra por JS */
-    }
-
-    /* ESTILO ACTUALIZADO PARA info-parada */
-    #info-parada {
-      font-weight:bold;
-      margin:10px;
-      padding: 5px;
-      background-color: rgba(255,255,255,0.7);
-      border-radius: 5px;
-      position: fixed;
-      top: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 200;
-      display: none; /* Oculto por defecto, se muestra por JS */
-      color: #333;
-      font-family: sans-serif;
-      text-align: center;
-    }
-
-    /* ================== ESTILO PARA VIDEO E IMAGEN (NUEVO) ================== */
-    #media-overlay {
-        display: none; /* Oculto por defecto, se cambia a 'flex' para mostrar */
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        background: rgba(0, 0, 0, 0.8);
-        z-index: 4000; /* Alto z-index para estar por encima de todo */
-        /* display: flex; REMOVED from CSS, controlled by JS */
-        justify-content: center;
-        align-items: center;
-        backdrop-filter: blur(5px); /* Efecto de desenfoque */
-    }
-
-    #media-container {
-        max-width: 90%;
-        max-height: 90%;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        position: relative;
-        background: #fff;
-        border-radius: 8px;
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-        padding: 20px;
-    }
-
-    #close-media {
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        background: #ff5252;
-        color: white;
-        border: none;
-        border-radius: 50%;
-        width: 35px;
-        height: 35px;
-        font-size: 1.2em;
-        cursor: pointer;
-        z-index: 4001;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-    }
-
-    #parada-video, #parada-imagen {
-        max-width: 100%;
-        max-height: calc(100vh - 80px); /* Ajusta para dejar espacio al botón de cerrar */
-        display: none; /* Oculto por defecto */
-        border-radius: 5px;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aventura Urbana</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzxH+iPxhly3SLgEoPzEccVpVc=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/4K6NDy+pO3E7xK8aFiPyE=" crossorigin=""></script>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
+        #mapa { height: 100vh; width: 100vw; position: absolute; top: 0; left: 0; z-index: 0; }
+        .iframe-container {
+            border: 4px solid red; /* Borde rojo de 4px para todos los iframes */
+            border-radius: 15px;
+            box-sizing: border-box; /* Asegura que el borde no aumente el tamaño total */
+            overflow: hidden; /* Oculta cualquier contenido que se salga del borde redondeado */
+        }
+        #info-parada {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 10px 20px;
+            border-radius: 10px;
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #333;
+            z-index: 1000;
+            display: none; /* Inicialmente oculto */
+            text-align: center;
+            border: 2px solid #007bff; /* Borde para el div de información */
+        }
+        #media-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            flex-direction: column;
+        }
+        #media-overlay video, #media-overlay img {
+            max-width: 90%;
+            max-height: 90%;
+            border: 2px solid white;
+            display: none; /* Oculto por defecto */
+        }
+        #close-media {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+    </style>
 </head>
 <body>
-  <div id="mapa"></div>
-  
-  <div id="info-parada"></div>
-  
-  <iframe id="hijo1-hamburguesa" src="botones-y-subfunciones-hamburguesa.html" style="position:fixed; left:1vw; bottom:0vw; height: 265px; width:57px; z-index:1000; border:2px solid red; background:transparent; pointer-events:auto;"></iframe>
-  <iframe id="hijo1-opciones" src="botones-y-subfunciones-opciones.html" style="position:fixed; right:1vw; bottom:0vw; height: 265px; width:57px; z-index:1000; border:2px solid red; background:transparent; pointer-events:auto;"></iframe>
-  <iframe id="hijo1-mapa" src="botones-y-subfunciones-mapa.html" style="position:fixed; right:1vw; top:0vw; height: 200px; width:57px; z-index:1000; border:2px solid red; background:transparent; pointer-events:auto;"></iframe>
-  <iframe id="hijo5-casa" src="Av1-boton-casa.html" style="position:fixed; left:10px; top:10px; height:350px; width:100px; z-index:1000; border:2px solid red; background:transparent; pointer-events:auto; transition:width 0.3s;"></iframe>
-  
-  <iframe id="hijo3" src="Av1_audio_esp.html" 
-          style="position:fixed; 
-                 bottom:0px; 
-                 left:50%; 
-                 transform:translateX(-50%); 
-                 height:80px; /* AJUSTADO: Ahora a 80px de altura */
-                 width:250px; 
-                 z-index:1000; 
-                 border:5px solid blue; 
-                 background:rgba(0, 0, 255, 0.5); 
-                 display:block; 
-                 pointer-events:auto;"></iframe>
-  
-  <iframe id="hijo2" src="Av1-botones-coordenadas.html" 
-          style="position:fixed; 
-                 bottom:85px; /* AJUSTADO: 80px (altura de Hijo 3) + 5px (margen) */
-                 left:50%; 
-                 transform:translateX(-50%); 
-                 height:100px; 
-                 width:250px; 
-                 z-index:1001; 
-                 border:5px solid yellow; 
-                 background:rgba(255, 255, 0, 0.5); 
-                 pointer-events:auto;"></iframe>
-  
-  <iframe id="hijo4" src="Av1-esp-retos-preguntas.html"></iframe>
+    <div id="mapa"></div>
+    <div id="info-parada"></div>
 
-  <div id="media-overlay">
-      <div id="media-container">
-          <button id="close-media">X</button>
-          <video id="parada-video" controls></video>
-          <img id="parada-imagen">
-      </div>
-  </div>
+    <div id="media-overlay" style="display: none;">
+        <button id="close-media">X</button>
+        <video id="parada-video" controls></video>
+        <img id="parada-imagen" alt="Contenido de la parada">
+    </div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <iframe id="hijo1-hamburguesa" src="Av1-hamburguesa.html" class="iframe-container" style="position: absolute; bottom: 0; left: 0; width: 120px; height: 100px; border: 4px solid red; border-radius: 15px;"></iframe>
+    <iframe id="hijo1-opciones" src="Av1-mas-opciones.html" class="iframe-container" style="position: absolute; bottom: 0; left: 0; width: 120px; height: 100px; border: 4px solid red; border-radius: 15px;"></iframe>
+    <iframe id="hijo1-mapa" src="Av1-botones-mapa.html" class="iframe-container" style="position: absolute; bottom: 0; left: 0; width: 120px; height: 100px; border: 4px solid red; border-radius: 15px;"></iframe>
+    
+    <iframe id="hijo2" src="Av1-botones-coordenadas.html" class="iframe-container" style="position: absolute; bottom: 0; left: 135px; width: 130px; height: 100px;"></iframe>
+    
+    <iframe id="hijo3" src="Av1_audio_esp.html" class="iframe-container" style="position: absolute; bottom: 0; left: 270px; width: 130px; height: 100px; transform: perspective(300px) rotateX(10deg) skewX(5deg); transform-origin: bottom left;"></iframe>
+    
+    <iframe id="hijo4" src="Av1-esp-retos-preguntas.html" class="iframe-container" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80%; height: 80%; z-index: 1000;"></iframe>
 
-  <script>
-    // ================== ARRAY DE 40 PARADAS (METADATOS) ==================
-    // Este array contiene solo el nombre y datos de audio/reto/foto/video.
-    // Las coordenadas (lat/lng) se gestionan en Av1-botones-coordenadas.html (Hijo 2).
-    const PARADAS = [
-      { parada: 1, nombre: "Torres de Serranos (start)", audio: "audio_1.mp3", reto: 0, foto: "img_1.jpg", video: "video_1.mp4" },
-      { parada: 2, nombre: "Puente de Serranos – Plaza de la crida", audio: "audio_2.mp3", reto: 1, foto: "img_2.jpg", video: "video_2.mp4" },
-      { parada: 3, nombre: "Cortes Valencianas (Palacio de los Borgia)", audio: "audio_3.mp3", reto: 2, foto: "img_3.jpg", video: "video_3.mp4" },
-      { parada: 4, nombre: "Plaza de la Virgen", audio: "audio_4.mp3", reto: 3, foto: "img_4.jpg", video: "video_4.mp4" },
-      { parada: 5, nombre: "Plaza de la Almoína", audio: "audio_5.mp3", reto: 4, foto: "img_5.jpg", video: "video_5.mp4" },
-      { parada: 6, nombre: "Catedral de València", audio: "audio_6.mp3", reto: 5, foto: "img_6.jpg", video: "video_6.mp4" },
-      { parada: 7, nombre: "Plaza decimo Juno Bruto (Museo Arqueológico de la Almoína)", audio: "audio_7.mp3", reto: 6, foto: "img_7.jpg", video: "video_7.mp4" },
-      { parada: 8, nombre: "Basílica de València", audio: "audio_8.mp3", reto: 7, foto: "img_8.jpg", video: "video_8.mp4" },
-      { parada: 9, nombre: "Palacio Arzobispal", audio: "audio_9.mp3", reto: 8, foto: "img_9.jpg", video: "video_9.mp4" },
-      { parada: 10, nombre: "Plaza del Ayuntamiento", audio: "audio_10.mp3", reto: 9, foto: "img_10.jpg", video: "video_10.mp4" },
-      { parada: 11, nombre: "Edificio del Ayuntamiento de València", audio: "audio_11.mp3", reto: 10, foto: "img_11.jpg", video: "video_11.mp4" },
-      { parada: 12, nombre: "Estación de Ferrocarril (Estación del Norte)", audio: "audio_12.mp3", reto: 11, foto: "img_12.jpg", video: "video_12.mp4" },
-      { parada: 13, nombre: "Plaza de Toros de València", audio: "audio_13.mp3", reto: 12, foto: "img_13.jpg", video: "video_13.mp4" },
-      { parada: 14, nombre: "Casa estilo Árabe", audio: "audio_14.mp3", reto: 13, foto: "img_14.jpg", video: "video_14.mp4" },
-      { parada: 15, nombre: "Palacio de Comunicaciones (Correos)", audio: "audio_15.mp3", reto: 14, foto: "img_15.jpg", video: "video_15.mp4" },
-      { parada: 16, nombre: "Antigua sede del Banco de València", audio: "audio_16.mp3", reto: 15, foto: "img_16.jpg", video: "video_16.mp4" },
-      { parada: 17, nombre: "Palacio del Marqués de Dos Aguas (Museo Nacional de Crámica)", audio: "audio_17.mp3", reto: 16, foto: "img_17.jpg", video: "video_17.mp4" },
-      { parada: 18, nombre: "Mercado Central", audio: "audio_18.mp3", reto: 17, foto: "img_18.jpg", video: "video_18.mp4" },
-      { parada: 19, nombre: "San Juan del Mercado (Iglesia de los Santos Juanes)", audio: "audio_19.mp3", reto: 18, foto: "img_19.jpg", video: "video_19.mp4" },
-      { parada: 20, nombre: "Lonja de València (Mercado de la Seda)", audio: "audio_20.mp3", reto: 19, foto: "img_20.jpg", video: "video_20.mp4" },
-      { parada: 21, nombre: "Plaza del Doctor Collado", audio: "audio_21.mp3", reto: 20, foto: "img_21.jpg", video: "video_21.mp4" },
-      { parada: 22, nombre: "Plaza del Negrito (Fuente del Negrito)", audio: "audio_22.mp3", reto: 21, foto: "img_22.jpg", video: "video_22.mp4" },
-      { parada: 23, nombre: "Calle Caballeros", audio: "audio_23.mp3", reto: 22, foto: "img_23.jpg", video: "video_23.mp4" },
-      { parada: 24, nombre: "Palacio de la Generalitat", audio: "audio_24.mp3", reto: 23, foto: "img_24.jpg", video: "video_24.mp4" },
-      { parada: 25, nombre: "Calle de los Serranos (end)", audio: "audio_25.mp3", reto: 24, foto: "img_25.jpg", video: "video_25.mp4" },
-      { parada: 26, nombre: "Parada 26", audio: "audio_26.mp3", reto: 25, foto: "img_26.jpg", video: "video_26.mp4" },
-      { parada: 27, nombre: "Parada 27", audio: "audio_27.mp3", reto: 26, foto: "img_27.jpg", video: "video_27.mp4" },
-      { parada: 28, nombre: "Parada 28", audio: "audio_28.mp3", reto: 27, foto: "img_28.jpg", video: "video_28.mp4" },
-      { parada: 29, nombre: "Parada 29", audio: "audio_29.mp3", reto: 28, foto: "img_29.jpg", video: "video_29.mp4" },
-      { parada: 30, nombre: "Parada 30", audio: "audio_30.mp3", reto: 29, foto: "img_30.jpg", video: "video_30.mp4" },
-      { parada: 31, nombre: "Parada 31", audio: "audio_31.mp3", reto: 30, foto: "img_31.jpg", video: "video_31.mp4" },
-      { parada: 32, nombre: "Parada 32", audio: "audio_32.mp3", reto: 31, foto: "img_32.jpg", video: "video_32.mp4" },
-      { parada: 33, nombre: "Parada 33", audio: "audio_33.mp3", reto: 32, foto: "img_33.jpg", video: "video_33.mp4" },
-      { parada: 34, nombre: "Parada 34", audio: "audio_34.mp3", reto: 33, foto: "img_34.jpg", video: "video_34.mp4" },
-      { parada: 35, nombre: "Parada 35", audio: "audio_35.mp3", reto: 34, foto: "img_35.jpg", video: "video_35.mp4" },
-      { parada: 36, nombre: "Parada 36", audio: "audio_36.mp3", reto: 35, foto: "img_36.jpg", video: "video_36.mp4" },
-      { parada: 37, nombre: "Parada 37", audio: "audio_37.mp3", reto: 36, foto: "img_37.jpg", video: "video_37.mp4" },
-      { parada: 38, nombre: "Parada 38", audio: "audio_38.mp3", reto: 37, foto: "img_38.jpg", video: "video_38.mp4" },
-      { parada: 39, nombre: "Parada 39", audio: "audio_39.mp3", reto: 38, foto: "img_39.jpg", video: "video_39.mp4" },
-      { parada: 40, nombre: "Parada 40", audio: "audio_40.mp3", reto: 39, foto: "img_40.jpg", video: "video_40.mp4" }
-    ];
+    <iframe id="hijo5-casa" src="Av1-gps-casa.html" class="iframe-container" style="position: absolute; bottom: 0; right: 0; width: 220px; height: 100px; border: 4px solid red; border-radius: 15px;"></iframe>
 
-    let paradaActual = 0; // Índice de la parada actual
+    <script>
+        // ================== ARRAY DE 40 PARADAS (METADATOS) ==================
+        // Este array contiene solo el nombre y datos de audio/reto/foto/video.
+        // Las coordenadas (lat/lng) se gestionan en Av1-botones-coordenadas.html (Hijo 2).
+        const PARADAS = [
+          { parada: 1, nombre: "Torres de Serranos (start)", audio: "audio_1.mp3", reto: 0, foto: "img_1.jpg", video: "video_1.mp4" },
+          { parada: 2, nombre: "Puente de Serranos – Plaza de la crida", audio: "audio_2.mp3", reto: 1, foto: "img_2.jpg", video: "video_2.mp4" },
+          { parada: 3, nombre: "Cortes Valencianas (Palacio de los Borgia)", audio: "audio_3.mp3", reto: 2, foto: "img_3.jpg", video: "video_3.mp4" },
+          { parada: 4, nombre: "Plaza de la Virgen", audio: "audio_4.mp3", reto: 3, foto: "img_4.jpg", video: "video_4.mp4" },
+          { parada: 5, nombre: "Plaza de la Almoína", audio: "audio_5.mp3", reto: 4, foto: "img_5.jpg", video: "video_5.mp4" },
+          { parada: 6, nombre: "Catedral de València", audio: "audio_6.mp3", reto: 5, foto: "img_6.jpg", video: "video_6.mp4" },
+          { parada: 7, nombre: "Plaza decimo Juno Bruto (Museo Arqueológico de la Almoína)", audio: "audio_7.mp3", reto: 6, foto: "img_7.jpg", video: "video_7.mp4" },
+          { parada: 8, nombre: "Basílica de València", audio: "audio_8.mp3", reto: 7, foto: "img_8.jpg", video: "video_8.mp4" },
+          { parada: 9, nombre: "Palacio Arzobispal", audio: "audio_9.mp3", reto: 8, foto: "img_9.jpg", video: "video_9.mp4" },
+          { parada: 10, nombre: "Plaza del Ayuntamiento", audio: "audio_10.mp3", reto: 9, foto: "img_10.jpg", video: "video_10.mp4" },
+          { parada: 11, nombre: "Edificio del Ayuntamiento de València", audio: "audio_11.mp3", reto: 10, foto: "img_11.jpg", video: "video_11.mp4" },
+          { parada: 12, nombre: "Estación de Ferrocarril (Estación del Norte)", audio: "audio_12.mp3", reto: 11, foto: "img_12.jpg", video: "video_12.mp4" },
+          { parada: 13, nombre: "Plaza de Toros de València", audio: "audio_13.mp3", reto: 12, foto: "img_13.jpg", video: "video_13.mp4" },
+          { parada: 14, nombre: "Casa estilo Árabe", audio: "audio_14.mp3", reto: 13, foto: "img_14.jpg", video: "video_14.mp4" },
+          { parada: 15, nombre: "Palacio de Comunicaciones (Correos)", audio: "audio_15.mp3", reto: 14, foto: "img_15.jpg", video: "video_15.mp4" },
+          { parada: 16, nombre: "Antigua sede del Banco de València", audio: "audio_16.mp3", reto: 15, foto: "img_16.jpg", video: "video_16.mp4" },
+          { parada: 17, nombre: "Palacio del Marqués de Dos Aguas (Museo Nacional de Crámica)", audio: "audio_17.mp3", reto: 16, foto: "img_17.jpg", video: "video_17.mp4" },
+          { parada: 18, nombre: "Mercado Central", audio: "audio_18.mp3", reto: 17, foto: "img_18.jpg", video: "video_18.mp4" },
+          { parada: 19, nombre: "San Juan del Mercado (Iglesia de los Santos Juanes)", audio: "audio_19.mp3", reto: 18, foto: "img_19.jpg", video: "video_19.mp4" },
+          { parada: 20, nombre: "Lonja de València (Mercado de la Seda)", audio: "audio_20.mp3", reto: 19, foto: "img_20.jpg", video: "video_20.mp4" },
+          { parada: 21, nombre: "Plaza del Doctor Collado", audio: "audio_21.mp3", reto: 20, foto: "img_21.jpg", video: "video_21.mp4" },
+          { parada: 22, nombre: "Plaza del Negrito (Fuente del Negrito)", audio: "audio_22.mp3", reto: 21, foto: "img_22.jpg", video: "video_22.mp4" },
+          { parada: 23, nombre: "Calle Caballeros", audio: "audio_23.mp3", reto: 22, foto: "img_23.jpg", video: "video_23.mp4" },
+          { parada: 24, nombre: "Palacio de la Generalitat", audio: "audio_24.mp3", reto: 23, foto: "img_24.jpg", video: "video_24.mp4" },
+          { parada: 25, nombre: "Calle de los Serranos (end)", audio: "audio_25.mp3", reto: 24, foto: "img_25.jpg", video: "video_25.mp4" },
+          { parada: 26, nombre: "Parada 26", audio: "audio_26.mp3", reto: 25, foto: "img_26.jpg", video: "video_26.mp4" },
+          { parada: 27, nombre: "Parada 27", audio: "audio_27.mp3", reto: 26, foto: "img_27.jpg", video: "video_27.mp4" },
+          { parada: 28, nombre: "Parada 28", audio: "audio_28.mp3", reto: 27, foto: "img_28.jpg", video: "video_28.mp4" },
+          { parada: 29, nombre: "Parada 29", audio: "audio_29.mp3", reto: 28, foto: "img_29.jpg", video: "video_29.mp4" },
+          { parada: 30, nombre: "Parada 30", audio: "audio_30.mp3", reto: 29, foto: "img_30.jpg", video: "video_30.mp4" },
+          { parada: 31, nombre: "Parada 31", audio: "audio_31.mp3", reto: 30, foto: "img_31.jpg", video: "video_31.mp4" },
+          { parada: 32, nombre: "Parada 32", audio: "audio_32.mp3", reto: 31, foto: "img_32.jpg", video: "video_32.mp4" },
+          { parada: 33, nombre: "Parada 33", audio: "audio_33.mp3", reto: 32, foto: "img_33.jpg", video: "video_33.mp4" },
+          { parada: 34, nombre: "Parada 34", audio: "audio_34.mp3", reto: 33, foto: "img_34.jpg", video: "video_34.mp4" },
+          { parada: 35, nombre: "Parada 35", audio: "audio_35.mp3", reto: 34, foto: "img_35.jpg", video: "video_35.mp4" },
+          { parada: 36, nombre: "Parada 36", audio: "audio_36.mp3", reto: 35, foto: "img_36.jpg", video: "video_36.mp4" },
+          { parada: 37, nombre: "Parada 37", audio: "audio_37.mp3", reto: 36, foto: "img_37.jpg", video: "video_37.mp4" },
+          { parada: 38, nombre: "Parada 38", audio: "audio_38.mp3", reto: 37, foto: "img_38.jpg", video: "video_38.mp4" },
+          { parada: 39, nombre: "Parada 39", audio: "audio_39.mp3", reto: 38, foto: "img_39.jpg", video: "video_39.mp4" },
+          { parada: 40, nombre: "Parada 40", audio: "audio_40.mp3", reto: 39, foto: "img_40.jpg", video: "video_40.mp4" }
+        ];
 
-    // Mostrar la parada actual en la interfaz y hacer visible el div
-    function mostrarParadaActual() {
-      const info = document.getElementById('info-parada');
-      if (info && PARADAS[paradaActual]) { // Asegúrate de que PARADAS[paradaActual] exista
-        info.textContent = `Parada ${paradaActual + 1}, nombre: ${PARADAS[paradaActual].nombre}`;
-        info.style.display = 'block'; // Hace visible el div cuando se llama esta función
-      }
-    }
+        let paradaActual = 0; // Índice de la parada actual
 
-    // Ocultar la información de la parada
-    function ocultarInfoParada() {
-      const info = document.getElementById('info-parada');
-      if (info) {
-        info.style.display = 'none'; // Oculta el div
-      }
-    }
-
-    // ================== MAPA LEAFLET ==================
-    let map; // Declara 'map' fuera del listener para que sea accesible globalmente
-    let userLocationMarker = null; // Marcador para la ubicación del usuario (NUEVO)
-
-    document.addEventListener('DOMContentLoaded', function() {
-      map = L.map('mapa').setView([39.478046, -0.375515], 14);
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 40, attribution: '© OpenStreetMap contributors' }).addTo(map);
-
-      setTimeout(() => {
-        if (map) { // Añadimos una comprobación por si acaso
-            map.invalidateSize();
-            console.log("map.invalidateSize() ejecutado."); // Para depuración
+        // Mostrar la parada actual en la interfaz y hacer visible el div
+        function mostrarParadaActual() {
+          const info = document.getElementById('info-parada');
+          if (info && PARADAS[paradaActual]) { // Asegúrate de que PARADAS[paradaActual] exista
+            info.textContent = `Parada ${paradaActual + 1}, nombre: ${PARADAS[paradaActual].nombre}`;
+            info.style.display = 'block'; // Hace visible el div cuando se llama esta función
+          }
         }
-      }, 100);
-    });
-      
-    // --- Estado global ---
-    let polyline = null;
-    let markerA = null, markerB = null;
-    let markerParada = null; // marcador de parada seleccionada
 
-    // ================== CONTROL DE VISIBILIDAD HIJO 4 ==================
-    const iframeHijo4 = document.getElementById('hijo4');
-    function mostrarRetoEnHijo4(index) {
-      // Asegúrate de que el índice sea válido para el array PARADAS
-      if (index !== null && index !== undefined && PARADAS[window.paradaActual] && typeof PARADAS[window.paradaActual].reto === 'number') {
-          iframeHijo4.contentWindow.postMessage({
-              type: 'mostrarRetoIndex',
-              index: PARADAS[window.paradaActual].reto // Pasamos el 'reto' index del array PARADAS
-          }, '*');
-          iframeHijo4.style.display = 'block';
-          ocultarInfoParada(); // Oculta la info de la parada cuando se muestra un reto
-      } else {
-          console.warn("No se pudo mostrar el reto: índice o datos de reto inválidos para la parada actual.");
-      }
-    }
-    function ocultarHijo4() {
-      iframeHijo4.style.display = 'none';
-    }
-
-    // ================== CONTROL DE VISIBILIDAD DE MEDIOS (VIDEO/IMAGEN) (NUEVO) ==================
-    const mediaOverlay = document.getElementById('media-overlay');
-    const closeMediaButton = document.getElementById('close-media');
-    const paradaVideo = document.getElementById('parada-video');
-    const paradaImagen = document.getElementById('parada-imagen');
-
-    // Función para cerrar la superposición de medios
-    function closeMediaOverlay() {
-        mediaOverlay.style.display = 'none';
-        paradaVideo.pause();
-        paradaVideo.currentTime = 0; // Reinicia el video
-        paradaVideo.style.display = 'none';
-        paradaImagen.style.display = 'none';
-    }
-
-    // Event listener para el botón de cerrar medios
-    closeMediaButton.addEventListener('click', closeMediaOverlay);
-
-    function mostrarVideoParada(paradaData) {
-        if (paradaData && paradaData.video) {
-            paradaVideo.src = paradaData.video; // Asume que el video está en la misma ruta o ruta relativa conocida
-            paradaVideo.style.display = 'block';
-            paradaImagen.style.display = 'none';
-            mediaOverlay.style.display = 'flex'; // Cambiar a flex para mostrar
-            paradaVideo.play();
-            ocultarInfoParada(); // Oculta la info de la parada al mostrar video
+        // Ocultar la información de la parada
+        function ocultarInfoParada() {
+          const info = document.getElementById('info-parada');
+          if (info) {
+            info.style.display = 'none'; // Oculta el div
+          }
         }
-    }
 
-    function mostrarImagenParada(paradaData) {
-        if (paradaData && paradaData.foto) {
-            paradaImagen.src = paradaData.foto; // Asume que la imagen está en la misma ruta o ruta relativa conocida
-            paradaImagen.style.display = 'block';
-            paradaVideo.style.display = 'none';
-            mediaOverlay.style.display = 'flex'; // Cambiar a flex para mostrar
-            ocultarInfoParada(); // Oculta la info de la parada al mostrar imagen
-        }
-    }
+        // ================== MAPA LEAFLET ==================
+        let map; // Declara 'map' fuera del listener para que sea accesible globalmente
+        let userLocationMarker = null; // Marcador para la ubicación del usuario (NUEVO)
 
-    // ================== ESCUCHA MENSAJES DE LOS HIJOS ==================
-    window.addEventListener('message', (event) => {
-      const data = event.data;
+        document.addEventListener('DOMContentLoaded', function() {
+          map = L.map('mapa').setView([39.478046, -0.375515], 14);
+          L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 40, attribution: '© OpenStreetMap contributors' }).addTo(map);
 
-      // HIJO 4: Retos/preguntas (ocultar ventana de retos)
-      if (data && data.type === 'ocultarReto') {
-        ocultarHijo4();
-      }
-      // --- Lógica para cerrar otros menús de botones ---
-      if (data && data.type === 'closeOtherMenus' && data.except) {
-        const ids = ['hijo1-hamburguesa', 'hijo1-opciones', 'hijo1-mapa'];
-        ids.forEach(id => {
-          if (
-            (id === 'hijo1-hamburguesa' && data.except !== 'hamburguesa') ||
-            (id === 'hijo1-opciones' && data.except !== 'mas-opciones') ||
-            (id === 'hijo1-mapa' && data.except !== 'mapa')
-          ) {
-            const iframe = document.getElementById(id);
-            if (iframe && iframe.contentWindow) {
-              iframe.contentWindow.postMessage({
-                type: 'closeOtherMenus',
-                except: data.except
+          setTimeout(() => {
+            if (map) { // Añadimos una comprobación por si acaso
+                map.invalidateSize();
+                console.log("map.invalidateSize() ejecutado."); // Para depuración
+            }
+          }, 100);
+        });
+          
+        // --- Estado global ---
+        let polyline = null;
+        let markerA = null, markerB = null;
+        let markerParada = null; // marcador de parada seleccionada
+
+        // ================== CONTROL DE VISIBILIDAD HIJO 4 ==================
+        const iframeHijo4 = document.getElementById('hijo4');
+        function mostrarRetoEnHijo4(index) {
+          // Asegúrate de que el índice sea válido para el array PARADAS
+          if (index !== null && index !== undefined && PARADAS[window.paradaActual] && typeof PARADAS[window.paradaActual].reto === 'number') {
+              iframeHijo4.contentWindow.postMessage({
+                  type: 'mostrarRetoIndex',
+                  index: PARADAS[window.paradaActual].reto // Pasamos el 'reto' index del array PARADAS
               }, '*');
+              iframeHijo4.style.display = 'block';
+              ocultarInfoParada(); // Oculta la info de la parada cuando se muestra un reto
+          } else {
+              console.warn("No se pudo mostrar el reto: índice o datos de reto inválidos para la parada actual.");
+          }
+        }
+        function ocultarHijo4() {
+          iframeHijo4.style.display = 'none';
+        }
+
+        // ================== CONTROL DE VISIBILIDAD DE MEDIOS (VIDEO/IMAGEN) (NUEVO) ==================
+        const mediaOverlay = document.getElementById('media-overlay');
+        const closeMediaButton = document.getElementById('close-media');
+        const paradaVideo = document.getElementById('parada-video');
+        const paradaImagen = document.getElementById('parada-imagen');
+
+        // Función para cerrar la superposición de medios
+        function closeMediaOverlay() {
+            mediaOverlay.style.display = 'none';
+            paradaVideo.pause();
+            paradaVideo.currentTime = 0; // Reinicia el video
+            paradaVideo.style.display = 'none';
+            paradaImagen.style.display = 'none';
+        }
+
+        // Event listener para el botón de cerrar medios
+        closeMediaButton.addEventListener('click', closeMediaOverlay);
+
+        function mostrarVideoParada(paradaData) {
+            if (paradaData && paradaData.video) {
+                paradaVideo.src = paradaData.video; // Asume que el video está en la misma ruta o ruta relativa conocida
+                paradaVideo.style.display = 'block';
+                paradaImagen.style.display = 'none';
+                mediaOverlay.style.display = 'flex'; // Cambiar a flex para mostrar
+                paradaVideo.play();
+                ocultarInfoParada(); // Oculta la info de la parada al mostrar video
+            }
+        }
+
+        function mostrarImagenParada(paradaData) {
+            if (paradaData && paradaData.foto) {
+                paradaImagen.src = paradaData.foto; // Asume que la imagen está en la misma ruta o ruta relativa conocida
+                paradaImagen.style.display = 'block';
+                paradaVideo.style.display = 'none';
+                mediaOverlay.style.display = 'flex'; // Cambiar a flex para mostrar
+                ocultarInfoParada(); // Oculta la info de la parada al mostrar imagen
+            }
+        }
+
+        // ================== ESCUCHA MENSAJES DE LOS HIJOS ==================
+        window.addEventListener('message', (event) => {
+          const data = event.data;
+
+          // HIJO 4: Retos/preguntas (ocultar ventana de retos)
+          if (data && data.type === 'ocultarReto') {
+            ocultarHijo4();
+          }
+          // --- Lógica para cerrar otros menús de botones ---
+          if (data && data.type === 'closeOtherMenus' && data.except) {
+            const ids = ['hijo1-hamburguesa', 'hijo1-opciones', 'hijo1-mapa'];
+            ids.forEach(id => {
+              if (
+                (id === 'hijo1-hamburguesa' && data.except !== 'hamburguesa') ||
+                (id === 'hijo1-opciones' && data.except !== 'mas-opciones') ||
+                (id === 'hijo1-mapa' && data.except !== 'mapa')
+              ) {
+                const iframe = document.getElementById(id);
+                if (iframe && iframe.contentWindow) {
+                  iframe.contentWindow.postMessage({
+                    type: 'closeOtherMenus',
+                    except: data.except
+                  }, '*');
+                }
+              }
+            });
+          }
+          // HIJO 1: Botones y subfunciones
+          if (data && data.type === 'pauseAudioFromBoton') {
+            document.getElementById('hijo3')?.contentWindow.postMessage({ type: 'pauseAudio' }, '*');
+          }
+          // HIJO 2: Coordenadas (GPS)
+          if (data && data.tipo === 'mostrar-mapa-gps') {
+            mostrarRutaEnMapa(data.ruta, data.origen, data.destino);
+          }
+          if (data && data.tipo === 'mostrar-zoom-streetview') {
+            // Implementación básica, se podría expandir con API de StreetView
+            alert('Mostrar StreetView de: ' + (data.info && data.info.nombre ? data.info.nombre : ''));
+          }
+          if (data && data.tipo === 'mostrar-imagen') {
+            // data.info debería ser el objeto de PARADAS completo de la parada
+            mostrarImagenParada(data.info);
+          }
+          if (data && data.tipo === 'mostrar-video') { // NUEVO: Manejo de mensajes de video
+            // data.info debería ser el objeto de PARADAS completo de la parada
+            mostrarVideoParada(data.info);
+          }
+          if (data && data.type === 'actualizarUbicacionMapa') { // NUEVO: Mensaje para actualizar ubicación del usuario
+              if (!map) {
+                  console.error("Mapa no inicializado aún.");
+                  return;
+              }
+              const { lat, lng } = data; // Asume que lat y lng vienen en el mensaje
+              if (userLocationMarker) {
+                  userLocationMarker.setLatLng([lat, lng]);
+              } else {
+                  // Icono azul para el usuario
+                  userLocationMarker = L.marker([lat, lng], { 
+                      icon: L.icon({ 
+                          iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png', 
+                          shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', 
+                          iconSize: [25, 41], 
+                          iconAnchor: [12, 41], 
+                          popupAnchor: [1, -34], 
+                          shadowSize: [41, 41] 
+                      }) 
+                  }).addTo(map);
+              }
+              map.setView([lat, lng], map.getZoom()); // Mantiene el zoom actual, o ajusta si es necesario
+          }
+          if (data && data.tipo === 'ya-estoy-aqui') {
+            // Cuando el GPS confirma que has llegado a una parada
+            // Sincroniza la variable global paradaActual del primer script
+            window.paradaActual = data.parada; // data.parada es el índice correcto de la parada
+            avanzarAParada(data.parada); // Esta función reproduce el audio
+            mostrarParadaActual(); // Llama a la función para actualizar y mostrar el div de info
+          }
+          // HIJO 3: Audio
+          if (data && data.type === 'audioFinalizado') {
+            // Asegúrate de que PARADAS[window.paradaActual] no sea undefined si el índice no existe
+            mostrarRetoEnHijo4(PARADAS[window.paradaActual] ? PARADAS[window.paradaActual].reto : null);
+          }
+          // HIJO 4: Retos/preguntas
+          if (data && data.type === 'reto-interactivo-completado') {
+            alert('¡Continúe su aventura!'); // *** NUEVO: Mensaje al usuario ***
+            avanzarRuta(); // Esto ya hace que el padre le diga a Hijo 2 que navegue
+          }
+          if (data && data.type === 'reto-respuesta-mostrada') {
+            // No necesitamos ocultar la parada aquí, ya se oculta en mostrarRetoEnHijo4()
+            // El usuario ha pedido ver la respuesta, puedes decidir si avanzar o esperar acción manual
+            console.log("El usuario decidió ver la respuesta del reto.");
+          }
+          // HIJO 5: GPS Casa (modo off)
+          if (data && data.type === 'gpsStatus') {
+            const gpsOn = data.on;
+            const iframe = document.getElementById('hijo5-casa');
+            if (iframe) {
+              if (gpsOn) {
+                iframe.style.width = '80px';
+              } else {
+                iframe.style.width = '220px';
+              }
+            }
+            if (!gpsOn) {
+              activarModoCasa();
+            } else {
+              iniciarAventura();
+              borrarParadaEnMapa();
             }
           }
+          if (data && data.type === 'seleccionParada') {
+            // Usamos las coordenadas (lat, lng) que vienen directamente del mensaje de hijo5
+            // Y obtenemos el nombre de la parada de nuestro array PARADAS local.
+            const paradaConCoordenadas = { 
+                lat: data.lat, 
+                lng: data.lng, 
+                nombre: PARADAS[data.index]?.nombre || 'Parada seleccionada' 
+            };
+            mostrarParadaEnMapa(data.index, paradaConCoordenadas);
+            window.paradaActual = data.index; 
+            mostrarParadaActual(); // Muestra la info de la parada seleccionada en el div #info-parada
+            activarTodosLosBotones();
+          }
+          if (data && data.type === 'cerrarParadas') {
+            borrarParadaEnMapa();
+            ocultarInfoParada(); // Oculta la info de la parada al cerrar el menú de paradas
+          }
+          // NUEVO: Mensaje para cerrar el visor de medios
+          if (data && data.type === 'cerrarMedia') {
+              closeMediaOverlay();
+          }
         });
-      }
-      // HIJO 1: Botones y subfunciones
-      if (data && data.type === 'pauseAudioFromBoton') {
-        document.getElementById('hijo3')?.contentWindow.postMessage({ type: 'pauseAudio' }, '*');
-      }
-      // HIJO 2: Coordenadas (GPS)
-      if (data && data.tipo === 'mostrar-mapa-gps') {
-        mostrarRutaEnMapa(data.ruta, data.origen, data.destino);
-      }
-      if (data && data.tipo === 'mostrar-zoom-streetview') {
-        // Implementación básica, se podría expandir con API de StreetView
-        alert('Mostrar StreetView de: ' + (data.info && data.info.nombre ? data.info.nombre : ''));
-      }
-      if (data && data.tipo === 'mostrar-imagen') {
-        // data.info debería ser el objeto de PARADAS completo de la parada
-        mostrarImagenParada(data.info);
-      }
-      if (data && data.tipo === 'mostrar-video') { // NUEVO: Manejo de mensajes de video
-        // data.info debería ser el objeto de PARADAS completo de la parada
-        mostrarVideoParada(data.info);
-      }
-      if (data && data.type === 'actualizarUbicacionMapa') { // NUEVO: Mensaje para actualizar ubicación del usuario
+
+        // ================== INICIALIZACIÓN Y FUNCIONES PRINCIPALES ==================
+        ocultarHijo4(); // Oculta el iframe de retos al inicio
+        ocultarInfoParada(); // Asegúrate de que la info de la parada esté oculta al inicio
+        closeMediaOverlay(); // Asegura que el visor de medios esté oculto al inicio
+
+        // --- Funciones principales ---
+        function iniciarAventura() {
+          window.paradaActual = 0; // Se inicializa la primera parada
+          if (document.getElementById('hijo2')) {
+            document.getElementById('hijo2').contentWindow.postMessage({ tipo: 'navegar-de-a-b', origen: window.paradaActual, destino: window.paradaActual + 1 }, '*');
+          } else {
+            console.warn("Advertencia: Iframe 'hijo2' no encontrado. La función GPS no podrá iniciarse.");
+          }
+          ocultarInfoParada(); // Oculta la info si ya estaba visible al iniciar la aventura
+        }
+        function avanzarRuta() {
+          // Se llama después de completar un reto
+          ocultarInfoParada(); // Oculta la info de la parada después de completar un reto
+          window.paradaActual++;
+          if (window.paradaActual < PARADAS.length - 1) {
+            if (document.getElementById('hijo2')) {
+              document.getElementById('hijo2').contentWindow.postMessage({ tipo: 'navegar-de-a-b', origen: window.paradaActual, destino: window.paradaActual + 1 }, '*');
+            } else {
+              console.warn("Advertencia: Iframe 'hijo2' no encontrado. La ruta no puede avanzar.");
+            }
+          } else {
+            console.log('¡Has completado todas las paradas de la aventura!');
+            // Aquí podrías añadir lógica para el final de la aventura
+          }
+        }
+        function avanzarAParada(paradaIndex) {
+          // Esta función se llama cuando se confirma la llegada a una parada (mensaje 'ya-estoy-aqui')
+          document.getElementById('hijo3')?.contentWindow.postMessage({ type: 'setAudioParada', index: paradaIndex }, '*');
+        }
+        function activarTodosLosBotones() {
+          if (document.getElementById('hijo2')) {
+            document.getElementById('hijo2').contentWindow.postMessage({ tipo: 'activar-todos-botones' }, '*');
+          } else {
+            console.warn("Advertencia: Iframe 'hijo2' no encontrado. No se pueden activar botones.");
+          }
+        }
+        function activarModoCasa() {
+          if (document.getElementById('hijo2')) {
+            document.getElementById('hijo2').contentWindow.postMessage({ tipo: 'activar-modo-casa' }, '*');
+          } else {
+            console.warn("Advertencia: Iframe 'hijo2' no encontrado. No se puede activar modo casa.");
+          }
+          ocultarInfoParada(); // Oculta la info de parada al activar modo casa
+        }
+        function mostrarRutaEnMapa(ruta, origen, destino) {
           if (!map) {
-              console.error("Mapa no inicializado aún.");
+            console.error("Mapa no inicializado aún.");
+            return;
+          }
+          if (polyline) { map.removeLayer(polyline); }
+          if (markerA) { map.removeLayer(markerA); }
+          if (markerB) { map.removeLayer(markerB); }
+          if (!ruta || !Array.isArray(ruta) || ruta.length < 2) return;
+          const latlngs = ruta.map(p => [p.lat, p.lng]);
+          polyline = L.polyline(latlngs, { color: 'red', weight: 6 }).addTo(map);
+          markerA = L.marker([ruta[0].lat, ruta[0].lng], { icon: L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png', iconSize: [32, 32] }) }).addTo(map);
+          markerB = L.marker([ruta[ruta.length - 1].lat, ruta[ruta.length - 1].lng], { icon: L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684912.png', iconSize: [32, 32] }) }).addTo(map);
+          map.fitBounds(polyline.getBounds(), { padding: [40, 40] });
+        }
+        function mostrarParadaEnMapa(index, parada) {
+          if (!map) {
+            console.error("Mapa no inicializado aún.");
+            return;
+          }
+          if (!parada || typeof parada.lat === 'undefined' || typeof parada.lng === 'undefined') {
+              console.error("Error: Las coordenadas de la parada no están definidas para el marcador.");
               return;
           }
-          const { lat, lng } = data; // Asume que lat y lng vienen en el mensaje
-          if (userLocationMarker) {
-              userLocationMarker.setLatLng([lat, lng]);
+          if (markerParada) { map.removeLayer(markerParada); markerParada = null; }
+          markerParada = L.marker([parada.lat, parada.lng], { icon: L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png', iconSize: [32, 32] }) }).addTo(map);
+          map.setView([parada.lat, parada.lng], 16);
+        }
+        // Función para borrar el icono de parada seleccionada
+        function borrarParadaEnMapa() {
+          if (markerParada) { map.removeLayer(markerParada); markerParada = null; }
+        }
+        function enviarGPSaHijo2(origen, destino) {
+          if (document.getElementById('hijo2')) {
+            document.getElementById('hijo2').contentWindow.postMessage({ tipo: 'navegar-de-a-b', origen: origen, destino: destino }, '*');
           } else {
-              // Icono azul para el usuario
-              userLocationMarker = L.marker([lat, lng], { 
-                  icon: L.icon({ 
-                      iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png', 
-                      shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', 
-                      iconSize: [25, 41], 
-                      iconAnchor: [12, 41], 
-                      popupAnchor: [1, -34], 
-                      shadowSize: [41, 41] 
-                  }) 
-              }).addTo(map);
-          }
-          map.setView([lat, lng], map.getZoom()); // Mantiene el zoom actual, o ajusta si es necesario
-      }
-      if (data && data.tipo === 'ya-estoy-aqui') {
-        // Cuando el GPS confirma que has llegado a una parada
-        // Sincroniza la variable global paradaActual del primer script
-        window.paradaActual = data.parada; // data.parada es el índice correcto de la parada
-        avanzarAParada(data.parada); // Esta función reproduce el audio
-        mostrarParadaActual(); // Llama a la función para actualizar y mostrar el div de info
-      }
-      // HIJO 3: Audio
-      if (data && data.type === 'audioFinalizado') {
-        // Asegúrate de que PARADAS[window.paradaActual] no sea undefined si el índice no existe
-        mostrarRetoEnHijo4(PARADAS[window.paradaActual] ? PARADAS[window.paradaActual].reto : null);
-      }
-      // HIJO 4: Retos/preguntas
-      if (data && data.type === 'reto-interactivo-completado') {
-        avanzarRuta();
-      }
-      if (data && data.type === 'reto-respuesta-mostrada') {
-        // El usuario ha pedido ver la respuesta, puedes decidir si avanzar o esperar acción manual
-      }
-      // HIJO 5: GPS Casa (modo off)
-      if (data && data.type === 'gpsStatus') {
-        const gpsOn = data.on;
-        const iframe = document.getElementById('hijo5-casa');
-        if (iframe) {
-          if (gpsOn) {
-            iframe.style.width = '80px';
-          } else {
-            iframe.style.width = '220px';
+            console.warn("Advertencia: Iframe 'hijo2' no encontrado. No se puede enviar GPS.");
           }
         }
-        if (!gpsOn) {
-          activarModoCasa();
-        } else {
-          iniciarAventura();
-          borrarParadaEnMapa();
-        }
-      }
-      if (data && data.type === 'seleccionParada') {
-        // Usamos las coordenadas (lat, lng) que vienen directamente del mensaje de hijo5
-        // Y obtenemos el nombre de la parada de nuestro array PARADAS local.
-        const paradaConCoordenadas = { 
-            lat: data.lat, 
-            lng: data.lng, 
-            nombre: PARADAS[data.index]?.nombre || 'Parada seleccionada' 
-        };
-        mostrarParadaEnMapa(data.index, paradaConCoordenadas);
-        window.paradaActual = data.index; 
-        mostrarParadaActual(); // Muestra la info de la parada seleccionada en el div #info-parada
-        activarTodosLosBotones();
-      }
-      if (data && data.type === 'cerrarParadas') {
-        borrarParadaEnMapa();
-        ocultarInfoParada(); // Oculta la info de la parada al cerrar el menú de paradas
-      }
-      // NUEVO: Mensaje para cerrar el visor de medios
-      if (data && data.type === 'cerrarMedia') {
-          closeMediaOverlay();
-      }
-    });
-
-    // ================== INICIALIZACIÓN Y FUNCIONES PRINCIPALES ==================
-    ocultarHijo4(); // Oculta el iframe de retos al inicio
-    ocultarInfoParada(); // Asegúrate de que la info de la parada esté oculta al inicio
-    closeMediaOverlay(); // Asegura que el visor de medios esté oculto al inicio
-
-    // --- Funciones principales ---
-    function iniciarAventura() {
-      window.paradaActual = 0; // Se inicializa la primera parada
-      if (document.getElementById('hijo2')) {
-        document.getElementById('hijo2').contentWindow.postMessage({ tipo: 'navegar-de-a-b', origen: window.paradaActual, destino: window.paradaActual + 1 }, '*');
-      } else {
-        console.warn("Advertencia: Iframe 'hijo2' no encontrado. La función GPS no podrá iniciarse.");
-      }
-      ocultarInfoParada(); // Oculta la info si ya estaba visible al iniciar la aventura
-    }
-    function avanzarRuta() {
-      // Se llama después de completar un reto
-      ocultarInfoParada(); // Oculta la info de la parada después de completar un reto
-      window.paradaActual++;
-      if (window.paradaActual < PARADAS.length - 1) {
-        if (document.getElementById('hijo2')) {
-          document.getElementById('hijo2').contentWindow.postMessage({ tipo: 'navegar-de-a-b', origen: window.paradaActual, destino: window.paradaActual + 1 }, '*');
-        } else {
-          console.warn("Advertencia: Iframe 'hijo2' no encontrado. La ruta no puede avanzar.");
-        }
-      } else {
-        console.log('¡Has completado todas las paradas de la aventura!');
-        // Aquí podrías añadir lógica para el final de la aventura
-      }
-    }
-    function avanzarAParada(paradaIndex) {
-      // Esta función se llama cuando se confirma la llegada a una parada (mensaje 'ya-estoy-aqui')
-      document.getElementById('hijo3')?.contentWindow.postMessage({ type: 'setAudioParada', index: paradaIndex }, '*');
-    }
-    function activarTodosLosBotones() {
-      if (document.getElementById('hijo2')) {
-        document.getElementById('hijo2').contentWindow.postMessage({ tipo: 'activar-todos-botones' }, '*');
-      } else {
-        console.warn("Advertencia: Iframe 'hijo2' no encontrado. No se pueden activar botones.");
-      }
-    }
-    function activarModoCasa() {
-      if (document.getElementById('hijo2')) {
-        document.getElementById('hijo2').contentWindow.postMessage({ tipo: 'activar-modo-casa' }, '*');
-      } else {
-        console.warn("Advertencia: Iframe 'hijo2' no encontrado. No se puede activar modo casa.");
-      }
-      ocultarInfoParada(); // Oculta la info de parada al activar modo casa
-    }
-    function mostrarRutaEnMapa(ruta, origen, destino) {
-      if (!map) {
-        console.error("Mapa no inicializado aún.");
-        return;
-      }
-      if (polyline) { map.removeLayer(polyline); }
-      if (markerA) { map.removeLayer(markerA); }
-      if (markerB) { map.removeLayer(markerB); }
-      if (!ruta || !Array.isArray(ruta) || ruta.length < 2) return;
-      const latlngs = ruta.map(p => [p.lat, p.lng]);
-      polyline = L.polyline(latlngs, { color: 'red', weight: 6 }).addTo(map);
-      markerA = L.marker([ruta[0].lat, ruta[0].lng], { icon: L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png', iconSize: [32, 32] }) }).addTo(map);
-      markerB = L.marker([ruta[ruta.length - 1].lat, ruta[ruta.length - 1].lng], { icon: L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684912.png', iconSize: [32, 32] }) }).addTo(map);
-      map.fitBounds(polyline.getBounds(), { padding: [40, 40] });
-    }
-    function mostrarParadaEnMapa(index, parada) {
-      if (!map) {
-        console.error("Mapa no inicializado aún.");
-        return;
-      }
-      if (!parada || typeof parada.lat === 'undefined' || typeof parada.lng === 'undefined') {
-          console.error("Error: Las coordenadas de la parada no están definidas para el marcador.");
-          return;
-      }
-      if (markerParada) { map.removeLayer(markerParada); markerParada = null; }
-      markerParada = L.marker([parada.lat, parada.lng], { icon: L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png', iconSize: [32, 32] }) }).addTo(map);
-      map.setView([parada.lat, parada.lng], 16);
-    }
-    // Función para borrar el icono de parada seleccionada
-    function borrarParadaEnMapa() {
-      if (markerParada) { map.removeLayer(markerParada); markerParada = null; }
-    }
-    function enviarGPSaHijo2(origen, destino) {
-      if (document.getElementById('hijo2')) {
-        document.getElementById('hijo2').contentWindow.postMessage({ tipo: 'navegar-de-a-b', origen: origen, destino: destino }, '*');
-      } else {
-        console.warn("Advertencia: Iframe 'hijo2' no encontrado. No se puede enviar GPS.");
-      }
-    }
-  </script>
+    </script>
 </body>
 </html>
