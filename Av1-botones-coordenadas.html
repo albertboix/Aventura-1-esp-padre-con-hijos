@@ -3,525 +3,456 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Botones GPS y Control de Aventura</title>
+    <title>Botones y Coordenadas GPS (Hijo 2)</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
-        body {
+        :root {
+            /* Variables de diseño para botones y barra de progreso (estos ya estaban alineados con Hijo 3) */
+            --btn-size: 80px; /* AHORA COINCIDE CON EL TAMAÑO GRANDE DE HIJO 3 */
+            --icon-size: 2.7em; /* AHORA COINCIDE CON EL TAMAÑO GRANDE DE HIJO 3 */
+            --progress-thick: 16px; /* AHORA COINCIDE CON EL TAMAÑO GRANDE DE HIJO 3 */
+            --timer-font-size: 1.3em; /* AHORA COINCIDE CON EL TAMAÑO GRANDE DE HIJO 3 */
+        }
+
+        html, body {
+            height: 100%;
             margin: 0;
             padding: 0;
-            background: #f0f0f0;
-            font-family: sans-serif;
+            background: transparent !important;
         }
-        .botones-flotantes {
-            position: fixed;
-            bottom: 32px;
-            left: 0;
-            width: 100vw;
+
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: transparent !important;
+            overflow: hidden; /* Evita scroll dentro del iframe */
             display: flex;
-            justify-content: center;
-            gap: 40px;
-            z-index: 1000;
+            flex-direction: column; /* Coloca los elementos en columna */
+            align-items: center; /* Centra horizontalmente */
+            justify-content: flex-start; /* Alinea los elementos arriba del contenedor */
         }
-        .boton-gps {
+
+        /* Contenedor principal con la forma trapezoidal (corta abajo, larga arriba) */
+        .gps-controls-container {
+            width: 100%; /* Ocupa el ancho completo del iframe */
+            height: 100%; /* Ocupa el alto completo del iframe */
+            background: rgba(255, 255, 0, 0.5); /* Color de fondo de Hijo 2 */
+            border-radius: 18px; /* Mantener bordes redondeados */
+            box-shadow: 0 2px 12px rgba(0,0,0,0.13);
             display: flex;
+            flex-direction: column;
             align-items: center;
-            justify-content: center;
-            border: none;
-            border-radius: 50%;
-            width: 90px;
-            height: 90px;
-            background: #d32f2f; /* Rojo por defecto */
-            transition: background 0.3s;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
-            cursor: pointer;
-            outline: none;
+            justify-content: space-around; /* Distribuye espacio entre elementos */
+            padding: 5px 10px;
+            box-sizing: border-box; /* Incluye padding en el ancho/alto */
+
+            /* === CLAVE PARA LA FORMA TRAPEZOIDAL (corta abajo, larga arriba) === */
+            clip-path: polygon(8% 0, 92% 0, 100% 100%, 0% 100%);
+        }
+
+        /* Barra de Progreso */
+        .progress-container {
+            width: 90%;
+            height: var(--progress-thick);
+            background-color: #e0e0e0; /* Gris */
+            border-radius: calc(var(--progress-thick) / 2);
+            overflow: hidden;
+            margin-bottom: 5px; /* Pequeño margen inferior */
             position: relative;
         }
-        .boton-gps.activo {
-            background: #388e3c; /* Verde cuando está activo */
+
+        .progress-bar {
+            height: 100%;
+            width: 0%; /* Se actualizará con JS */
+            background: linear-gradient(90deg, #007bff, #00c6ff); /* Degradado azul */
+            border-radius: calc(var(--progress-thick) / 2);
+            transition: width 0.1s linear;
         }
-        .icono-boton {
+
+        .time-display {
+            width: 90%;
+            display: flex;
+            justify-content: space-between;
+            color: #333;
+            font-size: var(--timer-font-size);
+            margin-bottom: 5px;
+            margin-top: 5px;
+        }
+
+        .coordenadas-display {
+            color: #333;
+            font-size: 0.9em;
+            text-align: center;
+            margin-top: 5px; /* Pequeño margen superior */
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            width: 95%; /* Asegura que no se desborde */
+        }
+
+        .buttons-row {
+            display: flex;
+            gap: 15px; /* Espacio entre botones */
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap; /* Permite que los botones se envuelvan en pantallas pequeñas */
+            margin-bottom: 5px; /* Pequeño margen inferior */
+        }
+
+        .control-button {
+            width: var(--btn-size);
+            height: var(--btn-size);
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(90deg, #0077cc 0%, #00aaff 100%);
+            color: white;
+            font-size: var(--icon-size);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 2.8rem;
-            width: 2.8em;
-            height: 2.8em;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.10);
+            flex-shrink: 0; /* Evita que el botón se encoja */
         }
-        .icono-svg {
-            width: 2.8em;
-            height: 2.8em;
-            display: block;
+
+        .control-button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+            box-shadow: none;
         }
-        .icono-svg .degradado-azul {
-            fill: url(#degradadoAzul);
+
+        .control-button:active:not(:disabled) {
+            transform: scale(0.95);
         }
-        .flecha-orientacion {
-            position: absolute;
-            bottom: 10px;
-            right: 10px;
-            font-size: 1.5em;
-            color: #2196f3;
-            pointer-events: none;
+
+        /* Estilo para los botones cuando están activos/inactivos */
+        .btn-gps-active {
+            background: linear-gradient(90deg, #34c759 0%, #43e97b 100%); /* Verde */
+        }
+        .btn-gps-inactive {
+            background: linear-gradient(90deg, #ff3b30 0%, #ff5c5c 100%); /* Rojo */
+        }
+        .btn-target-active {
+            background: linear-gradient(90deg, #ff9500 0%, #ffcc00 100%); /* Naranja/Amarillo */
+        }
+        .btn-map-active {
+            background: linear-gradient(90deg, #5856d6 0%, #6464ff 100%); /* Morado */
+        }
+
+        /* Media queries para pantallas pequeñas (mantiene la coherencia con Hijo 3) */
+        @media (max-width: 500px) {
+            :root {
+                --btn-size: 48px; /* AHORA COINCIDE CON EL TAMAÑO PEQUEÑO DE HIJO 3 */
+                --icon-size: 1.5em; /* AHORA COINCIDE CON EL TAMAÑO PEQUEÑO DE HIJO 3 */
+            }
+            .coordenadas-display {
+                font-size: 0.75em;
+            }
+            .buttons-row {
+                gap: 10px;
+            }
+            .time-display {
+                font-size: 1em;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="botones-flotantes">
-        <button id="btn-gps" class="boton-gps" aria-label="Mostrar mapa GPS">
-            <span class="icono-boton" aria-hidden="true" style="font-weight:bold; color:#2196f3;">GPS</span>
-            <span id="flecha-orientacion" class="flecha-orientacion" style="display:none;">➔</span>
-        </button>
-        <button id="btn-caminar" class="boton-gps" aria-label="Mostrar StreetView y zoom">
-            <span class="icono-boton" aria-hidden="true" style="font-size:2.2em;">🚶‍♂️</span>
-        </button>
-        <button id="btn-camara" class="boton-gps" aria-label="Mostrar imagen de la parada">
-            <span class="icono-boton" aria-hidden="true">
-                <svg width="2.5em" height="2em" viewBox="0 0 220 140">
-                    <defs>
-                        <linearGradient id="azulCamaraFlecha" x1="0" y1="0" x2="1" y2="1">
-                            <stop offset="0%" stop-color="#2196f3"/>
-                            <stop offset="100%" stop-color="#1565c0"/>
-                        </linearGradient>
-                        <linearGradient id="azulFlecha" x1="0" y1="0" x2="1" y2="0">
-                            <stop offset="0%" stop-color="#42a5f5"/>
-                            <stop offset="100%" stop-color="#1565c0"/>
-                        </linearGradient>
-                    </defs>
-                    <rect x="20" y="35" width="100" height="70" rx="16" fill="url(#azulCamaraFlecha)" stroke="#0d47a1" stroke-width="4"/>
-                    <ellipse cx="70" cy="70" rx="28" ry="28" fill="#fff" stroke="#0d47a1" stroke-width="4"/>
-                    <ellipse cx="70" cy="70" rx="16" ry="16" fill="url(#azulCamaraFlecha)" stroke="#0d47a1" stroke-width="3"/>
-                    <circle cx="70" cy="70" r="7" fill="#fff"/>
-                    <rect x="50" y="20" width="40" height="18" rx="6" fill="url(#azulCamaraFlecha)" stroke="#0d47a1" stroke-width="3"/>
-                    <circle cx="110" cy="50" r="6" fill="#e53935" stroke="#0d47a1" stroke-width="2"/>
-                    <rect x="10" y="50" width="16" height="40" rx="6" fill="url(#azulCamaraFlecha)" stroke="#0d47a1" stroke-width="3"/>
-                    <rect x="60" y="110" width="20" height="10" rx="4" fill="url(#azulCamaraFlecha)" stroke="#0d47a1" stroke-width="2"/>
-                    <polygon points="120,45 210,70 120,95" fill="url(#azulFlecha)" stroke="#0d47a1" stroke-width="4"/>
-                </svg>
-            </span>
-        </button>
+    <div class="gps-controls-container">
+        <div class="progress-container">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <div class="time-display">
+            <span id="elapsedTime">00:00</span>
+            <span id="totalTime">00:00</span>
+        </div>
+
+        <div class="coordenadas-display" id="coordenadasDisplay">Esperando GPS...</div>
+        <div class="buttons-row">
+            <button id="gpsBtn" class="control-button" title="Activar/Desactivar GPS">
+                <i class="fas fa-location-crosshairs"></i>
+            </button>
+            <button id="targetBtn" class="control-button" title="Objetivo Parada" disabled>
+                <i class="fas fa-bullseye"></i>
+            </button>
+            <button id="mapBtn" class="control-button" title="Ver en Mapa" disabled>
+                <i class="fas fa-map-marked-alt"></i>
+            </button>
+        </div>
     </div>
 
     <script>
-        // ====================================================================
-        // DATOS DE LA AVENTURA: SECUENCIA COMPLETA DE PARADAS Y WAYPOINTS
-        // Con Audio y Reto para cada parada.
-        // ====================================================================
-        const SECUENCIA_AVENTURA = [
-            { tipo: "parada", id: 1, nombre: "Torres de Serranos (start)", lat: 39.47876, lng: -0.37626, audio: "audio_1.mp3", reto: 0, foto: "img_1.jpg", video: "video_1.mp4" },
-            { tipo: "waypoint", lat: 39.47905, lng: -0.37613 },
-            { tipo: "waypoint", lat: 39.47933, lng: -0.37647 },
-            { tipo: "waypoint", lat: 39.47943, lng: -0.37636 },
-            { tipo: "parada", id: 2, nombre: "Puente de Serranos – Plaza de la crida", lat: 39.47959, lng: -0.37583, audio: "audio_2.mp3", reto: 1, foto: "img_2.jpg", video: "video_2.mp4" },
-            { tipo: "waypoint", lat: 39.47939, lng: -0.3752 },
-            { tipo: "waypoint", lat: 39.47902, lng: -0.37465 },
-            { tipo: "waypoint", lat: 39.47866, lng: -0.3747 },
-            { tipo: "parada", id: 3, nombre: "Cortes Valencianas (Palacio de los Borgia)", lat: 39.47785, lng: -0.37485, audio: "audio_3.mp3", reto: 2, foto: "img_3.jpg", video: "video_3.mp4" },
-            { tipo: "waypoint", lat: 39.47768, lng: -0.3749 },
-            { tipo: "parada", id: 4, nombre: "Plaza de la Virgen", lat: 39.47656, lng: -0.37529, audio: "audio_4.mp3", reto: 3, foto: "img_4.jpg", video: "video_4.mp4" },
-            { tipo: "waypoint", lat: 39.4766, lng: -0.37473 },
-            { tipo: "waypoint", lat: 39.47656, lng: -0.37453 },
-            { tipo: "waypoint", lat: 39.47606, lng: -0.3746 },
-            { tipo: "parada", id: 5, nombre: "Plaza de la Almoína", lat: 39.47604, lng: -0.37451, audio: "audio_5.mp3", reto: 4, foto: "img_5.jpg", video: "video_5.mp4" },
-            { tipo: "parada", id: 6, nombre: "Catedral de València", lat: 39.47594, lng: -0.37474, audio: "audio_6.mp3", reto: 5, foto: "img_6.jpg", video: "video_6.mp4" },
-            { tipo: "parada", id: 7, nombre: "Plaza decimo Juno Bruto (Museo Arqueológico de la Almoína)", lat: 39.4762, lng: -0.37412, audio: "audio_7.mp3", reto: 6, foto: "img_7.jpg", video: "video_7.mp4" },
-            { tipo: "parada", id: 8, nombre: "Basílica de València", lat: 39.47611, lng: -0.37478, audio: "audio_8.mp3", reto: 7, foto: "img_8.jpg", video: "video_8.mp4" },
-            { tipo: "waypoint", lat: 39.47603, lng: -0.37433 },
-            { tipo: "parada", id: 9, nombre: "Palacio Arzobispal", lat: 39.4755, lng: -0.37436, audio: "audio_9.mp3", reto: 8, foto: "img_9.jpg", video: "video_9.mp4" },
-            { tipo: "waypoint", lat: 39.4756, lng: -0.37466 },
-            { tipo: "waypoint", lat: 39.47514, lng: -0.37494 },
-            { tipo: "waypoint", lat: 39.47447, lng: -0.3754 },
-            { tipo: "waypoint", lat: 39.47378, lng: -0.3756 },
-            { tipo: "waypoint", lat: 39.47212, lng: -0.37676 },
-            { tipo: "parada", id: 10, nombre: "Plaza del Ayuntamiento", lat: 39.47056, lng: -0.37677, audio: "audio_10.mp3", reto: 9, foto: "img_10.jpg", video: "video_10.mp4" },
-            { tipo: "parada", id: 11, nombre: "Edificio del Ayuntamiento de València", lat: 39.46971, lng: -0.37693, audio: "audio_11.mp3", reto: 10, foto: "img_11.jpg", video: "video_11.mp4" },
-            { tipo: "waypoint", lat: 39.46795, lng: -0.37701 },
-            { tipo: "parada", id: 12, nombre: "Estación de Ferrocarril (Estación del Norte)", lat: 39.46722, lng: -0.37702, audio: "audio_12.mp3", reto: 11, foto: "img_12.jpg", video: "video_12.mp4" },
-            { tipo: "parada", id: 13, nombre: "Plaza de Toros de València", lat: 39.46709, lng: -0.37595, audio: "audio_13.mp3", reto: 12, foto: "img_13.jpg", video: "video_13.mp4" },
-            { tipo: "waypoint", lat: 39.46714, lng: -0.37498 },
-            { tipo: "parada", id: 14, nombre: "Casa estilo Árabe", lat: 39.46753, lng: -0.37511, audio: "audio_14.mp3", reto: 13, foto: "img_14.jpg", video: "video_14.mp4" },
-            { tipo: "parada", id: 15, nombre: "Palacio de Comunicaciones (Correos)", lat: 39.46942, lng: -0.37559, audio: "audio_15.mp3", reto: 14, foto: "img_15.jpg", video: "video_15.mp4" },
-            { tipo: "waypoint", lat: 39.4699, lng: -0.37573 },
-            { tipo: "waypoint", lat: 39.4703, lng: -0.3759 },
-            { tipo: "waypoint", lat: 39.47039, lng: -0.37505 },
-            { tipo: "waypoint", lat: 39.47043, lng: -0.37427 },
-            { tipo: "parada", id: 16, nombre: "Antigua sede del Banco de València", lat: 39.47061, lng: -0.37408, audio: "audio_16.mp3", reto: 15, foto: "img_16.jpg", video: "video_16.mp4" },
-            { tipo: "waypoint", lat: 39.47119, lng: -0.37423 },
-            { tipo: "waypoint", lat: 39.47214, lng: -0.37446 },
-            { tipo: "waypoint", lat: 39.47275, lng: -0.37445 },
-            { tipo: "parada", id: 17, nombre: "Palacio del Marqués de Dos Aguas (Museo Nacional de Crámica)", lat: 39.47276, lng: -0.37467, audio: "audio_17.mp3", reto: 16, foto: "img_17.jpg", video: "video_17.mp4" },
-            { tipo: "waypoint", lat: 39.47315, lng: -0.37608 },
-            { tipo: "waypoint", lat: 39.47261, lng: -0.37654 },
-            { tipo: "waypoint", lat: 39.47225, lng: -0.37686 },
-            { tipo: "waypoint", lat: 39.47265, lng: -0.37725 },
-            { tipo: "parada", id: 18, nombre: "Mercado Central", lat: 39.47377, lng: -0.37832, audio: "audio_18.mp3", reto: 17, foto: "img_18.jpg", video: "video_18.mp4" },
-            { tipo: "parada", id: 19, nombre: "San Juan del Mercado (Iglesia de los Santos Juanes)", lat: 39.47425, lng: -0.37895, audio: "audio_19.mp3", reto: 18, foto: "img_19.jpg", video: "video_19.mp4" },
-            { tipo: "parada", id: 20, nombre: "Lonja de València (Mercado de la Seda)", lat: 39.47426, lng: -0.37862, audio: "audio_20.mp3", reto: 19, foto: "img_20.jpg", video: "video_20.mp4" },
-            { tipo: "waypoint", lat: 39.47445, lng: -0.37889 },
-            { tipo: "waypoint", lat: 39.47459, lng: -0.37868 },
-            { tipo: "waypoint", lat: 39.47475, lng: -0.37842 },
-            { tipo: "waypoint", lat: 39.47436, lng: -0.37799 },
-            { tipo: "parada", id: 21, nombre: "Plaza del Doctor Collado", lat: 39.47444, lng: -0.3779, audio: "audio_21.mp3", reto: 20, foto: "img_21.jpg", video: "video_21.mp4" },
-            { tipo: "waypoint", lat: 39.47473, lng: -0.37763 },
-            { tipo: "waypoint", lat: 39.47493, lng: -0.37761 },
-            { tipo: "waypoint", lat: 39.47559, lng: -0.37772 },
-            { tipo: "parada", id: 22, nombre: "Plaza del Negrito (Fuente del Negrito)", lat: 39.47611, lng: -0.37741, audio: "audio_22.mp3", reto: 21, foto: "img_22.jpg", video: "video_22.mp4" },
-            { tipo: "parada", id: 23, nombre: "Calle Caballeros", lat: 39.47663, lng: -0.3773, audio: "audio_23.mp3", reto: 22, foto: "img_23.jpg", video: "video_23.mp4" },
-            { tipo: "waypoint", lat: 39.47661, lng: -0.37685 },
-            { tipo: "parada", id: 24, nombre: "Palacio de la Generalitat", lat: 39.47668, lng: -0.37671, audio: "audio_24.mp3", reto: 23, foto: "img_24.jpg", video: "video_24.mp4" },
-            { tipo: "waypoint", lat: 39.47661, lng: -0.37685 }, // Repetido de la parada 23, ¿quizás un typo? O es un waypoint de vuelta.
-            { tipo: "waypoint", lat: 39.47687, lng: -0.37686 },
-            { tipo: "parada", id: 25, nombre: "Calle de los Serranos (end)", lat: 39.47773, lng: -0.37671, audio: "audio_25.mp3", reto: 24, foto: "img_25.jpg", video: "video_25.mp4" },
-            // Añade las 15 paradas restantes hasta llegar a 40. Aquí tienes un placeholder:
-            { tipo: "parada", id: 26, nombre: "Parada 26 (Placeholder)", lat: 39.47800, lng: -0.37650, audio: "audio_26.mp3", reto: 25, foto: "img_26.jpg", video: "video_26.mp4" },
-            { tipo: "parada", id: 27, nombre: "Parada 27 (Placeholder)", lat: 39.47810, lng: -0.37640, audio: "audio_27.mp3", reto: 26, foto: "img_27.jpg", video: "video_27.mp4" },
-            { tipo: "parada", id: 28, nombre: "Parada 28 (Placeholder)", lat: 39.47820, lng: -0.37630, audio: "audio_28.mp3", reto: 27, foto: "img_28.jpg", video: "video_28.mp4" },
-            { tipo: "parada", id: 29, nombre: "Parada 29 (Placeholder)", lat: 39.47830, lng: -0.37620, audio: "audio_29.mp3", reto: 28, foto: "img_29.jpg", video: "video_29.mp4" },
-            { tipo: "parada", id: 30, nombre: "Parada 30 (Placeholder)", lat: 39.47840, lng: -0.37610, audio: "audio_30.mp3", reto: 29, foto: "img_30.jpg", video: "video_30.mp4" },
-            { tipo: "parada", id: 31, nombre: "Parada 31 (Placeholder)", lat: 39.47850, lng: -0.37600, audio: "audio_31.mp3", reto: 30, foto: "img_31.jpg", video: "video_31.mp4" },
-            { tipo: "parada", id: 32, nombre: "Parada 32 (Placeholder)", lat: 39.47860, lng: -0.37590, audio: "audio_32.mp3", reto: 31, foto: "img_32.jpg", video: "video_32.mp4" },
-            { tipo: "parada", id: 33, nombre: "Parada 33 (Placeholder)", lat: 39.47870, lng: -0.37580, audio: "audio_33.mp3", reto: 32, foto: "img_33.jpg", video: "video_33.mp4" },
-            { tipo: "parada", id: 34, nombre: "Parada 34 (Placeholder)", lat: 39.47880, lng: -0.37570, audio: "audio_34.mp3", reto: 33, foto: "img_34.jpg", video: "video_34.mp4" },
-            { tipo: "parada", id: 35, nombre: "Parada 35 (Placeholder)", lat: 39.47890, lng: -0.37560, audio: "audio_35.mp3", reto: 34, foto: "img_35.jpg", video: "video_35.mp4" },
-            { tipo: "parada", id: 36, nombre: "Parada 36 (Placeholder)", lat: 39.47900, lng: -0.37550, audio: "audio_36.mp3", reto: 35, foto: "img_36.jpg", video: "video_36.mp4" },
-            { tipo: "parada", id: 37, nombre: "Parada 37 (Placeholder)", lat: 39.47910, lng: -0.37540, audio: "audio_37.mp3", reto: 36, foto: "img_37.jpg", video: "video_37.mp4" },
-            { tipo: "parada", id: 38, nombre: "Parada 38 (Placeholder)", lat: 39.47920, lng: -0.37530, audio: "audio_38.mp3", reto: 37, foto: "img_38.jpg", video: "video_38.mp4" },
-            { tipo: "parada", id: 39, nombre: "Parada 39 (Placeholder)", lat: 39.47930, lng: -0.37520, audio: "audio_39.mp3", reto: 38, foto: "img_39.jpg", video: "video_39.mp4" },
-            { tipo: "parada", id: 40, nombre: "Parada 40 (Final)", lat: 39.47940, lng: -0.37510, audio: "audio_40.mp3", reto: 39, foto: "img_40.jpg", video: "video_40.mp4" }
+        const coordenadasDisplay = document.getElementById('coordenadasDisplay');
+        const gpsBtn = document.getElementById('gpsBtn');
+        const targetBtn = document.getElementById('targetBtn');
+        const mapBtn = document.getElementById('mapBtn');
+        const progressBar = document.getElementById('progressBar');
+        const elapsedTimeSpan = document.getElementById('elapsedTime');
+        const totalTimeSpan = document.getElementById('totalTime');
+
+        let watchId = null; // ID del observador de geolocalización
+        let isGpsActive = false;
+        let currentTargetParadaIndex = null; // Índice de la parada objetivo actual
+        let currentParadaInfo = null; // Guarda la info completa de la parada actual
+
+        // Simulación de tiempo para la barra de progreso (ej. tiempo restante para llegar a la parada)
+        let totalTripTime = 0; // Duración total del viaje simulado en segundos
+        let tripElapsedTime = 0; // Tiempo transcurrido del viaje simulado en segundos
+        let tripProgressInterval;
+
+        // Definición de PARADAS (debe coincidir con el padre)
+        const PARADAS_COORDENADAS = [
+            { lat: 39.478046, lng: -0.375515, nombre: "Torres de Serranos (start)" }, // Parada 1
+            { lat: 39.4795, lng: -0.375, nombre: "Puente de Serranos – Plaza de la crida" }, // Parada 2
+            { lat: 39.4779, lng: -0.3734, nombre: "Cortes Valencianas (Palacio de los Borgia)" }, // Parada 3
+            { lat: 39.4764, lng: -0.3756, nombre: "Plaza de la Virgen" }, // Parada 4
+            { lat: 39.4761, lng: -0.3752, nombre: "Plaza de la Almoína" }, // Parada 5
+            { lat: 39.4754, lng: -0.3752, nombre: "Catedral de València" }, // Parada 6
+            { lat: 39.4752, lng: -0.3748, nombre: "Plaza decimo Juno Bruto (Museo Arqueológico de la Almoína)" }, // Parada 7
+            { lat: 39.4753, lng: -0.3744, nombre: "Basílica de València" }, // Parada 8
+            { lat: 39.475, lng: -0.3739, nombre: "Palacio Arzobispal" }, // Parada 9
+            { lat: 39.4705, lng: -0.3764, nombre: "Plaza del Ayuntamiento" }, // Parada 10
+            { lat: 39.4705, lng: -0.3768, nombre: "Edificio del Ayuntamiento de València" }, // Parada 11
+            { lat: 39.4697, lng: -0.3768, nombre: "Estación de Ferrocarril (Estación del Norte)" }, // Parada 12
+            { lat: 39.4697, lng: -0.3758, nombre: "Plaza de Toros de València" }, // Parada 13
+            { lat: 39.4715, lng: -0.3747, nombre: "Casa estilo Árabe" }, // Parada 14
+            { lat: 39.4719, lng: -0.3756, nombre: "Palacio de Comunicaciones (Correos)" }, // Parada 15
+            { lat: 39.4727, lng: -0.3765, nombre: "Antigua sede del Banco de València" }, // Parada 16
+            { lat: 39.4735, lng: -0.3764, nombre: "Palacio del Marqués de Dos Aguas (Museo Nacional de Crámica)" }, // Parada 17
+            { lat: 39.4745, lng: -0.3787, nombre: "Mercado Central" }, // Parada 18
+            { lat: 39.4751, lng: -0.3791, nombre: "San Juan del Mercado (Iglesia de los Santos Juanes)" }, // Parada 19
+            { lat: 39.4756, lng: -0.3791, nombre: "Lonja de València (Mercado de la Seda)" }, // Parada 20
+            { lat: 39.4764, lng: -0.3789, nombre: "Plaza del Doctor Collado" }, // Parada 21
+            { lat: 39.4764, lng: -0.3782, nombre: "Plaza del Negrito (Fuente del Negrito)" }, // Parada 22
+            { lat: 39.4774, lng: -0.3776, nombre: "Calle Caballeros" }, // Parada 23
+            { lat: 39.4777, lng: -0.377, nombre: "Palacio de la Generalitat" }, // Parada 24
+            { lat: 39.4782, lng: -0.3761, nombre: "Calle de los Serranos (end)" }, // Parada 25
+            { lat: 39.4800, lng: -0.3700, nombre: "Parada 26" },
+            { lat: 39.4810, lng: -0.3710, nombre: "Parada 27" },
+            { lat: 39.4820, lng: -0.3720, nombre: "Parada 28" },
+            { lat: 39.4830, lng: -0.3730, nombre: "Parada 29" },
+            { lat: 39.4840, lng: -0.3740, nombre: "Parada 30" }
         ];
 
-        // Estado actual de la aventura en Hijo 2
-        let currentSequenceIndex = 0; // Índice en SECUENCIA_AVENTURA
-        let currentParadaData = null; // Almacena el objeto completo de la parada actual
+        // Rango de proximidad para activar la parada (en metros)
+        const PROXIMITY_RADIUS_METERS = 30; // Ajusta según sea necesario
 
-        // Variables para geolocalización (tu lógica actual)
-        let watchId; // ID del watcher de geolocalización
-        const GEOLOCATION_OPTIONS = {
-            enableHighAccuracy: true,
-            timeout: 5000,
-            maximumAge: 0
-        };
-        const DISTANCE_THRESHOLD = 20; // Metros para considerar "llegada" a un punto
-
-        // ===============================================
-        // FUNCIONES DE CONTROL DE LA AVENTURA
-        // ===============================================
-
-        // Función para enviar mensajes al Padre
-        function sendMessageToParent(message) {
-            window.parent.postMessage(message, '*');
+        // Funciones auxiliares
+        function toRadians(deg) {
+            return deg * (Math.PI / 180);
         }
 
-        // Función para obtener la parada de destino principal (la próxima de tipo 'parada')
-        function getNextMainParada() {
-            for (let i = currentSequenceIndex + 1; i < SECUENCIA_AVENTURA.length; i++) {
-                if (SECUENCIA_AVENTURA[i].tipo === 'parada') {
-                    return SECUENCIA_AVENTURA[i];
-                }
-            }
-            return null; // No hay más paradas principales
-        }
-
-        // Función para actualizar la ruta en el mapa del padre
-        function updateMapRoute(userLat, userLng) {
-            const currentItem = SECUENCIA_AVENTURA[currentSequenceIndex];
-            const nextMainParada = getNextMainParada();
-
-            if (nextMainParada) {
-                const rutaParaPadre = [];
-                // Añadir la posición actual del usuario como inicio de la ruta si el GPS está activo
-                if (userLat && userLng) {
-                    rutaParaPadre.push({ lat: userLat, lng: userLng });
-                } else { // Si no hay GPS, usar la lat/lng del currentItem como inicio del tramo
-                    rutaParaPadpe.push({ lat: currentItem.lat, lng: currentItem.lng });
-                }
-                
-                // Añadir todos los waypoints y la próxima parada en la secuencia hasta el destino
-                let startIndex = currentSequenceIndex;
-                // Si el currentItem es un waypoint, ya está incluido. Si es parada, queremos desde el siguiente waypoint.
-                if (currentItem.tipo === 'parada') {
-                    startIndex = currentSequenceIndex + 1; // Comenzar a buscar waypoints desde el siguiente elemento
-                }
-
-                for (let i = startIndex; i < SECUENCIA_AVENTURA.length; i++) {
-                    const item = SECUENCIA_AVENTURA[i];
-                    rutaParaPadre.push({ lat: item.lat, lng: item.lng });
-                    if (item === nextMainParada) {
-                        break; // Hemos llegado a la próxima parada principal
-                    }
-                }
-
-                sendMessageToParent({
-                    type: 'dibujarRuta',
-                    ruta: rutaParaPadre,
-                    origen: currentItem.nombre || 'Punto Actual', // Usa nombre si es parada, sino genérico
-                    destino: nextMainParada.nombre
-                });
-            } else {
-                sendMessageToParent({ type: 'borrarRuta' }); // Borrar ruta si no hay más destino
-            }
-        }
-
-        // Función para avanzar en la secuencia de la aventura
-        function advanceSequence() {
-            if (currentSequenceIndex < SECUENCIA_AVENTURA.length - 1) {
-                currentSequenceIndex++;
-                const currentItem = SECUENCIA_AVENTURA[currentSequenceIndex];
-
-                if (currentItem.tipo === 'parada') {
-                    currentParadaData = currentItem; // Guarda la data de la parada actual
-                    console.log(`Hijo 2: Llegamos a la Parada ${currentItem.id}: ${currentItem.nombre}`);
-                    
-                    // 1. Notificar al padre para actualizar la información de la parada en su div
-                    sendMessageToParent({ 
-                        type: 'actualizarInfoParada',
-                        nombre: currentItem.nombre,
-                        index: currentItem.id - 1 // Usa el ID de la parada para el index si es necesario
-                    });
-
-                    // 2. Notificar al padre para que le pida a Hijo 3 que reproduzca el audio
-                    sendMessageToParent({ 
-                        type: 'reproducirAudioEnHijo3',
-                        audioFile: currentItem.audio
-                    });
-                    
-                    // Actualizar la ruta en el mapa (desde la nueva parada hasta la siguiente)
-                    updateMapRoute(currentItem.lat, currentItem.lng);
-
-                } else if (currentItem.tipo === 'waypoint') {
-                    console.log(`Hijo 2: Pasamos por Waypoint: Lat ${currentItem.lat}, Lng ${currentItem.lng}`);
-                    // Si pasamos por un waypoint, solo actualizamos la ruta en el mapa
-                    // En un escenario real, aquí se usaría la posición real del usuario, no la del waypoint
-                    updateMapRoute(currentItem.lat, currentItem.lng);
-                }
-            } else {
-                console.log('Hijo 2: ¡Aventura completada!');
-                sendMessageToParent({ type: 'aventuraCompletada' });
-                // Desactivar GPS y botones al finalizar la aventura
-                stopGeolocation();
-                desactivarBotones();
-            }
-        }
-
-        // ===============================================
-        // GEOLOCALIZACIÓN Y DETECCIÓN DE LLEGADA
-        // ===============================================
-
+        // Calcula la distancia entre dos puntos Lat/Lng usando la fórmula Haversine
         function calculateDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371e3; // metres
-            const φ1 = lat1 * Math.PI / 180; // φ, λ in radians
-            const φ2 = lat2 * Math.PI / 180;
-            const Δφ = (lat2 - lat1) * Math.PI / 180;
-            const Δλ = (lon2 - lon1) * Math.PI / 180;
+            const R = 6371e3; // Metros
+            const φ1 = toRadians(lat1);
+            const φ2 = toRadians(lat2);
+            const Δφ = toRadians(lat2 - lat1);
+            const Δλ = toRadians(lon2 - lon1);
 
             const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
                       Math.cos(φ1) * Math.cos(φ2) *
                       Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
-            return R * c; // in metres
+            const distance = R * c;
+            return distance;
         }
 
-        function geolocationSuccess(position) {
-            const userLat = position.coords.latitude;
-            const userLng = position.coords.longitude;
-            const currentItem = SECUENCIA_AVENTURA[currentSequenceIndex];
+        function formatTime(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = Math.floor(seconds % 60);
+            return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+        }
 
-            // Siempre actualiza el mapa con la posición del usuario
-            sendMessageToParent({
-                type: 'actualizarUbicacionMapa',
-                lat: userLat,
-                lng: userLng
-            });
-            // Y actualiza la polyline desde la posición actual del usuario
-            updateMapRoute(userLat, userLng);
-
-
-            const distance = calculateDistance(userLat, userLng, currentItem.lat, currentItem.lng);
-            console.log(`Hijo 2: Distancia a ${currentItem.nombre || 'punto'} (index ${currentSequenceIndex}): ${distance.toFixed(2)}m`);
-
-            if (distance < DISTANCE_THRESHOLD) {
-                console.log(`Hijo 2: ¡Llegado al punto! (dentro del umbral de ${DISTANCE_THRESHOLD}m)`);
-                stopGeolocation(); // Detener GPS temporalmente al llegar
-                advanceSequence(); // Procesa la llegada a la parada/waypoint
-                // En un escenario real, podrías reiniciar el GPS después de un tiempo
-                // o después de que el usuario complete un reto, etc.
-                // For demonstration, we just advance
+        function updateTripProgressBar() {
+            if (totalTripTime > 0) {
+                const progress = (tripElapsedTime / totalTripTime) * 100;
+                progressBar.style.width = `${progress}%`;
+                elapsedTimeSpan.textContent = formatTime(tripElapsedTime);
             }
         }
 
-        function geolocationError(error) {
-            console.error('Error de geolocalización:', error);
-            // Dependiendo del error, podrías mostrar un mensaje al usuario o intentar de nuevo
+        function startTripProgressSimulation() {
+            clearInterval(tripProgressInterval);
+            tripProgressInterval = setInterval(() => {
+                if (tripElapsedTime < totalTripTime) {
+                    tripElapsedTime++;
+                    updateTripProgressBar();
+                } else {
+                    clearInterval(tripProgressInterval);
+                    // Opcional: acciones al finalizar el "viaje"
+                }
+            }, 1000); // Actualiza cada segundo
         }
 
-        function startGeolocation() {
+        function resetTripProgress() {
+            clearInterval(tripProgressInterval);
+            tripElapsedTime = 0;
+            totalTripTime = 0;
+            progressBar.style.width = '0%';
+            elapsedTimeSpan.textContent = '00:00';
+            totalTimeSpan.textContent = '00:00';
+        }
+
+        // --- GPS Control ---
+        function startGpsTracking() {
             if (navigator.geolocation) {
-                watchId = navigator.geolocation.watchPosition(geolocationSuccess, geolocationError, GEOLOCATION_OPTIONS);
-                console.log('Hijo 2: Geolocalización iniciada.');
-                sendMessageToParent({ type: 'gpsStatus', on: true });
-                document.getElementById('btn-gps').classList.add('activo');
+                gpsBtn.classList.add('btn-gps-active');
+                gpsBtn.classList.remove('btn-gps-inactive');
+                coordenadasDisplay.textContent = 'Buscando ubicación...';
+
+                watchId = navigator.geolocation.watchPosition(
+                    (position) => {
+                        const { latitude, longitude } = position.coords;
+                        coordenadasDisplay.textContent = `Lat: ${latitude.toFixed(6)}, Lng: ${longitude.toFixed(6)}`;
+                        window.parent.postMessage({ type: 'actualizarUbicacionMapa', lat: latitude, lng: longitude }, '*');
+
+                        // Comprobar proximidad a la parada objetivo
+                        if (currentTargetParadaIndex !== null && PARADAS_COORDENADAS[currentTargetParadaIndex]) {
+                            const targetLat = PARADAS_COORDENADAS[currentTargetParadaIndex].lat;
+                            const targetLng = PARADAS_COORDENADAS[currentTargetParadaIndex].lng;
+                            const distance = calculateDistance(latitude, longitude, targetLat, targetLng);
+
+                            // Simular tiempo de viaje basado en distancia (muy básico)
+                            // Cada 100m = 10 segundos de viaje simulado
+                            totalTripTime = Math.max(0, Math.floor(distance / 10)); // Asegura que no sea negativo
+                            totalTimeSpan.textContent = formatTime(totalTripTime);
+                            startTripProgressSimulation();
+
+                            if (distance < PROXIMITY_RADIUS_METERS) {
+                                // Hemos llegado a la parada
+                                alert(`¡Has llegado a la Parada ${currentTargetParadaIndex + 1}: ${PARADAS_COORDENADAS[currentTargetParadaIndex].nombre}!`);
+                                window.parent.postMessage({ type: 'ya-estoy-aqui', parada: currentTargetParadaIndex, info: PARADAS_COORDENADAS[currentTargetParadaIndex] }, '*');
+                                targetBtn.disabled = true; // Deshabilita el botón de objetivo al llegar
+                                targetBtn.classList.remove('btn-target-active');
+                                resetTripProgress(); // Reiniciar barra de progreso al llegar
+                            }
+                        }
+                    },
+                    (error) => {
+                        console.error('Error de geolocalización:', error);
+                        coordenadasDisplay.textContent = 'GPS Error.';
+                        gpsBtn.classList.remove('btn-gps-active');
+                        gpsBtn.classList.add('btn-gps-inactive');
+                        isGpsActive = false;
+                        alert('No se pudo obtener la ubicación GPS. Por favor, asegúrate de tener el GPS activado y de dar permisos al navegador.');
+                        resetTripProgress();
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        maximumAge: 0,
+                        timeout: 5000
+                    }
+                );
+                isGpsActive = true;
             } else {
-                console.error('Hijo 2: Geolocalización no soportada por este navegador.');
-                alert('Tu navegador no soporta geolocalización.');
+                coordenadasDisplay.textContent = 'GPS no soportado.';
+                alert('Tu navegador no soporta la geolocalización.');
             }
         }
 
-        function stopGeolocation() {
-            if (watchId) {
+        function stopGpsTracking() {
+            if (watchId !== null) {
                 navigator.geolocation.clearWatch(watchId);
                 watchId = null;
-                console.log('Hijo 2: Geolocalización detenida.');
-                sendMessageToParent({ type: 'gpsStatus', on: false });
-                document.getElementById('btn-gps').classList.remove('activo');
             }
+            isGpsActive = false;
+            gpsBtn.classList.remove('btn-gps-active');
+            gpsBtn.classList.add('btn-gps-inactive');
+            coordenadasDisplay.textContent = 'GPS Inactivo';
+            targetBtn.disabled = true; // Deshabilita el botón de objetivo al detener GPS
+            targetBtn.classList.remove('btn-target-active');
+            mapBtn.disabled = true; // Deshabilita el botón de mapa
+            mapBtn.classList.remove('btn-map-active');
+            currentTargetParadaIndex = null;
+            resetTripProgress(); // Reiniciar barra de progreso al detener GPS
         }
 
-        // ===============================================
-        // EVENT LISTENERS DE BOTONES
-        // ===============================================
-
-        document.getElementById('btn-gps').addEventListener('click', () => {
-            if (watchId) { // Si el GPS ya está activo, lo paramos
-                stopGeolocation();
-                // Opcional: Si el botón GPS ahora controla el inicio/pausa de la aventura
-                // Puedes resetear el currentSequenceIndex o preguntar al usuario si quiere reiniciar.
-            } else { // Si el GPS está inactivo, lo iniciamos
-                currentSequenceIndex = 0; // Reinicia la aventura al inicio
-                currentParadaData = SECUENCIA_AVENTURA[0]; // La primera parada
-                startGeolocation();
-                // Enviar la info inicial de la primera parada
-                sendMessageToParent({
-                    type: 'actualizarInfoParada',
-                    nombre: currentParadaData.nombre,
-                    index: currentParadaData.id - 1
-                });
-                sendMessageToParent({
-                    type: 'reproducirAudioEnHijo3',
-                    audioFile: currentParadaData.audio
-                });
-                updateMapRoute(currentParadaData.lat, currentParadaData.lng); // Dibuja la ruta desde el inicio
-            }
-        });
-
-        document.getElementById('btn-caminar').addEventListener('click', () => {
-            // Este botón podría mostrar un "StreetView" o una vista 360, etc.
-            // La lógica específica para esto iría en el padre o en otro hijo.
-            if (currentParadaData) { // Asegúrate de estar en una parada para que tenga sentido
-                sendMessageToParent({
-                    type: 'mostrarVideoParada',
-                    videoFile: currentParadaData.video
-                });
+        gpsBtn.addEventListener('click', () => {
+            if (isGpsActive) {
+                stopGpsTracking();
             } else {
-                console.log('Hijo 2: No hay parada activa para mostrar video.');
+                startGpsTracking();
             }
         });
 
-        document.getElementById('btn-camara').addEventListener('click', () => {
-            // Este botón podría mostrar la "foto" de la parada actual.
-            if (currentParadaData) { // Asegúrate de estar en una parada para que tenga sentido
-                sendMessageToParent({
-                    type: 'mostrarImagenParada',
-                    imageFile: currentParadaData.foto
-                });
+        targetBtn.addEventListener('click', () => {
+            if (currentTargetParadaIndex !== null && PARADAS_COORDENADAS[currentTargetParadaIndex]) {
+                const targetParada = PARADAS_COORDENADAS[currentTargetParadaIndex];
+                coordenadasDisplay.textContent = `Objetivo: Parada ${currentTargetParadaIndex + 1} - ${targetParada.nombre}`;
+                targetBtn.classList.add('btn-target-active');
+                window.parent.postMessage({ type: 'mostrarUbicacionObjetivo', lat: targetParada.lat, lng: targetParada.lng, nombre: targetParada.nombre }, '*');
+                // Al establecer un nuevo objetivo, reiniciar el progreso del viaje
+                tripElapsedTime = 0;
+                updateTripProgressBar();
             } else {
-                console.log('Hijo 2: No hay parada activa para mostrar imagen.');
+                alert('No hay parada objetivo seleccionada. ¡Inicia la aventura!');
             }
         });
 
-        // Botón de avance manual para simulación (solo para desarrollo/pruebas)
-        // Podrías añadirlo al HTML si lo necesitas visible, o llamarlo desde la consola.
-        // Ejemplo:
-        // document.body.appendChild(document.createElement('button')).textContent = 'Avance Manual';
-        // document.body.lastChild.onclick = advanceSequence;
+        mapBtn.addEventListener('click', () => {
+            if (currentTargetParadaIndex !== null && PARADAS_COORDENADAS[currentTargetParadaIndex]) {
+                const destino = PARADAS_COORDENADAS[currentTargetParadaIndex];
+                // Pide la ubicación actual para calcular la ruta
+                if (isGpsActive && navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        (position) => {
+                            const origen = { lat: position.coords.latitude, lng: position.coords.longitude };
+                            window.parent.postMessage({ tipo: 'mostrar-mapa-gps', ruta: [origen, destino], origen: origen, destino: destino }, '*');
+                            mapBtn.classList.add('btn-map-active');
+                        },
+                        (error) => {
+                            console.error("Error al obtener la ubicación actual para la ruta:", error);
+                            alert("No se pudo obtener tu ubicación actual para mostrar la ruta.");
+                        }
+                    );
+                } else {
+                    alert("Por favor, activa el GPS para ver la ruta en el mapa.");
+                }
+            } else {
+                alert('No hay parada objetivo seleccionada.');
+            }
+        });
 
-        // ===============================================
-        // MANEJO DE MENSAJES DEL PADRE (Retransmisiones)
-        // ===============================================
+        // --- Listener para mensajes del padre ---
         window.addEventListener('message', (event) => {
             const data = event.data;
-            // Cuando el audio de Hijo 3 finaliza (el Padre reenvía este mensaje)
-            if (data && data.type === 'audioFinalizado') {
-                if (currentParadaData && typeof currentParadaData.reto !== 'undefined') {
-                    console.log(`Hijo 2: Audio finalizado para parada ${currentParadaData.id}. Enviando al Padre para mostrar reto: ${currentParadaData.reto}`);
-                    sendMessageToParent({
-                        type: 'mostrarRetoEnHijo4',
-                        retoIndex: currentParadaData.reto
-                    });
+            if (data && data.tipo === 'navegar-de-a-b') {
+                if (PARADAS_COORDENADAS[data.destino]) {
+                    currentTargetParadaIndex = data.destino; // Establece el objetivo como la siguiente parada
+                    currentParadaInfo = PARADAS_COORDENADAS[data.destino];
+                    targetBtn.disabled = false; // Habilita el botón de objetivo
+                    mapBtn.disabled = false; // Habilita el botón de mapa
+                    targetBtn.classList.remove('btn-target-active'); // Resetea el estado
+                    mapBtn.classList.remove('btn-map-active'); // Resetea el estado
+                    coordenadasDisplay.textContent = `Esperando llegada a: Parada ${data.destino + 1}`;
+                    resetTripProgress(); // Reiniciar progreso al establecer nueva ruta
+                } else {
+                    currentTargetParadaIndex = null;
+                    currentParadaInfo = null;
+                    targetBtn.disabled = true;
+                    mapBtn.disabled = true;
+                    coordenadasDisplay.textContent = 'Aventura Finalizada';
+                    resetTripProgress();
                 }
             }
-            // Cuando el reto de Hijo 4 es completado (el Padre reenvía este mensaje)
-            if (data && data.type === 'retoCompletado') {
-                console.log('Hijo 2: Reto completado. Avanzando a la siguiente parte de la secuencia.');
-                startGeolocation(); // Reinicia el GPS para ir al siguiente punto
+            if (data && data.tipo === 'activar-todos-botones') {
+                targetBtn.disabled = false;
+                mapBtn.disabled = false;
             }
-            // Mensaje del padre para que Hijo 2 se desactive si el modo casa está activo
-            if (data && data.type === 'modoCasaActivo') {
-                stopGeolocation();
-                desactivarBotones();
-            }
-             // Mensaje del padre para que Hijo 2 se active si el modo casa se desactiva
-            if (data && data.type === 'modoCasaInactivo') {
-                // Podrías reiniciar la geolocalización o simplemente poner los botones activos
-                // Depende de si quieres que la aventura continúe automáticamente al salir del modo casa
-                // o si el usuario debe volver a iniciar el GPS.
-            }
-
-            // Orientación del usuario (si el padre la calcula y la pasa)
-            if (data && data.type === 'orientacionUsuario') {
-                mostrarFlechaOrientacion(data.angle);
+            if (data && data.tipo === 'activar-modo-casa') {
+                stopGpsTracking(); // Detiene el GPS si estaba activo
+                targetBtn.disabled = true;
+                mapBtn.disabled = true;
+                coordenadasDisplay.textContent = 'Modo Casa Activo';
             }
         });
 
-        function desactivarBotones() {
-             // Ya no hay un estado 'activo' tan directo como antes,
-             // el botón GPS se activa/desactiva por su propio click y watchId
-             // Los otros botones (caminar, camara) se activan si hay parada activa
-             // Considera si quieres que estos botones tengan su propia clase 'activo'
-        }
-
-        // Flecha de orientación (el padre puede enviar el ángulo)
-        function mostrarFlechaOrientacion(angulo) {
-            const flecha = document.getElementById('flecha-orientacion');
-            if (flecha) {
-                flecha.style.display = 'block';
-                flecha.style.transform = `rotate(${angulo}deg)`;
-            }
-        }
-        function ocultarFlechaOrientacion() {
-            const flecha = document.getElementById('flecha-orientacion');
-            if (flecha) {
-                flecha.style.display = 'none';
-            }
-        }
-
-        // Inicialización: Desactiva los botones al cargar (se activarán con el inicio del GPS)
-        // Esto depende de cómo quieras que empiece la UI
-        // desactivarBotones(); 
-
-        // Simular botones de avance para depuración
-        document.addEventListener('DOMContentLoaded', () => {
-            const btnSimularLlegada = document.createElement('button');
-            btnSimularLlegada.textContent = 'Simular Llegada (DEBUG)';
-            btnSimularLlegada.style.cssText = 'position:fixed; top:10px; right:10px; z-index:1001; padding:10px;';
-            btnSimularLlegada.onclick = advanceSequence;
-            document.body.appendChild(btnSimularLlegada);
-
-            // Simular inicio de aventura al cargar (solo para test rápido)
-            // Esto simularía que ya se está en la primera parada
-            // currentSequenceIndex = 0;
-            // currentParadaData = SECUENCIA_AVENTURA[0];
-            // sendMessageToParent({
-            //     type: 'actualizarInfoParada',
-            //     nombre: currentParadaData.nombre,
-            //     index: currentParadaData.id - 1
-            // });
-            // sendMessageToParent({
-            //     type: 'reproducirAudioEnHijo3',
-            //     audioFile: currentParadaData.audio
-            // });
-            // updateMapRoute(currentParadaData.lat, currentParadaData.lng);
-        });
-
+        // Inicialización: GPS inactivo por defecto
+        stopGpsTracking();
     </script>
 </body>
 </html>
