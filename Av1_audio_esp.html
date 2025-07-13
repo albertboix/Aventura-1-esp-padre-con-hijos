@@ -3,19 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Botones y Coordenadas GPS (Hijo 2)</title>
+    <title>Reproductor de Audio/Video (Hijo 3)</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         :root {
-            /* Dimensiones globales del contenedor principal (estas serán controladas por el padre ahora) */
-            /* --player-height: 100px; */
-            /* --player-width: 270px; */
-
-            /* Variables de diseño para botones y barra de progreso (estos ya estaban alineados con Hijo 3) */
-            --btn-size: 80px; /* AHORA COINCIDE CON EL TAMAÑO GRANDE DE HIJO 3 */
-            --icon-size: 2.7em; /* AHORA COINCIDE CON EL TAMAÑO GRANDE DE HIJO 3 */
-            --progress-thick: 16px; /* AHORA COINCIDE CON EL TAMAÑO GRANDE DE HIJO 3 */
-            --timer-font-size: 1.3em; /* AHORA COINCIDE CON EL TAMAÑO GRANDE DE HIJO 3 */
+            /* Variables de diseño para botones y barra de progreso (AHORA COINCIDEN CON HIJO 2) */
+            --btn-size: 80px; /* Tamaño grande */
+            --icon-size: 2.7em; /* Tamaño grande */
+            --progress-thick: 16px; /* Grosor de la barra de progreso */
+            --timer-font-size: 1.3em; /* Tamaño de fuente del temporizador */
+            --player-border-radius: 18px; /* Bordes redondeados */
         }
 
         html, body {
@@ -27,51 +24,37 @@
 
         body {
             font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background: transparent !important;
-            overflow: hidden; /* Evita scroll dentro del iframe */
             display: flex;
-            flex-direction: column; /* Coloca los elementos en columna */
-            align-items: center; /* Centra horizontalmente */
-            justify-content: flex-start; /* Alinea los elementos arriba del contenedor */
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end; /* Alinea los elementos abajo del contenedor */
+            overflow: hidden; /* Evita scroll dentro del iframe */
         }
 
-        /* Contenedor principal con la forma trapezoidal invertida */
-        .gps-controls-container {
+        /* Contenedor principal con la forma trapezoidal invertida (corta arriba, larga abajo) */
+        .player-container {
             width: 100%; /* Ocupa el ancho completo del iframe */
             height: 100%; /* Ocupa el alto completo del iframe */
-            background: rgba(255, 255, 0, 0.5); /* Color de fondo de Hijo 2 */
-            border-radius: 18px; /* Mantener bordes redondeados */
+            background: rgba(0, 128, 0, 0.5); /* Color de fondo de Hijo 3 (verde semitransparente) */
+            border-radius: var(--player-border-radius);
             box-shadow: 0 2px 12px rgba(0,0,0,0.13);
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: space-around; /* Distribuye espacio entre elementos */
             padding: 5px 10px;
-            box-sizing: border-box; /* Incluye padding en el ancho/alto */
+            box-sizing: border-box;
 
-            /* === ESTO ES LO CLAVE PARA LA FORMA TRAPEZOIDAL INVERTIDA === */
+            /* === CLAVE PARA LA FORMA TRAPEZOIDAL INVERTIDA (corta arriba, larga abajo) === */
             clip-path: polygon(0 0, 100% 0, 92% 100%, 8% 100%);
         }
 
-        .coordenadas-display {
-            color: #333;
-            font-size: 0.9em;
-            text-align: center;
-            margin-top: 5px; /* Pequeño margen superior */
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            width: 95%; /* Asegura que no se desborde */
-        }
-
-        .buttons-row {
+        .controls {
             display: flex;
             gap: 15px; /* Espacio entre botones */
             justify-content: center;
             align-items: center;
-            flex-wrap: wrap; /* Permite que los botones se envuelvan en pantallas pequeñas */
+            flex-wrap: wrap;
             margin-bottom: 5px; /* Pequeño margen inferior */
         }
 
@@ -89,7 +72,7 @@
             cursor: pointer;
             transition: background 0.2s, transform 0.1s;
             box-shadow: 0 2px 6px rgba(0,0,0,0.10);
-            flex-shrink: 0; /* Evita que el botón se encoja */
+            flex-shrink: 0;
         }
 
         .control-button:disabled {
@@ -102,273 +85,220 @@
             transform: scale(0.95);
         }
 
-        /* Estilo para los botones cuando están activos/inactivos */
-        .btn-gps-active {
-            background: linear-gradient(90deg, #34c759 0%, #43e97b 100%); /* Verde */
-        }
-        .btn-gps-inactive {
-            background: linear-gradient(90deg, #ff3b30 0%, #ff5c5c 100%); /* Rojo */
-        }
-        .btn-target-active {
-            background: linear-gradient(90deg, #ff9500 0%, #ffcc00 100%); /* Naranja/Amarillo */
-        }
-        .btn-map-active {
-            background: linear-gradient(90deg, #5856d6 0%, #6464ff 100%); /* Morado */
+        /* Barra de Progreso */
+        .progress-container {
+            width: 90%;
+            height: var(--progress-thick);
+            background-color: #e0e0e0; /* Gris */
+            border-radius: calc(var(--progress-thick) / 2);
+            overflow: hidden;
+            margin-top: 5px; /* Pequeño margen superior */
+            position: relative;
         }
 
-        /* Media queries para pantallas pequeñas (mantiene la coherencia con Hijo 3) */
+        .progress-bar {
+            height: 100%;
+            width: 0%; /* Se actualizará con JS */
+            background: linear-gradient(90deg, #007bff, #00c6ff); /* Degradado azul */
+            border-radius: calc(var(--progress-thick) / 2);
+            transition: width 0.1s linear;
+        }
+
+        .time-display {
+            width: 90%;
+            display: flex;
+            justify-content: space-between;
+            color: #333;
+            font-size: var(--timer-font-size);
+            margin-top: 5px;
+            margin-bottom: 5px;
+        }
+
+        /* Media queries para pantallas pequeñas (mantiene la coherencia con Hijo 2) */
         @media (max-width: 500px) {
             :root {
-                --btn-size: 48px; /* AHORA COINCIDE CON EL TAMAÑO PEQUEÑO DE HIJO 3 */
-                --icon-size: 1.5em; /* AHORA COINCIDE CON EL TAMAÑO PEQUEÑO DE HIJO 3 */
+                --btn-size: 48px; /* Tamaño pequeño */
+                --icon-size: 1.5em; /* Tamaño pequeño */
             }
-            .coordenadas-display {
-                font-size: 0.75em;
-            }
-            .buttons-row {
-                gap: 10px;
+            .time-display {
+                font-size: 1em;
             }
         }
     </style>
 </head>
 <body>
-    <div class="gps-controls-container">
-        <div class="coordenadas-display" id="coordenadasDisplay">Esperando GPS...</div>
-        <div class="buttons-row">
-            <button id="gpsBtn" class="control-button" title="Activar/Desactivar GPS">
-                <i class="fas fa-location-crosshairs"></i>
+    <div class="player-container">
+        <div class="controls">
+            <button id="prevBtn" class="control-button" title="Anterior">
+                <i class="fas fa-backward"></i>
             </button>
-            <button id="targetBtn" class="control-button" title="Objetivo Parada" disabled>
-                <i class="fas fa-bullseye"></i>
+            <button id="playPauseBtn" class="control-button" title="Reproducir/Pausar">
+                <i class="fas fa-play"></i>
             </button>
-            <button id="mapBtn" class="control-button" title="Ver en Mapa" disabled>
-                <i class="fas fa-map-marked-alt"></i>
+            <button id="nextBtn" class="control-button" title="Siguiente">
+                <i class="fas fa-forward"></i>
             </button>
+            <button id="stopBtn" class="control-button" title="Detener">
+                <i class="fas fa-stop"></i>
+            </button>
+        </div>
+
+        <div class="progress-container">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <div class="time-display">
+            <span id="currentTime">00:00</span>
+            <span id="duration">00:00</span>
         </div>
     </div>
 
     <script>
-        const coordenadasDisplay = document.getElementById('coordenadasDisplay');
-        const gpsBtn = document.getElementById('gpsBtn');
-        const targetBtn = document.getElementById('targetBtn');
-        const mapBtn = document.getElementById('mapBtn');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const progressBar = document.getElementById('progressBar');
+        const currentTimeSpan = document.getElementById('currentTime');
+        const durationSpan = document.getElementById('duration');
 
-        let watchId = null; // ID del observador de geolocalización
-        let isGpsActive = false;
-        let currentTargetParadaIndex = null; // Índice de la parada objetivo actual
-        let currentParadaInfo = null; // Guarda la info completa de la parada actual
+        let isPlaying = false;
+        let currentMediaIndex = 0;
+        let mediaDuration = 0; // Simulación de duración
+        let mediaCurrentTime = 0; // Simulación de tiempo actual
+        let progressInterval;
 
-        // Definición de PARADAS (debe coincidir con el padre)
-        // Usamos una versión simplificada aquí ya que la completa está en el padre
-        const PARADAS_COORDENADAS = [
-            { lat: 39.478046, lng: -0.375515, nombre: "Torres de Serranos (start)" }, // Parada 1
-            { lat: 39.4795, lng: -0.375, nombre: "Puente de Serranos – Plaza de la crida" }, // Parada 2
-            { lat: 39.4779, lng: -0.3734, nombre: "Cortes Valencianas (Palacio de los Borgia)" }, // Parada 3
-            { lat: 39.4764, lng: -0.3756, nombre: "Plaza de la Virgen" }, // Parada 4
-            { lat: 39.4761, lng: -0.3752, nombre: "Plaza de la Almoína" }, // Parada 5
-            { lat: 39.4754, lng: -0.3752, nombre: "Catedral de València" }, // Parada 6
-            { lat: 39.4752, lng: -0.3748, nombre: "Plaza decimo Juno Bruto (Museo Arqueológico de la Almoína)" }, // Parada 7
-            { lat: 39.4753, lng: -0.3744, nombre: "Basílica de València" }, // Parada 8
-            { lat: 39.475, lng: -0.3739, nombre: "Palacio Arzobispal" }, // Parada 9
-            { lat: 39.4705, lng: -0.3764, nombre: "Plaza del Ayuntamiento" }, // Parada 10
-            { lat: 39.4705, lng: -0.3768, nombre: "Edificio del Ayuntamiento de València" }, // Parada 11
-            { lat: 39.4697, lng: -0.3768, nombre: "Estación de Ferrocarril (Estación del Norte)" }, // Parada 12
-            { lat: 39.4697, lng: -0.3758, nombre: "Plaza de Toros de València" }, // Parada 13
-            { lat: 39.4715, lng: -0.3747, nombre: "Casa estilo Árabe" }, // Parada 14
-            { lat: 39.4719, lng: -0.3756, nombre: "Palacio de Comunicaciones (Correos)" }, // Parada 15
-            { lat: 39.4727, lng: -0.3765, nombre: "Antigua sede del Banco de València" }, // Parada 16
-            { lat: 39.4735, lng: -0.3764, nombre: "Palacio del Marqués de Dos Aguas (Museo Nacional de Crámica)" }, // Parada 17
-            { lat: 39.4745, lng: -0.3787, nombre: "Mercado Central" }, // Parada 18
-            { lat: 39.4751, lng: -0.3791, nombre: "San Juan del Mercado (Iglesia de los Santos Juanes)" }, // Parada 19
-            { lat: 39.4756, lng: -0.3791, nombre: "Lonja de València (Mercado de la Seda)" }, // Parada 20
-            { lat: 39.4764, lng: -0.3789, nombre: "Plaza del Doctor Collado" }, // Parada 21
-            { lat: 39.4764, lng: -0.3782, nombre: "Plaza del Negrito (Fuente del Negrito)" }, // Parada 22
-            { lat: 39.4774, lng: -0.3776, nombre: "Calle Caballeros" }, // Parada 23
-            { lat: 39.4777, lng: -0.377, nombre: "Palacio de la Generalitat" }, // Parada 24
-            { lat: 39.4782, lng: -0.3761, nombre: "Calle de los Serranos (end)" }, // Parada 25
-            { lat: 39.4800, lng: -0.3700, nombre: "Parada 26" },
-            { lat: 39.4810, lng: -0.3710, nombre: "Parada 27" },
-            { lat: 39.4820, lng: -0.3720, nombre: "Parada 28" },
-            { lat: 39.4830, lng: -0.3730, nombre: "Parada 29" },
-            { lat: 39.4840, lng: -0.3740, nombre: "Parada 30" }
+        // Simulación de una lista de medios
+        const mediaList = [
+            { id: 0, title: "Audio 1", duration: 180 }, // 3 minutos
+            { id: 1, title: "Audio 2", duration: 240 }, // 4 minutos
+            { id: 2, title: "Audio 3", duration: 120 }  // 2 minutos
         ];
 
-        // Rango de proximidad para activar la parada (en metros)
-        const PROXIMITY_RADIUS_METERS = 30; // Ajusta según sea necesario
-
-        // Funciones auxiliares
-        function toRadians(deg) {
-            return deg * (Math.PI / 180);
+        function formatTime(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = Math.floor(seconds % 60);
+            return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
         }
 
-        // Calcula la distancia entre dos puntos Lat/Lng usando la fórmula Haversine
-        function calculateDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371e3; // Metros
-            const φ1 = toRadians(lat1);
-            const φ2 = toRadians(lat2);
-            const Δφ = toRadians(lat2 - lat1);
-            const Δλ = toRadians(lon2 - lon1);
-
-            const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-                      Math.cos(φ1) * Math.cos(φ2) *
-                      Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-            const distance = R * c;
-            return distance;
-        }
-
-        // --- GPS Control ---
-        function startGpsTracking() {
-            if (navigator.geolocation) {
-                gpsBtn.classList.add('btn-gps-active');
-                gpsBtn.classList.remove('btn-gps-inactive');
-                coordenadasDisplay.textContent = 'Buscando ubicación...';
-
-                watchId = navigator.geolocation.watchPosition(
-                    (position) => {
-                        const { latitude, longitude } = position.coords;
-                        coordenadasDisplay.textContent = `Lat: ${latitude.toFixed(6)}, Lng: ${longitude.toFixed(6)}`;
-                        window.parent.postMessage({ type: 'actualizarUbicacionMapa', lat: latitude, lng: longitude }, '*');
-
-                        // Comprobar proximidad a la parada objetivo
-                        if (currentTargetParadaIndex !== null && PARADAS_COORDENADAS[currentTargetParadaIndex]) {
-                            const targetLat = PARADAS_COORDENADAS[currentTargetParadaIndex].lat;
-                            const targetLng = PARADAS_COORDENADAS[currentTargetParadaIndex].lng;
-                            const distance = calculateDistance(latitude, longitude, targetLat, targetLng);
-
-                            if (distance < PROXIMITY_RADIUS_METERS) {
-                                // Hemos llegado a la parada
-                                alert(`¡Has llegado a la Parada ${currentTargetParadaIndex + 1}: ${PARADAS_COORDENADAS[currentTargetParadaIndex].nombre}!`);
-                                window.parent.postMessage({ type: 'ya-estoy-aqui', parada: currentTargetParadaIndex, info: PARADAS_COORDENADAS[currentTargetParadaIndex] }, '*');
-                                // Detener GPS o configurar la siguiente parada
-                                // Por ahora, se mantiene el GPS activo hasta que se desactive manualmente o se avance la ruta desde el padre
-                                // currentTargetParadaIndex = null; // Si solo quieres activar una vez
-                                targetBtn.disabled = true; // Deshabilita el botón de objetivo al llegar
-                                targetBtn.classList.remove('btn-target-active');
-                            }
-                        }
-                    },
-                    (error) => {
-                        console.error('Error de geolocalización:', error);
-                        coordenadasDisplay.textContent = 'GPS Error.';
-                        gpsBtn.classList.remove('btn-gps-active');
-                        gpsBtn.classList.add('btn-gps-inactive');
-                        isGpsActive = false;
-                        alert('No se pudo obtener la ubicación GPS. Por favor, asegúrate de tener el GPS activado y de dar permisos al navegador.');
-                    },
-                    {
-                        enableHighAccuracy: true,
-                        maximumAge: 0,
-                        timeout: 5000
-                    }
-                );
-                isGpsActive = true;
-            } else {
-                coordenadasDisplay.textContent = 'GPS no soportado.';
-                alert('Tu navegador no soporta la geolocalización.');
+        function updateProgressBar() {
+            if (mediaDuration > 0) {
+                const progress = (mediaCurrentTime / mediaDuration) * 100;
+                progressBar.style.width = `${progress}%`;
+                currentTimeSpan.textContent = formatTime(mediaCurrentTime);
             }
         }
 
-        function stopGpsTracking() {
-            if (watchId !== null) {
-                navigator.geolocation.clearWatch(watchId);
-                watchId = null;
-            }
-            isGpsActive = false;
-            gpsBtn.classList.remove('btn-gps-active');
-            gpsBtn.classList.add('btn-gps-inactive');
-            coordenadasDisplay.textContent = 'GPS Inactivo';
-            targetBtn.disabled = true; // Deshabilita el botón de objetivo al detener GPS
-            targetBtn.classList.remove('btn-target-active');
-            mapBtn.disabled = true; // Deshabilita el botón de mapa
-            mapBtn.classList.remove('btn-map-active');
-            currentTargetParadaIndex = null;
-        }
-
-        gpsBtn.addEventListener('click', () => {
-            if (isGpsActive) {
-                stopGpsTracking();
-            } else {
-                startGpsTracking();
-            }
-        });
-
-        targetBtn.addEventListener('click', () => {
-            if (currentTargetParadaIndex !== null && PARADAS_COORDENADAS[currentTargetParadaIndex]) {
-                const targetParada = PARADAS_COORDENADAS[currentTargetParadaIndex];
-                coordenadasDisplay.textContent = `Objetivo: Parada ${currentTargetParadaIndex + 1} - ${targetParada.nombre}`;
-                targetBtn.classList.add('btn-target-active');
-                // Podríamos enviar un mensaje al padre para que muestre el marcador de destino en el mapa principal
-                window.parent.postMessage({ type: 'mostrarUbicacionObjetivo', lat: targetParada.lat, lng: targetParada.lng, nombre: targetParada.nombre }, '*');
-            } else {
-                alert('No hay parada objetivo seleccionada. ¡Inicia la aventura!');
-            }
-        });
-
-        mapBtn.addEventListener('click', () => {
-            if (currentTargetParadaIndex !== null && PARADAS_COORDENADAS[currentTargetParadaIndex]) {
-                const destino = PARADAS_COORDENADAS[currentTargetParadaIndex];
-                // Pide la ubicación actual para calcular la ruta
-                if (isGpsActive && navigator.geolocation) {
-                    navigator.geolocation.getCurrentPosition(
-                        (position) => {
-                            const origen = { lat: position.coords.latitude, lng: position.coords.longitude };
-                            window.parent.postMessage({ tipo: 'mostrar-mapa-gps', ruta: [origen, destino], origen: origen, destino: destino }, '*');
-                            mapBtn.classList.add('btn-map-active');
-                        },
-                        (error) => {
-                            console.error("Error al obtener la ubicación actual para la ruta:", error);
-                            alert("No se pudo obtener tu ubicación actual para mostrar la ruta.");
-                        }
-                    );
+        function startProgressSimulation() {
+            clearInterval(progressInterval);
+            progressInterval = setInterval(() => {
+                if (mediaCurrentTime < mediaDuration) {
+                    mediaCurrentTime++;
+                    updateProgressBar();
                 } else {
-                    alert("Por favor, activa el GPS para ver la ruta en el mapa.");
+                    clearInterval(progressInterval);
+                    isPlaying = false;
+                    playPauseBtn.innerHTML = '<i class="fas fa-play"></i>';
+                    // Opcional: avanzar al siguiente medio automáticamente
+                    // playNext();
                 }
+            }, 1000); // Actualiza cada segundo
+        }
+
+        function loadMedia(index) {
+            if (index >= 0 && index < mediaList.length) {
+                currentMediaIndex = index;
+                mediaDuration = mediaList[currentMediaIndex].duration;
+                mediaCurrentTime = 0;
+                durationSpan.textContent = formatTime(mediaDuration);
+                updateProgressBar();
+                console.log(`Cargado: ${mediaList[currentMediaIndex].title}`);
+                // Notificar al padre sobre el cambio de medio
+                window.parent.postMessage({ type: 'media-cargado', index: currentMediaIndex, title: mediaList[currentMediaIndex].title }, '*');
             } else {
-                alert('No hay parada objetivo seleccionada.');
+                console.log("No hay más medios.");
+                stopMedia(); // Detener si no hay siguiente
+            }
+        }
+
+        function playMedia() {
+            isPlaying = true;
+            playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
+            startProgressSimulation();
+            window.parent.postMessage({ type: 'media-reproducido', index: currentMediaIndex }, '*');
+        }
+
+        function pauseMedia() {
+            isPlaying = false;
+            playPauseBtn.innerHTML = '<i class="fas fa-play"></i>';
+            clearInterval(progressInterval);
+            window.parent.postMessage({ type: 'media-pausado', index: currentMediaIndex }, '*');
+        }
+
+        function stopMedia() {
+            isPlaying = false;
+            playPauseBtn.innerHTML = '<i class="fas fa-play"></i>';
+            clearInterval(progressInterval);
+            mediaCurrentTime = 0;
+            updateProgressBar();
+            window.parent.postMessage({ type: 'media-detenido', index: currentMediaIndex }, '*');
+        }
+
+        function playNext() {
+            currentMediaIndex++;
+            if (currentMediaIndex < mediaList.length) {
+                loadMedia(currentMediaIndex);
+                playMedia();
+            } else {
+                currentMediaIndex = 0; // Volver al inicio o detener
+                loadMedia(currentMediaIndex); // Cargar el primero pero no reproducir automáticamente
+                stopMedia();
+            }
+        }
+
+        function playPrev() {
+            currentMediaIndex--;
+            if (currentMediaIndex >= 0) {
+                loadMedia(currentMediaIndex);
+                playMedia();
+            } else {
+                currentMediaIndex = mediaList.length - 1; // Ir al final o detener
+                loadMedia(currentMediaIndex); // Cargar el último pero no reproducir automáticamente
+                stopMedia();
+            }
+        }
+
+        playPauseBtn.addEventListener('click', () => {
+            if (isPlaying) {
+                pauseMedia();
+            } else {
+                playMedia();
             }
         });
 
-        // --- Listener para mensajes del padre ---
+        prevBtn.addEventListener('click', playPrev);
+        nextBtn.addEventListener('click', playNext);
+        stopBtn.addEventListener('click', stopMedia);
+
+        // Listener para mensajes del padre (ej. para reproducir un audio específico)
         window.addEventListener('message', (event) => {
             const data = event.data;
-            if (data && data.tipo === 'navegar-de-a-b') {
-                // `data.origen` es el índice de la parada actual
-                // `data.destino` es el índice de la siguiente parada
-                if (PARADAS_COORDENADAS[data.destino]) {
-                    currentTargetParadaIndex = data.destino; // Establece el objetivo como la siguiente parada
-                    currentParadaInfo = PARADAS_COORDENADAS[data.destino];
-                    targetBtn.disabled = false; // Habilita el botón de objetivo
-                    mapBtn.disabled = false; // Habilita el botón de mapa
-                    targetBtn.classList.remove('btn-target-active'); // Resetea el estado
-                    mapBtn.classList.remove('btn-map-active'); // Resetea el estado
-                    coordenadasDisplay.textContent = `Esperando llegada a: Parada ${data.destino + 1}`;
-                } else {
-                    currentTargetParadaIndex = null;
-                    currentParadaInfo = null;
-                    targetBtn.disabled = true;
-                    mapBtn.disabled = true;
-                    coordenadasDisplay.textContent = 'Aventura Finalizada';
+            if (data && data.tipo === 'reproducir-audio') {
+                const audioIndex = data.index;
+                if (audioIndex !== undefined && audioIndex < mediaList.length) {
+                    loadMedia(audioIndex);
+                    playMedia();
                 }
             }
-            if (data && data.tipo === 'activar-todos-botones') {
-                // Esta función se llama desde el padre cuando se selecciona una parada en modo "casa"
-                // No habilitamos GPS si no está activo ya
-                targetBtn.disabled = false;
-                mapBtn.disabled = false;
-                // currentTargetParadaIndex y currentParadaInfo deben ser establecidos por el padre
+            if (data && data.tipo === 'pausar-audio') {
+                pauseMedia();
             }
-            if (data && data.tipo === 'activar-modo-casa') {
-                stopGpsTracking(); // Detiene el GPS si estaba activo
-                targetBtn.disabled = true;
-                mapBtn.disabled = true;
-                coordenadasDisplay.textContent = 'Modo Casa Activo';
+            if (data && data.tipo === 'detener-audio') {
+                stopMedia();
             }
         });
 
-        // Inicialización: GPS inactivo por defecto
-        stopGpsTracking();
+        // Inicialización
+        loadMedia(0); // Carga el primer medio al iniciar
     </script>
 </body>
 </html>
