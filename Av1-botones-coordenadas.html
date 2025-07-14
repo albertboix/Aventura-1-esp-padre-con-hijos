@@ -602,6 +602,9 @@
         }
 
         function verificarLlegadaAParada() {
+            // En modo casa, no verificar llegada a paradas
+            if (modoCasa) return;
+            
             if (!ubicacionActual || paradaActual >= COORDENADAS_PARADAS.length) return;
 
             const paradaDestino = COORDENADAS_PARADAS[paradaActual];
@@ -677,6 +680,12 @@
         btnGps.addEventListener('click', () => {
             if (btnGps.classList.contains('disabled')) return;
             
+            // En modo casa, el GPS está desactivado
+            if (modoCasa) {
+                actualizarStatus('GPS desactivado en modo casa');
+                return;
+            }
+            
             // Botón 1: GPS - Navegación de punto A a punto B
             const paradaDestino = COORDENADAS_PARADAS[paradaActual];
             
@@ -700,12 +709,17 @@
             const imagenSrc = IMAGENES_PARADAS[paradaActual];
             
             if (imagenSrc) {
-                actualizarStatus(`Mostrando imagen de parada ${paradaActual + 1}`);
+                if (modoCasa) {
+                    actualizarStatus(`Modo Casa - Imagen parada ${paradaActual + 1}`);
+                } else {
+                    actualizarStatus(`Mostrando imagen de parada ${paradaActual + 1}`);
+                }
                 
                 enviarMensajeAlPadre({
                     tipo: 'mostrar-imagen',
                     parada: paradaActual + 1,
-                    imagenSrc: imagenSrc
+                    imagenSrc: imagenSrc,
+                    modoCasa: modoCasa
                 });
             }
         });
@@ -718,32 +732,117 @@
             const coordenadas = COORDENADAS_PARADAS[paradaActual];
             
             if (videoSrc && coordenadas) {
-                actualizarStatus(`Preparando video de parada ${paradaActual + 1}...`);
+                if (modoCasa) {
+                    actualizarStatus(`Modo Casa - Video parada ${paradaActual + 1}`);
+                } else {
+                    actualizarStatus(`Preparando video de parada ${paradaActual + 1}...`);
+                }
                 
-                // Primero hacer zoom-in por 2 segundos
-                enviarMensajeAlPadre({
-                    tipo: 'mostrar-zoom-coordenadas',
-                    coordenadas: coordenadas,
-                    parada: paradaActual + 1
-                });
-                
-                // Después de 2 segundos, mostrar el video con autoplay
-                setTimeout(() => {
+                // En modo casa, mostrar video directamente sin zoom
+                if (modoCasa) {
                     enviarMensajeAlPadre({
                         tipo: 'mostrar-video',
                         parada: paradaActual + 1,
                         videoSrc: videoSrc,
-                        autoplay: true
+                        autoplay: true,
+                        modoCasa: true
+                    });
+                } else {
+                    // Modo aventura: primero zoom, luego video
+                    enviarMensajeAlPadre({
+                        tipo: 'mostrar-zoom-coordenadas',
+                        coordenadas: coordenadas,
+                        parada: paradaActual + 1
                     });
                     
-                    actualizarStatus(`Reproduciendo video de parada ${paradaActual + 1}`);
-                }, 2000);
+                    setTimeout(() => {
+                        enviarMensajeAlPadre({
+                            tipo: 'mostrar-video',
+                            parada: paradaActual + 1,
+                            videoSrc: videoSrc,
+                            autoplay: true,
+                            modoCasa: false
+                        });
+                        
+                        actualizarStatus(`Reproduciendo video de parada ${paradaActual + 1}`);
+                    }, 2000);
+                }
             }
         });
 
         // ================== COMUNICACIÓN CON EL PADRE ==================
         function enviarMensajeAlPadre(mensaje) {
             window.parent.postMessage(mensaje, '*');
+        }
+        
+        // ================== COMUNICACIÓN CON EL HIJO 5 (Av1-boton-casa.html) ==================
+        function enviarMensajeAHijo5(mensaje) {
+            // Enviar mensaje específicamente al hijo 5 a través del padre
+            enviarMensajeAlPadre({
+                tipo: 'mensaje-para-hijo5',
+                mensaje: mensaje
+            });
+        }
+        
+        function enviarEstadoModoAHijo5() {
+            enviarMensajeAHijo5({
+                tipo: 'estado-modo-actual',
+                modoCasa: modoCasa,
+                paradaActual: paradaActual
+            });
+        }
+        
+        // ================== FUNCIONES DE MODO CASA/AVENTURA ==================
+        function activarModoCasa() {
+            modoCasa = true;
+            
+            // Desactivar GPS cuando se activa modo casa
+            detenerGPS();
+            desactivarBoton(btnGps);
+            
+            // Activar botones foto y video en modo casa
+            activarBoton(btnImagen);
+            activarBoton(btnVideo);
+            
+            actualizarStatus('Modo Casa activado - GPS desactivado');
+            
+            // Notificar al padre del cambio de modo
+            enviarMensajeAlPadre({
+                tipo: 'modo-casa-activado',
+                modoCasa: true
+            });
+            
+            // Confirmar al hijo 5 que el modo casa está activo
+            enviarMensajeAHijo5({
+                tipo: 'confirmacion-modo-casa',
+                activo: true
+            });
+        }
+        
+        function activarModoAventura() {
+            modoCasa = false;
+            
+            // En modo aventura, el comportamiento depende de si hemos llegado a una parada
+            if (ubicacionActual) {
+                verificarLlegadaAParada();
+            } else {
+                // Si no hay ubicación, todos los botones están desactivados
+                desactivarTodosBotones();
+            }
+            
+            actualizarStatus('Modo Aventura activado - GPS disponible');
+            
+            // Notificar al padre del cambio de modo
+            enviarMensajeAlPadre({
+                tipo: 'modo-aventura-activado',
+                modoCasa: false
+            });
+            
+            // Confirmar al hijo 5 que el modo aventura está activo
+            enviarMensajeAHijo5({
+                tipo: 'confirmacion-modo-aventura',
+                activo: true
+            });
         }
 
         // Escuchar mensajes del padre
@@ -793,6 +892,23 @@
                     lng: data.lng
                 };
             }
+            
+            // ========== MENSAJES DEL HIJO 5 (Av1-boton-casa.html) ==========
+            
+            // El hijo 5 nos informa que el botón casa fue activado
+            if (data && data.tipo === 'boton-casa-activado') {
+                activarModoCasa();
+            }
+            
+            // El hijo 5 nos informa que el botón casa fue desactivado
+            if (data && data.tipo === 'boton-casa-desactivado') {
+                activarModoAventura();
+            }
+            
+            // El hijo 5 solicita el estado actual del modo
+            if (data && data.tipo === 'solicitar-estado-modo') {
+                enviarEstadoModoAHijo5();
+            }
         });
 
         // ================== INICIALIZACIÓN ==================
@@ -800,6 +916,11 @@
             // Todos los botones empiezan desactivados (fondo rojo)
             desactivarTodosBotones();
             actualizarStatus('Esperando instrucciones del padre...');
+            
+            // Notificar al hijo 5 el estado inicial (modo aventura)
+            setTimeout(() => {
+                enviarEstadoModoAHijo5();
+            }, 1000);
         });
     </script>
 </body>
