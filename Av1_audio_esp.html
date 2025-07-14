@@ -95,6 +95,7 @@
             overflow: hidden;
             margin-top: 5px; /* Pequeño margen superior */
             position: relative;
+            cursor: pointer; /* Indicar que es interactiva */
         }
 
         .progress-bar {
@@ -102,7 +103,7 @@
             width: 0%; /* Se actualizará con JS */
             background: linear-gradient(90deg, #007bff, #00c6ff); /* Degradado azul */
             border-radius: calc(var(--progress-thick) / 2);
-            transition: width 0.1s linear;
+            transition: none; /* Eliminar transición para permitir arrastre suave */
         }
 
         .time-display {
@@ -144,7 +145,7 @@
             </button>
         </div>
 
-        <div class="progress-container">
+        <div class="progress-container" id="progressContainer">
             <div class="progress-bar" id="progressBar"></div>
         </div>
         <div class="time-display">
@@ -159,6 +160,7 @@
         const nextBtn = document.getElementById('nextBtn');
         const stopBtn = document.getElementById('stopBtn');
         const progressBar = document.getElementById('progressBar');
+        const progressContainer = document.getElementById('progressContainer'); // Nuevo
         const currentTimeSpan = document.getElementById('currentTime');
         const durationSpan = document.getElementById('duration');
 
@@ -167,6 +169,7 @@
         let mediaDuration = 0; // Simulación de duración
         let mediaCurrentTime = 0; // Simulación de tiempo actual
         let progressInterval;
+        let isDraggingProgress = false; // Estado para el arrastre
 
         // Simulación de una lista de medios
         const mediaList = [
@@ -192,10 +195,10 @@
         function startProgressSimulation() {
             clearInterval(progressInterval);
             progressInterval = setInterval(() => {
-                if (mediaCurrentTime < mediaDuration) {
+                if (!isDraggingProgress && mediaCurrentTime < mediaDuration) { // Solo avanza si no se está arrastrando
                     mediaCurrentTime++;
                     updateProgressBar();
-                } else {
+                } else if (mediaCurrentTime >= mediaDuration) {
                     clearInterval(progressInterval);
                     isPlaying = false;
                     playPauseBtn.innerHTML = '<i class="fas fa-play"></i>';
@@ -267,6 +270,73 @@
                 stopMedia();
             }
         }
+
+        // Funcionalidad de arrastre de la barra de progreso
+        function seek(e) {
+            if (mediaDuration === 0) return; // No hacer nada si no hay duración
+
+            const rect = progressContainer.getBoundingClientRect();
+            let clickX = e.clientX - rect.left; // Posición X del clic/arrastre dentro del contenedor
+
+            // Manejar touch events
+            if (e.touches && e.touches.length > 0) {
+                clickX = e.touches[0].clientX - rect.left;
+            }
+
+            let newTime = (clickX / rect.width) * mediaDuration;
+
+            // Asegurarse de que el tiempo no exceda la duración ni sea negativo
+            newTime = Math.max(0, Math.min(newTime, mediaDuration));
+
+            mediaCurrentTime = newTime;
+            updateProgressBar();
+
+            // Si se está reproduciendo, reanudar la simulación de progreso desde el nuevo tiempo
+            if (isPlaying) {
+                startProgressSimulation();
+            }
+        }
+
+        progressContainer.addEventListener('mousedown', (e) => {
+            isDraggingProgress = true;
+            seek(e); // Ajustar inmediatamente al clic inicial
+            // Pausar la simulación de avance para evitar conflictos
+            clearInterval(progressInterval);
+        });
+
+        progressContainer.addEventListener('mousemove', (e) => {
+            if (isDraggingProgress) {
+                seek(e);
+            }
+        });
+
+        progressContainer.addEventListener('mouseup', () => {
+            isDraggingProgress = false;
+            // Reanudar la simulación de avance solo si estaba reproduciendo antes del arrastre
+            if (isPlaying) {
+                startProgressSimulation();
+            }
+        });
+
+        // Para eventos táctiles
+        progressContainer.addEventListener('touchstart', (e) => {
+            isDraggingProgress = true;
+            seek(e);
+            clearInterval(progressInterval);
+        });
+
+        progressContainer.addEventListener('touchmove', (e) => {
+            if (isDraggingProgress) {
+                seek(e);
+            }
+        });
+
+        progressContainer.addEventListener('touchend', () => {
+            isDraggingProgress = false;
+            if (isPlaying) {
+                startProgressSimulation();
+            }
+        });
 
         playPauseBtn.addEventListener('click', () => {
             if (isPlaying) {
