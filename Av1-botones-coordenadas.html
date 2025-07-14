@@ -5,43 +5,98 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Botones y Coordenadas GPS</title>
     <style>
+        :root {
+            /* Variables de diseño para botones y barra de progreso */
+            --btn-size: 80px;
+            --icon-size: 2.2em;
+            --progress-thick: 20px; /* GROSOR DE LA BARRA DE PROGRESO */
+            --timer-font-size: 1.1em;
+        }
+
         body {
             margin: 0;
             padding: 5px;
             background: transparent;
             font-family: Arial, sans-serif;
             overflow: hidden;
-        }
-
-        .container {
             display: flex;
             flex-direction: column;
-            height: 140px;
+            align-items: center;
+            justify-content: flex-start;
+        }
+
+        /* Contenedor principal con la forma trapezoidal invertida (corta arriba, larga abajo) */
+        .container {
             width: 300px;
+            height: 160px;
+            background: white;
+            border-radius: 18px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.13);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-around;
+            padding: 8px 10px 8px 10px;
+            box-sizing: border-box;
+            
+            /* === CLAVE PARA LA FORMA TRAPEZOIDAL INVERTIDA (corta arriba, larga abajo) === */
+            clip-path: polygon(8% 0%, 92% 0%, 100% 100%, 0% 100%);
+        }
+
+        /* Barra de Progreso */
+        .progress-container {
+            width: 90%;
+            height: var(--progress-thick);
+            background-color: #e0e0e0;
+            border-radius: calc(var(--progress-thick) / 2);
+            overflow: hidden;
+            margin: 3px 0;
+            position: relative;
+            cursor: pointer;
+        }
+
+        .progress-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #007bff, #00c6ff);
+            border-radius: calc(var(--progress-thick) / 2);
+            transition: none;
+        }
+
+        .time-display {
+            width: 90%;
+            display: flex;
+            justify-content: space-between;
+            color: #333;
+            font-size: var(--timer-font-size);
+            margin: 2px 0;
         }
 
         .botones-row {
             display: flex;
-            justify-content: space-between;
-            margin-bottom: 5px;
+            gap: 15px;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+            margin: 3px 0;
         }
 
         .boton {
-            width: 80px;
-            height: 50px;
-            border: 2px solid #333;
-            border-radius: 8px;
+            width: var(--btn-size);
+            height: var(--btn-size);
+            border-radius: 50%; /* CÍRCULO */
+            border: none;
             background: linear-gradient(135deg, #dc3545, #c82333); /* Rojo por defecto */
             color: white;
-            font-size: 14px;
-            font-weight: bold;
+            font-size: var(--icon-size);
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             transition: all 0.3s ease;
             text-align: center;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.10);
+            flex-shrink: 0;
         }
 
         .boton.activo {
@@ -54,7 +109,7 @@
         }
 
         .boton:active {
-            transform: translateY(0);
+            transform: scale(0.95);
             box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }
 
@@ -66,33 +121,37 @@
 
         .boton.disabled:hover {
             transform: none;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.10);
         }
 
         /* Control individual del tamaño de iconos */
         .icon-gps {
-            font-size: 18px; /* Tamaño del icono GPS 🛰️ */
+            font-size: var(--icon-size);
         }
 
         .icon-imagen {
-            font-size: 16px; /* Tamaño del icono imagen 📸 */
+            font-size: var(--icon-size);
         }
 
         .icon-video {
-            font-size: 17px; /* Tamaño del icono video 📽️ */
+            font-size: var(--icon-size);
         }
 
         .status {
-            margin-top: 5px;
+            margin: 3px 0;
             padding: 5px;
             background: rgba(255, 255, 255, 0.8);
             border-radius: 5px;
             font-size: 11px;
             text-align: center;
-            min-height: 40px;
+            min-height: 30px;
             display: flex;
             align-items: center;
             justify-content: center;
+            width: 90%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .gps-icon {
@@ -114,15 +173,22 @@
 </head>
 <body>
     <div class="container">
+        <div class="time-display">
+            <span id="elapsedTime">00:00</span>
+            <span id="totalTime">05:30</span>
+        </div>
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
         <div class="botones-row">
             <button id="btn-gps" class="boton">
-                <span class="icon-gps">🛰️<br>GPS</span>
+                <span class="icon-gps">🛰️</span>
             </button>
             <button id="btn-imagen" class="boton disabled">
-                <span class="icon-imagen">📸<br>Foto</span>
+                <span class="icon-imagen">📸</span>
             </button>
             <button id="btn-video" class="boton disabled">
-                <span class="icon-video">📽️<br>Video</span>
+                <span class="icon-video">📽️</span>
             </button>
         </div>
         <div id="status" class="status">
@@ -418,11 +484,118 @@
         let watchId = null;
         let modoCasa = false;
 
+        // Variables para la barra de progreso
+        let totalTripTime = 330; // 5:30 en segundos por defecto
+        let tripElapsedTime = 0;
+        let tripProgressInterval;
+        let isDraggingProgress = false;
+
         // Referencias a elementos DOM
         const btnGps = document.getElementById('btn-gps');
         const btnImagen = document.getElementById('btn-imagen');
         const btnVideo = document.getElementById('btn-video');
         const status = document.getElementById('status');
+        const progressBar = document.getElementById('progressBar');
+        const progressContainer = document.getElementById('progressContainer');
+        const elapsedTimeSpan = document.getElementById('elapsedTime');
+        const totalTimeSpan = document.getElementById('totalTime');
+
+        // ================ FUNCIONES DE BARRA DE PROGRESO ================
+        
+        function formatTime(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = Math.floor(seconds % 60);
+            return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+        }
+
+        function updateTripProgressBar() {
+            if (totalTripTime > 0) {
+                const progress = (tripElapsedTime / totalTripTime) * 100;
+                progressBar.style.width = `${progress}%`;
+                elapsedTimeSpan.textContent = formatTime(tripElapsedTime);
+            }
+        }
+
+        function startTripProgressSimulation() {
+            clearInterval(tripProgressInterval);
+            tripProgressInterval = setInterval(() => {
+                if (!isDraggingProgress && tripElapsedTime < totalTripTime) {
+                    tripElapsedTime++;
+                    updateTripProgressBar();
+                } else if (tripElapsedTime >= totalTripTime) {
+                    clearInterval(tripProgressInterval);
+                }
+            }, 1000);
+        }
+
+        function resetTripProgress() {
+            clearInterval(tripProgressInterval);
+            tripElapsedTime = 0;
+            progressBar.style.width = '0%';
+            elapsedTimeSpan.textContent = '00:00';
+            updateTripProgressBar();
+        }
+
+        // Funcionalidad de arrastre de la barra de progreso
+        function seek(e) {
+            if (totalTripTime === 0) return;
+
+            const rect = progressContainer.getBoundingClientRect();
+            let clickX = e.clientX - rect.left;
+
+            if (e.touches && e.touches.length > 0) {
+                clickX = e.touches[0].clientX - rect.left;
+            }
+
+            let newTime = (clickX / rect.width) * totalTripTime;
+            newTime = Math.max(0, Math.min(newTime, totalTripTime));
+
+            tripElapsedTime = newTime;
+            updateTripProgressBar();
+
+            if (watchId) {
+                startTripProgressSimulation();
+            }
+        }
+
+        // Event listeners para la barra de progreso
+        progressContainer.addEventListener('mousedown', (e) => {
+            isDraggingProgress = true;
+            seek(e);
+            clearInterval(tripProgressInterval);
+        });
+
+        progressContainer.addEventListener('mousemove', (e) => {
+            if (isDraggingProgress) {
+                seek(e);
+            }
+        });
+
+        progressContainer.addEventListener('mouseup', () => {
+            isDraggingProgress = false;
+            if (watchId) {
+                startTripProgressSimulation();
+            }
+        });
+
+        progressContainer.addEventListener('touchstart', (e) => {
+            isDraggingProgress = true;
+            seek(e);
+            clearInterval(tripProgressInterval);
+        });
+
+        progressContainer.addEventListener('touchmove', (e) => {
+            if (isDraggingProgress) {
+                seek(e);
+            }
+        });
+
+        progressContainer.addEventListener('touchend', () => {
+            isDraggingProgress = false;
+            if (watchId) {
+                startTripProgressSimulation();
+            }
+        });
 
         // Configuración de imágenes y videos por parada
         const IMAGENES_PARADAS = [
@@ -536,6 +709,11 @@
             }
 
             actualizarStatus('Obteniendo ubicación GPS...', true);
+            
+            // Iniciar simulación de progreso cuando se activa GPS
+            resetTripProgress();
+            totalTimeSpan.textContent = formatTime(totalTripTime);
+            startTripProgressSimulation();
 
             const options = {
                 enableHighAccuracy: true,
@@ -598,6 +776,11 @@
                 watchId = null;
             }
             ubicacionActual = null;
+            
+            // Detener y resetear progreso cuando se desactiva GPS
+            clearInterval(tripProgressInterval);
+            resetTripProgress();
+            
             actualizarStatus('GPS desactivado');
         }
 
@@ -804,6 +987,10 @@
             activarBoton(btnImagen);
             activarBoton(btnVideo);
             
+            // Resetear progreso en modo casa
+            clearInterval(tripProgressInterval);
+            resetTripProgress();
+            
             actualizarStatus('Modo Casa activado - GPS desactivado');
             
             // Notificar al padre del cambio de modo
@@ -915,6 +1102,11 @@
         document.addEventListener('DOMContentLoaded', () => {
             // Todos los botones empiezan desactivados (fondo rojo)
             desactivarTodosBotones();
+            
+            // Inicializar barra de progreso
+            totalTimeSpan.textContent = formatTime(totalTripTime);
+            resetTripProgress();
+            
             actualizarStatus('Esperando instrucciones del padre...');
             
             // Notificar al hijo 5 el estado inicial (modo aventura)
