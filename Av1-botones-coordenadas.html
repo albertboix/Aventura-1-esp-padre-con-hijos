@@ -7,11 +7,11 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         :root {
-            /* Variables de diseño para botones y barra de progreso (estos ya estaban alineados con Hijo 3) */
-            --btn-size: 80px; /* AHORA COINCIDE CON EL TAMAÑO GRANDE DE HIJO 3 */
-            --icon-size: 2.7em; /* AHORA COINCIDE CON EL TAMAÑO GRANDE DE HIJO 3 */
-            --progress-thick: 30px; /* AHORA COINCIDE CON EL TAMAÑO GRANDE DE HIJO 3 */
-            --timer-font-size: 1.3em; /* AHORA COINCIDE CON EL TAMAÑO GRANDE DE HIJO 3 */
+            /* Variables de diseño para botones y barra de progreso */
+            --btn-size: 80px;
+            --icon-size: 2.7em;
+            --progress-thick: 25px; /* GROSOR DE LA BARRA DE PROGRESO UNIFORME CON HIJO 3 */
+            --timer-font-size: 1.3em;
         }
 
         html, body {
@@ -58,8 +58,10 @@
             background-color: #e0e0e0; /* Gris */
             border-radius: calc(var(--progress-thick) / 2);
             overflow: hidden;
+            margin-top: 5px; /* Pequeño margen superior */
             margin-bottom: 5px; /* Pequeño margen inferior */
             position: relative;
+            cursor: pointer; /* Indicar que es interactiva */
         }
 
         .progress-bar {
@@ -67,7 +69,7 @@
             width: 0%; /* Se actualizará con JS */
             background: linear-gradient(90deg, #007bff, #00c6ff); /* Degradado azul */
             border-radius: calc(var(--progress-thick) / 2);
-            transition: width 0.1s linear;
+            transition: none; /* Eliminar transición para permitir arrastre suave */
         }
 
         .time-display {
@@ -76,8 +78,8 @@
             justify-content: space-between;
             color: #333;
             font-size: var(--timer-font-size);
-            margin-bottom: 5px;
-            margin-top: 5px;
+            margin-bottom: 2px; /* MENOS PADDING ENTRE BOTONES Y BARRA */
+            margin-top: 10px; /* Margen superior para separarlo de la parte superior del trapecio */
         }
 
         .coordenadas-display {
@@ -97,7 +99,7 @@
             justify-content: center;
             align-items: center;
             flex-wrap: wrap; /* Permite que los botones se envuelvan en pantallas pequeñas */
-            margin-bottom: 5px; /* Pequeño margen inferior */
+            margin-top: 5px; /* MENOS PADDING ENTRE BOTONES Y BARRA (ajustado para que los botones no estén pegados a las coordenadas) */
         }
 
         .control-button {
@@ -144,8 +146,8 @@
         /* Media queries para pantallas pequeñas (mantiene la coherencia con Hijo 3) */
         @media (max-width: 500px) {
             :root {
-                --btn-size: 48px; /* AHORA COINCIDE CON EL TAMAÑO PEQUEÑO DE HIJO 3 */
-                --icon-size: 1.5em; /* AHORA COINCIDE CON EL TAMAÑO PEQUEÑO DE HIJO 3 */
+                --btn-size: 48px;
+                --icon-size: 1.5em;
             }
             .coordenadas-display {
                 font-size: 0.75em;
@@ -161,12 +163,12 @@
 </head>
 <body>
     <div class="gps-controls-container">
-        <div class="progress-container">
-            <div class="progress-bar" id="progressBar"></div>
-        </div>
         <div class="time-display">
             <span id="elapsedTime">00:00</span>
             <span id="totalTime">00:00</span>
+        </div>
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-bar" id="progressBar"></div>
         </div>
 
         <div class="coordenadas-display" id="coordenadasDisplay">Esperando GPS...</div>
@@ -189,6 +191,7 @@
         const targetBtn = document.getElementById('targetBtn');
         const mapBtn = document.getElementById('mapBtn');
         const progressBar = document.getElementById('progressBar');
+        const progressContainer = document.getElementById('progressContainer'); // Nuevo
         const elapsedTimeSpan = document.getElementById('elapsedTime');
         const totalTimeSpan = document.getElementById('totalTime');
 
@@ -201,6 +204,7 @@
         let totalTripTime = 0; // Duración total del viaje simulado en segundos
         let tripElapsedTime = 0; // Tiempo transcurrido del viaje simulado en segundos
         let tripProgressInterval;
+        let isDraggingProgress = false; // Estado para el arrastre
 
         // Definición de PARADAS (debe coincidir con el padre)
         const PARADAS_COORDENADAS = [
@@ -278,10 +282,10 @@
         function startTripProgressSimulation() {
             clearInterval(tripProgressInterval);
             tripProgressInterval = setInterval(() => {
-                if (tripElapsedTime < totalTripTime) {
+                if (!isDraggingProgress && tripElapsedTime < totalTripTime) { // Solo avanza si no se está arrastrando
                     tripElapsedTime++;
                     updateTripProgressBar();
-                } else {
+                } else if (tripElapsedTime >= totalTripTime) {
                     clearInterval(tripProgressInterval);
                     // Opcional: acciones al finalizar el "viaje"
                 }
@@ -416,6 +420,75 @@
                 alert('No hay parada objetivo seleccionada.');
             }
         });
+
+        // Funcionalidad de arrastre de la barra de progreso
+        function seek(e) {
+            if (totalTripTime === 0) return; // No hacer nada si no hay duración
+
+            const rect = progressContainer.getBoundingClientRect();
+            let clickX = e.clientX - rect.left; // Posición X del clic/arrastre dentro del contenedor
+
+            // Manejar touch events
+            if (e.touches && e.touches.length > 0) {
+                clickX = e.touches[0].clientX - rect.left;
+            }
+
+            let newTime = (clickX / rect.width) * totalTripTime;
+
+            // Asegurarse de que el tiempo no exceda la duración ni sea negativo
+            newTime = Math.max(0, Math.min(newTime, totalTripTime));
+
+            tripElapsedTime = newTime;
+            updateTripProgressBar();
+
+            // Si se está reproduciendo, reanudar la simulación de progreso desde el nuevo tiempo
+            // (En este caso, si el GPS está activo, reanudamos la simulación)
+            if (isGpsActive) {
+                startTripProgressSimulation();
+            }
+        }
+
+        progressContainer.addEventListener('mousedown', (e) => {
+            isDraggingProgress = true;
+            seek(e); // Ajustar inmediatamente al clic inicial
+            // Pausar la simulación de avance para evitar conflictos
+            clearInterval(tripProgressInterval);
+        });
+
+        progressContainer.addEventListener('mousemove', (e) => {
+            if (isDraggingProgress) {
+                seek(e);
+            }
+        });
+
+        progressContainer.addEventListener('mouseup', () => {
+            isDraggingProgress = false;
+            // Reanudar la simulación de avance solo si el GPS está activo
+            if (isGpsActive) {
+                startTripProgressSimulation();
+            }
+        });
+
+        // Para eventos táctiles
+        progressContainer.addEventListener('touchstart', (e) => {
+            isDraggingProgress = true;
+            seek(e);
+            clearInterval(tripProgressInterval);
+        });
+
+        progressContainer.addEventListener('touchmove', (e) => {
+            if (isDraggingProgress) {
+                seek(e);
+            }
+        });
+
+        progressContainer.addEventListener('touchend', () => {
+            isDraggingProgress = false;
+            if (isGpsActive) {
+                startTripProgressSimulation();
+            }
+        });
+
 
         // --- Listener para mensajes del padre ---
         window.addEventListener('message', (event) => {
