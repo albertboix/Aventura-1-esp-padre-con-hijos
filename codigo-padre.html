@@ -152,7 +152,7 @@
                    display:block;
                    pointer-events:auto;"></iframe>
 
-    <iframe id="hijo2" src="Av1-botones-coordenadas.html"
+    <iframe id="hijo2" src="hijo2-gps-actualizado.html"
             style="position:fixed;
                    bottom:134px; /* AJUSTADO: Ahora está 140px por encima de hijo3 (que ahora mide 140px) */
                    left:50%;
@@ -180,7 +180,7 @@
     <script>
         // ================== ARRAY DE 40 PARADAS (METADATOS) ==================
         // Este array contiene solo el nombre y datos de audio/reto/foto/video.
-        // Las coordenadas (lat/lng) se gestionan en Av1-botones-coordenadas.html (Hijo 2).
+        // Las coordenadas (lat/lng) se gestionan en hijo2-gps-actualizado.html (Hijo 2).
         const PARADAS = [
             { parada: 1, nombre: "Torres de Serranos (start)", audio: "audio_1.mp3", reto: 0, foto: "img_1.jpg", video: "video_1.mp4" },
             { parada: 2, nombre: "Puente de Serranos – Plaza de la crida", audio: "audio_2.mp3", reto: 1, foto: "img_2.jpg", video: "video_2.mp4" },
@@ -322,6 +322,69 @@
             }
         }
 
+        // ================== NUEVA FUNCIÓN PARA HIJO2 ACTUALIZADO ==================
+        // Función para mostrar ruta con chinchetas (verde origen, roja destino)
+        function mostrarRutaConChinchetas(ruta, origen, destino, nombre) {
+            if (!map) {
+                console.error("Mapa no inicializado aún.");
+                return;
+            }
+
+            // Limpiar elementos previos del mapa
+            if (polyline) { map.removeLayer(polyline); }
+            if (markerA) { map.removeLayer(markerA); }
+            if (markerB) { map.removeLayer(markerB); }
+
+            // Validar datos de entrada
+            if (!ruta || !Array.isArray(ruta) || ruta.length < 2) {
+                console.warn("Ruta inválida para mostrar en el mapa.");
+                return;
+            }
+
+            // Crear polyline con toda la ruta (incluye waypoints invisibles)
+            const latlngs = ruta.map(p => [p.lat, p.lng]);
+            polyline = L.polyline(latlngs, { 
+                color: '#007bff', 
+                weight: 4, 
+                opacity: 0.8 
+            }).addTo(map);
+
+            // Chincheta verde (origen - usuario)
+            if (origen) {
+                markerA = L.marker([origen.lat, origen.lng], { 
+                    icon: L.icon({ 
+                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                        iconSize: [25, 41],
+                        iconAnchor: [12, 41],
+                        popupAnchor: [1, -34],
+                        shadowSize: [41, 41]
+                    }) 
+                }).addTo(map).bindPopup('Tu ubicación');
+            }
+
+            // Chincheta roja (destino - parada objetivo)
+            if (destino) {
+                markerB = L.marker([destino.lat, destino.lng], { 
+                    icon: L.icon({ 
+                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                        iconSize: [25, 41],
+                        iconAnchor: [12, 41],
+                        popupAnchor: [1, -34],
+                        shadowSize: [41, 41]
+                    }) 
+                }).addTo(map).bindPopup(nombre || 'Destino');
+            }
+
+            // Auto-zoom para mostrar toda la ruta del segmento actual
+            map.fitBounds(polyline.getBounds(), { 
+                padding: [30, 30] // Margen visual
+            });
+
+            console.log(`Ruta mostrada: ${nombre}`);
+        }
+
         // ================== ESCUCHA MENSAJES DE LOS HIJOS ==================
         window.addEventListener('message', (event) => {
             const data = event.data;
@@ -353,7 +416,13 @@
             if (data && data.type === 'pauseAudioFromBoton') {
                 document.getElementById('hijo3')?.contentWindow.postMessage({ type: 'pauseAudio' }, '*');
             }
-            // HIJO 2: Coordenadas (GPS)
+            
+            // ================== HIJO 2: NUEVOS MENSAJES ==================
+            // NUEVO: Mensaje para mostrar ruta con chinchetas (del hijo2 actualizado)
+            if (data && data.tipo === 'mostrar-ruta-con-chinchetas') {
+                mostrarRutaConChinchetas(data.ruta, data.origen, data.destino, data.nombre);
+            }
+            // MANTENER: Mensajes existentes del hijo2
             if (data && data.tipo === 'mostrar-mapa-gps') {
                 mostrarRutaEnMapa(data.ruta, data.origen, data.destino);
             }
@@ -399,6 +468,7 @@
                 avanzarAParada(data.parada); // Esta función reproduce el audio
                 mostrarParadaActual(); // Llama a la función para actualizar y mostrar el div de info
             }
+            
             // HIJO 3: Audio
             if (data && data.type === 'audioFinalizado') {
                 // Asegúrate de que PARADAS[window.paradaActual] no sea undefined si el índice no existe
