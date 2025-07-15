@@ -703,7 +703,30 @@
         }
 
         // ================== FUNCIONES GPS ==================
+        
+        // Verificar permisos de geolocalización antes de usar GPS
+        async function verificarPermisosGPS() {
+            if (!navigator.permissions) {
+                return 'unknown'; // Navegador antiguo
+            }
+            
+            try {
+                const permissionStatus = await navigator.permissions.query({name: 'geolocation'});
+                return permissionStatus.state; // 'granted', 'denied', 'prompt'
+            } catch (error) {
+                console.warn('No se pudieron verificar permisos GPS:', error);
+                return 'unknown';
+            }
+        }
+        
         function iniciarGPS() {
+            // Verificar protocolo HTTPS en producción
+            if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+                actualizarStatus('GPS requiere HTTPS en producción');
+                console.warn('Geolocalización requiere HTTPS en producción');
+                return;
+            }
+
             if (!navigator.geolocation) {
                 actualizarStatus('GPS no disponible en este dispositivo');
                 return;
@@ -732,7 +755,7 @@
                     
                     // Enviar ubicación al padre
                     enviarMensajeAlPadre({
-                        type: 'actualizarUbicacionMapa',
+                        tipo: 'actualizarUbicacionMapa',
                         lat: ubicacionActual.lat,
                         lng: ubicacionActual.lng
                     });
@@ -742,7 +765,29 @@
                 },
                 (error) => {
                     console.error('Error GPS:', error);
-                    actualizarStatus('Error al obtener ubicación GPS');
+                    let mensajeError = 'Error al obtener ubicación GPS';
+                    
+                    switch(error.code) {
+                        case error.PERMISSION_DENIED:
+                            mensajeError = 'Permisos GPS denegados. Actívalos en configuración.';
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            mensajeError = 'Ubicación GPS no disponible';
+                            break;
+                        case error.TIMEOUT:
+                            mensajeError = 'Tiempo de espera GPS agotado';
+                            break;
+                    }
+                    
+                    actualizarStatus(mensajeError);
+                    
+                    // En caso de error, activar modo casa automáticamente
+                    setTimeout(() => {
+                        if (!ubicacionActual) {
+                            actualizarStatus('Activando modo sin GPS...');
+                            activarModoCasa();
+                        }
+                    }, 3000);
                 },
                 options
             );
@@ -757,7 +802,7 @@
                     
                     // Enviar ubicación actualizada al padre
                     enviarMensajeAlPadre({
-                        type: 'actualizarUbicacionMapa',
+                        tipo: 'actualizarUbicacionMapa',
                         lat: ubicacionActual.lat,
                         lng: ubicacionActual.lng
                     });
@@ -766,6 +811,26 @@
                 },
                 (error) => {
                     console.error('Error GPS tracking:', error);
+                    
+                    // Solo mostrar error si no tenemos ubicación previa
+                    if (!ubicacionActual) {
+                        let mensajeError = 'Error en seguimiento GPS';
+                        
+                        switch(error.code) {
+                            case error.PERMISSION_DENIED:
+                                mensajeError = 'Permisos GPS revocados';
+                                activarModoCasa(); // Cambiar automáticamente a modo casa
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                mensajeError = 'GPS temporalmente no disponible';
+                                break;
+                            case error.TIMEOUT:
+                                mensajeError = 'Conexión GPS lenta';
+                                break;
+                        }
+                        
+                        actualizarStatus(mensajeError);
+                    }
                 },
                 options
             );
@@ -861,12 +926,25 @@
         }
 
         // ================== EVENTOS DE BOTONES ==================
-        btnGps.addEventListener('click', () => {
+        btnGps.addEventListener('click', async () => {
             if (btnGps.classList.contains('disabled')) return;
             
             // En modo casa, el GPS está desactivado
             if (modoCasa) {
                 actualizarStatus('GPS desactivado en modo casa');
+                return;
+            }
+            
+            // Verificar permisos antes de iniciar GPS
+            const permisos = await verificarPermisosGPS();
+            if (permisos === 'denied') {
+                actualizarStatus('Permisos GPS denegados. Revisa configuración del navegador.');
+                return;
+            }
+            
+            // Si no hay ubicación actual, iniciar GPS primero
+            if (!ubicacionActual) {
+                iniciarGPS();
                 return;
             }
             
@@ -956,7 +1034,13 @@
 
         // ================== COMUNICACIÓN CON EL PADRE ==================
         function enviarMensajeAlPadre(mensaje) {
-            window.parent.postMessage(mensaje, '*');
+            try {
+                window.parent.postMessage(mensaje, '*');
+                console.log('Mensaje enviado al padre:', mensaje.tipo || mensaje.type);
+            } catch (error) {
+                console.error('Error enviando mensaje al padre:', error);
+                actualizarStatus('Error de comunicación con el padre');
+            }
         }
         
         // ================== COMUNICACIÓN CON EL HIJO 5 (Av1-boton-casa.html) ==================
