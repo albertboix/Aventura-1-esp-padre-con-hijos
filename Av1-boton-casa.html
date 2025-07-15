@@ -1,486 +1,1212 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>GPS Casa ON/OFF</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-  <style>
-    html, body {
-      width: 100vw;
-      height: 100vh;
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-      background: transparent;
-      font-family: sans-serif;
-      user-select: none;
-      overflow: hidden;
-    }
-    #contenedor-flex {
-      display: flex;
-      flex-direction: column;
-      width: 100vw;
-      height: 100vh;
-      box-sizing: border-box;
-    }
-    #zona-boton-casa {
-      height: 99px; /* 75px botón + 12px top + 12px bottom (ajusta si hace falta) */
-      flex-shrink: 0;
-      display: flex;
-      align-items: flex-start;
-    }
-    #gps-casa-btn {
-      margin-left: 12px;
-      margin-top: 12px;
-      width: 75px; height: 75px; background: white;
-      border-radius: 18px; box-shadow: 0 2px 12px rgba(0,0,0,0.13);
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      cursor: pointer; z-index: 10001; border: 2px solid #eee;
-      transition: box-shadow 0.2s; padding: 0; gap: 2px;
-    }
-    #gps-casa-btn .casa-icon {
-      font-size: 2.3em; margin-bottom: 2px; transition: color 0.2s;
-    }
-    #gps-casa-btn .gps-label {
-      font-size: 1.1em; font-weight: bold; letter-spacing: 1px; margin-top: 0;
-      transition: color 0.2s; user-select: none;
-    }
-    #gps-casa-btn.on .casa-icon, #gps-casa-btn.on .gps-label { color: #e53935; }
-    #gps-casa-btn.off .casa-icon, #gps-casa-btn.off .gps-label { color: #43a047; }
-    #paradas-window {
-      flex: 1 1 auto;
-      position: relative;
-      background: white;
-      border-radius: 5px;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.13);
-      z-index: 10002;
-      display: none;
-      flex-direction: column;
-      padding: 2px 4px 4px 4px;
-      border: 1px solid #ddd;
-      animation: fadeIn 0.18s;
-      width: 100%;
-      box-sizing: border-box;
-      min-height: 0;
-      min-width: 0;
-    }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px);} to { opacity: 1; transform: translateY(0);} }
-    #paradas-header {
-      display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;
-      width: 100%;
-      box-sizing: border-box;
-    }
-    #estado-modo {
-      font-size: 0.9em;
-      color: #666;
-      background: #f0f0f0;
-      padding: 3px 8px;
-      border-radius: 12px;
-      margin-right: auto;
-    }
-    #cerrar-paradas {
-      background: none; border: none; font-size: 1.3em; color: #888; cursor: pointer;
-      padding: 2px 8px 2px 2px; border-radius: 6px; transition: background 0.15s;
-    }
-    #cerrar-paradas:hover { background: #eee; color: #e53935; }
-    #paradas-list {
-      display: flex; flex-direction: column; gap: 4px; overflow-y: auto; max-height: 100%;
-      min-height: 0; padding-right: 0; width: 100%; box-sizing: border-box;
-      flex: 1 1 auto;
-    }
-    .parada-btn {
-      background: linear-gradient(90deg, #007aff 0%, #00c6ff 100%);
-      color: #fff;
-      border: none;
-      border-radius: 7px;
-      padding: 6px 5px;
-      font-size: 1em;
-      cursor: pointer;
-      text-align: left;
-      transition: background 0.18s, color 0.18s;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.07);
-      font-family: inherit;
-      word-break: break-word;
-      overflow-wrap: break-word;
-      white-space: normal;
-      line-height: 1.2;
-      width: 100%;
-      display: block;
-      box-sizing: border-box;
-    }
-    .parada-btn:hover {
-      background: linear-gradient(90deg, #0056b3 0%, #00aaff 100%); color: #e0ffe0;
-    }
-    .parada-btn.actual {
-      background: linear-gradient(90deg, #28a745 0%, #20c997 100%);
-      border: 2px solid #155724;
-    }
-    @media (max-width: 300px) {
-      #gps-casa-btn { width: 62px; height: 62px; }
-      #zona-boton-casa { height: 70px; }
-      #paradas-window { width: 40vw; }
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Botones y Coordenadas GPS</title>
+    <style>
+        :root {
+            /* Variables de diseño para botones y barra de progreso */
+            --btn-size: 60px;
+            --icon-size: 1.5em;
+            --progress-thick: 20px; /* GROSOR DE LA BARRA DE PROGRESO UNIFORME CON HIJO 3 */
+            --timer-font-size: 0.8em;
+        }
+
+        body {
+            margin: 0;
+            padding: 5px;
+            background: transparent;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+        }
+
+        /* Contenedor principal con la forma trapezoidal (ancho arriba, estrecho abajo) */
+        .container {
+            width: 280px;
+            height: 140px;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.13);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-around;
+            padding: 5px 8px 5px 8px;
+            box-sizing: border-box;
+            
+            /* === CLAVE PARA LA FORMA TRAPEZOIDAL (ancho arriba, estrecho abajo) === */
+            clip-path: polygon(0% 0%, 100% 0%, 92% 100%, 8% 100%);
+        }
+
+        /* Barra de Progreso */
+        .progress-container {
+            width: 90%;
+            height: var(--progress-thick);
+            background-color: #d0d0d0;
+            border-radius: calc(var(--progress-thick) / 2);
+            overflow: hidden;
+            margin: 3px 0;
+            position: relative;
+            cursor: pointer;
+            border: 1px solid #bbb;
+        }
+
+        .progress-bar {
+            height: 100%;
+            width: 5%;
+            background: linear-gradient(90deg, #007bff, #00c6ff);
+            border-radius: calc(var(--progress-thick) / 2);
+            transition: none;
+        }
+
+        .time-display {
+            width: 90%;
+            display: flex;
+            justify-content: space-between;
+            color: #333;
+            font-size: var(--timer-font-size);
+            margin: 2px 0;
+        }
+
+        .botones-row {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+            margin: 2px 0;
+        }
+
+        .boton {
+            width: var(--btn-size);
+            height: var(--btn-size);
+            border-radius: 50%; /* CÍRCULO */
+            border: none;
+            background: linear-gradient(135deg, #dc3545, #c82333); /* Rojo por defecto */
+            color: white;
+            font-size: var(--icon-size);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            text-align: center;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.10);
+            flex-shrink: 0;
+        }
+
+        .boton.activo {
+            background: linear-gradient(135deg, #28a745, #1e7e34); /* Verde cuando está activo */
+        }
+
+        .boton:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+
+        .boton:active {
+            transform: scale(0.95);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .boton.disabled {
+            background: linear-gradient(135deg, #dc3545, #c82333);
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .boton.disabled:hover {
+            transform: none;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.10);
+        }
+
+        /* Control individual del tamaño de iconos */
+        .icon-gps {
+            font-size: var(--icon-size);
+        }
+
+        .icon-imagen {
+            font-size: var(--icon-size);
+        }
+
+        .icon-video {
+            font-size: var(--icon-size);
+        }
+
+        .status {
+            margin: 2px 0;
+            padding: 3px;
+            background: white;
+            border-radius: 5px;
+            font-size: 10px;
+            text-align: center;
+            min-height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 90%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .gps-icon {
+            width: 16px;
+            height: 16px;
+            margin-right: 5px;
+        }
+
+        .loading {
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+    </style>
 </head>
 <body>
-  <div id="contenedor-flex">
-    <div id="zona-boton-casa">
-      <div id="gps-casa-btn" class="on" title="Activar GPS">
-        <span class="casa-icon"><i class="fa-solid fa-house"></i></span>
-        <span class="gps-label">ON</span>
-      </div>
+    <div class="container">
+        <div class="time-display">
+            <span id="elapsedTime">00:00</span>
+            <span id="totalTime">05:30</span>
+        </div>
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <div class="botones-row">
+            <button id="btn-gps" class="boton">
+                <span class="icon-gps">🛰️</span>
+            </button>
+            <button id="btn-imagen" class="boton disabled">
+                <span class="icon-imagen">📸</span>
+            </button>
+            <button id="btn-video" class="boton disabled">
+                <span class="icon-video">📽️</span>
+            </button>
+        </div>
+        <div id="status" class="status">
+            Pulsa GPS para obtener tu ubicación
+        </div>
     </div>
-    <div id="paradas-window">
-      <div id="paradas-header">
-        <span id="estado-modo">Modo: Aventura</span>
-        <button id="cerrar-paradas" title="Cerrar paradas"><i class="fa-solid fa-xmark"></i></button>
-      </div>
-      <div id="paradas-list"></div>
-    </div>
-  </div>
-  <script>
-    // ================== ARRAY DE 25 PARADAS SINCRONIZADO ==================
-    // Este array debe coincidir exactamente con el del padre e hijo 2
-    const paradas = [
-      { nombre: "Torres de Serranos (start)", lat: 39.47876, lng: -0.37626 },
-      { nombre: "Torres de Serranos → Plaza de la crida (Puente de Serranos)", lat: 39.47959, lng: -0.37583 },
-      { nombre: "Plaza de la crida → Palacio de los Borgia (Cortes Valencianas)", lat: 39.47785, lng: -0.37485 },
-      { nombre: "Palacio de los Borgia → Plaza de la Virgen", lat: 39.47656, lng: -0.37529 },
-      { nombre: "Plaza de la Virgen → Plaza de la Almoína", lat: 39.47604, lng: -0.37451 },
-      { nombre: "Plaza de la Almoína → Catedral de València", lat: 39.47594, lng: -0.37474 },
-      { nombre: "Catedral → Plaza Decimo Junio Bruto (Museo Arqueológico de la Almoína)", lat: 39.4762, lng: -0.37412 },
-      { nombre: "Plaza Decimo Junio Bruto → Basílica de València", lat: 39.47611, lng: -0.37478 },
-      { nombre: "Basílica → Palacio Arzobispal", lat: 39.4755, lng: -0.37436 },
-      { nombre: "Palacio Arzobispal → Plaza del Ayuntamiento", lat: 39.47056, lng: -0.37677 },
-      { nombre: "Plaza del Ayuntamiento → Edificio del Ayuntamiento de València", lat: 39.46971, lng: -0.37693 },
-      { nombre: "Edificio del Ayuntamiento → Estación del Norte", lat: 39.46722, lng: -0.37702 },
-      { nombre: "Estación del Norte → Plaza de Toros de València", lat: 39.46709, lng: -0.37595 },
-      { nombre: "Plaza de Toros → Casa estilo Árabe", lat: 39.46753, lng: -0.37511 },
-      { nombre: "Casa estilo Árabe → Palacio de Comunicaciones (Correos)", lat: 39.46942, lng: -0.37559 },
-      { nombre: "Palacio de Comunicaciones → Banco de València", lat: 39.47061, lng: -0.37408 },
-      { nombre: "Banco de València → Palacio del Marqués de Dos Aguas (Museo Nacional de Cerámica)", lat: 39.47276, lng: -0.37467 },
-      { nombre: "Palacio del Marqués → Mercado Central", lat: 39.47377, lng: -0.37832 },
-      { nombre: "Mercado Central → Iglesia de los Santos Juanes", lat: 39.47425, lng: -0.37895 },
-      { nombre: "Iglesia Santos Juanes → Lonja de València (Mercado de la Seda)", lat: 39.47426, lng: -0.37862 },
-      { nombre: "Lonja → Plaza del Doctor Collado", lat: 39.47444, lng: -0.3779 },
-      { nombre: "Plaza del Doctor Collado → Plaza del Negrito (Fuente del Negrito)", lat: 39.47611, lng: -0.37741 },
-      { nombre: "Plaza del Negrito → Calle Caballeros", lat: 39.47663, lng: -0.3773 },
-      { nombre: "Calle Caballeros → Palacio de la Generalitat", lat: 39.47668, lng: -0.37671 },
-      { nombre: "Palacio de la Generalitat → Calle de los Serranos (FINAL)", lat: 39.47773, lng: -0.37671 }
-    ];
 
-    // Estado GPS: true = ON (aventura), false = OFF (casa)
-    let gpsOn = true;
-    let modoCasa = false; // Estado del modo actual
-    let paradaActual = 0; // Parada actual del hijo 2
-    let estadoModo = document.getElementById('estado-modo');
+    <script>
+        // ================== COORDENADAS DE LAS PARADAS ==================
+        const COORDENADAS_PARADAS = [
+            { 
+                parada: 0, // ← Parada 0 - INICIO
+                tipo: "inicio", 
+                nombre: "Torres de Serranos (start)", 
+                lat: 39.47876, 
+                lng: -0.37626,
+                imagen: 'img/parada_0.jpg',
+                video: 'videos/parada_0.mp4'
+            },
+            
+            {
+                parada: 1, // ← Parada 1 (Torres de Serranos → Plaza de la crida)
+                tipo: "tramo",
+                nombre: "Torres de Serranos → Plaza de la crida (Puente de Serranos)",
+                inicio: { lat: 39.47876, lng: -0.37626 },
+                waypoints: [
+                    { lat: 39.47905, lng: -0.37613 },
+                    { lat: 39.47933, lng: -0.37647 },
+                    { lat: 39.47943, lng: -0.37636 }
+                ],
+                fin: { lat: 39.47959, lng: -0.37583 },
+                imagen: 'img/parada_1.jpg',
+                video: 'videos/parada_1.mp4'
+            },
+            
+            {
+                parada: 2, // ← Parada 2 (Plaza de la crida → Palacio de los Borgia)
+                tipo: "tramo",
+                nombre: "Plaza de la crida → Palacio de los Borgia (Cortes Valencianas)",
+                inicio: { lat: 39.47959, lng: -0.37583 },
+                waypoints: [
+                    { lat: 39.47939, lng: -0.3752 },
+                    { lat: 39.47902, lng: -0.37465 },
+                    { lat: 39.47866, lng: -0.3747 }
+                ],
+                fin: { lat: 39.47785, lng: -0.37485 },
+                imagen: 'img/parada_2.jpg',
+                video: 'videos/parada_2.mp4'
+            },
+            
+            {
+                parada: 3, // ← Parada 3 (Palacio de los Borgia → Plaza de la Virgen)
+                tipo: "tramo",
+                nombre: "Palacio de los Borgia → Plaza de la Virgen",
+                inicio: { lat: 39.47785, lng: -0.37485 },
+                waypoints: [
+                    { lat: 39.47768, lng: -0.3749 }
+                ],
+                fin: { lat: 39.47656, lng: -0.37529 },
+                imagen: 'img/parada_3.jpg',
+                video: 'videos/parada_3.mp4'
+            },
+            
+            {
+                parada: 4, // ← Parada 4 (Plaza de la Virgen → Plaza de la Almoína)
+                tipo: "tramo",
+                nombre: "Plaza de la Virgen → Plaza de la Almoína",
+                inicio: { lat: 39.47656, lng: -0.37529 },
+                waypoints: [
+                    { lat: 39.4766, lng: -0.37473 },
+                    { lat: 39.47656, lng: -0.37453 },
+                    { lat: 39.47606, lng: -0.3746 }
+                ],
+                fin: { lat: 39.47604, lng: -0.37451 },
+                imagen: 'img/parada_4.jpg',
+                video: 'videos/parada_4.mp4'
+            },
+            
+            {
+                parada: 5, // ← Parada 5 (Plaza de la Almoína → Catedral)
+                tipo: "tramo",
+                nombre: "Plaza de la Almoína → Catedral de València",
+                inicio: { lat: 39.47604, lng: -0.37451 },
+                waypoints: [],
+                fin: { lat: 39.47594, lng: -0.37474 },
+                imagen: 'img/parada_5.jpg',
+                video: 'videos/parada_5.mp4'
+            },
+            
+            {
+                parada: 6, // ← Parada 6 (Catedral → Plaza Decimo Junio Bruto)
+                tipo: "tramo",
+                nombre: "Catedral → Plaza Decimo Junio Bruto (Museo Arqueológico de la Almoína)",
+                inicio: { lat: 39.47594, lng: -0.37474 },
+                waypoints: [],
+                fin: { lat: 39.4762, lng: -0.37412 },
+                imagen: 'img/parada_6.jpg',
+                video: 'videos/parada_6.mp4'
+            },
+            
+            {
+                parada: 7, // ← Parada 7 (Plaza Decimo Junio Bruto → Basílica)
+                tipo: "tramo",
+                nombre: "Plaza Decimo Junio Bruto → Basílica de València",
+                inicio: { lat: 39.4762, lng: -0.37412 },
+                waypoints: [],
+                fin: { lat: 39.47611, lng: -0.37478 },
+                imagen: 'img/parada_7.jpg',
+                video: 'videos/parada_7.mp4'
+            },
+            
+            {
+                parada: 8, // ← Parada 8 (Basílica → Palacio Arzobispal)
+                tipo: "tramo",
+                nombre: "Basílica → Palacio Arzobispal",
+                inicio: { lat: 39.47611, lng: -0.37478 },
+                waypoints: [
+                    { lat: 39.47603, lng: -0.37433 }
+                ],
+                fin: { lat: 39.4755, lng: -0.37436 },
+                imagen: 'img/parada_8.jpg',
+                video: 'videos/parada_8.mp4'
+            },
+            
+            {
+                parada: 9, // ← Parada 9 (Palacio Arzobispal → Plaza del Ayuntamiento)
+                tipo: "tramo",
+                nombre: "Palacio Arzobispal → Plaza del Ayuntamiento",
+                inicio: { lat: 39.4755, lng: -0.37436 },
+                waypoints: [
+                    { lat: 39.4756, lng: -0.37466 },
+                    { lat: 39.47514, lng: -0.37494 },
+                    { lat: 39.47447, lng: -0.3754 },
+                    { lat: 39.47378, lng: -0.3756 },
+                    { lat: 39.47212, lng: -0.37676 }
+                ],
+                fin: { lat: 39.47056, lng: -0.37677 },
+                imagen: 'img/parada_9.jpg',
+                video: 'videos/parada_9.mp4'
+            },
+            
+            {
+                parada: 10, // ← Parada 10 (Plaza del Ayuntamiento → Edificio del Ayuntamiento)
+                tipo: "tramo",
+                nombre: "Plaza del Ayuntamiento → Edificio del Ayuntamiento de València",
+                inicio: { lat: 39.47056, lng: -0.37677 },
+                waypoints: [],
+                fin: { lat: 39.46971, lng: -0.37693 },
+                imagen: 'img/parada_10.jpg',
+                video: 'videos/parada_10.mp4'
+            },
+            
+            {
+                parada: 11, // ← Parada 11 (Edificio del Ayuntamiento → Estación del Norte)
+                tipo: "tramo",
+                nombre: "Edificio del Ayuntamiento → Estación del Norte",
+                inicio: { lat: 39.46971, lng: -0.37693 },
+                waypoints: [
+                    { lat: 39.46795, lng: -0.37701 }
+                ],
+                fin: { lat: 39.46722, lng: -0.37702 },
+                imagen: 'img/parada_11.jpg',
+                video: 'videos/parada_11.mp4'
+            },
+            
+            {
+                parada: 12, // ← Parada 12 (Estación del Norte → Plaza de Toros)
+                tipo: "tramo",
+                nombre: "Estación del Norte → Plaza de Toros de València",
+                inicio: { lat: 39.46722, lng: -0.37702 },
+                waypoints: [],
+                fin: { lat: 39.46709, lng: -0.37595 },
+                imagen: 'img/parada_12.jpg',
+                video: 'videos/parada_12.mp4'
+            },
+            
+            {
+                parada: 13, // ← Parada 13 (Plaza de Toros → Casa estilo Árabe)
+                tipo: "tramo",
+                nombre: "Plaza de Toros → Casa estilo Árabe",
+                inicio: { lat: 39.46709, lng: -0.37595 },
+                waypoints: [
+                    { lat: 39.46714, lng: -0.37498 }
+                ],
+                fin: { lat: 39.46753, lng: -0.37511 },
+                imagen: 'img/parada_13.jpg',
+                video: 'videos/parada_13.mp4'
+            },
+            
+            {
+                parada: 14, // ← Parada 14 (Casa estilo Árabe → Palacio de Comunicaciones)
+                tipo: "tramo",
+                nombre: "Casa estilo Árabe → Palacio de Comunicaciones (Correos)",
+                inicio: { lat: 39.46753, lng: -0.37511 },
+                waypoints: [],
+                fin: { lat: 39.46942, lng: -0.37559 },
+                imagen: 'img/parada_14.jpg',
+                video: 'videos/parada_14.mp4'
+            },
+            
+            {
+                parada: 15, // ← Parada 15 (Palacio de Comunicaciones → Banco de València)
+                tipo: "tramo",
+                nombre: "Palacio de Comunicaciones → Banco de València",
+                inicio: { lat: 39.46942, lng: -0.37559 },
+                waypoints: [
+                    { lat: 39.4699, lng: -0.37573 },
+                    { lat: 39.4703, lng: -0.3759 },
+                    { lat: 39.47039, lng: -0.37505 },
+                    { lat: 39.47043, lng: -0.37427 }
+                ],
+                fin: { lat: 39.47061, lng: -0.37408 },
+                imagen: 'img/parada_15.jpg',
+                video: 'videos/parada_15.mp4'
+            },
+            
+            {
+                parada: 16, // ← Parada 16 (Banco de València → Palacio del Marqués de Dos Aguas)
+                tipo: "tramo",
+                nombre: "Banco de València → Palacio del Marqués de Dos Aguas (Museo Nacional de Cerámica)",
+                inicio: { lat: 39.47061, lng: -0.37408 },
+                waypoints: [
+                    { lat: 39.47119, lng: -0.37423 },
+                    { lat: 39.47214, lng: -0.37446 },
+                    { lat: 39.47275, lng: -0.37445 }
+                ],
+                fin: { lat: 39.47276, lng: -0.37467 },
+                imagen: 'img/parada_16.jpg',
+                video: 'videos/parada_16.mp4'
+            },
+            
+            {
+                parada: 17, // ← Parada 17 (Palacio del Marqués → Mercado Central)
+                tipo: "tramo",
+                nombre: "Palacio del Marqués → Mercado Central",
+                inicio: { lat: 39.47276, lng: -0.37467 },
+                waypoints: [
+                    { lat: 39.47315, lng: -0.37608 },
+                    { lat: 39.47261, lng: -0.37654 },
+                    { lat: 39.47225, lng: -0.37686 },
+                    { lat: 39.47265, lng: -0.37725 }
+                ],
+                fin: { lat: 39.47377, lng: -0.37832 },
+                imagen: 'img/parada_17.jpg',
+                video: 'videos/parada_17.mp4'
+            },
+            
+            {
+                parada: 18, // ← Parada 18 (Mercado Central → Iglesia Santos Juanes)
+                tipo: "tramo",
+                nombre: "Mercado Central → Iglesia de los Santos Juanes",
+                inicio: { lat: 39.47377, lng: -0.37832 },
+                waypoints: [],
+                fin: { lat: 39.47425, lng: -0.37895 },
+                imagen: 'img/parada_18.jpg',
+                video: 'videos/parada_18.mp4'
+            },
+            
+            {
+                parada: 19, // ← Parada 19 (Iglesia Santos Juanes → Lonja)
+                tipo: "tramo",
+                nombre: "Iglesia Santos Juanes → Lonja de València (Mercado de la Seda)",
+                inicio: { lat: 39.47425, lng: -0.37895 },
+                waypoints: [],
+                fin: { lat: 39.47426, lng: -0.37862 },
+                imagen: 'img/parada_19.jpg',
+                video: 'videos/parada_19.mp4'
+            },
+            
+            {
+                parada: 20, // ← Parada 20 (Lonja → Plaza del Doctor Collado)
+                tipo: "tramo",
+                nombre: "Lonja → Plaza del Doctor Collado",
+                inicio: { lat: 39.47426, lng: -0.37862 },
+                waypoints: [
+                    { lat: 39.47445, lng: -0.37889 },
+                    { lat: 39.47459, lng: -0.37868 },
+                    { lat: 39.47475, lng: -0.37842 },
+                    { lat: 39.47436, lng: -0.37799 }
+                ],
+                fin: { lat: 39.47444, lng: -0.3779 },
+                imagen: 'img/parada_20.jpg',
+                video: 'videos/parada_20.mp4'
+            },
+            
+            {
+                parada: 21, // ← Parada 21 (Plaza del Doctor Collado → Plaza del Negrito)
+                tipo: "tramo",
+                nombre: "Plaza del Doctor Collado → Plaza del Negrito (Fuente del Negrito)",
+                inicio: { lat: 39.47444, lng: -0.3779 },
+                waypoints: [
+                    { lat: 39.47473, lng: -0.37763 },
+                    { lat: 39.47493, lng: -0.37761 },
+                    { lat: 39.47559, lng: -0.37772 }
+                ],
+                fin: { lat: 39.47611, lng: -0.37741 },
+                imagen: 'img/parada_21.jpg',
+                video: 'videos/parada_21.mp4'
+            },
+            
+            {
+                parada: 22, // ← Parada 22 (Plaza del Negrito → Calle Caballeros)
+                tipo: "tramo",
+                nombre: "Plaza del Negrito → Calle Caballeros",
+                inicio: { lat: 39.47611, lng: -0.37741 },
+                waypoints: [],
+                fin: { lat: 39.47663, lng: -0.3773 },
+                imagen: 'img/parada_22.jpg',
+                video: 'videos/parada_22.mp4'
+            },
+            
+            {
+                parada: 23, // ← Parada 23 (Calle Caballeros → Palacio de la Generalitat)
+                tipo: "tramo",
+                nombre: "Calle Caballeros → Palacio de la Generalitat",
+                inicio: { lat: 39.47663, lng: -0.3773 },
+                waypoints: [
+                    { lat: 39.47661, lng: -0.37685 }
+                ],
+                fin: { lat: 39.47668, lng: -0.37671 },
+                imagen: 'img/parada_23.jpg',
+                video: 'videos/parada_23.mp4'
+            },
+            
+            {
+                parada: 24, // ← Parada 24 (Palacio de la Generalitat → Calle de los Serranos - FINAL)
+                tipo: "tramo",
+                nombre: "Palacio de la Generalitat → Calle de los Serranos (FINAL)",
+                inicio: { lat: 39.47668, lng: -0.37671 },
+                waypoints: [
+                    { lat: 39.47661, lng: -0.37685 },
+                    { lat: 39.47687, lng: -0.37686 }
+                ],
+                fin: { lat: 39.47773, lng: -0.37671 },
+                imagen: 'img/parada_24.jpg',
+                video: 'videos/parada_24.mp4'
+            }
+        ];
 
-    // ================ FUNCIONES PRINCIPALES ================
-    
-    // Cambia el estado del botón y la etiqueta
-    function setGpsState(on) {
-      gpsOn = on;
-      modoCasa = !on; // ON = aventura (false), OFF = casa (true)
-      
-      const btn = document.getElementById('gps-casa-btn');
-      btn.className = on ? 'on' : 'off';
-      btn.querySelector('.gps-label').textContent = on ? 'ON' : 'OFF';
-      
-      // Actualizar indicador de modo
-      actualizarIndicadorModo();
-      
-      // Comunicar cambio de modo al hijo 2
-      if (modoCasa) {
-        enviarMensajeAHijo2({
-          tipo: 'boton-casa-activado',
-          modoCasa: true
+        // Variables globales
+        let ubicacionActual = null;
+        let paradaActual = 0; // ← Ahora empieza en parada 0 (inicio)
+        let watchId = null;
+        let modoCasa = false;
+
+        // Variables para la barra de progreso
+        let totalTripTime = 330; // 5:30 en segundos por defecto
+        let tripElapsedTime = 0;
+        let tripProgressInterval;
+        let isDraggingProgress = false;
+
+        // Referencias a elementos DOM
+        const btnGps = document.getElementById('btn-gps');
+        const btnImagen = document.getElementById('btn-imagen');
+        const btnVideo = document.getElementById('btn-video');
+        const status = document.getElementById('status');
+        const progressBar = document.getElementById('progressBar');
+        const progressContainer = document.getElementById('progressContainer');
+        const elapsedTimeSpan = document.getElementById('elapsedTime');
+        const totalTimeSpan = document.getElementById('totalTime');
+
+        // ================ FUNCIONES DE BARRA DE PROGRESO ================
+        
+        function formatTime(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = Math.floor(seconds % 60);
+            return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+        }
+
+        function updateTripProgressBar() {
+            if (totalTripTime > 0) {
+                const progress = (tripElapsedTime / totalTripTime) * 100;
+                progressBar.style.width = `${progress}%`;
+                elapsedTimeSpan.textContent = formatTime(tripElapsedTime);
+            }
+        }
+
+        function startTripProgressSimulation() {
+            clearInterval(tripProgressInterval);
+            tripProgressInterval = setInterval(() => {
+                if (!isDraggingProgress && tripElapsedTime < totalTripTime) {
+                    tripElapsedTime++;
+                    updateTripProgressBar();
+                } else if (tripElapsedTime >= totalTripTime) {
+                    clearInterval(tripProgressInterval);
+                }
+            }, 1000);
+        }
+
+        function resetTripProgress() {
+            clearInterval(tripProgressInterval);
+            tripElapsedTime = 0;
+            progressBar.style.width = '0%';
+            elapsedTimeSpan.textContent = '00:00';
+            updateTripProgressBar();
+        }
+
+        // Funcionalidad de arrastre de la barra de progreso
+        function seek(e) {
+            if (totalTripTime === 0) return;
+
+            const rect = progressContainer.getBoundingClientRect();
+            let clickX = e.clientX - rect.left;
+
+            if (e.touches && e.touches.length > 0) {
+                clickX = e.touches[0].clientX - rect.left;
+            }
+
+            let newTime = (clickX / rect.width) * totalTripTime;
+            newTime = Math.max(0, Math.min(newTime, totalTripTime));
+
+            tripElapsedTime = newTime;
+            updateTripProgressBar();
+
+            if (watchId) {
+                startTripProgressSimulation();
+            }
+        }
+
+        // Event listeners para la barra de progreso
+        progressContainer.addEventListener('mousedown', (e) => {
+            isDraggingProgress = true;
+            seek(e);
+            clearInterval(tripProgressInterval);
         });
-        
-        // NUEVO: Desbloquear botones cuando se activa modo casa (OFF)
-        desbloquearFuncionalidades();
-      } else {
-        enviarMensajeAHijo2({
-          tipo: 'boton-casa-desactivado',
-          modoCasa: false
+
+        progressContainer.addEventListener('mousemove', (e) => {
+            if (isDraggingProgress) {
+                seek(e);
+            }
         });
+
+        progressContainer.addEventListener('mouseup', () => {
+            isDraggingProgress = false;
+            if (watchId) {
+                startTripProgressSimulation();
+            }
+        });
+
+        progressContainer.addEventListener('touchstart', (e) => {
+            isDraggingProgress = true;
+            seek(e);
+            clearInterval(tripProgressInterval);
+        });
+
+        progressContainer.addEventListener('touchmove', (e) => {
+            if (isDraggingProgress) {
+                seek(e);
+            }
+        });
+
+        progressContainer.addEventListener('touchend', () => {
+            isDraggingProgress = false;
+            if (watchId) {
+                startTripProgressSimulation();
+            }
+        });
+
+        // ================== FUNCIONES DE UTILIDAD ==================
+        function calcularDistancia(lat1, lng1, lat2, lng2) {
+            const R = 6371e3; // Radio de la Tierra en metros
+            const φ1 = lat1 * Math.PI/180;
+            const φ2 = lat2 * Math.PI/180;
+            const Δφ = (lat2-lat1) * Math.PI/180;
+            const Δλ = (lng2-lng1) * Math.PI/180;
+
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                    Math.cos(φ1) * Math.cos(φ2) *
+                    Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+            return R * c; // Distancia en metros
+        }
+
+        function actualizarStatus(mensaje, loading = false) {
+            status.textContent = mensaje;
+            if (loading) {
+                status.classList.add('loading');
+            } else {
+                status.classList.remove('loading');
+            }
+        }
+
+        function activarBoton(boton) {
+            boton.classList.remove('disabled');
+            boton.classList.add('activo');
+        }
+
+        function desactivarBoton(boton) {
+            boton.classList.add('disabled');
+            boton.classList.remove('activo');
+        }
+
+        function activarTodosBotones() {
+            // En modo casa, NO activar GPS - solo imagen y video
+            if (modoCasa) {
+                activarBoton(btnImagen);
+                activarBoton(btnVideo);
+                // GPS permanece desactivado en modo casa
+                actualizarStatus('Modo Casa - Botones imagen y video activados');
+            } else {
+                // En modo aventura, activar todos los botones incluyendo GPS
+                activarBoton(btnGps);
+                activarBoton(btnImagen);
+                activarBoton(btnVideo);
+                actualizarStatus('Todos los botones activados');
+            }
+        }
+
+        function desactivarTodosBotones() {
+            desactivarBoton(btnGps);
+            desactivarBoton(btnImagen);
+            desactivarBoton(btnVideo);
+        }
+
+        // ================== FUNCIONES GPS ==================
         
-        // NUEVO: Restaurar restricciones cuando se activa modo aventura (ON)
-        restaurarRestriccionesAventura();
-      }
-    }
-    
-    function actualizarIndicadorModo() {
-      estadoModo.textContent = `Modo: ${modoCasa ? 'Casa' : 'Aventura'}`;
-      estadoModo.style.background = modoCasa ? '#ffe0e0' : '#e0f7fa';
-      estadoModo.style.color = modoCasa ? '#c62828' : '#00695c';
-    }
-
-    // Mostrar/ocultar ventana de paradas
-    function mostrarParadas() {
-      if (!gpsOn) {
-        document.getElementById('paradas-window').style.display = 'flex';
-        renderParadas();
-      }
-    }
-    
-    function ocultarParadas() {
-      document.getElementById('paradas-window').style.display = 'none';
-    }
-
-    // Renderiza la lista de paradas con indicador de parada actual (numeración 0-24)
-    function renderParadas() {
-      const lista = document.getElementById('paradas-list');
-      lista.innerHTML = '';
-      paradas.forEach((p, i) => {
-        const btn = document.createElement('button');
-        btn.className = 'parada-btn';
-        if (i === paradaActual) {
-          btn.classList.add('actual');
+        // Verificar permisos de geolocalización antes de usar GPS
+        async function verificarPermisosGPS() {
+            if (!navigator.permissions) {
+                return 'unknown'; // Navegador antiguo
+            }
+            
+            try {
+                const permissionStatus = await navigator.permissions.query({name: 'geolocation'});
+                return permissionStatus.state; // 'granted', 'denied', 'prompt'
+            } catch (error) {
+                console.warn('No se pudieron verificar permisos GPS:', error);
+                return 'unknown';
+            }
         }
-        // ACTUALIZADO: Usar numeración 0-24 para coincidir con padre e hijo 2
-        btn.textContent = `${i}. ${p.nombre}`;
-        btn.onclick = () => {
-          // Seleccionar parada y actualizar parada actual
-          paradaActual = i;
-          window.parent.postMessage({ 
-            type: 'seleccionParada', 
-            index: i, 
-            lat: p.lat, 
-            lng: p.lng 
-          }, '*');
-          
-          // Notificar al hijo 2 del cambio de parada
-          enviarMensajeAHijo2({
-            tipo: 'cambio-parada-actual',
-            parada: i
-          });
-          
-          // Re-renderizar para actualizar el indicador
-          renderParadas();
-        };
-        lista.appendChild(btn);
-      });
-    }
-
-    // ================ FUNCIONES DE CONTROL DE FUNCIONALIDADES ================
-    
-    function desbloquearFuncionalidades() {
-      // Desbloquear botones de cámara y video en hijo 2 (centro y derecha)
-      enviarMensajeAHijo2({
-        tipo: 'desbloquear-botones-multimedia',
-        botones: ['centro', 'derecha'], // cámara y video
-        habilitado: true
-      });
-      
-      // Apagar GPS en hijo 2
-      enviarMensajeAHijo2({
-        tipo: 'desactivar-gps',
-        gpsActivo: false
-      });
-      
-      // Desbloquear controles de audio en hijo 3 (play/pausa)
-      window.parent.postMessage({
-        tipo: 'mensaje-para-hijo3',
-        mensaje: {
-          tipo: 'desbloquear-controles-audio',
-          habilitado: true
-        }
-      }, '*');
-      
-      // Desbloquear barras de progreso en hijo 3
-      window.parent.postMessage({
-        tipo: 'mensaje-para-hijo3',
-        mensaje: {
-          tipo: 'desbloquear-barras-progreso',
-          habilitado: true
-        }
-      }, '*');
-      
-      // Desbloquear botón retos en hijo 4
-      window.parent.postMessage({
-        tipo: 'mensaje-para-hijo4',
-        mensaje: {
-          tipo: 'desbloquear-boton-retos',
-          habilitado: true
-        }
-      }, '*');
-      
-      // Desbloquear barras de progreso en hijo 4
-      window.parent.postMessage({
-        tipo: 'mensaje-para-hijo4',
-        mensaje: {
-          tipo: 'desbloquear-barras-progreso',
-          habilitado: true
-        }
-      }, '*');
-      
-      console.log('🔓 Funcionalidades desbloqueadas - Modo Casa activado');
-    }
-    
-    function restaurarRestriccionesAventura() {
-      // Restaurar restricciones en hijo 2 (bloquear cámara y video)
-      enviarMensajeAHijo2({
-        tipo: 'bloquear-botones-multimedia',
-        botones: ['centro', 'derecha'],
-        habilitado: false
-      });
-      
-      // Activar GPS en hijo 2
-      enviarMensajeAHijo2({
-        tipo: 'activar-gps',
-        gpsActivo: true
-      });
-      
-      // Restaurar restricciones de audio en hijo 3
-      window.parent.postMessage({
-        tipo: 'mensaje-para-hijo3',
-        mensaje: {
-          tipo: 'bloquear-controles-audio',
-          habilitado: false
-        }
-      }, '*');
-      
-      // Bloquear barras de progreso en hijo 3
-      window.parent.postMessage({
-        tipo: 'mensaje-para-hijo3',
-        mensaje: {
-          tipo: 'bloquear-barras-progreso',
-          habilitado: false
-        }
-      }, '*');
-      
-      // Bloquear botón retos en hijo 4
-      window.parent.postMessage({
-        tipo: 'mensaje-para-hijo4',
-        mensaje: {
-          tipo: 'bloquear-boton-retos',
-          habilitado: false
-        }
-      }, '*');
-      
-      // Bloquear barras de progreso en hijo 4
-      window.parent.postMessage({
-        tipo: 'mensaje-para-hijo4',
-        mensaje: {
-          tipo: 'bloquear-barras-progreso',
-          habilitado: false
-        }
-      }, '*');
-      
-      console.log('🔒 Restricciones restauradas - Modo Aventura activado');
-    }
-
-    // ================ COMUNICACIÓN CON EL HIJO 2 ================
-    
-    function enviarMensajeAHijo2(mensaje) {
-      // Enviar mensaje específicamente al hijo 2 a través del padre
-      window.parent.postMessage({
-        tipo: 'mensaje-para-hijo2',
-        mensaje: mensaje
-      }, '*');
-    }
-    
-    function solicitarEstadoAHijo2() {
-      enviarMensajeAHijo2({
-        tipo: 'solicitar-estado-modo'
-      });
-    }
-
-    // ================ EVENTOS ================
-    
-    // Click en el botón principal
-    document.getElementById('gps-casa-btn').onclick = function() {
-      if (gpsOn) {
-        // Cambia a OFF (modo casa) y muestra paradas
-        setGpsState(false);
-        mostrarParadas();
-        window.parent.postMessage({ type: 'gpsStatus', on: false }, '*');
-      } else {
-        // Cambia a ON (modo aventura) y oculta paradas
-        setGpsState(true);
-        ocultarParadas();
-        window.parent.postMessage({ type: 'gpsStatus', on: true }, '*');
-      }
-    };
-
-    // Cerrar ventana de paradas
-    document.getElementById('cerrar-paradas').onclick = function() {
-      ocultarParadas();
-      window.parent.postMessage({ type: 'cerrarParadas' }, '*');
-    };
-
-    // ================ COMUNICACIÓN CON EL PADRE Y HIJO 2 ================
-    
-    window.addEventListener('message', (event) => {
-      const data = event.data;
-      
-      // ========== MENSAJES DEL PADRE ==========
-      
-      // Permite al padre forzar el estado GPS
-      if (data && data.type === 'gpsStatus') {
-        setGpsState(!!data.on);
-        if (!data.on) mostrarParadas();
-        else ocultarParadas();
-      }
-      
-      // ========== MENSAJES DEL HIJO 2 ==========
-      
-      // El hijo 2 confirma que activó modo casa
-      if (data && data.tipo === 'confirmacion-modo-casa') {
-        if (data.activo && !modoCasa) {
-          // Sincronizar estado si no estamos en modo casa
-          setGpsState(false);
-          mostrarParadas();
-        }
-      }
-      
-      // El hijo 2 confirma que activó modo aventura
-      if (data && data.tipo === 'confirmacion-modo-aventura') {
-        if (data.activo && modoCasa) {
-          // Sincronizar estado si estamos en modo casa
-          setGpsState(true);
-          ocultarParadas();
-        }
-      }
-      
-      // El hijo 2 nos envía su estado actual
-      if (data && data.tipo === 'estado-modo-actual') {
-        modoCasa = data.modoCasa;
-        paradaActual = data.paradaActual || 0;
         
-        // Sincronizar estado del botón
-        setGpsState(!modoCasa);
-        
-        // Actualizar interfaz
-        if (modoCasa && document.getElementById('paradas-window').style.display === 'flex') {
-          renderParadas();
+        function iniciarGPS() {
+            // Verificar protocolo HTTPS en producción
+            if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+                actualizarStatus('GPS requiere HTTPS en producción');
+                console.warn('Geolocalización requiere HTTPS en producción');
+                return;
+            }
+
+            if (!navigator.geolocation) {
+                actualizarStatus('GPS no disponible en este dispositivo');
+                return;
+            }
+
+            actualizarStatus('Obteniendo ubicación GPS...', true);
+            
+            // Iniciar simulación de progreso cuando se activa GPS
+            resetTripProgress();
+            totalTimeSpan.textContent = formatTime(totalTripTime);
+            startTripProgressSimulation();
+
+            const options = {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 60000
+            };
+
+            // Obtener ubicación inicial
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    ubicacionActual = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude
+                    };
+                    
+                    // Enviar ubicación al padre
+                    enviarMensajeAlPadre({
+                        tipo: 'actualizarUbicacionMapa',
+                        lat: ubicacionActual.lat,
+                        lng: ubicacionActual.lng
+                    });
+
+                    actualizarStatus(`GPS activo - Precisión: ${Math.round(position.coords.accuracy)}m`);
+                    verificarLlegadaAParada();
+                },
+                (error) => {
+                    console.error('Error GPS:', error);
+                    let mensajeError = 'Error al obtener ubicación GPS';
+                    
+                    switch(error.code) {
+                        case error.PERMISSION_DENIED:
+                            mensajeError = 'Permisos GPS denegados. Actívalos en configuración.';
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            mensajeError = 'Ubicación GPS no disponible';
+                            break;
+                        case error.TIMEOUT:
+                            mensajeError = 'Tiempo de espera GPS agotado';
+                            break;
+                    }
+                    
+                    actualizarStatus(mensajeError);
+                    
+                    // En caso de error, activar modo casa automáticamente
+                    setTimeout(() => {
+                        if (!ubicacionActual) {
+                            actualizarStatus('Activando modo sin GPS...');
+                            activarModoCasa();
+                        }
+                    }, 3000);
+                },
+                options
+            );
+
+            // Comenzar seguimiento continuo
+            watchId = navigator.geolocation.watchPosition(
+                (position) => {
+                    ubicacionActual = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude
+                    };
+                    
+                    // Enviar ubicación actualizada al padre
+                    enviarMensajeAlPadre({
+                        tipo: 'actualizarUbicacionMapa',
+                        lat: ubicacionActual.lat,
+                        lng: ubicacionActual.lng
+                    });
+
+                    verificarLlegadaAParada();
+                },
+                (error) => {
+                    console.error('Error GPS tracking:', error);
+                    
+                    // Solo mostrar error si no tenemos ubicación previa
+                    if (!ubicacionActual) {
+                        let mensajeError = 'Error en seguimiento GPS';
+                        
+                        switch(error.code) {
+                            case error.PERMISSION_DENIED:
+                                mensajeError = 'Permisos GPS revocados';
+                                activarModoCasa(); // Cambiar automáticamente a modo casa
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                mensajeError = 'GPS temporalmente no disponible';
+                                break;
+                            case error.TIMEOUT:
+                                mensajeError = 'Conexión GPS lenta';
+                                break;
+                        }
+                        
+                        actualizarStatus(mensajeError);
+                    }
+                },
+                options
+            );
         }
-      }
-      
-      // El hijo 2 cambió de parada
-      if (data && data.tipo === 'cambio-parada-actual') {
-        paradaActual = data.parada;
-        
-        // Si la ventana de paradas está abierta, re-renderizar
-        if (document.getElementById('paradas-window').style.display === 'flex') {
-          renderParadas();
+
+        function detenerGPS() {
+            if (watchId) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+            }
+            ubicacionActual = null;
+            
+            // Detener y resetear progreso cuando se desactiva GPS
+            clearInterval(tripProgressInterval);
+            resetTripProgress();
+            
+            actualizarStatus('GPS desactivado');
         }
-      }
-    });
-    
-    // ================ INICIALIZACIÓN ================
-    
-    // Al cargar, solicitar estado actual del hijo 2
-    document.addEventListener('DOMContentLoaded', () => {
-      // Inicializar interfaz
-      actualizarIndicadorModo();
-      
-      // Solicitar estado al hijo 2 después de un breve delay
-      setTimeout(() => {
-        solicitarEstadoAHijo2();
-      }, 1000);
-    });
-  </script>
+
+        function verificarLlegadaAParada() {
+            // En modo casa, no verificar llegada a paradas
+            if (modoCasa) return;
+            
+            if (!ubicacionActual || paradaActual > 24) return; // ← Ahora hasta parada 24 (0-24 = 25 paradas totales)
+
+            // Buscar la parada actual por número
+            const paradaDestino = COORDENADAS_PARADAS.find(p => p.parada === paradaActual);
+            if (!paradaDestino) return;
+
+            const distancia = calcularDistancia(
+                ubicacionActual.lat, ubicacionActual.lng,
+                paradaDestino.lat, paradaDestino.lng
+            );
+
+            const RADIO_LLEGADA = 50; // 50 metros de radio
+
+            if (distancia <= RADIO_LLEGADA) {
+                actualizarStatus(`¡Has llegado a la parada ${paradaActual}!`);
+                activarTodosBotones();
+                
+                // Notificar al padre que hemos llegado
+                enviarMensajeAlPadre({
+                    tipo: 'ya-estoy-aqui',
+                    parada: paradaActual
+                });
+            } else {
+                actualizarStatus(`Distancia a parada ${paradaActual}: ${Math.round(distancia)}m`);
+            }
+        }
+
+        // ================== FUNCIONES DE NAVEGACIÓN ==================
+        async function obtenerRuta(origen, destino) {
+            try {
+                // Simular obtención de ruta (en una implementación real usarías una API de routing)
+                return [
+                    { lat: origen.lat, lng: origen.lng },
+                    { lat: destino.lat, lng: destino.lng }
+                ];
+            } catch (error) {
+                console.error('Error obteniendo ruta:', error);
+                return null;
+            }
+        }
+
+        async function navegarDeAB(origenIndex, destinoIndex) {
+            if (!ubicacionActual) {
+                actualizarStatus('Necesitas activar GPS primero');
+                return;
+            }
+
+            // Buscar origen y destino por número de parada
+            const origen = origenIndex !== undefined ? 
+                COORDENADAS_PARADAS.find(p => p.parada === origenIndex) : ubicacionActual;
+            const destino = COORDENADAS_PARADAS.find(p => p.parada === destinoIndex);
+
+            if (!destino) {
+                console.error('Destino no válido');
+                return;
+            }
+
+            actualizarStatus('Calculando ruta...', true);
+            
+            const ruta = await obtenerRuta(origen, destino);
+            
+            if (ruta) {
+                enviarMensajeAlPadre({
+                    tipo: 'mostrar-mapa-gps',
+                    ruta: ruta,
+                    origen: origen,
+                    destino: destino
+                });
+                
+                paradaActual = destinoIndex;
+                actualizarStatus(`Navegando a parada ${destinoIndex}`);
+            } else {
+                actualizarStatus('Error calculando ruta');
+            }
+        }
+
+        // ================== EVENTOS DE BOTONES ==================
+        btnGps.addEventListener('click', async () => {
+            if (btnGps.classList.contains('disabled')) return;
+            
+            // En modo casa, el GPS está desactivado
+            if (modoCasa) {
+                actualizarStatus('GPS desactivado en modo casa');
+                return;
+            }
+            
+            // Verificar permisos antes de iniciar GPS
+            const permisos = await verificarPermisosGPS();
+            if (permisos === 'denied') {
+                actualizarStatus('Permisos GPS denegados. Revisa configuración del navegador.');
+                return;
+            }
+            
+            // Si no hay ubicación actual, iniciar GPS primero
+            if (!ubicacionActual) {
+                iniciarGPS();
+                return;
+            }
+            
+            // Botón 1: GPS - Navegación de punto A a punto B
+            const paradaDestino = COORDENADAS_PARADAS.find(p => p.parada === paradaActual);
+            
+            if (paradaDestino) {
+                actualizarStatus(`Navegando a parada ${paradaActual}...`);
+                
+                // Enviar mensaje al padre para mostrar navegación GPS
+                enviarMensajeAlPadre({
+                    tipo: 'mostrar-navegacion-gps',
+                    paradaActual: paradaActual,
+                    coordenadasDestino: paradaDestino,
+                    ubicacionUsuario: ubicacionActual
+                });
+            }
+        });
+
+        btnImagen.addEventListener('click', () => {
+            if (btnImagen.classList.contains('disabled')) return;
+            
+            // Botón 2: Mostrar imagen de la parada actual
+            const paradaInfo = COORDENADAS_PARADAS.find(p => p.parada === paradaActual);
+            
+            if (paradaInfo && paradaInfo.imagen) {
+                if (modoCasa) {
+                    actualizarStatus(`Modo Casa - Imagen parada ${paradaActual}`);
+                } else {
+                    actualizarStatus(`Mostrando imagen de parada ${paradaActual}`);
+                }
+                
+                enviarMensajeAlPadre({
+                    tipo: 'mostrar-imagen',
+                    parada: paradaActual,           // ← Número de parada directo
+                    imagenSrc: paradaInfo.imagen,   // ← Propiedad imagen directa
+                    paradaNombre: paradaInfo.nombre,
+                    modoCasa: modoCasa
+                });
+            }
+        });
+
+        btnVideo.addEventListener('click', () => {
+            if (btnVideo.classList.contains('disabled')) return;
+            
+            // Botón 3: Zoom-in 2 segundos y luego mostrar video
+            const paradaInfo = COORDENADAS_PARADAS.find(p => p.parada === paradaActual);
+            
+            if (paradaInfo && paradaInfo.video) {
+                if (modoCasa) {
+                    actualizarStatus(`Modo Casa - Video parada ${paradaActual}`);
+                } else {
+                    actualizarStatus(`Preparando video de parada ${paradaActual}...`);
+                }
+                
+                // En modo casa, mostrar video directamente sin zoom
+                if (modoCasa) {
+                    enviarMensajeAlPadre({
+                        tipo: 'mostrar-video',
+                        parada: paradaActual,
+                        videoSrc: paradaInfo.video,    // ← Propiedad video directa
+                        autoplay: true,
+                        modoCasa: true
+                    });
+                } else {
+                    // Modo aventura: primero zoom, luego video
+                    enviarMensajeAlPadre({
+                        tipo: 'mostrar-zoom-coordenadas',
+                        coordenadas: paradaInfo,
+                        parada: paradaActual
+                    });
+                    
+                    setTimeout(() => {
+                        enviarMensajeAlPadre({
+                            tipo: 'mostrar-video',
+                            parada: paradaActual,
+                            videoSrc: paradaInfo.video,   // ← Propiedad video directa
+                            autoplay: true,
+                            modoCasa: false
+                        });
+                        
+                        actualizarStatus(`Reproduciendo video de parada ${paradaActual}`);
+                    }, 2000);
+                }
+            }
+        });
+
+        // ================== COMUNICACIÓN CON EL PADRE ==================
+        function enviarMensajeAlPadre(mensaje) {
+            try {
+                window.parent.postMessage(mensaje, '*');
+                console.log('Mensaje enviado al padre:', mensaje.tipo || mensaje.type);
+            } catch (error) {
+                console.error('Error enviando mensaje al padre:', error);
+                actualizarStatus('Error de comunicación con el padre');
+            }
+        }
+        
+        // ================== COMUNICACIÓN CON EL HIJO 5 (Av1-boton-casa.html) ==================
+        function enviarMensajeAHijo5(mensaje) {
+            // Enviar mensaje específicamente al hijo 5 a través del padre
+            enviarMensajeAlPadre({
+                tipo: 'mensaje-para-hijo5',
+                mensaje: mensaje
+            });
+        }
+        
+        function enviarEstadoModoAHijo5() {
+            enviarMensajeAHijo5({
+                tipo: 'estado-modo-actual',
+                modoCasa: modoCasa,
+                paradaActual: paradaActual
+            });
+        }
+        
+        // ================== FUNCIONES DE MODO CASA/AVENTURA ==================
+        function activarModoCasa() {
+            modoCasa = true;
+            
+            // Desactivar GPS cuando se activa modo casa
+            detenerGPS();
+            desactivarBoton(btnGps);
+            
+            // Activar botones foto y video en modo casa
+            activarBoton(btnImagen);
+            activarBoton(btnVideo);
+            
+            // Resetear progreso en modo casa
+            clearInterval(tripProgressInterval);
+            resetTripProgress();
+            
+            actualizarStatus('Modo Casa activado - GPS desactivado');
+            
+            // Notificar al padre del cambio de modo
+            enviarMensajeAlPadre({
+                tipo: 'modo-casa-activado',
+                modoCasa: true
+            });
+            
+            // Confirmar al hijo 5 que el modo casa está activo
+            enviarMensajeAHijo5({
+                tipo: 'confirmacion-modo-casa',
+                activo: true
+            });
+        }
+        
+        function activarModoAventura() {
+            modoCasa = false;
+            
+            // En modo aventura, el comportamiento depende de si hemos llegado a una parada
+            if (ubicacionActual) {
+                verificarLlegadaAParada();
+            } else {
+                // Si no hay ubicación, todos los botones están desactivados
+                desactivarTodosBotones();
+            }
+            
+            actualizarStatus('Modo Aventura activado - GPS disponible');
+            
+            // Notificar al padre del cambio de modo
+            enviarMensajeAlPadre({
+                tipo: 'modo-aventura-activado',
+                modoCasa: false
+            });
+            
+            // Confirmar al hijo 5 que el modo aventura está activo
+            enviarMensajeAHijo5({
+                tipo: 'confirmacion-modo-aventura',
+                activo: true
+            });
+        }
+
+        // Escuchar mensajes del padre
+        window.addEventListener('message', (event) => {
+            const data = event.data;
+            
+            // El padre nos dice en qué parada estamos
+            if (data && data.tipo === 'actualizar-parada-actual') {
+                paradaActual = data.parada;
+                actualizarStatus(`Parada actual: ${paradaActual}`); // ← Números directos 0-24
+            }
+            
+            // El padre activa el botón GPS (rojo → verde)
+            if (data && data.tipo === 'activar-boton-gps') {
+                activarBoton(btnGps);
+                actualizarStatus('GPS activado - Listo para navegar');
+            }
+            
+            // El padre activa el botón de imagen (rojo → verde)
+            if (data && data.tipo === 'activar-boton-imagen') {
+                activarBoton(btnImagen);
+                actualizarStatus('Botón imagen activado');
+            }
+            
+            // El padre activa el botón de video (rojo → verde)
+            if (data && data.tipo === 'activar-boton-video') {
+                activarBoton(btnVideo);
+                actualizarStatus('Botón video activado');
+            }
+            
+            // El padre activa todos los botones
+            if (data && data.tipo === 'activar-todos-botones') {
+                activarTodosBotones();
+                actualizarStatus('Todos los botones activados');
+            }
+            
+            // El padre desactiva todos los botones
+            if (data && data.tipo === 'desactivar-todos-botones') {
+                desactivarTodosBotones();
+                actualizarStatus('Esperando activación...');
+            }
+            
+            // Actualizar ubicación del usuario
+            if (data && data.tipo === 'actualizar-ubicacion-usuario') {
+                ubicacionActual = {
+                    lat: data.lat,
+                    lng: data.lng
+                };
+            }
+            
+            // ========== MENSAJES DEL HIJO 5 (Av1-boton-casa.html) ==========
+            
+            // El hijo 5 nos informa que el botón casa fue activado
+            if (data && data.tipo === 'boton-casa-activado') {
+                activarModoCasa();
+            }
+            
+            // El hijo 5 nos informa que el botón casa fue desactivado
+            if (data && data.tipo === 'boton-casa-desactivado') {
+                activarModoAventura();
+            }
+            
+            // El hijo 5 solicita el estado actual del modo
+            if (data && data.tipo === 'solicitar-estado-modo') {
+                enviarEstadoModoAHijo5();
+            }
+        });
+
+        // ================== INICIALIZACIÓN ==================
+        document.addEventListener('DOMContentLoaded', () => {
+            // Todos los botones empiezan desactivados (fondo rojo)
+            desactivarTodosBotones();
+            
+            // Inicializar barra de progreso
+            totalTimeSpan.textContent = formatTime(totalTripTime);
+            resetTripProgress();
+            
+            actualizarStatus('Esperando instrucciones del padre...');
+            
+            // Notificar al hijo 5 el estado inicial (modo aventura)
+            setTimeout(() => {
+                enviarEstadoModoAHijo5();
+            }, 1000);
+        });
+    </script>
 </body>
 </html>
