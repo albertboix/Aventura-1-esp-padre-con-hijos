@@ -3,68 +3,116 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reproductor de Audio/Video (Hijo 3)</title>
+    <title>Reproductor de Audio de Aventura (Hijo)</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         :root {
-            /* Variables de diseño para botones y barra de progreso (AHORA COINCIDEN CON HIJO 2) */
-            --btn-size: 80px; /* Tamaño grande */
-            --icon-size: 2.7em; /* Tamaño grande */
-            --progress-thick: 25px; /* Grosor de la barra de progreso */
-            --timer-font-size: 1.3em; /* Tamaño de fuente del temporizador */
-            --player-border-radius: 18px; /* Bordes redondeados */
+            --btn-size: 80px;
+            --icon-size: 2.7em;
+            --progress-thick: 16px;
+            --trapecio-width: 340px;
+            --trapecio-height: 120px;
+            --trapecio-bg: rgba(255,255,255,0.85);
+            --trapecio-shadow: 0 2px 12px rgba(0,0,0,0.13);
+            --trapecio-radius: 18px;
+            --progress-color: #0077cc;
+            --progress-bg: #e0e0e0;
+            --timer-font-size: 1.3em;
+            --timer-color: #444;
         }
-
         html, body {
             height: 100%;
             margin: 0;
             padding: 0;
-            background: transparent !important; /* Fondo del iframe transparente */
+            background: transparent !important;
         }
-
         body {
-            font-family: Arial, sans-serif;
+            font-family: "Book Antiqua", "Palatino Linotype", "Palatino", Georgia, serif;
+            margin: 0;
+            padding: 0;
+            background: transparent !important;
+            overflow: hidden;
+        }
+        .audio-player-controls {
+            position: fixed;
+            left: 50%;
+            bottom: 0;
+            transform: translateX(-50%);
+            width: min(var(--trapecio-width), 98vw);
+            max-width: 98vw;
+            min-width: 180px;
+            height: var(--trapecio-height);
+            background: var(--trapecio-bg);
+            clip-path: polygon(8% 0, 92% 0, 100% 100%, 0 100%);
+            border-radius: var(--trapecio-radius);
+            box-shadow: var(--trapecio-shadow);
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: flex-end; /* Alinea los elementos abajo del contenedor */
-            overflow: hidden; /* Evita scroll dentro del iframe */
-            background: transparent !important; /* Asegura que el body también sea transparente */
+            justify-content: flex-end;
+            gap: 0.1em;
+            z-index: 1200;
+            padding: 2px 4px;
+            border: none;
         }
-
-        /* Contenedor principal con la forma trapezoidal invertida (corta arriba, larga abajo) */
-        .player-container {
-            width: 100%; /* Ocupa el ancho completo del iframe */
-            height: 100%; /* Ocupa el alto completo del iframe */
-            background: white; /* Fondo del trapecio blanco */
-            border-radius: var(--player-border-radius);
-            box-shadow: 0 2px 12px rgba(0,0,0,0.13);
+        .progress-row {
             display: flex;
-            flex-direction: column;
             align-items: center;
-            justify-content: space-around; /* Distribuye espacio entre elementos */
-            padding: 5px 10px;
-            box-sizing: border-box;
-
-            /* === CLAVE PARA LA FORMA TRAPEZOIDAL INVERTIDA (corta arriba, larga abajo) === */
-            clip-path: polygon(8% 0%, 92% 0%, 100% 100%, 0% 100%);
-        }
-
-        .controls {
-            display: flex;
-            gap: 15px; /* Espacio entre botones */
+            width: 96%;
+            gap: 1.2em;
+            margin: 0 0 8px 0;
+            padding: 0;
             justify-content: center;
-            align-items: center;
-            flex-wrap: wrap;
-            margin-bottom: 5px; /* Pequeño margen inferior */
         }
-
-        .control-button {
+        .progress-container {
+            flex: 0 0 68%;
+            max-width: 68%;
+            width: 68%;
+            height: var(--progress-thick);
+            background-color: var(--progress-bg);
+            border-radius: 5px;
+            cursor: pointer;
+            position: relative;
+            margin: 0;
+            min-width: 0;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+        }
+        #progressBar {
+            height: 100%;
+            width: 0%;
+            background-color: var(--progress-color);
+            border-radius: 5px;
+            transition: width 0.1s linear;
+        }
+        .time-display {
+            min-width: 80px;
+            font-size: var(--timer-font-size);
+            color: var(--timer-color);
+            text-align: right;
+            user-select: none;
+            margin-left: 2px;
+            white-space: nowrap;
+            display: inline-block;
+            vertical-align: middle;
+            font-family: inherit;
+        }
+        .player-buttons-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.2em;
+            width: 100%;
+            margin-bottom: 2px;
+        }
+        /* Cambia solo el botón de play para que siempre sea rojo, incluso deshabilitado */
+        #playPauseBtn {
             width: var(--btn-size);
             height: var(--btn-size);
             border-radius: 50%;
             border: none;
-            background: linear-gradient(90deg, #0077cc 0%, #00aaff 100%);
+            background: linear-gradient(90deg, #cc3333 0%, #ff5555 100%) !important;
             color: white;
             font-size: var(--icon-size);
             display: flex;
@@ -73,110 +121,178 @@
             cursor: pointer;
             transition: background 0.2s, transform 0.1s;
             box-shadow: 0 2px 6px rgba(0,0,0,0.10);
-            flex-shrink: 0;
+            padding: 0;
         }
-
-        .control-button:disabled {
-            background: #cccccc;
-            cursor: not-allowed;
-            box-shadow: none;
+        #playPauseBtn:active:not(:disabled) { transform: scale(0.95); }
+        #playPauseBtn.active {
+            background: linear-gradient(90deg, #34c759 0%, #43e97b 100%) !important;
         }
-
-        .control-button:active:not(:disabled) {
-            transform: scale(0.95);
-        }
-
-        /* Barra de Progreso */
-        .progress-container {
-            width: 90%;
-            height: var(--progress-thick);
-            background-color: #e0e0e0; /* Gris */
-            border-radius: calc(var(--progress-thick) / 2);
-            overflow: hidden;
-            margin-top: 5px; /* Pequeño margen superior */
-            position: relative;
-            cursor: pointer; /* Indicar que es interactiva */
-        }
-
-        .progress-bar {
-            height: 100%;
-            width: 0%; /* Se actualizará con JS */
-            background: linear-gradient(90deg, #007bff, #00c6ff); /* Degradado azul */
-            border-radius: calc(var(--progress-thick) / 2);
-            transition: none; /* Eliminar transición para permitir arrastre suave */
-        }
-
-        .time-display {
-            width: 90%;
+        /* El resto de botones mantiene el comportamiento original */
+        .player-button:not(#playPauseBtn), #retosBtn {
+            width: var(--btn-size);
+            height: var(--btn-size);
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(90deg, #cc3333 0%, #ff5555 100%);
+            color: white;
+            font-size: var(--icon-size);
             display: flex;
-            justify-content: space-between;
-            color: #333;
-            font-size: var(--timer-font-size);
-            margin-top: 5px;
-            margin-bottom: 5px;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.10);
+            padding: 0;
         }
-
-        /* Media queries para pantallas pequeñas (mantiene la coherencia con Hijo 2) */
+        .player-button:disabled:not(#playPauseBtn), #retosBtn:disabled { background: #ccc; cursor: not-allowed; }
+        .player-button:active:not(:disabled):not(#playPauseBtn), #retosBtn:active:not(:disabled) { transform: scale(0.95);}
+        .player-button.active:not(#playPauseBtn), #retosBtn.active {
+            background: linear-gradient(90deg, #34c759 0%, #43e97b 100%);
+        }
+        .icon-play, .icon-puzzle {
+            font-size: var(--icon-size);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .progress-container:active, .progress-container.dragging {
+            cursor: grabbing;
+        }
         @media (max-width: 500px) {
             :root {
-                --btn-size: 48px; /* Tamaño pequeño */
-                --icon-size: 1.5em; /* Tamaño pequeño */
+                --btn-size: 48px;
+                --icon-size: 1.5em;
+                --trapecio-width: 98vw;
+                --trapecio-height: 90px;
+                --progress-thick: 10px;
+                --timer-font-size: 1em;
             }
-            .time-display {
-                font-size: 1em;
+            .audio-player-controls {
+                width: 98vw;
+                min-width: unset;
+                left: 50%;
+                transform: translateX(-50%);
             }
+            .audio-player-controls { width: var(--trapecio-width); }
+            .progress-row { gap: 0.7em; }
+            .progress-container {
+                max-width: 62%;
+                width: 62%;
+                flex-basis: 62%;
+            }
+            .time-display { min-width: 60px; }
         }
     </style>
 </head>
 <body>
-    <div class="player-container">
-        <div class="controls">
-            <button id="prevBtn" class="control-button" title="Anterior">
-                <i class="fas fa-backward"></i>
+    <div class="audio-player-controls" id="audioPlayerControls">
+        <audio id="audioPlayer"></audio>
+        <div class="player-buttons-row">
+            <button id="playPauseBtn" class="player-button" title="Reproducir/Pausar" disabled>
+                <span class="icon-play"><i class="fas fa-play"></i></span>
             </button>
-            <button id="playPauseBtn" class="control-button" title="Reproducir/Pausar">
-                <i class="fas fa-play"></i>
-            </button>
-            <button id="nextBtn" class="control-button" title="Siguiente">
-                <i class="fas fa-forward"></i>
-            </button>
-            <button id="stopBtn" class="control-button" title="Detener">
-                <i class="fas fa-stop"></i>
+            <button id="retosBtn" title="Retos" class="player-button">
+                <span class="icon-puzzle">🧩</span>
             </button>
         </div>
-
-        <div class="progress-container" id="progressContainer">
-            <div class="progress-bar" id="progressBar"></div>
-        </div>
-        <div class="time-display">
-            <span id="currentTime">00:00</span>
-            <span id="duration">00:00</span>
+        <div class="progress-row">
+            <div class="progress-container" id="progressContainer">
+                <div id="progressBar"></div>
+            </div>
+            <span class="time-display">
+                <span id="currentTime">0:00</span> / <span id="duration">0:00</span>
+            </span>
         </div>
     </div>
-
     <script>
+        // ================== VARIABLES GLOBALES ==================
+        
         const playPauseBtn = document.getElementById('playPauseBtn');
-        const prevBtn = document.getElementById('prevBtn');
-        const nextBtn = document.getElementById('nextBtn');
-        const stopBtn = document.getElementById('stopBtn');
+        const retosBtn = document.getElementById('retosBtn');
         const progressBar = document.getElementById('progressBar');
-        const progressContainer = document.getElementById('progressContainer'); // Nuevo
+        const progressContainer = document.getElementById('progressContainer');
         const currentTimeSpan = document.getElementById('currentTime');
         const durationSpan = document.getElementById('duration');
+        const audioPlayer = document.getElementById('audioPlayer');
 
         let isPlaying = false;
         let currentMediaIndex = 0;
-        let mediaDuration = 0; // Simulación de duración
-        let mediaCurrentTime = 0; // Simulación de tiempo actual
-        let progressInterval;
-        let isDraggingProgress = false; // Estado para el arrastre
+        let isDraggingProgress = false;
+        let controlsDisabled = true; // Empezar con controles deshabilitados (modo aventura)
 
-        // Simulación de una lista de medios
-        const mediaList = [
-            { id: 0, title: "Audio 1", duration: 180 }, // 3 minutos
-            { id: 1, title: "Audio 2", duration: 240 }, // 4 minutos
-            { id: 2, title: "Audio 3", duration: 120 }  // 2 minutos
+        // Array de audios correspondientes a las 25 paradas (0-24)
+        const audioFiles = [
+            { id: 0, title: "Torres de Serranos (inicio)", file: "audio/parada_0.mp3" },
+            { id: 1, title: "Torres de Serranos → Plaza de la crida", file: "audio/parada_1.mp3" },
+            { id: 2, title: "Plaza de la crida → Palacio de los Borgia", file: "audio/parada_2.mp3" },
+            { id: 3, title: "Palacio de los Borgia → Plaza de la Virgen", file: "audio/parada_3.mp3" },
+            { id: 4, title: "Plaza de la Virgen → Plaza de la Almoína", file: "audio/parada_4.mp3" },
+            { id: 5, title: "Plaza de la Almoína → Catedral de València", file: "audio/parada_5.mp3" },
+            { id: 6, title: "Catedral → Plaza Decimo Junio Bruto", file: "audio/parada_6.mp3" },
+            { id: 7, title: "Plaza Decimo Junio Bruto → Basílica de València", file: "audio/parada_7.mp3" },
+            { id: 8, title: "Basílica → Palacio Arzobispal", file: "audio/parada_8.mp3" },
+            { id: 9, title: "Palacio Arzobispal → Plaza del Ayuntamiento", file: "audio/parada_9.mp3" },
+            { id: 10, title: "Plaza del Ayuntamiento → Edificio del Ayuntamiento", file: "audio/parada_10.mp3" },
+            { id: 11, title: "Edificio del Ayuntamiento → Estación del Norte", file: "audio/parada_11.mp3" },
+            { id: 12, title: "Estación del Norte → Plaza de Toros", file: "audio/parada_12.mp3" },
+            { id: 13, title: "Plaza de Toros → Casa estilo Árabe", file: "audio/parada_13.mp3" },
+            { id: 14, title: "Casa estilo Árabe → Palacio de Comunicaciones", file: "audio/parada_14.mp3" },
+            { id: 15, title: "Palacio de Comunicaciones → Banco de València", file: "audio/parada_15.mp3" },
+            { id: 16, title: "Banco de València → Palacio del Marqués", file: "audio/parada_16.mp3" },
+            { id: 17, title: "Palacio del Marqués → Mercado Central", file: "audio/parada_17.mp3" },
+            { id: 18, title: "Mercado Central → Iglesia de los Santos Juanes", file: "audio/parada_18.mp3" },
+            { id: 19, title: "Iglesia Santos Juanes → Lonja de València", file: "audio/parada_19.mp3" },
+            { id: 20, title: "Lonja → Plaza del Doctor Collado", file: "audio/parada_20.mp3" },
+            { id: 21, title: "Plaza del Doctor Collado → Plaza del Negrito", file: "audio/parada_21.mp3" },
+            { id: 22, title: "Plaza del Negrito → Calle Caballeros", file: "audio/parada_22.mp3" },
+            { id: 23, title: "Calle Caballeros → Palacio de la Generalitat", file: "audio/parada_23.mp3" },
+            { id: 24, title: "Palacio de la Generalitat → Calle de los Serranos", file: "audio/parada_24.mp3" }
         ];
+
+        // ================== FUNCIONES DE CONTROL DE ACCESO ==================
+        
+        function enableControls() {
+            controlsDisabled = false;
+            
+            // Habilitar botón play/pausa
+            playPauseBtn.disabled = false;
+            
+            // Habilitar botón retos
+            retosBtn.disabled = false;
+            retosBtn.style.opacity = '1';
+            retosBtn.style.pointerEvents = 'auto';
+            
+            // Habilitar barra de progreso
+            progressContainer.style.pointerEvents = 'auto';
+            progressContainer.style.opacity = '1';
+            
+            console.log('✅ HIJO 3: Controles de audio habilitados');
+        }
+        
+        function disableControls() {
+            controlsDisabled = true;
+            
+            // Deshabilitar botón play/pausa
+            playPauseBtn.disabled = true;
+            
+            // Deshabilitar botón retos
+            retosBtn.disabled = true;
+            retosBtn.style.opacity = '0.6';
+            retosBtn.style.pointerEvents = 'none';
+            
+            // Deshabilitar barra de progreso
+            progressContainer.style.pointerEvents = 'none';
+            progressContainer.style.opacity = '0.6';
+            
+            // Pausar si está reproduciendo
+            if (isPlaying) {
+                pauseAudio();
+            }
+            
+            console.log('🚫 HIJO 3: Controles de audio deshabilitados');
+        }
+
+        // ================== FUNCIONES DEL REPRODUCTOR ==================
 
         function formatTime(seconds) {
             const minutes = Math.floor(seconds / 60);
@@ -184,192 +300,233 @@
             return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
         }
 
-        function updateProgressBar() {
-            if (mediaDuration > 0) {
-                const progress = (mediaCurrentTime / mediaDuration) * 100;
+        function updateProgress() {
+            if (audioPlayer.duration) {
+                const progress = (audioPlayer.currentTime / audioPlayer.duration) * 100;
                 progressBar.style.width = `${progress}%`;
-                currentTimeSpan.textContent = formatTime(mediaCurrentTime);
+                currentTimeSpan.textContent = formatTime(audioPlayer.currentTime);
+                durationSpan.textContent = formatTime(audioPlayer.duration);
             }
         }
 
-        function startProgressSimulation() {
-            clearInterval(progressInterval);
-            progressInterval = setInterval(() => {
-                if (!isDraggingProgress && mediaCurrentTime < mediaDuration) { // Solo avanza si no se está arrastrando
-                    mediaCurrentTime++;
-                    updateProgressBar();
-                } else if (mediaCurrentTime >= mediaDuration) {
-                    clearInterval(progressInterval);
-                    isPlaying = false;
-                    playPauseBtn.innerHTML = '<i class="fas fa-play"></i>';
-                    // Opcional: avanzar al siguiente medio automáticamente
-                    // playNext();
-                }
-            }, 1000); // Actualiza cada segundo
-        }
-
-        function loadMedia(index) {
-            if (index >= 0 && index < mediaList.length) {
+        function loadAudio(index) {
+            if (index >= 0 && index < audioFiles.length) {
                 currentMediaIndex = index;
-                mediaDuration = mediaList[currentMediaIndex].duration;
-                mediaCurrentTime = 0;
-                durationSpan.textContent = formatTime(mediaDuration);
-                updateProgressBar();
-                console.log(`Cargado: ${mediaList[currentMediaIndex].title}`);
+                audioPlayer.src = audioFiles[index].file;
+                console.log(`🎵 HIJO 3: Cargando audio - ${audioFiles[index].title}`);
+                
                 // Notificar al padre sobre el cambio de medio
-                window.parent.postMessage({ type: 'media-cargado', index: currentMediaIndex, title: mediaList[currentMediaIndex].title }, '*');
-            } else {
-                console.log("No hay más medios.");
-                stopMedia(); // Detener si no hay siguiente
+                window.parent.postMessage({ 
+                    type: 'audioLoaded', 
+                    index: currentMediaIndex, 
+                    title: audioFiles[currentMediaIndex].title 
+                }, '*');
             }
         }
 
-        function playMedia() {
-            isPlaying = true;
-            playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
-            startProgressSimulation();
-            window.parent.postMessage({ type: 'media-reproducido', index: currentMediaIndex }, '*');
+        function playAudio() {
+            if (controlsDisabled) {
+                console.log('🚫 HIJO 3: No se puede reproducir - controles deshabilitados');
+                return;
+            }
+            
+            audioPlayer.play().then(() => {
+                isPlaying = true;
+                playPauseBtn.innerHTML = '<span class="icon-play"><i class="fas fa-pause"></i></span>';
+                playPauseBtn.classList.add('active');
+                console.log(`▶️ HIJO 3: Reproduciendo audio - ${audioFiles[currentMediaIndex].title}`);
+                
+                window.parent.postMessage({ 
+                    type: 'audioPlaying', 
+                    index: currentMediaIndex 
+                }, '*');
+            }).catch(error => {
+                console.error('❌ Error al reproducir audio:', error);
+            });
         }
 
-        function pauseMedia() {
+        function pauseAudio() {
+            audioPlayer.pause();
             isPlaying = false;
-            playPauseBtn.innerHTML = '<i class="fas fa-play"></i>';
-            clearInterval(progressInterval);
-            window.parent.postMessage({ type: 'media-pausado', index: currentMediaIndex }, '*');
+            playPauseBtn.innerHTML = '<span class="icon-play"><i class="fas fa-play"></i></span>';
+            playPauseBtn.classList.remove('active');
+            console.log(`⏸️ HIJO 3: Audio pausado - ${audioFiles[currentMediaIndex].title}`);
+            
+            window.parent.postMessage({ 
+                type: 'audioPaused', 
+                index: currentMediaIndex 
+            }, '*');
         }
 
-        function stopMedia() {
+        function stopAudio() {
+            audioPlayer.pause();
+            audioPlayer.currentTime = 0;
             isPlaying = false;
-            playPauseBtn.innerHTML = '<i class="fas fa-play"></i>';
-            clearInterval(progressInterval);
-            mediaCurrentTime = 0;
-            updateProgressBar();
-            window.parent.postMessage({ type: 'media-detenido', index: currentMediaIndex }, '*');
+            playPauseBtn.innerHTML = '<span class="icon-play"><i class="fas fa-play"></i></span>';
+            playPauseBtn.classList.remove('active');
+            updateProgress();
+            console.log(`⏹️ HIJO 3: Audio detenido - ${audioFiles[currentMediaIndex].title}`);
+            
+            window.parent.postMessage({ 
+                type: 'audioStopped', 
+                index: currentMediaIndex 
+            }, '*');
         }
 
-        function playNext() {
-            currentMediaIndex++;
-            if (currentMediaIndex < mediaList.length) {
-                loadMedia(currentMediaIndex);
-                playMedia();
-            } else {
-                currentMediaIndex = 0; // Volver al inicio o detener
-                loadMedia(currentMediaIndex); // Cargar el primero pero no reproducir automáticamente
-                stopMedia();
-            }
-        }
-
-        function playPrev() {
-            currentMediaIndex--;
-            if (currentMediaIndex >= 0) {
-                loadMedia(currentMediaIndex);
-                playMedia();
-            } else {
-                currentMediaIndex = mediaList.length - 1; // Ir al final o detener
-                loadMedia(currentMediaIndex); // Cargar el último pero no reproducir automáticamente
-                stopMedia();
-            }
-        }
-
-        // Funcionalidad de arrastre de la barra de progreso
-        function seek(e) {
-            if (mediaDuration === 0) return; // No hacer nada si no hay duración
+        function seekTo(e) {
+            if (controlsDisabled || !audioPlayer.duration) return;
 
             const rect = progressContainer.getBoundingClientRect();
-            let clickX = e.clientX - rect.left; // Posición X del clic/arrastre dentro del contenedor
+            let clickX = e.clientX - rect.left;
 
-            // Manejar touch events
             if (e.touches && e.touches.length > 0) {
                 clickX = e.touches[0].clientX - rect.left;
             }
 
-            let newTime = (clickX / rect.width) * mediaDuration;
-
-            // Asegurarse de que el tiempo no exceda la duración ni sea negativo
-            newTime = Math.max(0, Math.min(newTime, mediaDuration));
-
-            mediaCurrentTime = newTime;
-            updateProgressBar();
-
-            // Si se está reproduciendo, reanudar la simulación de progreso desde el nuevo tiempo
-            if (isPlaying) {
-                startProgressSimulation();
-            }
+            const newTime = (clickX / rect.width) * audioPlayer.duration;
+            audioPlayer.currentTime = Math.max(0, Math.min(newTime, audioPlayer.duration));
         }
 
+        // ================== EVENT LISTENERS ==================
+
+        // Botón play/pausa
+        playPauseBtn.addEventListener('click', () => {
+            if (controlsDisabled) return;
+            
+            if (isPlaying) {
+                pauseAudio();
+            } else {
+                playAudio();
+            }
+        });
+
+        // Botón retos
+        retosBtn.addEventListener('click', () => {
+            if (controlsDisabled) return;
+            
+            console.log('🧩 HIJO 3: Botón retos presionado');
+            window.parent.postMessage({ 
+                type: 'mostrarRetos', 
+                index: currentMediaIndex 
+            }, '*');
+        });
+
+        // Audio events
+        audioPlayer.addEventListener('timeupdate', updateProgress);
+        audioPlayer.addEventListener('loadedmetadata', updateProgress);
+        audioPlayer.addEventListener('ended', () => {
+            isPlaying = false;
+            playPauseBtn.innerHTML = '<span class="icon-play"><i class="fas fa-play"></i></span>';
+            playPauseBtn.classList.remove('active');
+            
+            window.parent.postMessage({ 
+                type: 'audioEnded', 
+                index: currentMediaIndex 
+            }, '*');
+        });
+
+        // Progress bar events
         progressContainer.addEventListener('mousedown', (e) => {
+            if (controlsDisabled) return;
             isDraggingProgress = true;
-            seek(e); // Ajustar inmediatamente al clic inicial
-            // Pausar la simulación de avance para evitar conflictos
-            clearInterval(progressInterval);
+            seekTo(e);
         });
 
         progressContainer.addEventListener('mousemove', (e) => {
-            if (isDraggingProgress) {
-                seek(e);
+            if (isDraggingProgress && !controlsDisabled) {
+                seekTo(e);
             }
         });
 
         progressContainer.addEventListener('mouseup', () => {
             isDraggingProgress = false;
-            // Reanudar la simulación de avance solo si estaba reproduciendo antes del arrastre
-            if (isPlaying) {
-                startProgressSimulation();
-            }
         });
 
-        // Para eventos táctiles
+        // Touch events
         progressContainer.addEventListener('touchstart', (e) => {
+            if (controlsDisabled) return;
             isDraggingProgress = true;
-            seek(e);
-            clearInterval(progressInterval);
+            seekTo(e);
         });
 
         progressContainer.addEventListener('touchmove', (e) => {
-            if (isDraggingProgress) {
-                seek(e);
+            if (isDraggingProgress && !controlsDisabled) {
+                seekTo(e);
             }
         });
 
         progressContainer.addEventListener('touchend', () => {
             isDraggingProgress = false;
-            if (isPlaying) {
-                startProgressSimulation();
-            }
         });
 
-        playPauseBtn.addEventListener('click', () => {
-            if (isPlaying) {
-                pauseMedia();
-            } else {
-                playMedia();
-            }
-        });
-
-        prevBtn.addEventListener('click', playPrev);
-        nextBtn.addEventListener('click', playNext);
-        stopBtn.addEventListener('click', stopMedia);
-
-        // Listener para mensajes del padre (ej. para reproducir un audio específico)
+        // ================== LISTENER PARA MENSAJES DEL PADRE ==================
+        
         window.addEventListener('message', (event) => {
             const data = event.data;
-            if (data && data.tipo === 'reproducir-audio') {
+            
+            // ========== MENSAJES DE CONTROL DESDE HIJO 5 ==========
+            
+            // Habilitar controles (modo casa - OFF)
+            if (data && data.type === 'enableControls') {
+                console.log('🔓 HIJO 3: Recibido mensaje para habilitar controles');
+                enableControls();
+            }
+            
+            // Deshabilitar controles (modo aventura - ON)
+            if (data && data.type === 'disableControls') {
+                console.log('🔒 HIJO 3: Recibido mensaje para deshabilitar controles');
+                disableControls();
+            }
+            
+            // ========== MENSAJES DEL PADRE ==========
+            
+            // Establecer audio de parada específica
+            if (data && data.type === 'setAudioParada') {
                 const audioIndex = data.index;
-                if (audioIndex !== undefined && audioIndex < mediaList.length) {
-                    loadMedia(audioIndex);
-                    playMedia();
+                console.log(`🎯 HIJO 3: Estableciendo audio de parada ${audioIndex}`);
+                if (audioIndex !== undefined && audioIndex >= 0 && audioIndex < audioFiles.length) {
+                    loadAudio(audioIndex);
+                    // En modo aventura, el audio se reproduce automáticamente si los controles están habilitados
+                    if (!controlsDisabled) {
+                        playAudio();
+                    }
                 }
             }
-            if (data && data.tipo === 'pausar-audio') {
-                pauseMedia();
+            
+            // Mensaje para pausar desde hijo 1 (botón casa)
+            if (data && data.type === 'pauseAudio') {
+                if (!controlsDisabled && isPlaying) {
+                    pauseAudio();
+                }
             }
-            if (data && data.tipo === 'detener-audio') {
-                stopMedia();
+            
+            // Mensajes adicionales de control de reproducción
+            if (data && data.type === 'playAudio') {
+                if (!controlsDisabled) {
+                    playAudio();
+                }
+            }
+            
+            if (data && data.type === 'stopAudio') {
+                if (!controlsDisabled) {
+                    stopAudio();
+                }
             }
         });
 
-        // Inicialización
-        loadMedia(0); // Carga el primer medio al iniciar
+        // ================== INICIALIZACIÓN ==================
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            // Cargar el primer audio y deshabilitar controles por defecto (modo aventura)
+            loadAudio(0);
+            disableControls();
+            console.log('🎵 HIJO 3: Reproductor inicializado - controles deshabilitados por defecto (modo aventura)');
+            
+            // Notificar al padre que el hijo 3 está listo
+            window.parent.postMessage({ 
+                type: 'hijo3Ready' 
+            }, '*');
+        });
     </script>
 </body>
 </html>
