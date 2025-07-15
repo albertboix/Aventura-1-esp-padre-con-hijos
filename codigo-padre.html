@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Aventura 1 - Padre</title>
+                   height:150px; /* YA ESTABA a 140px, se mantiene */
+                   width:310px;
+                   z-index:1001;
+                   border:transparent;
+                   /* Eliminado: background:rgba(255, 255, 0, 0.5); */
+                   pointer-events:auto;"
+            allow="geolocation"></iframe>ra 1 - Padre</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
@@ -152,12 +159,12 @@
                    display:block;
                    pointer-events:auto;"></iframe>
 
-    <iframe id="hijo2" src="Av1-botones-coordenadas.html"
+    <iframe id="hijo2" src="./hijo2-gps-actualizado.html"
             style="position:fixed;
-                   bottom:110px; /* AJUSTADO: Ahora está 140px por encima de hijo3 (que ahora mide 140px) */
+                   bottom:134px; /* AJUSTADO: Ahora está 140px por encima de hijo3 (que ahora mide 140px) */
                    left:50%;
                    transform:translateX(-50%);
-                   height:250px; /* YA ESTABA a 140px, se mantiene */
+                   height:150px; /* YA ESTABA a 140px, se mantiene */
                    width:310px;
                    z-index:1001;
                    border:transparent;
@@ -180,7 +187,7 @@
     <script>
         // ================== ARRAY DE 40 PARADAS (METADATOS) ==================
         // Este array contiene solo el nombre y datos de audio/reto/foto/video.
-        // Las coordenadas (lat/lng) se gestionan en Av1-botones-coordenadas.html (Hijo 2).
+        // Las coordenadas (lat/lng) se gestionan en hijo2-gps-actualizado.html (Hijo 2).
         const PARADAS = [
             { parada: 1, nombre: "Torres de Serranos (start)", audio: "audio_1.mp3", reto: 0, foto: "img_1.jpg", video: "video_1.mp4" },
             { parada: 2, nombre: "Puente de Serranos – Plaza de la crida", audio: "audio_2.mp3", reto: 1, foto: "img_2.jpg", video: "video_2.mp4" },
@@ -322,8 +329,161 @@
             }
         }
 
-        // ================== ESCUCHA MENSAJES DE LOS HIJOS ==================
+        // ================== NUEVA FUNCIÓN PARA HIJO2 ACTUALIZADO ==================
+        // Función para mostrar ruta con chinchetas (verde origen, roja destino)
+        function mostrarRutaConChinchetas(ruta, origen, destino, nombre) {
+            if (!map) {
+                console.error("Mapa no inicializado aún.");
+                return;
+            }
+
+            // Limpiar elementos previos del mapa
+            if (polyline) { map.removeLayer(polyline); }
+            if (markerA) { map.removeLayer(markerA); }
+            if (markerB) { map.removeLayer(markerB); }
+
+            // Validar datos de entrada
+            if (!ruta || !Array.isArray(ruta) || ruta.length < 2) {
+                console.warn("Ruta inválida para mostrar en el mapa.");
+                return;
+            }
+
+            // Crear polyline con toda la ruta (incluye waypoints invisibles)
+            const latlngs = ruta.map(p => [p.lat, p.lng]);
+            polyline = L.polyline(latlngs, { 
+                color: '#007bff', 
+                weight: 4, 
+                opacity: 0.8 
+            }).addTo(map);
+
+            // Chincheta verde (origen - usuario)
+            if (origen) {
+                markerA = L.marker([origen.lat, origen.lng], { 
+                    icon: L.icon({ 
+                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                        iconSize: [25, 41],
+                        iconAnchor: [12, 41],
+                        popupAnchor: [1, -34],
+                        shadowSize: [41, 41]
+                    }) 
+                }).addTo(map).bindPopup('Tu ubicación');
+            }
+
+            // Chincheta roja (destino - parada objetivo)
+            if (destino) {
+                markerB = L.marker([destino.lat, destino.lng], { 
+                    icon: L.icon({ 
+                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                        iconSize: [25, 41],
+                        iconAnchor: [12, 41],
+                        popupAnchor: [1, -34],
+                        shadowSize: [41, 41]
+                    }) 
+                }).addTo(map).bindPopup(nombre || 'Destino');
+            }
+
+            // Auto-zoom para mostrar toda la ruta del segmento actual
+            map.fitBounds(polyline.getBounds(), { 
+                padding: [30, 30] // Margen visual
+            });
+
+            console.log(`Ruta mostrada: ${nombre}`);
+        }
+
+        // ================== CONFIGURACIÓN DE SEGURIDAD ==================
+        const SECURITY_CONFIG = {
+            ALLOWED_ORIGINS: [
+                window.location.origin, // Origen local
+                'https://valenciavguides.github.io', // GitHub Pages
+                'file://', // Archivos locales
+                null // Para archivos locales en algunos navegadores
+            ],
+            MESSAGE_TIMEOUT: 5000, // 5 segundos timeout para respuestas
+            MAX_MESSAGES_PER_SECOND: 10, // Límite de mensajes por segundo
+            SESSION_TOKEN: 'aventura-valencia-' + Date.now() // Token único de sesión
+        };
+
+        // Control de velocidad de mensajes
+        let messageCounter = 0;
+        let lastResetTime = Date.now();
+
+        function isRateLimited() {
+            const now = Date.now();
+            if (now - lastResetTime > 1000) {
+                messageCounter = 0;
+                lastResetTime = now;
+            }
+            
+            messageCounter++;
+            return messageCounter > SECURITY_CONFIG.MAX_MESSAGES_PER_SECOND;
+        }
+
+        function isOriginAllowed(origin) {
+            // Permitir orígenes explícitamente listados
+            if (SECURITY_CONFIG.ALLOWED_ORIGINS.includes(origin)) {
+                return true;
+            }
+            
+            // Verificar patrones para archivos locales
+            if (origin === 'null' || origin === null) {
+                return true; // Archivos locales pueden tener origin null
+            }
+            
+            // Verificar si es un archivo local con protocolo file://
+            if (origin && origin.startsWith('file://')) {
+                return true;
+            }
+            
+            return false;
+        }
+
+        function validateMessageStructure(data) {
+            if (!data || typeof data !== 'object') {
+                return false;
+            }
+            
+            // Validar que tenga al menos un tipo de mensaje
+            if (!data.type && !data.tipo) {
+                return false;
+            }
+            
+            // Validar longitud de strings para prevenir ataques
+            const maxStringLength = 1000;
+            for (const key in data) {
+                if (typeof data[key] === 'string' && data[key].length > maxStringLength) {
+                    console.warn(`Mensaje rechazado: campo ${key} demasiado largo`);
+                    return false;
+                }
+            }
+            
+            return true;
+        }
+
+        // ================== ESCUCHA MENSAJES DE LOS HIJOS (SEGURO) ==================
         window.addEventListener('message', (event) => {
+            // === VALIDACIONES DE SEGURIDAD ===
+            
+            // 1. Verificar origen
+            if (!isOriginAllowed(event.origin)) {
+                console.warn('Mensaje rechazado: origen no permitido -', event.origin);
+                return;
+            }
+            
+            // 2. Control de velocidad
+            if (isRateLimited()) {
+                console.warn('Mensaje rechazado: demasiados mensajes por segundo');
+                return;
+            }
+            
+            // 3. Validar estructura del mensaje
+            if (!validateMessageStructure(event.data)) {
+                console.warn('Mensaje rechazado: estructura inválida');
+                return;
+            }
+            
+            console.log('✅ Mensaje validado y aceptado desde:', event.origin);
             const data = event.data;
 
             // HIJO 4: Retos/preguntas (ocultar ventana de retos)
@@ -341,19 +501,31 @@
                     ) {
                         const iframe = document.getElementById(id);
                         if (iframe && iframe.contentWindow) {
-                            iframe.contentWindow.postMessage({
+                            sendSecureMessage(id, {
                                 type: 'closeOtherMenus',
                                 except: data.except
-                            }, '*');
+                            });
                         }
                     }
                 });
             }
             // HIJO 1: Botones y subfunciones
             if (data && data.type === 'pauseAudioFromBoton') {
-                document.getElementById('hijo3')?.contentWindow.postMessage({ type: 'pauseAudio' }, '*');
+                sendSecureMessage('hijo3', { type: 'pauseAudio' });
             }
-            // HIJO 2: Coordenadas (GPS)
+            
+            // ================== HIJO 2: NUEVOS MENSAJES ==================
+            // NUEVO: Mensaje de prueba de comunicación
+            if (data && data.tipo === 'test-respuesta') {
+                console.log('=== PADRE RECIBIÓ RESPUESTA DEL HIJO2 ===');
+                console.log('Mensaje:', data.mensaje);
+                alert('✅ COMUNICACIÓN EXITOSA!\n\n' + data.mensaje);
+            }
+            // NUEVO: Mensaje para mostrar ruta con chinchetas (del hijo2 actualizado)
+            if (data && data.tipo === 'mostrar-ruta-con-chinchetas') {
+                mostrarRutaConChinchetas(data.ruta, data.origen, data.destino, data.nombre);
+            }
+            // MANTENER: Mensajes existentes del hijo2
             if (data && data.tipo === 'mostrar-mapa-gps') {
                 mostrarRutaEnMapa(data.ruta, data.origen, data.destino);
             }
@@ -399,6 +571,7 @@
                 avanzarAParada(data.parada); // Esta función reproduce el audio
                 mostrarParadaActual(); // Llama a la función para actualizar y mostrar el div de info
             }
+            
             // HIJO 3: Audio
             if (data && data.type === 'audioFinalizado') {
                 // Asegúrate de que PARADAS[window.paradaActual] no sea undefined si el índice no existe
@@ -457,51 +630,97 @@
         ocultarInfoParada(); // Asegúrate de que la info de la parada esté oculta al inicio
         closeMediaOverlay(); // Asegura que el visor de medios esté oculto al inicio
 
-        // --- Funciones principales ---
+        // ================== FUNCIONES DE ENVÍO SEGURO ==================
+        function sendSecureMessage(iframeId, messageData) {
+            const iframe = document.getElementById(iframeId);
+            if (!iframe || !iframe.contentWindow) {
+                console.warn(`Iframe ${iframeId} no encontrado o no cargado`);
+                return false;
+            }
+            
+            // Añadir token de sesión al mensaje
+            const secureMessage = {
+                ...messageData,
+                sessionToken: SECURITY_CONFIG.SESSION_TOKEN,
+                timestamp: Date.now()
+            };
+            
+            try {
+                // Determinar el origen target apropiado
+                let targetOrigin = window.location.origin;
+                
+                // Para GitHub Pages
+                if (iframe.src && iframe.src.includes('valenciavguides.github.io')) {
+                    targetOrigin = 'https://valenciavguides.github.io';
+                }
+                // Para archivos locales
+                else if (iframe.src && iframe.src.startsWith('file://')) {
+                    targetOrigin = '*'; // Los archivos locales requieren '*'
+                }
+                // Para rutas relativas locales
+                else if (!iframe.src.startsWith('http')) {
+                    targetOrigin = window.location.origin;
+                }
+                
+                iframe.contentWindow.postMessage(secureMessage, targetOrigin);
+                console.log(`✅ Mensaje enviado de forma segura a ${iframeId}:`, messageData);
+                return true;
+            } catch (error) {
+                console.error(`Error enviando mensaje a ${iframeId}:`, error);
+                return false;
+            }
+        }
+
+        // --- Funciones principales actualizadas con envío seguro ---
         function iniciarAventura() {
             window.paradaActual = 0; // Se inicializa la primera parada (índice 0)
-            if (document.getElementById('hijo2')) {
-                // Nuevo mensaje para que Hijo 2 inicie la navegación desde la ubicación actual a la Parada 1
-                document.getElementById('hijo2').contentWindow.postMessage({
-                    tipo: 'iniciar-gps-a-parada',
-                    paradaDestinoNombre: PARADAS[window.paradaActual].nombre // Nombre de la Parada 1
-                }, '*');
-            } else {
-                console.warn("Advertencia: Iframe 'hijo2' no encontrado. La función GPS no podrá iniciarse.");
+            const success = sendSecureMessage('hijo2', {
+                tipo: 'iniciar-gps-a-parada',
+                paradaDestinoNombre: PARADAS[window.paradaActual].nombre // Nombre de la Parada 1
+            });
+            
+            if (!success) {
+                console.warn("Advertencia: No se pudo enviar mensaje de inicio a hijo2");
             }
             ocultarInfoParada(); // Oculta la info si ya estaba visible al iniciar la aventura
         }
+        
         function avanzarRuta() {
             // Se llama después de completar un reto
             ocultarInfoParada(); // Oculta la info de la parada después de completar un reto
             window.paradaActual++;
             if (window.paradaActual < PARADAS.length - 1) {
-                if (document.getElementById('hijo2')) {
-                    document.getElementById('hijo2').contentWindow.postMessage({ tipo: 'navegar-de-a-b', origen: window.paradaActual, destino: window.paradaActual + 1 }, '*');
-                } else {
-                    console.warn("Advertencia: Iframe 'hijo2' no encontrado. La ruta no puede avanzar.");
+                const success = sendSecureMessage('hijo2', { 
+                    tipo: 'navegar-de-a-b', 
+                    origen: window.paradaActual, 
+                    destino: window.paradaActual + 1 
+                });
+                
+                if (!success) {
+                    console.warn("Advertencia: No se pudo enviar mensaje de navegación a hijo2");
                 }
             } else {
                 console.log('¡Has completado todas las paradas de la aventura!');
                 // Aquí podrías añadir lógica para el final de la aventura
             }
         }
+        
         function avanzarAParada(paradaIndex) {
             // Esta función se llama cuando se confirma la llegada a una parada (mensaje 'ya-estoy-aqui')
-            document.getElementById('hijo3')?.contentWindow.postMessage({ type: 'setAudioParada', index: paradaIndex }, '*');
+            sendSecureMessage('hijo3', { type: 'setAudioParada', index: paradaIndex });
         }
+        
         function activarTodosLosBotones() {
-            if (document.getElementById('hijo2')) {
-                document.getElementById('hijo2').contentWindow.postMessage({ tipo: 'activar-todos-botones' }, '*');
-            } else {
-                console.warn("Advertencia: Iframe 'hijo2' no encontrado. No se pueden activar botones.");
+            const success = sendSecureMessage('hijo2', { tipo: 'activar-todos-botones' });
+            if (!success) {
+                console.warn("Advertencia: No se pudo enviar mensaje de activación de botones a hijo2");
             }
         }
+        
         function activarModoCasa() {
-            if (document.getElementById('hijo2')) {
-                document.getElementById('hijo2').contentWindow.postMessage({ tipo: 'activar-modo-casa' }, '*');
-            } else {
-                console.warn("Advertencia: Iframe 'hijo2' no encontrado. No se puede activar modo casa.");
+            const success = sendSecureMessage('hijo2', { tipo: 'activar-modo-casa' });
+            if (!success) {
+                console.warn("Advertencia: No se pudo enviar mensaje de modo casa a hijo2");
             }
             ocultarInfoParada(); // Oculta la info de parada al activar modo casa
         }
@@ -538,13 +757,15 @@
             if (markerParada) { map.removeLayer(markerParada); markerParada = null; }
         }
         function enviarGPSaHijo2(origen, destino) {
-            if (document.getElementById('hijo2')) {
-                document.getElementById('hijo2').contentWindow.postMessage({ tipo: 'navegar-de-a-b', origen: origen, destino: destino }, '*');
-            } else {
-                console.warn("Advertencia: Iframe 'hijo2' no encontrado. No se puede enviar GPS.");
+            const success = sendSecureMessage('hijo2', { 
+                tipo: 'navegar-de-a-b', 
+                origen: origen, 
+                destino: destino 
+            });
+            if (!success) {
+                console.warn("Advertencia: No se pudo enviar GPS a hijo2");
             }
         }
     </script>
 </body>
 </html>
-
