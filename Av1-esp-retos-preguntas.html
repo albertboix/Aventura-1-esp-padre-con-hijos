@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Reto Interactivo Aventura 1</title>
+<title>Reto Interactivo Aventura 1 (Hijo 4)</title>
 <style>
     /* --- ESTILOS DEL IFRAME DE RETOS --- */
     /* Para que la ventana de retos ocupe todo el área del iframe menos 1px en cada borde,
@@ -28,6 +28,35 @@
         width: calc(100vw - 2 * var(--borde-reto));
         height: calc(100vh - 2 * var(--borde-reto));
     }
+    
+    /* Estado deshabilitado para toda la interfaz */
+    body.disabled {
+        pointer-events: none;
+        opacity: 0.6;
+        user-select: none;
+    }
+    
+    /* Overlay de estado deshabilitado */
+    .disabled-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(128, 128, 128, 0.3);
+        z-index: 9999;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5em;
+        color: #666;
+        text-align: center;
+    }
+    
+    body.disabled .disabled-overlay {
+        display: flex;
+    }
+    
     #reto-contenido, #button-container, #respuestaCorrectaTexto, #fuegos {
         /* Asegura que los elementos internos no sobresalgan */
         box-sizing: border-box;
@@ -137,6 +166,14 @@
 </style>
 </head>
 <body>
+    <!-- Overlay para estado deshabilitado -->
+    <div class="disabled-overlay">
+        <div>
+            <div>🔒 Retos Deshabilitados</div>
+            <div style="font-size: 0.8em; margin-top: 10px;">Active el modo casa para acceder a los retos</div>
+        </div>
+    </div>
+    
     <!-- El contenido de la ventana de retos ocupa todo el área del iframe menos 1px en cada borde. Cambia --borde-reto arriba para ajustar el margen. -->
     <div id="reto-contenido"></div>
     <div id="button-container">
@@ -148,7 +185,43 @@
     <!-- Botón flotante para continuar tras acertar el reto -->
     <button id="btnContinueReto" class="btn" style="display:none;position:fixed;bottom:30px;right:30px;z-index:3000;background:#ff9800;font-size:1.2em;padding:1em 2em;box-shadow:0 2px 8px rgba(0,0,0,0.2);">Continúe su reto</button>
 <script>
-// --- ARRAY DE RETOS DE LA AVENTURA 1 ---
+// ================== VARIABLES DE CONTROL DE ACCESO ==================
+
+let retosDisabled = true; // Empezar con retos deshabilitados (modo aventura)
+
+// ================== FUNCIONES DE CONTROL DE ACCESO ==================
+
+function enableRetos() {
+    retosDisabled = false;
+    document.body.classList.remove('disabled');
+    console.log('✅ HIJO 4: Retos habilitados');
+}
+
+function disableRetos() {
+    retosDisabled = true;
+    document.body.classList.add('disabled');
+    
+    // Si hay un reto en progreso, reiniciarlo
+    if (currentRetoIndex !== -1) {
+        resetCurrentReto();
+    }
+    
+    console.log('🚫 HIJO 4: Retos deshabilitados');
+}
+
+function resetCurrentReto() {
+    // Reiniciar el estado del reto actual
+    btnEnviar.disabled = false;
+    btnMostrarRespuesta.style.display = "none";
+    btnContinueReto.style.display = "none";
+    divRespuestaCorrecta.style.display = "none";
+    divRespuestaCorrecta.textContent = "";
+    fuegosDiv.innerHTML = "";
+    fuegosDiv.style.display = "none";
+}
+
+// ================== ARRAY DE RETOS DE LA AVENTURA 1 ==================
+
 // Cada objeto representa un reto. El campo 'tipo' puede ser 'opcion', 'opcion-multiple', 'texto' o 'puzzle'.
 // El campo 'correctas' contiene la(s) respuesta(s) correcta(s).
 const retosAventura1Es = [
@@ -390,7 +463,8 @@ const retosAventura1Es = [
   }
 ];
 
-// --- REFERENCIAS A ELEMENTOS DEL DOM ---
+// ================== REFERENCIAS A ELEMENTOS DEL DOM ==================
+
 const retoContenidoDiv = document.getElementById("reto-contenido");
 const btnEnviar = document.getElementById("btnEnviar");
 const btnMostrarRespuesta = document.getElementById("btnMostrarRespuesta");
@@ -400,12 +474,15 @@ const btnContinueReto = document.getElementById("btnContinueReto");
 let currentRetoIndex = -1;
 const DURACION_TOTAL_MS = 3000;
 
-// --- FUNCIONES DE MENSAJERÍA PADRE-HIJO ---
+// ================== FUNCIONES DE MENSAJERÍA PADRE-HIJO ==================
+
 function enviarAlPadre(mensaje) {
     // Cambia '"*"' por la URL de tu padre en producción para máxima seguridad
     window.parent.postMessage(mensaje, "*");
     //console.log("Mensaje enviado al padre:", mensaje);
 }
+
+// ================== EFECTOS VISUALES ==================
 
 // --- EFECTO: Fuegos artificiales al acertar ---
 function fuegosArtificiales() {
@@ -460,8 +537,17 @@ function vibrar() {
     if (navigator.vibrate) navigator.vibrate(300);
 }
 
+// ================== GESTIÓN DE RETOS ==================
+
 // --- RENDERIZAR EL RETO SEGÚN EL ÍNDICE QUE ENVÍA EL PADRE ---
 function renderizarReto(retoIndex) {
+    // No renderizar si los retos están deshabilitados
+    if (retosDisabled) {
+        console.log('🚫 HIJO 4: No se puede renderizar reto - retos deshabilitados');
+        enviarAlPadre({ type: "reto-hijo-error", message: "Retos deshabilitados", index: retoIndex });
+        return;
+    }
+    
     currentRetoIndex = retoIndex;
     const reto = retosAventura1Es[currentRetoIndex];
     if (!reto) {
@@ -514,11 +600,13 @@ function renderizarReto(retoIndex) {
     }
     // Notificar al padre que el reto ha sido renderizado
     enviarAlPadre({ type: "reto-renderizado", index: currentRetoIndex });
+    console.log(`🧩 HIJO 4: Reto ${retoIndex + 1} renderizado`);
 }
 
 // --- VERIFICAR LA RESPUESTA DEL USUARIO ---
 function verificar() {
-    if (currentRetoIndex === -1) return;
+    if (currentRetoIndex === -1 || retosDisabled) return;
+    
     const reto = retosAventura1Es[currentRetoIndex];
     btnEnviar.disabled = true;
     divRespuestaCorrecta.style.display = "none";
@@ -550,17 +638,22 @@ function verificar() {
             btnContinueReto.style.display = "inline-block";
             btnContinueReto.focus();
         }, DURACION_TOTAL_MS);
+        console.log(`✅ HIJO 4: Reto ${currentRetoIndex + 1} completado correctamente`);
     } else {
         vibrar();
         btnEnviar.disabled = false;
         btnMostrarRespuesta.style.display = "inline-block";
         enviarAlPadre({ type: "reto-interactivo-fallado", index: currentRetoIndex });
+        console.log(`❌ HIJO 4: Reto ${currentRetoIndex + 1} fallado`);
     }
 }
 
+// ================== EVENT LISTENERS ==================
+
 // --- MOSTRAR RESPUESTA CORRECTA AL USUARIO ---
 btnMostrarRespuesta.addEventListener("click", () => {
-    if (currentRetoIndex === -1) return;
+    if (currentRetoIndex === -1 || retosDisabled) return;
+    
     const reto = retosAventura1Es[currentRetoIndex];
     if (reto.tipo === "opcion" || reto.tipo === "opcion-multiple") {
         divRespuestaCorrecta.textContent = "Respuesta correcta: " + reto.correctas.join(", ");
@@ -574,6 +667,8 @@ btnMostrarRespuesta.addEventListener("click", () => {
 
 // --- BOTÓN CONTINÚE SU RETO ---
 btnContinueReto.addEventListener("click", () => {
+    if (retosDisabled) return;
+    
     btnContinueReto.style.display = "none";
     enviarAlPadre({ type: "reto-interactivo-completado", index: currentRetoIndex });
     // Oculta el iframe automáticamente (el padre debe recibir el mensaje y avanzar)
@@ -582,24 +677,56 @@ btnContinueReto.addEventListener("click", () => {
     }, 100);
 });
 
-// --- ESCUCHAR MENSAJES DEL PADRE ---
+// --- EVENTOS DE BOTONES ---
+btnEnviar.addEventListener("click", verificar);
+
+// ================== LISTENER PARA MENSAJES DEL PADRE ==================
+
 window.addEventListener("message", (event) => {
     // En producción, descomenta y pon la URL de tu padre:
     // if (event.origin !== "https://TU_DOMINIO_PADRE") return;
     if (event.data && typeof event.data === 'object') {
+        
+        // ========== MENSAJES DE CONTROL DESDE HIJO 5 ==========
+        
+        // Habilitar retos (modo casa - OFF)
+        if (event.data.type === 'enableRetos') {
+            console.log('🔓 HIJO 4: Recibido mensaje para habilitar retos');
+            enableRetos();
+        }
+        
+        // Deshabilitar retos (modo aventura - ON)
+        if (event.data.type === 'disableRetos') {
+            console.log('🔒 HIJO 4: Recibido mensaje para deshabilitar retos');
+            disableRetos();
+        }
+        
+        // ========== MENSAJES DEL PADRE ==========
+        
+        // Mostrar reto por índice
         if (event.data.type === 'mostrarRetoIndex' && typeof event.data.index === 'number') {
+            console.log(`🎯 HIJO 4: Recibido mensaje para mostrar reto ${event.data.index}`);
             renderizarReto(event.data.index);
         }
+        
         // Puedes añadir aquí otros tipos de mensajes si el padre los necesita
     }
 });
 
-// --- EVENTOS DE BOTONES ---
-btnEnviar.addEventListener("click", verificar);
+// ================== INICIALIZACIÓN ==================
 
 // --- NOTIFICAR AL PADRE QUE EL HIJO ESTÁ LISTO ---
 window.addEventListener("DOMContentLoaded", () => {
+    // Empezar con retos deshabilitados (modo aventura)
+    disableRetos();
+    
     enviarAlPadre({ type: "reto-hijo-listo" });
+    console.log('🧩 HIJO 4: Retos inicializados - deshabilitados por defecto (modo aventura)');
+    
+    // Notificar al padre que el hijo 4 está listo
+    enviarAlPadre({ 
+        type: 'hijo4Ready' 
+    });
 });
 </script>
 </body>
