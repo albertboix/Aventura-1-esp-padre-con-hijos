@@ -5,12 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Aventura 1 - Padre</title>
     
-    <!-- Prevenir rotación en móviles -->
+    <!-- Control de orientación inteligente -->
     <style>
-        @media screen and (orientation: landscape) and (max-width: 768px) {
-            /* Bloquear orientación horizontal en móviles */
+        /* Variables para diferentes tamaños de dispositivos */
+        :root {
+            --mobile-breakpoint: 480px;
+            --tablet-breakpoint: 768px;
+            --desktop-breakpoint: 1024px;
+        }
+        
+        /* Solo aplicar restricción en móviles pequeños en horizontal */
+        @media screen and (orientation: landscape) and (max-height: var(--mobile-breakpoint)) and (hover: none) and (pointer: coarse) {
+            /* Detectar móviles reales: touch sin hover, pantalla pequeña en horizontal */
             body::before {
-                content: "Por favor, rota tu dispositivo a modo vertical";
+                content: "Por favor, rota tu dispositivo a modo vertical para una mejor experiencia";
                 position: fixed;
                 top: 0;
                 left: 0;
@@ -19,16 +27,23 @@
                 background: rgba(0, 0, 0, 0.9);
                 color: white;
                 display: flex;
+                flex-direction: column;
                 align-items: center;
                 justify-content: center;
-                font-size: 18px;
+                font-size: 16px;
                 text-align: center;
                 z-index: 9999;
                 padding: 20px;
                 box-sizing: border-box;
+                gap: 10px;
             }
             
-            /* Ocultar todo el contenido en orientación horizontal móvil */
+            body::after {
+                content: "📱 → 📲";
+                font-size: 40px;
+            }
+            
+            /* Ocultar contenido solo en móviles pequeños en horizontal */
             #mapa,
             iframe,
             #mensaje-flotante,
@@ -37,25 +52,43 @@
             }
         }
         
-        @media screen and (orientation: portrait) and (max-width: 768px) {
-            /* Asegurar que en vertical móvil todo funcione normal */
-            body::before {
+        /* Tablets (481px-1023px): siempre visible en cualquier orientación */
+        @media screen and (min-width: 481px) and (max-width: 1023px) {
+            body::before,
+            body::after {
+                display: none !important;
+            }
+        }
+        
+        /* PC (1024px+): siempre visible en cualquier orientación */
+        @media screen and (min-width: var(--desktop-breakpoint)) {
+            body::before,
+            body::after {
+                display: none !important;
+            }
+        }
+        
+        /* Móviles en vertical: siempre visible */
+        @media screen and (orientation: portrait) and (max-width: var(--mobile-breakpoint)) {
+            body::before,
+            body::after {
                 display: none;
             }
         }
         
-        @media screen and (min-width: 769px) {
-            /* PC y tablets: permitir cualquier orientación */
-            body::before {
+        /* Detección adicional por capacidades del dispositivo */
+        @media screen and (hover: hover) and (pointer: fine) {
+            /* Dispositivos con mouse/trackpad (PC/laptops) - siempre visible */
+            body::before,
+            body::after {
                 display: none !important;
             }
         }
     </style>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <!-- Plugin de rotación para Leaflet -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/leaflet-rotate.css" />
-    <script src="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/leaflet-rotate.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
     <!-- Plugin de rotación para Leaflet -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/leaflet-rotate.css" />
     <script src="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/leaflet-rotate.js"></script>
@@ -66,7 +99,12 @@
             margin: 0;
             padding: 0;
             overflow: hidden; /* Evita scroll no deseado */
+            user-select: none; /* Evitar selección de texto en dispositivos táctiles */
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
         }
+        
         #mapa {
             position: fixed;
             top: 0;
@@ -74,7 +112,19 @@
             width: 100vw;
             height: 100vh;
             z-index: 1; /* Bajo z-index para que sea el fondo */
+            /* Optimizaciones para rendimiento */
+            transform: translateZ(0);
+            -webkit-transform: translateZ(0);
         }
+        
+        /* Mejorar rendimiento en dispositivos táctiles */
+        #mapa, .leaflet-container {
+            touch-action: manipulation;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        
         body {
             margin: 0;
             padding: 0;
@@ -333,9 +383,55 @@
         </div>
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
     <script>
+        // ================== UTILIDADES DE DETECCIÓN DE DISPOSITIVOS ==================
+        const DeviceDetector = {
+            // Detectar si es un dispositivo móvil real
+            isMobile() {
+                return window.innerWidth <= 480 && 
+                       'ontouchstart' in window && 
+                       navigator.maxTouchPoints > 0;
+            },
+            
+            // Detectar si es una tablet
+            isTablet() {
+                return window.innerWidth > 480 && 
+                       window.innerWidth <= 1024 && 
+                       'ontouchstart' in window && 
+                       navigator.maxTouchPoints > 0;
+            },
+            
+            // Detectar si es un PC/laptop
+            isDesktop() {
+                return window.innerWidth > 1024 || 
+                       (!('ontouchstart' in window) && navigator.maxTouchPoints === 0);
+            },
+            
+            // Detectar orientación actual
+            isLandscape() {
+                return window.innerWidth > window.innerHeight;
+            },
+            
+            // Verificar si debería mostrar el aviso de rotación
+            shouldShowRotationWarning() {
+                return this.isMobile() && 
+                       this.isLandscape() && 
+                       window.innerHeight <= 480;
+            },
+            
+            // Obtener información del dispositivo para debugging
+            getDeviceInfo() {
+                return {
+                    type: this.isMobile() ? 'mobile' : this.isTablet() ? 'tablet' : 'desktop',
+                    orientation: this.isLandscape() ? 'landscape' : 'portrait',
+                    dimensions: `${window.innerWidth}x${window.innerHeight}`,
+                    touchPoints: navigator.maxTouchPoints,
+                    hasTouch: 'ontouchstart' in window,
+                    userAgent: navigator.userAgent.includes('Mobile') ? 'mobile-ua' : 'desktop-ua'
+                };
+            }
+        };
+
         // ================== ARRAY DE 25 PARADAS (METADATOS) ==================
         // Este array contiene solo el nombre y datos de audio/reto/foto/video.
         // Las coordenadas (lat/lng) se gestionan en Av1-botones-coordenadas.html (Hijo 2).
@@ -380,10 +476,14 @@
                 zoom: 14,
                 rotate: true, // Habilitar rotación del mapa
                 rotateControl: {
-                    closeOnZeroBearing: false // Mantener control de rotación visible
+                    closeOnZeroBearing: false, // Mantener control de rotación visible
+                    position: 'topleft' // Posición del control de rotación
                 },
                 bearing: 0, // Ángulo inicial (0 = norte arriba)
-                zoomControl: false // ELIMINAR botones + y - de zoom
+                zoomControl: false, // ELIMINAR botones + y - de zoom
+                touchRotate: true, // Permitir rotación táctil
+                shiftKeyRotate: true, // Permitir rotación con Shift + arrastre en PC
+                rotateCenter: false // Rotar alrededor del centro del mapa
             });
             
             L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { 
@@ -391,43 +491,60 @@
                 attribution: '© OpenStreetMap contributors' 
             }).addTo(map);
 
+            // Mejorar invalidación del mapa
             setTimeout(() => {
-                if (map) { // Añadimos una comprobación por si acaso
+                if (map) {
                     map.invalidateSize();
-                    console.log("map.invalidateSize() ejecutado."); // Para depuración
+                    console.log("✅ Mapa inicializado y redimensionado");
+                    
+                    // Mostrar información sobre controles de rotación
+                    console.log("🗺️ Controles del mapa:");
+                    console.log("  📱 Móvil/Tablet: Usa dos dedos para rotar el mapa");
+                    console.log("  💻 PC: Mantén Shift + arrastra para rotar el mapa");
+                    console.log("  🧭 Control de rotación disponible en la esquina superior izquierda");
                 }
             }, 100);
             
-            // Control de orientación para móviles
+            // Control de orientación mejorado para múltiples dispositivos
             function handleOrientationChange() {
-                // Solo aplicar en dispositivos móviles (pantalla pequeña)
-                if (window.innerWidth <= 768) {
-                    if (window.orientation === 90 || window.orientation === -90) {
-                        // Orientación horizontal en móvil - mostrar aviso
-                        console.log('📱 Orientación horizontal detectada en móvil');
+                const deviceInfo = DeviceDetector.getDeviceInfo();
+                console.log(`📱 Dispositivo detectado:`, deviceInfo);
+                
+                // PC y tablets: siempre permitir cualquier orientación
+                if (DeviceDetector.isDesktop() || DeviceDetector.isTablet()) {
+                    console.log(`� ${deviceInfo.type.toUpperCase()} - Orientación libre permitida`);
+                    invalidateMapSize();
+                    return;
+                }
+                
+                // Móviles: verificar si necesita aviso de rotación
+                if (DeviceDetector.isMobile()) {
+                    if (DeviceDetector.shouldShowRotationWarning()) {
+                        console.log('📱 Móvil horizontal pequeño - El CSS mostrará aviso automáticamente');
                     } else {
-                        // Orientación vertical en móvil - todo normal
-                        console.log('📱 Orientación vertical detectada en móvil');
-                        // Invalidar el mapa por si hubo cambios
-                        if (map) {
-                            setTimeout(() => map.invalidateSize(), 200);
-                        }
-                    }
-                } else {
-                    // PC/Tablet - permitir cualquier orientación
-                    console.log('💻 Dispositivo grande - orientación libre');
-                    if (map) {
-                        setTimeout(() => map.invalidateSize(), 200);
+                        console.log('📱 Móvil en orientación permitida - OK');
+                        invalidateMapSize();
                     }
                 }
             }
             
-            // Escuchar cambios de orientación
-            window.addEventListener('orientationchange', handleOrientationChange);
+            function invalidateMapSize() {
+                if (map) {
+                    setTimeout(() => {
+                        map.invalidateSize();
+                        console.log(`🗺️ Mapa redimensionado para ${DeviceDetector.getDeviceInfo().dimensions}`);
+                    }, 200);
+                }
+            }
+            
+            // Escuchar cambios de orientación y redimensionamiento
+            window.addEventListener('orientationchange', () => {
+                setTimeout(handleOrientationChange, 300); // Delay para que se complete la rotación
+            });
             window.addEventListener('resize', handleOrientationChange);
             
             // Verificar orientación inicial
-            handleOrientationChange();
+            setTimeout(handleOrientationChange, 500);
         });
 
         // --- Estado global ---
