@@ -4,15 +4,61 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Aventura 1 - Padre</title>
-                   height:150px; /* YA ESTABA a 140px, se mantiene */
-                   width:310px;
-                   z-index:1001;
-                   border:transparent;
-                   /* Eliminado: background:rgba(255, 255, 0, 0.5); */
-                   pointer-events:auto;"
-            allow="geolocation"></iframe>ra 1 - Padre</title>
+    
+    <!-- Prevenir rotación en móviles -->
+    <style>
+        @media screen and (orientation: landscape) and (max-width: 768px) {
+            /* Bloquear orientación horizontal en móviles */
+            body::before {
+                content: "Por favor, rota tu dispositivo a modo vertical";
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                background: rgba(0, 0, 0, 0.9);
+                color: white;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 18px;
+                text-align: center;
+                z-index: 9999;
+                padding: 20px;
+                box-sizing: border-box;
+            }
+            
+            /* Ocultar todo el contenido en orientación horizontal móvil */
+            #mapa,
+            iframe,
+            #mensaje-flotante,
+            #media-overlay {
+                display: none !important;
+            }
+        }
+        
+        @media screen and (orientation: portrait) and (max-width: 768px) {
+            /* Asegurar que en vertical móvil todo funcione normal */
+            body::before {
+                display: none;
+            }
+        }
+        
+        @media screen and (min-width: 769px) {
+            /* PC y tablets: permitir cualquier orientación */
+            body::before {
+                display: none !important;
+            }
+        }
+    </style>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Plugin de rotación para Leaflet -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/leaflet-rotate.css" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/leaflet-rotate.js"></script>
+    <!-- Plugin de rotación para Leaflet -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/leaflet-rotate.css" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/leaflet-rotate.js"></script>
 
     <style>
         html, body {
@@ -118,6 +164,36 @@
             display: none; /* Oculto por defecto */
             border-radius: 5px;
         }
+
+        /* ================== VENTANA FLOTANTE PARA MENSAJES ================== */
+        #mensaje-flotante {
+            position: fixed;
+            bottom: 295px; /* Pegado arriba del hijo2 (150px altura + 135px hijo3 + 10px margen) */
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 8px 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            z-index: 1002;
+            font-size: 12px;
+            text-align: center;
+            max-width: 280px;
+            min-height: 30px;
+            display: none; /* Oculto por defecto */
+            font-family: Arial, sans-serif;
+            color: #333;
+            backdrop-filter: blur(3px);
+        }
+        #mensaje-flotante.loading {
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
     </style>
 </head>
 <body>
@@ -133,28 +209,31 @@
                    bottom:0px;
                    left:50%;
                    transform:translateX(-50%);
-                   height:135px; /* MODIFICADO a 140px */
+                   height:140px; /* Altura del hijo 3 */
                    width:310px;
                    z-index:1000;
                    border: transparent;
-                   /* Eliminado: background:rgba(0, 0, 255, 0.5); */
                    display:block;
                    pointer-events:auto;"></iframe>
 
     <iframe id="hijo2" src="./Av1-botones-coordenadas.html"
             style="position:fixed;
-                   bottom:134px; /* AJUSTADO: Ahora está 140px por encima de hijo3 (que ahora mide 140px) */
+                   bottom:139px; /* 1px por encima del hijo 3 */
                    left:50%;
                    transform:translateX(-50%);
-                   height:150px; /* YA ESTABA a 140px, se mantiene */
+                   height:160px; /* Altura del hijo 2 */
                    width:310px;
                    z-index:1001;
                    border:transparent;
-                   /* Eliminado: background:rgba(255, 255, 0, 0.5); */
                    pointer-events:auto;"
             allow="geolocation"></iframe>
 
     <iframe id="hijo4" src="Av1-esp-retos-preguntas.html"></iframe>
+
+    <!-- Ventana flotante para mensajes -->
+    <div id="mensaje-flotante">
+        Pulsa GPS para obtener tu ubicación
+    </div>
 
     <div id="media-overlay">
         <div id="media-container">
@@ -205,8 +284,21 @@
         let userLocationMarker = null; // Marcador para la ubicación del usuario (NUEVO)
 
         document.addEventListener('DOMContentLoaded', function() {
-            map = L.map('mapa').setView([39.478046, -0.375515], 14);
-            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 40, attribution: '© OpenStreetMap contributors' }).addTo(map);
+            // Centrar el mapa en las nuevas coordenadas y habilitar rotación
+            map = L.map('mapa', {
+                center: [39.46368, -0.37752], // Nuevas coordenadas del centro
+                zoom: 14,
+                rotate: true, // Habilitar rotación del mapa
+                rotateControl: {
+                    closeOnZeroBearing: false // Mantener control de rotación visible
+                },
+                bearing: 0 // Ángulo inicial (0 = norte arriba)
+            });
+            
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { 
+                maxZoom: 40, 
+                attribution: '© OpenStreetMap contributors' 
+            }).addTo(map);
 
             setTimeout(() => {
                 if (map) { // Añadimos una comprobación por si acaso
@@ -214,6 +306,37 @@
                     console.log("map.invalidateSize() ejecutado."); // Para depuración
                 }
             }, 100);
+            
+            // Control de orientación para móviles
+            function handleOrientationChange() {
+                // Solo aplicar en dispositivos móviles (pantalla pequeña)
+                if (window.innerWidth <= 768) {
+                    if (window.orientation === 90 || window.orientation === -90) {
+                        // Orientación horizontal en móvil - mostrar aviso
+                        console.log('📱 Orientación horizontal detectada en móvil');
+                    } else {
+                        // Orientación vertical en móvil - todo normal
+                        console.log('📱 Orientación vertical detectada en móvil');
+                        // Invalidar el mapa por si hubo cambios
+                        if (map) {
+                            setTimeout(() => map.invalidateSize(), 200);
+                        }
+                    }
+                } else {
+                    // PC/Tablet - permitir cualquier orientación
+                    console.log('💻 Dispositivo grande - orientación libre');
+                    if (map) {
+                        setTimeout(() => map.invalidateSize(), 200);
+                    }
+                }
+            }
+            
+            // Escuchar cambios de orientación
+            window.addEventListener('orientationchange', handleOrientationChange);
+            window.addEventListener('resize', handleOrientationChange);
+            
+            // Verificar orientación inicial
+            handleOrientationChange();
         });
 
         // --- Estado global ---
@@ -468,6 +591,15 @@
                 console.log('Mensaje:', data.mensaje);
                 alert('✅ COMUNICACIÓN EXITOSA!\n\n' + data.mensaje);
             }
+            
+            // NUEVO: Mensajes de estado para ventana flotante
+            if (data && data.tipo === 'statusMensaje') {
+                mostrarMensajeFlotante(data.mensaje, data.loading || false);
+            }
+            if (data && data.tipo === 'ocultarStatus') {
+                ocultarMensajeFlotante();
+            }
+            
             // NUEVO: Mensaje para mostrar ruta con chinchetas (del hijo2 actualizado)
             if (data && data.tipo === 'mostrar-ruta-con-chinchetas') {
                 mostrarRutaConChinchetas(data.ruta, data.origen, data.destino, data.nombre);
@@ -824,6 +956,33 @@
             });
             if (!success) {
                 console.warn("Advertencia: No se pudo enviar GPS a hijo2");
+            }
+        }
+
+        // ================== FUNCIONES VENTANA FLOTANTE ==================
+        
+        function mostrarMensajeFlotante(mensaje, loading = false) {
+            const ventana = document.getElementById('mensaje-flotante');
+            if (ventana) {
+                ventana.textContent = mensaje;
+                ventana.style.display = 'block';
+                
+                if (loading) {
+                    ventana.classList.add('loading');
+                } else {
+                    ventana.classList.remove('loading');
+                }
+                
+                console.log(`💬 VENTANA FLOTANTE: ${mensaje} ${loading ? '(loading)' : ''}`);
+            }
+        }
+        
+        function ocultarMensajeFlotante() {
+            const ventana = document.getElementById('mensaje-flotante');
+            if (ventana) {
+                ventana.style.display = 'none';
+                ventana.classList.remove('loading');
+                console.log('💬 VENTANA FLOTANTE: Ocultada');
             }
         }
     </script>
