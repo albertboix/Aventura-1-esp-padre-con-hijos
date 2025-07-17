@@ -228,7 +228,7 @@
     <script>
         // ================== COORDENADAS DE LAS PARADAS ==================
        
-          const COORDENADAS_PARADAS = [
+        const COORDENADAS_PARADAS = [
     {
         tipo: "inicio",
         parada: 0, // ← Parada 0 – INICIO (223, 226, 228, 229) reto 2 //
@@ -775,12 +775,10 @@
         imagen: 'fotos_Av1/00_torres_de_serranos_back.jpg',
     }
 ];
-
-           
-
         // Variables globales
         let ubicacionActual = null;
-        let paradaActual = 0; // ← Ahora empieza en parada 0 (inicio)
+        let paradaActual = 0;
+        let tramoActual = null;
         let watchId = null;
         let modoCasa = false;
 
@@ -836,67 +834,6 @@
             updateTripProgressBar();
         }
 
-        // Funcionalidad de arrastre de la barra de progreso
-        function seek(e) {
-            if (totalTripTime === 0) return;
-
-            const rect = progressContainer.getBoundingClientRect();
-            let clickX = e.clientX - rect.left;
-
-            if (e.touches && e.touches.length > 0) {
-                clickX = e.touches[0].clientX - rect.left;
-            }
-
-            let newTime = (clickX / rect.width) * totalTripTime;
-            newTime = Math.max(0, Math.min(newTime, totalTripTime));
-
-            tripElapsedTime = newTime;
-            updateTripProgressBar();
-
-            if (watchId) {
-                startTripProgressSimulation();
-            }
-        }
-
-        // Event listeners para la barra de progreso
-        progressContainer.addEventListener('mousedown', (e) => {
-            isDraggingProgress = true;
-            seek(e);
-            clearInterval(tripProgressInterval);
-        });
-
-        progressContainer.addEventListener('mousemove', (e) => {
-            if (isDraggingProgress) {
-                seek(e);
-            }
-        });
-
-        progressContainer.addEventListener('mouseup', () => {
-            isDraggingProgress = false;
-            if (watchId) {
-                startTripProgressSimulation();
-            }
-        });
-
-        progressContainer.addEventListener('touchstart', (e) => {
-            isDraggingProgress = true;
-            seek(e);
-            clearInterval(tripProgressInterval);
-        });
-
-        progressContainer.addEventListener('touchmove', (e) => {
-            if (isDraggingProgress) {
-                seek(e);
-            }
-        });
-
-        progressContainer.addEventListener('touchend', () => {
-            isDraggingProgress = false;
-            if (watchId) {
-                startTripProgressSimulation();
-            }
-        });
-
         // ================== FUNCIONES DE UTILIDAD ==================
         function calcularDistancia(lat1, lng1, lat2, lng2) {
             const R = 6371e3; // Radio de la Tierra en metros
@@ -924,60 +861,166 @@
             console.log(`📱 HIJO 2: Status enviado al padre - ${mensaje} ${loading ? '(loading)' : ''}`);
         }
 
-        function activarBoton(boton) {
-            boton.classList.remove('disabled');
-            boton.classList.add('activo');
-        }
-
-        function desactivarBoton(boton) {
-            boton.classList.add('disabled');
-            boton.classList.remove('activo');
-        }
-
-        function activarTodosBotones() {
-            // En modo casa, NO activar GPS - solo imagen y video
-            if (modoCasa) {
-                activarBoton(btnImagen);
-                activarBoton(btnVideo);
-                // GPS permanece desactivado en modo casa
-                actualizarStatus('Modo Casa - Botones imagen y video activados');
-            } else {
-                // En modo aventura, activar todos los botones incluyendo GPS
-                activarBoton(btnGps);
-                activarBoton(btnImagen);
-                activarBoton(btnVideo);
-                actualizarStatus('Todos los botones activados');
-            }
-        }
-
-        function desactivarTodosBotones() {
-            desactivarBoton(btnGps);
-            desactivarBoton(btnImagen);
-            desactivarBoton(btnVideo);
-        }
-
-        // ================== FUNCIONES GPS ==================
+        // ================== FUNCIONES GPS MEJORADAS ==================
         
-        // Verificar permisos de geolocalización antes de usar GPS
-        async function verificarPermisosGPS() {
-            if (!navigator.permissions) {
-                return 'unknown'; // Navegador antiguo
-            }
+        // NUEVA: Verificar llegada a paradas (corregida)
+        function verificarLlegadaAParada() {
+            if (modoCasa || !ubicacionActual) return;
             
-            try {
-                const permissionStatus = await navigator.permissions.query({name: 'geolocation'});
-                return permissionStatus.state; // 'granted', 'denied', 'prompt'
-            } catch (error) {
-                console.warn('No se pudieron verificar permisos GPS:', error);
-                return 'unknown';
+            if (paradaActual > 36) return; // ← CORREGIDO: hasta parada 36
+
+            // Buscar la parada actual por número
+            const paradaDestino = COORDENADAS_PARADAS.find(p => p.parada === paradaActual);
+            if (!paradaDestino) return;
+
+            // Obtener coordenadas de la parada (manejar diferentes formatos)
+            let coordenadasParada;
+            if (paradaDestino.coordenadas) {
+                coordenadasParada = paradaDestino.coordenadas;
+            } else {
+                coordenadasParada = { lat: paradaDestino.lat, lng: paradaDestino.lng };
+            }
+
+            const distancia = calcularDistancia(
+                ubicacionActual.lat, ubicacionActual.lng,
+                coordenadasParada.lat, coordenadasParada.lng
+            );
+
+            const RADIO_LLEGADA = 50; // 50 metros de radio
+
+            if (distancia <= RADIO_LLEGADA) {
+                actualizarStatus(`¡Has llegado a la parada ${paradaActual}!`);
+                activarTodosBotones();
+                
+                // Notificar al padre que hemos llegado
+                enviarMensajeAlPadre({
+                    tipo: 'ya-estoy-aqui',
+                    parada: paradaActual
+                });
+            } else {
+                actualizarStatus(`Distancia a parada ${paradaActual}: ${Math.round(distancia)}m`);
             }
         }
-        
+
+        // NUEVA: Verificar ubicación en tramos
+        function verificarUbicacionEnTramo() {
+            if (modoCasa || !ubicacionActual) return;
+            
+            // Buscar tramos cercanos
+            const tramosEncontrados = [];
+            
+            COORDENADAS_PARADAS.forEach(elemento => {
+                if (elemento.tipo === 'tramo') {
+                    // Verificar distancia al inicio del tramo
+                    if (elemento.inicio) {
+                        const distanciaInicio = calcularDistancia(
+                            ubicacionActual.lat, ubicacionActual.lng,
+                            elemento.inicio.lat, elemento.inicio.lng
+                        );
+                        
+                        if (distanciaInicio <= 30) { // 30m para tramos
+                            tramosEncontrados.push({
+                                elemento: elemento,
+                                distancia: distanciaInicio,
+                                punto: 'inicio'
+                            });
+                        }
+                    }
+                    
+                    // Verificar distancia al final del tramo
+                    if (elemento.fin) {
+                        const distanciaFin = calcularDistancia(
+                            ubicacionActual.lat, ubicacionActual.lng,
+                            elemento.fin.lat, elemento.fin.lng
+                        );
+                        
+                        if (distanciaFin <= 30) { // 30m para tramos
+                            tramosEncontrados.push({
+                                elemento: elemento,
+                                distancia: distanciaFin,
+                                punto: 'fin'
+                            });
+                        }
+                    }
+                    
+                    // Verificar waypoints si existen
+                    if (elemento.waypoints && elemento.waypoints.length > 0) {
+                        elemento.waypoints.forEach((waypoint, index) => {
+                            const distanciaWaypoint = calcularDistancia(
+                                ubicacionActual.lat, ubicacionActual.lng,
+                                waypoint.lat, waypoint.lng
+                            );
+                            
+                            if (distanciaWaypoint <= 25) { // 25m para waypoints
+                                tramosEncontrados.push({
+                                    elemento: elemento,
+                                    distancia: distanciaWaypoint,
+                                    punto: `waypoint_${index}`
+                                });
+                            }
+                        });
+                    }
+                }
+            });
+            
+            // Si encontramos tramos, mostrar información
+            if (tramosEncontrados.length > 0) {
+                const tramoMasCercano = tramosEncontrados.reduce((prev, current) => 
+                    prev.distancia < current.distancia ? prev : current
+                );
+                
+                const tramo = tramoMasCercano.elemento;
+                const distancia = Math.round(tramoMasCercano.distancia);
+                
+                tramoActual = tramo.tramo;
+                actualizarStatus(`En tramo ${tramo.tramo}: ${tramo.nombre} (${distancia}m)`);
+                
+                // Notificar al padre sobre el tramo
+                enviarMensajeAlPadre({
+                    tipo: 'en-tramo',
+                    tramo: tramo.tramo,
+                    nombre: tramo.nombre,
+                    distancia: distancia,
+                    punto: tramoMasCercano.punto
+                });
+            } else {
+                tramoActual = null;
+            }
+        }
+
+        // MEJORADA: Verificar tanto paradas como tramos
+        function verificarUbicacionCompleta() {
+            if (modoCasa || !ubicacionActual) return;
+            
+            // Primero verificar paradas (prioridad)
+            verificarLlegadaAParada();
+            
+            // Si no estamos en una parada, verificar tramos
+            const paradaDestino = COORDENADAS_PARADAS.find(p => p.parada === paradaActual);
+            if (paradaDestino) {
+                let coordenadasParada;
+                if (paradaDestino.coordenadas) {
+                    coordenadasParada = paradaDestino.coordenadas;
+                } else {
+                    coordenadasParada = { lat: paradaDestino.lat, lng: paradaDestino.lng };
+                }
+                
+                const distanciaAParada = calcularDistancia(
+                    ubicacionActual.lat, ubicacionActual.lng,
+                    coordenadasParada.lat, coordenadasParada.lng
+                );
+                
+                // Si estamos lejos de la parada, verificar tramos
+                if (distanciaAParada > 50) {
+                    verificarUbicacionEnTramo();
+                }
+            }
+        }
+
+        // Resto de funciones GPS (iniciarGPS, detenerGPS, etc.)
         function iniciarGPS() {
-            // Verificar protocolo HTTPS en producción
             if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
                 actualizarStatus('GPS requiere HTTPS en producción');
-                console.warn('Geolocalización requiere HTTPS en producción');
                 return;
             }
 
@@ -988,7 +1031,6 @@
 
             actualizarStatus('Obteniendo ubicación GPS...', true);
             
-            // Iniciar simulación de progreso cuando se activa GPS
             resetTripProgress();
             totalTimeSpan.textContent = formatTime(totalTripTime);
             startTripProgressSimulation();
@@ -999,7 +1041,6 @@
                 maximumAge: 60000
             };
 
-            // Obtener ubicación inicial
             navigator.geolocation.getCurrentPosition(
                 (position) => {
                     ubicacionActual = {
@@ -1007,7 +1048,6 @@
                         lng: position.coords.longitude
                     };
                     
-                    // Enviar ubicación al padre
                     enviarMensajeAlPadre({
                         tipo: 'actualizarUbicacionMapa',
                         lat: ubicacionActual.lat,
@@ -1015,7 +1055,7 @@
                     });
 
                     actualizarStatus(`GPS activo - Precisión: ${Math.round(position.coords.accuracy)}m`);
-                    verificarLlegadaAParada();
+                    verificarUbicacionCompleta(); // ← MEJORADO: verificar paradas y tramos
                 },
                 (error) => {
                     console.error('Error GPS:', error);
@@ -1035,7 +1075,6 @@
                     
                     actualizarStatus(mensajeError);
                     
-                    // En caso de error, activar modo casa automáticamente
                     setTimeout(() => {
                         if (!ubicacionActual) {
                             actualizarStatus('Activando modo sin GPS...');
@@ -1046,7 +1085,7 @@
                 options
             );
 
-            // Comenzar seguimiento continuo
+            // Seguimiento continuo
             watchId = navigator.geolocation.watchPosition(
                 (position) => {
                     ubicacionActual = {
@@ -1054,26 +1093,23 @@
                         lng: position.coords.longitude
                     };
                     
-                    // Enviar ubicación actualizada al padre
                     enviarMensajeAlPadre({
                         tipo: 'actualizarUbicacionMapa',
                         lat: ubicacionActual.lat,
                         lng: ubicacionActual.lng
                     });
 
-                    verificarLlegadaAParada();
+                    verificarUbicacionCompleta(); // ← MEJORADO: verificar paradas y tramos
                 },
                 (error) => {
                     console.error('Error GPS tracking:', error);
-                    
-                    // Solo mostrar error si no tenemos ubicación previa
                     if (!ubicacionActual) {
                         let mensajeError = 'Error en seguimiento GPS';
                         
                         switch(error.code) {
                             case error.PERMISSION_DENIED:
                                 mensajeError = 'Permisos GPS revocados';
-                                activarModoCasa(); // Cambiar automáticamente a modo casa
+                                activarModoCasa();
                                 break;
                             case error.POSITION_UNAVAILABLE:
                                 mensajeError = 'GPS temporalmente no disponible';
@@ -1096,150 +1132,100 @@
                 watchId = null;
             }
             ubicacionActual = null;
+            tramoActual = null;
             
-            // Detener y resetear progreso cuando se desactiva GPS
             clearInterval(tripProgressInterval);
             resetTripProgress();
             
             actualizarStatus('GPS desactivado');
         }
 
-        function verificarLlegadaAParada() {
-            // En modo casa, no verificar llegada a paradas
-            if (modoCasa) return;
-            
-            if (!ubicacionActual || paradaActual > 24) return; // ← Ahora hasta parada 24 (0-24 = 25 paradas totales)
-
-            // Buscar la parada actual por número
-            const paradaDestino = COORDENADAS_PARADAS.find(p => p.parada === paradaActual);
-            if (!paradaDestino) return;
-
-            const distancia = calcularDistancia(
-                ubicacionActual.lat, ubicacionActual.lng,
-                paradaDestino.lat, paradaDestino.lng
-            );
-
-            const RADIO_LLEGADA = 50; // 50 metros de radio
-
-            if (distancia <= RADIO_LLEGADA) {
-                actualizarStatus(`¡Has llegado a la parada ${paradaActual}!`);
-                activarTodosBotones();
-                
-                // Notificar al padre que hemos llegado
-                enviarMensajeAlPadre({
-                    tipo: 'ya-estoy-aqui',
-                    parada: paradaActual
-                });
-            } else {
-                actualizarStatus(`Distancia a parada ${paradaActual}: ${Math.round(distancia)}m`);
-            }
+        // Funciones de botones y comunicación (simplificadas)
+        function activarBoton(boton) {
+            boton.classList.remove('disabled');
+            boton.classList.add('activo');
         }
 
-        // ================== FUNCIONES DE NAVEGACIÓN ==================
-        async function obtenerRuta(origen, destino) {
-            try {
-                // Simular obtención de ruta (en una implementación real usarías una API de routing)
-                return [
-                    { lat: origen.lat, lng: origen.lng },
-                    { lat: destino.lat, lng: destino.lng }
-                ];
-            } catch (error) {
-                console.error('Error obteniendo ruta:', error);
-                return null;
-            }
+        function desactivarBoton(boton) {
+            boton.classList.add('disabled');
+            boton.classList.remove('activo');
         }
 
-        async function navegarDeAB(origenIndex, destinoIndex) {
-            if (!ubicacionActual) {
-                actualizarStatus('Necesitas activar GPS primero');
-                return;
-            }
-
-            // Buscar origen y destino por número de parada
-            const origen = origenIndex !== undefined ? 
-                COORDENADAS_PARADAS.find(p => p.parada === origenIndex) : ubicacionActual;
-            const destino = COORDENADAS_PARADAS.find(p => p.parada === destinoIndex);
-
-            if (!destino) {
-                console.error('Destino no válido');
-                return;
-            }
-
-            actualizarStatus('Calculando ruta...', true);
-            
-            const ruta = await obtenerRuta(origen, destino);
-            
-            if (ruta) {
-                enviarMensajeAlPadre({
-                    tipo: 'mostrar-mapa-gps',
-                    ruta: ruta,
-                    origen: origen,
-                    destino: destino
-                });
-                
-                paradaActual = destinoIndex;
-                actualizarStatus(`Navegando a parada ${destinoIndex}`);
-            } else {
-                actualizarStatus('Error calculando ruta');
-            }
-        }
-
-        // ================== EVENTOS DE BOTONES ==================
-        btnGps.addEventListener('click', async () => {
-            if (btnGps.classList.contains('disabled')) return;
-            
-            // En modo casa, el GPS está desactivado
+        function activarTodosBotones() {
             if (modoCasa) {
-                actualizarStatus('GPS desactivado en modo casa');
-                return;
+                activarBoton(btnImagen);
+                activarBoton(btnVideo);
+                actualizarStatus('Modo Casa - Botones imagen y video activados');
+            } else {
+                activarBoton(btnGps);
+                activarBoton(btnImagen);
+                activarBoton(btnVideo);
+                actualizarStatus('Todos los botones activados');
             }
-            
-            // Verificar permisos antes de iniciar GPS
-            const permisos = await verificarPermisosGPS();
-            if (permisos === 'denied') {
-                actualizarStatus('Permisos GPS denegados. Revisa configuración del navegador.');
-                return;
+        }
+
+        function desactivarTodosBotones() {
+            desactivarBoton(btnGps);
+            desactivarBoton(btnImagen);
+            desactivarBoton(btnVideo);
+        }
+
+        function enviarMensajeAlPadre(mensaje) {
+            try {
+                window.parent.postMessage(mensaje, '*');
+                console.log('Mensaje enviado al padre:', mensaje.tipo || mensaje.type);
+            } catch (error) {
+                console.error('Error enviando mensaje al padre:', error);
             }
-            
-            // Si no hay ubicación actual, iniciar GPS primero
+        }
+
+        function activarModoCasa() {
+            modoCasa = true;
+            detenerGPS();
+            desactivarBoton(btnGps);
+            activarBoton(btnImagen);
+            activarBoton(btnVideo);
+            clearInterval(tripProgressInterval);
+            resetTripProgress();
+            actualizarStatus('Modo Casa activado - GPS desactivado');
+        }
+
+        function activarModoAventura() {
+            modoCasa = false;
+            if (ubicacionActual) {
+                verificarUbicacionCompleta();
+            } else {
+                desactivarTodosBotones();
+            }
+            actualizarStatus('Modo Aventura activado - GPS disponible');
+        }
+
+        // Event listeners básicos
+        btnGps.addEventListener('click', () => {
+            if (btnGps.classList.contains('disabled') || modoCasa) return;
             if (!ubicacionActual) {
                 iniciarGPS();
-                return;
-            }
-            
-            // Botón 1: GPS - Navegación de punto A a punto B
-            const paradaDestino = COORDENADAS_PARADAS.find(p => p.parada === paradaActual);
-            
-            if (paradaDestino) {
-                actualizarStatus(`Navegando a parada ${paradaActual}...`);
-                
-                // Enviar mensaje al padre para mostrar navegación GPS
-                enviarMensajeAlPadre({
-                    tipo: 'mostrar-navegacion-gps',
-                    paradaActual: paradaActual,
-                    coordenadasDestino: paradaDestino,
-                    ubicacionUsuario: ubicacionActual
-                });
+            } else {
+                const paradaDestino = COORDENADAS_PARADAS.find(p => p.parada === paradaActual);
+                if (paradaDestino) {
+                    enviarMensajeAlPadre({
+                        tipo: 'mostrar-navegacion-gps',
+                        paradaActual: paradaActual,
+                        coordenadasDestino: paradaDestino,
+                        ubicacionUsuario: ubicacionActual
+                    });
+                }
             }
         });
 
         btnImagen.addEventListener('click', () => {
             if (btnImagen.classList.contains('disabled')) return;
-            
-            // Botón 2: Mostrar imagen de la parada actual
             const paradaInfo = COORDENADAS_PARADAS.find(p => p.parada === paradaActual);
-            
             if (paradaInfo && paradaInfo.imagen) {
-                if (modoCasa) {
-                    actualizarStatus(`Modo Casa - Imagen parada ${paradaActual}`);
-                } else {
-                    actualizarStatus(`Mostrando imagen de parada ${paradaActual}`);
-                }
-                
                 enviarMensajeAlPadre({
                     tipo: 'mostrar-imagen',
-                    parada: paradaActual,           // ← Número de parada directo
-                    imagenSrc: paradaInfo.imagen,   // ← Propiedad imagen directa
+                    parada: paradaActual,
+                    imagenSrc: paradaInfo.imagen,
                     paradaNombre: paradaInfo.nombre,
                     modoCasa: modoCasa
                 });
@@ -1248,226 +1234,26 @@
 
         btnVideo.addEventListener('click', () => {
             if (btnVideo.classList.contains('disabled')) return;
-            
-            // Botón 3: Zoom-in 2 segundos y luego mostrar video
             const paradaInfo = COORDENADAS_PARADAS.find(p => p.parada === paradaActual);
-            
             if (paradaInfo && paradaInfo.video) {
-                if (modoCasa) {
-                    actualizarStatus(`Modo Casa - Video parada ${paradaActual}`);
-                } else {
-                    actualizarStatus(`Preparando video de parada ${paradaActual}...`);
-                }
-                
-                // En modo casa, mostrar video directamente sin zoom
-                if (modoCasa) {
-                    enviarMensajeAlPadre({
-                        tipo: 'mostrar-video',
-                        parada: paradaActual,
-                        videoSrc: paradaInfo.video,    // ← Propiedad video directa
-                        autoplay: true,
-                        modoCasa: true
-                    });
-                } else {
-                    // Modo aventura: primero zoom, luego video
-                    enviarMensajeAlPadre({
-                        tipo: 'mostrar-zoom-coordenadas',
-                        coordenadas: paradaInfo,
-                        parada: paradaActual
-                    });
-                    
-                    setTimeout(() => {
-                        enviarMensajeAlPadre({
-                            tipo: 'mostrar-video',
-                            parada: paradaActual,
-                            videoSrc: paradaInfo.video,   // ← Propiedad video directa
-                            autoplay: true,
-                            modoCasa: false
-                        });
-                        
-                        actualizarStatus(`Reproduciendo video de parada ${paradaActual}`);
-                    }, 2000);
-                }
+                enviarMensajeAlPadre({
+                    tipo: 'mostrar-video',
+                    parada: paradaActual,
+                    videoSrc: paradaInfo.video,
+                    autoplay: true,
+                    modoCasa: modoCasa
+                });
             }
         });
 
-        // ================== COMUNICACIÓN CON EL PADRE ==================
-        function enviarMensajeAlPadre(mensaje) {
-            try {
-                window.parent.postMessage(mensaje, '*');
-                console.log('Mensaje enviado al padre:', mensaje.tipo || mensaje.type);
-            } catch (error) {
-                console.error('Error enviando mensaje al padre:', error);
-                actualizarStatus('Error de comunicación con el padre');
-            }
-        }
-        
-        // ================== COMUNICACIÓN CON EL HIJO 5 (Av1-boton-casa.html) ==================
-        function enviarMensajeAHijo5(mensaje) {
-            // Enviar mensaje específicamente al hijo 5 a través del padre
-            enviarMensajeAlPadre({
-                tipo: 'mensaje-para-hijo5',
-                mensaje: mensaje
-            });
-        }
-        
-        function enviarEstadoModoAHijo5() {
-            enviarMensajeAHijo5({
-                tipo: 'estado-modo-actual',
-                modoCasa: modoCasa,
-                paradaActual: paradaActual
-            });
-        }
-        
-        // ================== FUNCIONES DE MODO CASA/AVENTURA ==================
-        function activarModoCasa() {
-            modoCasa = true;
-            
-            // Desactivar GPS cuando se activa modo casa
-            detenerGPS();
-            desactivarBoton(btnGps);
-            
-            // Activar botones foto y video en modo casa
-            activarBoton(btnImagen);
-            activarBoton(btnVideo);
-            
-            // Resetear progreso en modo casa
-            clearInterval(tripProgressInterval);
-            resetTripProgress();
-            
-            actualizarStatus('Modo Casa activado - GPS desactivado');
-            
-            // Notificar al padre del cambio de modo
-            enviarMensajeAlPadre({
-                tipo: 'modo-casa-activado',
-                modoCasa: true
-            });
-            
-            // Confirmar al hijo 5 que el modo casa está activo
-            enviarMensajeAHijo5({
-                tipo: 'confirmacion-modo-casa',
-                activo: true
-            });
-        }
-        
-        function activarModoAventura() {
-            modoCasa = false;
-            
-            // En modo aventura, el comportamiento depende de si hemos llegado a una parada
-            if (ubicacionActual) {
-                verificarLlegadaAParada();
-            } else {
-                // Si no hay ubicación, todos los botones están desactivados
-                desactivarTodosBotones();
-            }
-            
-            actualizarStatus('Modo Aventura activado - GPS disponible');
-            
-            // Notificar al padre del cambio de modo
-            enviarMensajeAlPadre({
-                tipo: 'modo-aventura-activado',
-                modoCasa: false
-            });
-            
-            // Confirmar al hijo 5 que el modo aventura está activo
-            enviarMensajeAHijo5({
-                tipo: 'confirmacion-modo-aventura',
-                activo: true
-            });
-        }
-
-        // Escuchar mensajes del padre
-        window.addEventListener('message', (event) => {
-            const data = event.data;
-            
-            // El padre nos dice en qué parada estamos
-            if (data && data.tipo === 'actualizar-parada-actual') {
-                paradaActual = data.parada;
-                actualizarStatus(`Parada actual: ${paradaActual}`); // ← Números directos 0-24
-            }
-            
-            // El padre activa el botón GPS (rojo → verde)
-            if (data && data.tipo === 'activar-boton-gps') {
-                activarBoton(btnGps);
-                actualizarStatus('GPS activado - Listo para navegar');
-            }
-            
-            // El padre activa el botón de imagen (rojo → verde)
-            if (data && data.tipo === 'activar-boton-imagen') {
-                activarBoton(btnImagen);
-                actualizarStatus('Botón imagen activado');
-            }
-            
-            // El padre activa el botón de video (rojo → verde)
-            if (data && data.tipo === 'activar-boton-video') {
-                activarBoton(btnVideo);
-                actualizarStatus('Botón video activado');
-            }
-            
-            // NUEVO: Modo casa - activar solo imagen y video, NO GPS
-            if (data && data.tipo === 'activar-modo-casa-botones') {
-                activarBoton(btnImagen);
-                activarBoton(btnVideo);
-                // GPS permanece desactivado en modo casa
-                desactivarBoton(btnGps);
-                actualizarStatus('Modo Casa - Botones imagen y video activados');
-                console.log('🏠 HIJO 2: Modo casa activado - Solo imagen y video habilitados');
-            }
-            
-            // El padre activa todos los botones
-            if (data && data.tipo === 'activar-todos-botones') {
-                activarTodosBotones();
-                actualizarStatus('Todos los botones activados');
-            }
-            
-            // El padre desactiva todos los botones
-            if (data && data.tipo === 'desactivar-todos-botones') {
-                desactivarTodosBotones();
-                actualizarStatus('Esperando activación...');
-            }
-            
-            // Actualizar ubicación del usuario
-            if (data && data.tipo === 'actualizar-ubicacion-usuario') {
-                ubicacionActual = {
-                    lat: data.lat,
-                    lng: data.lng
-                };
-            }
-            
-            // ========== MENSAJES DEL HIJO 5 (Av1-boton-casa.html) ==========
-            
-            // El hijo 5 nos informa que el botón casa fue activado
-            if (data && data.tipo === 'boton-casa-activado') {
-                activarModoCasa();
-            }
-            
-            // El hijo 5 nos informa que el botón casa fue desactivado
-            if (data && data.tipo === 'boton-casa-desactivado') {
-                activarModoAventura();
-            }
-            
-            // El hijo 5 solicita el estado actual del modo
-            if (data && data.tipo === 'solicitar-estado-modo') {
-                enviarEstadoModoAHijo5();
-            }
-        });
-
-        // ================== INICIALIZACIÓN ==================
+        // Inicialización
         document.addEventListener('DOMContentLoaded', () => {
-            // Todos los botones empiezan desactivados (fondo rojo)
             desactivarTodosBotones();
-            
-            // Inicializar barra de progreso
             totalTimeSpan.textContent = formatTime(totalTripTime);
             resetTripProgress();
-            
             actualizarStatus('Pulsa GPS para obtener tu ubicación');
-            
-            // Notificar al hijo 5 el estado inicial (modo aventura)
-            setTimeout(() => {
-                enviarEstadoModoAHijo5();
-            }, 1000);
         });
+
     </script>
 </body>
 </html>
