@@ -58,19 +58,36 @@
         /* ESTILO ACTUALIZADO PARA info-parada */
         #info-parada {
             font-weight:bold;
-            margin:10px;
-            padding: 5px;
-            background-color: rgba(255,255,255,0.7);
-            border-radius: 5px;
+            margin:0;
+            padding: 7px 12px;
+            background-color: rgba(255,255,255,0.9);
+            border-radius: 7px;
             position: fixed;
-            top: 10px;
             left: 50%;
             transform: translateX(-50%);
-            z-index: 200;
-            display: none; /* Oculto por defecto, se muestra por JS */
+            z-index: 1201;
+            display: none;
             color: #333;
             font-family: sans-serif;
             text-align: center;
+            /* Justo encima de hijo2 (que está bottom:151px; height:165px) */
+            bottom: 325px;
+            min-width: 220px;
+            max-width: 90vw;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+        }
+        #info-parada.error {
+            background-color: #ffeaea;
+            color: #b30000;
+            border: 1.5px solid #b30000;
+            animation: shake 0.3s;
+        }
+        @keyframes shake {
+            0% { transform: translateX(-50%) translateY(0); }
+            25% { transform: translateX(-50%) translateY(-3px); }
+            50% { transform: translateX(-50%) translateY(3px); }
+            75% { transform: translateX(-50%) translateY(-3px); }
+            100% { transform: translateX(-50%) translateY(0); }
         }
 
         /* ================== ESTILO PARA VIDEO E IMAGEN (NUEVO) ================== */
@@ -249,12 +266,25 @@
 
         let paradaActual = 0; // Índice de la parada actual
 
-        // Mostrar la parada actual en la interfaz y hacer visible el div
-        function mostrarParadaActual() {
+
+        // Mostrar mensaje contextual en la ventana de info
+        function mostrarMensajeInfoParada(mensaje, esError = false) {
             const info = document.getElementById('info-parada');
-            if (info && PARADAS[paradaActual]) { // Asegúrate de que PARADAS[paradaActual] exista
-                info.textContent = `Parada ${paradaActual + 1}, nombre: ${PARADAS[paradaActual].nombre}`;
-                info.style.display = 'block'; // Hace visible el div cuando se llama esta función
+            if (info) {
+                info.textContent = mensaje;
+                info.style.display = 'block';
+                if (esError) {
+                    info.classList.add('error');
+                } else {
+                    info.classList.remove('error');
+                }
+            }
+        }
+
+        // Mostrar la parada actual (nombre y número)
+        function mostrarParadaActual() {
+            if (PARADAS[paradaActual]) {
+                mostrarMensajeInfoParada(`Parada ${paradaActual + 1}: ${PARADAS[paradaActual].nombre}`);
             }
         }
 
@@ -336,24 +366,34 @@
 
         function mostrarVideoParada(paradaData) {
             if (paradaData && paradaData.video) {
-                paradaVideo.src = paradaData.video; // Asume que el video está en la misma ruta o ruta relativa conocida
+                paradaVideo.src = paradaData.video;
                 paradaVideo.style.display = 'block';
                 paradaImagen.style.display = 'none';
-                mediaOverlay.style.display = 'flex'; // Cambiar a flex para mostrar
+                mediaOverlay.style.display = 'flex';
                 paradaVideo.play();
-                ocultarInfoParada(); // Oculta la info de la parada al mostrar video
+                mostrarMensajeInfoParada(`Mostrando video de Parada ${window.paradaActual + 1}: ${PARADAS[window.paradaActual]?.nombre || ''}`);
             }
         }
 
+        // Mostrar error si falla la carga del video
+        paradaVideo.addEventListener('error', function() {
+            mostrarMensajeInfoParada('No se pudo cargar el video.', true);
+        });
+
         function mostrarImagenParada(paradaData) {
             if (paradaData && paradaData.foto) {
-                paradaImagen.src = paradaData.foto; // Asume que la imagen está en la misma ruta o ruta relativa conocida
+                paradaImagen.src = paradaData.foto;
                 paradaImagen.style.display = 'block';
                 paradaVideo.style.display = 'none';
-                mediaOverlay.style.display = 'flex'; // Cambiar a flex para mostrar
-                ocultarInfoParada(); // Oculta la info de la parada al mostrar imagen
+                mediaOverlay.style.display = 'flex';
+                mostrarMensajeInfoParada(`Mostrando imagen de Parada ${window.paradaActual + 1}: ${PARADAS[window.paradaActual]?.nombre || ''}`);
             }
         }
+
+        // Mostrar error si falla la carga de la imagen
+        paradaImagen.addEventListener('error', function() {
+            mostrarMensajeInfoParada('No se pudo cargar la imagen.', true);
+        });
 
         // ================== ESCUCHA MENSAJES DE LOS HIJOS ==================
         window.addEventListener('message', (event) => {
@@ -430,14 +470,13 @@
             }
             if (data && data.tipo === 'ya-estoy-aqui') {
                 // Cuando el GPS confirma que has llegado a una parada
-                // Sincroniza la variable global paradaActual del primer script
-                window.paradaActual = data.parada; // data.parada es el índice correcto de la parada
-                avanzarAParada(data.parada); // Esta función reproduce el audio
-                mostrarParadaActual(); // Llama a la función para actualizar y mostrar el div de info
+                window.paradaActual = data.parada;
+                avanzarAParada(data.parada);
+                mostrarMensajeInfoParada(`¡Has llegado a la Parada ${window.paradaActual + 1}: ${PARADAS[window.paradaActual]?.nombre || ''}!`);
             }
             // HIJO 3: Audio
             if (data && data.type === 'audioFinalizado') {
-                // Asegúrate de que PARADAS[window.paradaActual] no sea undefined si el índice no existe
+                mostrarMensajeInfoParada(`Audio finalizado en Parada ${window.paradaActual + 1}: ${PARADAS[window.paradaActual]?.nombre || ''}`);
                 mostrarRetoEnHijo4(PARADAS[window.paradaActual] ? PARADAS[window.paradaActual].reto : null);
             }
             // HIJO 4: Retos/preguntas
@@ -460,26 +499,24 @@
                 }
                 if (!gpsOn) {
                     // MODO CASA: activar botones audio (hijo3), foto/video (hijo2), desactivar GPS visualmente (hijo2)
-                    // Activar botones audio en hijo3 (verde)
                     const hijo3 = document.getElementById('hijo3');
                     if (hijo3 && hijo3.contentWindow) {
                         hijo3.contentWindow.postMessage({ type: 'activarBotonesAudio', color: 'green' }, '*');
                     }
-                    // Activar botones foto/video en hijo2 (verde) y desactivar GPS
                     const hijo2 = document.getElementById('hijo2');
                     if (hijo2 && hijo2.contentWindow) {
                         hijo2.contentWindow.postMessage({ type: 'activarBotonesFotoVideo', color: 'green' }, '*');
                         hijo2.contentWindow.postMessage({ type: 'gpsOff' }, '*');
                     }
+                    mostrarMensajeInfoParada(`Modo casa activado en Parada ${window.paradaActual + 1}: ${PARADAS[window.paradaActual]?.nombre || ''}`);
                     activarModoCasa();
                 } else {
+                    mostrarMensajeInfoParada('GPS activado. Modo aventura.');
                     iniciarAventura();
                     borrarParadaEnMapa();
                 }
             }
             if (data && data.type === 'seleccionParada') {
-                // Usamos las coordenadas (lat, lng) que vienen directamente del mensaje de hijo5
-                // Y obtenemos el nombre de la parada de nuestro array PARADAS local.
                 const paradaConCoordenadas = {
                     lat: data.lat,
                     lng: data.lng,
@@ -487,19 +524,16 @@
                 };
                 mostrarParadaEnMapa(data.index, paradaConCoordenadas);
                 window.paradaActual = data.index;
-                mostrarParadaActual(); // Muestra la info de la parada seleccionada en el div #info-parada
+                mostrarMensajeInfoParada(`Parada seleccionada: ${window.paradaActual + 1}: ${PARADAS[window.paradaActual]?.nombre || ''}`);
                 activarTodosLosBotones();
-                // Enviar a hijo3 el audio de la parada seleccionada
                 const hijo3 = document.getElementById('hijo3');
                 if (hijo3 && hijo3.contentWindow) {
                     hijo3.contentWindow.postMessage({ type: 'setAudioParada', index: data.index }, '*');
                 }
-                // Enviar a hijo4 el reto de la parada seleccionada
                 const hijo4 = document.getElementById('hijo4');
                 if (hijo4 && hijo4.contentWindow && PARADAS[data.index]) {
                     hijo4.contentWindow.postMessage({ type: 'mostrarRetoIndex', index: PARADAS[data.index].reto }, '*');
                 }
-                // Enviar a hijo2 la orden de mostrar foto/video de la parada seleccionada
                 const hijo2 = document.getElementById('hijo2');
                 if (hijo2 && hijo2.contentWindow) {
                     hijo2.contentWindow.postMessage({ type: 'mostrarFotoVideo', index: data.index }, '*');
@@ -533,7 +567,7 @@
         // El botón de reto (hijo4) debe estar desactivado hasta que termine el audio (lo activa hijo3 al finalizar el audio)
         // Mostrar info de la parada 0
         window.paradaActual = 0;
-        mostrarParadaActual();
+        mostrarMensajeInfoParada(`Parada 1: ${PARADAS[0].nombre}`);
 
         // --- Funciones principales ---
         function iniciarAventura() {
