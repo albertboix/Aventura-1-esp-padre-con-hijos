@@ -48,7 +48,6 @@
             display: flex;
             justify-content: center;
             gap: 15px;
-            margin: 5px 0;
         }
 
         .nav-button {
@@ -56,7 +55,7 @@
             height: var(--btn-size);
             border-radius: 50%;
             border: none;
-            background: linear-gradient(135deg, #28a745, #20c997);
+            background: linear-gradient(135deg, #28a745, #20c997) !important;
             color: white;
             font-size: var(--icon-size);
             cursor: pointer;
@@ -64,10 +63,14 @@
             align-items: center;
             justify-content: center;
             transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-                       background 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94),
                        transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94),
                        box-shadow 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        
+        /* Ensure all navigation buttons stay green */
+        #btn-punto, #btn-ruta, #btn-brujula {
+            background: linear-gradient(135deg, #28a745, #20c997) !important;
         }
 
         .nav-button:hover {
@@ -1870,8 +1873,8 @@
             }, 3000);
         }
 
-        // Manejadores para los botones de navegación
-        function manejarClicBoton(id, tipoMensaje, datos = {}) {
+        // Manejador simple para los botones
+        function manejarClicBoton(id) {
             if (modoCasa) return;
             
             const btn = document.getElementById(id);
@@ -1881,47 +1884,40 @@
             btn.style.transform = 'scale(0.9)';
             setTimeout(() => { btn.style.transform = 'scale(1)'; }, 100);
             
-            // Si es el botón de brújula, manejar el estado local
-            if (id === 'btn-brujula') {
-                const brujulaActivada = !btn.classList.contains('active');
-                btn.classList.toggle('active', brujulaActivada);
+            // Handle button clicks
+            if (id === 'btn-punto') {
+                // Pin button - Show last known stop or default to stop 0 (Torres de Serranos)
+                const ultimaParadaConocida = window.paradaActual !== undefined ? window.paradaActual : 0;
                 
-                if (brujulaActivada) {
-                    btn.style.background = 'linear-gradient(135deg, #ffc107, #ff9800)';
-                    btn.style.boxShadow = '0 0 15px rgba(255, 193, 7, 0.8)';
+                // Notify parent to show the stop on the map
+                enviarMensajeAlPadre({
+                    type: 'mostrarPuntoInteres',
+                    paradaActual: ultimaParadaConocida,
+                    esPrimeraVez: window.paradaActual === undefined
+                });
+                
+                // If this is the first time, set to stop 0 (Torres de Serranos)
+                if (window.paradaActual === undefined) {
+                    window.paradaActual = 0;
+                    console.log('Aventura iniciada en parada 0 - Torres de Serranos');
                 } else {
-                    btn.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
-                    btn.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
+                    console.log(`Mostrando última parada conocida: ${window.paradaActual}`);
                 }
                 
-                // Actualizar datos con el estado de la brújula
-                datos.activada = brujulaActivada;
+            } else if (id === 'btn-ruta') {
+                // Map button - Show full route
+                window.open('Av1_mapa_completo.html', '_blank');
+                
+            } else if (id === 'btn-brujula') {
+                // Compass button - Show map image
+                window.open('mapas/Av1_mapa.jpg', '_blank');
             }
-            
-            // Enviar mensaje al padre
-            enviarMensajeAlPadre({
-                type: tipoMensaje,
-                timestamp: Date.now(),
-                ...datos
-            });
         }
         
         // Asignar manejadores de eventos a los botones
-        document.getElementById('btn-punto').addEventListener('click', () => {
-            manejarClicBoton('btn-punto', 'mostrarPuntoInteres', {
-                paradaActual: paradaActual
-            });
-        });
-
-        document.getElementById('btn-ruta').addEventListener('click', () => {
-            manejarClicBoton('btn-ruta', 'mostrarRutaCompleta', {
-                paradaActual: paradaActual
-            });
-        });
-
-        document.getElementById('btn-brujula').addEventListener('click', () => {
-            manejarClicBoton('btn-brujula', 'alternarBrujula');
-        });
+        document.getElementById('btn-punto').addEventListener('click', () => manejarClicBoton('btn-punto'));
+        document.getElementById('btn-ruta').addEventListener('click', () => manejarClicBoton('btn-ruta'));
+        document.getElementById('btn-brujula').addEventListener('click', () => manejarClicBoton('btn-brujula'));
         
         // Función para sincronizar el estado de la brújula cuando se recibe un mensaje del padre
         function sincronizarEstadoBrujula(activada) {
