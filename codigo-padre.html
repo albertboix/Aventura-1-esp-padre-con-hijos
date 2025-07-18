@@ -61,28 +61,36 @@
         /* Estilos para los marcadores personalizados */
         .custom-marker {
             position: relative;
+            width: 30px;
+            height: 42px;
             text-align: center;
+            color: white;
             font-weight: bold;
             font-size: 14px;
-            color: white;
-            text-shadow: 0 0 3px rgba(0,0,0,0.7);
+            line-height: 42px;
         }
         
         .marker-pin {
-            width: 30px;
-            height: 30px;
-            border-radius: 50% 50% 50% 0;
-            background: #e74c3c;
             position: absolute;
+            width: 30px;
+            height: 42px;
+            background: #007bff;
+            border-radius: 50% 50% 50% 0;
             transform: rotate(-45deg);
             left: 0;
             top: 0;
-            margin: -15px 0 0 -15px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            margin: -21px 0 0 -15px;
         }
         
-        .marker-pin::after {
+        /* Estilos para el marcador verde */
+        .green-pin .marker-pin {
+            background: #28a745;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        
+        .green-pin::after {
             content: '';
+            position: absolute;
             width: 24px;
             height: 24px;
             margin: 3px 0 0 3px;
@@ -641,6 +649,36 @@
 
         // Mapa de manejadores de mensajes
         const messageHandlers = {
+            // Mensajes del Hijo 5 (mapa)
+            'PARADA_SELECCIONADA': function(datos, evento) {
+                console.log('[Padre] Parada seleccionada en el mapa:', datos);
+                if (datos.paradaIndex !== undefined) {
+                    // Actualizar la parada actual
+                    window.paradaActual = datos.paradaIndex;
+                    
+                    // Desbloquear botones en hijo2
+                    enviarMensaje('hijo2', 'UNLOCK_BUTTONS', { todos: true });
+                    
+                    // Buscar la parada seleccionada
+                    const parada = PARADAS.find(p => p.parada === datos.paradaIndex);
+                    if (parada) {
+                        // Notificar a los demás componentes
+                        enviarMensaje('hijo3', 'ACTUALIZAR_ESTADO', {
+                            paradaActual: datos.paradaIndex,
+                            estado: 'activo'
+                        });
+                        
+                        // Mostrar reto si existe
+                        if (parada.reto) {
+                            mostrarRetoEnHijo4(parada.reto);
+                        }
+                        
+                        return { success: true };
+                    }
+                }
+                return { success: false, error: 'Parada no válida' };
+            },
+            
             // Mensajes de navegación (Hijo 2)
             'mostrarPuntoInteres': handleMostrarPuntoInteres,
             'mostrarRutaCompleta': handleMostrarRutaCompleta,
@@ -1060,23 +1098,112 @@
         
         // Manejadores para el Hijo 5 (mapa)
         function handleUbicacionSeleccionada(datos, evento) {
-            console.log('[Padre] Ubicación seleccionada en el mapa:', datos.coordenadas);
-            // Lógica para manejar la selección de ubicación
-            // Por ejemplo, actualizar la interfaz de usuario o mostrar información
+            console.log('[Padre] Ubicación seleccionada en el mapa:', datos);
+            
             if (datos.paradaCercana !== undefined) {
-                manejarSeleccionParada(datos.paradaCercana);
+                // Actualizar la parada actual
+                window.paradaActual = datos.paradaCercana;
+                
+                // Buscar la parada seleccionada
+                const parada = PARADAS.find(p => p.parada === datos.paradaCercana);
+                if (parada && parada.coordenadas) {
+                    // Notificar a todos los componentes sobre la parada seleccionada
+                    enviarMensaje('hijo2', 'ACTUALIZAR_UI', {
+                        paradaActual: datos.paradaCercana,
+                        navegacionActiva: true
+                    });
+                    
+                    enviarMensaje('hijo3', 'ACTUALIZAR_ESTADO', {
+                        paradaActual: datos.paradaCercana,
+                        estado: 'activo'
+                    });
+                    
+                    // Mostrar la parada en el mapa
+                    manejarSeleccionParada(datos.paradaCercana);
+                    
+                    // Mostrar reto si existe
+                    if (parada.reto) {
+                        mostrarRetoEnHijo4(parada.reto);
+                    }
+                    
+                    return { success: true };
+                }
+            } else if (datos.coordenadas) {
+                // Si no hay una parada cercana pero hay coordenadas, centrar el mapa en esa ubicación
+                map.setView([datos.coordenadas.lat, datos.coordenadas.lng], 18, {
+                    animate: true,
+                    duration: 1
+                });
+                
+                // Mostrar un marcador temporal
+                const tempMarker = L.marker(
+                    [datos.coordenadas.lat, datos.coordenadas.lng],
+                    {
+                        icon: L.divIcon({
+                            className: 'custom-marker temp-pin',
+                            html: '<div class="marker-pin" style="background-color: #17a2b8;"></div>',
+                            iconSize: [30, 42],
+                            iconAnchor: [15, 42]
+                        })
+                    }
+                ).addTo(map);
+                
+                // Eliminar el marcador después de 3 segundos
+                setTimeout(() => {
+                    if (map && tempMarker) {
+                        map.removeLayer(tempMarker);
+                    }
+                }, 3000);
+                
+                return { success: true };
             }
+            
+            return { success: false, error: 'No se pudo procesar la ubicación seleccionada' };
         }
         
         function handleMarcadorClickeado(datos, evento) {
-            console.log('[Padre] Marcador clickeado:', datos.marcadorId);
-            // Lógica para manejar el clic en un marcador
-            // Por ejemplo, mostrar información detallada o iniciar una acción
+            console.log('[Padre] Marcador clickeado:', datos);
+            
             if (datos.tipo === 'parada') {
-                manejarSeleccionParada(datos.id);
+                // Actualizar la parada actual
+                window.paradaActual = datos.id;
+                
+                // Buscar la parada seleccionada
+                const parada = PARADAS.find(p => p.parada === datos.id);
+                if (parada && parada.coordenadas) {
+                    // Notificar a todos los componentes sobre la parada seleccionada
+                    enviarMensaje('hijo2', 'ACTUALIZAR_UI', {
+                        paradaActual: datos.id,
+                        navegacionActiva: true
+                    });
+                    
+                    enviarMensaje('hijo3', 'ACTUALIZAR_ESTADO', {
+                        paradaActual: datos.id,
+                        estado: 'activo'
+                    });
+                    
+                    enviarMensaje('hijo5', 'ACTUALIZAR_MARCADOR', {
+                        paradaIndex: datos.id,
+                        activo: true,
+                        coordenadas: parada.coordenadas
+                    });
+                    
+                    // Mostrar la parada en el mapa
+                    manejarSeleccionParada(datos.id);
+                    
+                    // Mostrar reto si existe
+                    if (parada.reto) {
+                        mostrarRetoEnHijo4(parada.reto);
+                    }
+                    
+                    return { success: true };
+                }
             } else if (datos.tipo === 'tramo') {
                 manejarSeleccionTramo(datos.id);
+                return { success: true };
             }
+            
+            return { success: false, error: 'Tipo de marcador no válido' };
         }
         
         // Manejadores para mensajes de navegación
@@ -1239,10 +1366,7 @@
             window.paradaActual = paradaIndex;
             
             // Desbloquear botones en hijo2
-            const hijo2 = document.getElementById('hijo2');
-            if (hijo2 && hijo2.contentWindow) {
-                hijo2.contentWindow.postMessage({ type: 'unlockAllButtons' }, '*');
-            }
+            enviarMensaje('hijo2', 'UNLOCK_BUTTONS', { todos: true });
             
             // Mostrar parada en el mapa
             if (map) {
@@ -1251,19 +1375,25 @@
                 
                 // Buscar la parada seleccionada
                 const parada = PARADAS.find(p => p.parada === paradaIndex);
-                if (parada) {
+                if (parada && parada.coordenadas) {
+                    // Crear un icono personalizado para la chincheta verde
+                    const greenPinIcon = L.divIcon({
+                        className: 'custom-marker green-pin',
+                        html: `
+                            <div class="marker-pin" style="background-color: #28a745;"></div>
+                            <span style="color: white; font-weight: bold;">${paradaIndex + 1}</span>
+                        `,
+                        iconSize: [30, 42],
+                        iconAnchor: [15, 42],
+                        popupAnchor: [0, -42]
+                    });
+                    
                     // Añadir marcador de la parada seleccionada
                     const marker = addMarker(
                         [parada.coordenadas.lat, parada.coordenadas.lng],
                         {
                             title: `Parada ${paradaIndex + 1}: ${parada.nombre}`,
-                            icon: L.divIcon({
-                                className: 'custom-marker',
-                                html: `<div class="marker-pin"></div><span>${paradaIndex + 1}</span>`,
-                                iconSize: [30, 42],
-                                iconAnchor: [15, 42],
-                                popupAnchor: [0, -42]
-                            })
+                            icon: greenPinIcon
                         },
                         `parada-${paradaIndex}`
                     );
@@ -1271,7 +1401,7 @@
                     // Añadir popup informativo
                     marker.bindPopup(`
                         <div style="text-align: center;">
-                            <h4 style="margin: 5px 0;">Parada ${paradaIndex + 1}</h4>
+                            <h4 style="margin: 5px 0; color: #28a745;">Parada ${paradaIndex + 1}</h4>
                             <p style="margin: 5px 0;">${parada.nombre}</p>
                         </div>
                     `);
@@ -1285,20 +1415,26 @@
                     // Mostrar mensaje informativo
                     mostrarMensajeInfoParada(`Parada ${paradaIndex + 1}: ${parada.nombre}`);
                     
-                    // Forzar mostrar el reto si existe, sin esperar al audio
+                    // Notificar a Child 5 sobre la selección de parada
+                    enviarMensaje('hijo5', 'PARADA_SELECCIONADA', {
+                        paradaIndex: paradaIndex,
+                        coordenadas: parada.coordenadas,
+                        nombre: parada.nombre
+                    });
+                    
+                    // Preparar audio y reto si es necesario
                     if (parada.reto) {
                         // Enviar mensaje al hijo3 (audio) para que se prepare
-                        const hijo3 = document.getElementById('hijo3');
-                        if (hijo3 && hijo3.contentWindow) {
-                            hijo3.contentWindow.postMessage({
-                                type: 'prepararAudioParada',
-                                paradaIndex: paradaIndex
-                            }, '*');
-                        }
+                        enviarMensaje('hijo3', 'PREPARAR_AUDIO', {
+                            paradaIndex: paradaIndex,
+                            forzarInicio: true
+                        });
                         
                         // Mostrar el reto inmediatamente
                         mostrarRetoEnHijo4(parada.reto);
                     }
+                } else {
+                    console.error(`No se encontraron coordenadas para la parada ${paradaIndex}`);
                 }
             }
         }
