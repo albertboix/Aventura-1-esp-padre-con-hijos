@@ -347,6 +347,39 @@
         window.currentPolyline = null; // Almacena la polyline actual
         let userLocationMarker = null; // Marcador de ubicación del usuario
         let markerParada = null; // Marcador de parada actual
+        
+        /**
+         * Limpia todos los elementos del mapa (marcadores, rutas, etc.)
+         */
+        function resetMapView() {
+            // Limpiar todos los marcadores
+            if (window.markers) {
+                Object.values(window.markers).forEach(marker => {
+                    if (marker && map.hasLayer(marker)) {
+                        map.removeLayer(marker);
+                    }
+                });
+                window.markers = {};
+            }
+            
+            // Limpiar polyline actual
+            if (window.currentPolyline && map.hasLayer(window.currentPolyline)) {
+                map.removeLayer(window.currentPolyline);
+                window.currentPolyline = null;
+            }
+            
+            // Limpiar marcador de ubicación del usuario
+            if (userLocationMarker && map.hasLayer(userLocationMarker)) {
+                map.removeLayer(userLocationMarker);
+                userLocationMarker = null;
+            }
+            
+            // Limpiar marcador de parada actual
+            if (markerParada && map.hasLayer(markerParada)) {
+                map.removeLayer(markerParada);
+                markerParada = null;
+            }
+        }
 
         // ================== CONTROL DE VISIBILIDAD HIJO 4 ==================
         const iframeHijo4 = document.getElementById('hijo4');
@@ -408,9 +441,13 @@
             currentStop: null,
             currentSegment: null,
             isNavigating: false,
-            audioPlaying: false,
+            lastInteraction: Date.now(),
             activeChallenge: null,
-            lastInteraction: null
+            brújulaActiva: false,
+            gpsStatus: 'inactivo', // 'inactivo', 'activo', 'error'
+            ubicacionActual: null,  // { lat, lng }
+            ultimaActualizacionGPS: null,
+            precision: null         // Precisión del GPS en metros
         };
 
         // Utilidades de validación
@@ -736,7 +773,9 @@
             
             // Mensajes del sistema
             'obtenerEstado': handleObtenerEstado,
-            'validarParada': handleValidarParada
+            'validarParada': handleValidarParada,
+            'estado-gps': handleEstadoGPS,
+            'simularUbicacion': handleSimularUbicacion
         };
         
         // Manejador para sincronizar el estado
@@ -772,6 +811,116 @@
         // Manejador para validar una parada
         function handleValidarParada({ paradaIndex }) {
             return verificarContenidoMultimedia(paradaIndex);
+        }
+        
+        // Manejador para actualizaciones de estado del GPS desde el Hijo 2
+        function handleEstadoGPS(datos) {
+            console.log('[Padre] Actualización de estado GPS:', datos);
+            
+            // Actualizar el estado de navegación con la información del GPS
+            if (datos.estadoGPS) {
+                navigationState.gpsStatus = datos.estadoGPS;
+                
+                // Si hay ubicación disponible, actualizarla
+                if (datos.ubicacion) {
+                    navigationState.ubicacionActual = datos.ubicacion;
+                    
+                    // Notificar a Child 5 (mapa) sobre la actualización de ubicación
+                    enviarMensaje('hijo5', 'ACTUALIZAR_UBICACION', {
+                        lat: datos.ubicacion.lat,
+                        lng: datos.ubicacion.lng,
+                        precision: datos.precision,
+                        timestamp: datos.timestamp || Date.now()
+                    });
+                }
+                
+                // Si hay un error de GPS, notificar a la interfaz de usuario
+                if (datos.estadoGPS === 'error') {
+                    mostrarMensajeInfoParada('Error de GPS: ' + (datos.mensajeError || 'No se pudo obtener la ubicación'), true);
+                    
+                    // Notificar a todos los hijos sobre el estado del GPS
+                    enviarMensaje('hijo2', 'ACTUALIZAR_UI', { gpsActivo: false });
+                    enviarMensaje('hijo5', 'ACTUALIZAR_UI', { gpsActivo: false });
+                    
+                    // Si estamos en modo simulación, no mostrar el error como un problema
+                    if (datos.modoSimulacion) {
+                        console.log('[Padre] Modo simulación activado, ignorando error de GPS');
+                        return { success: true, modoSimulacion: true };
+                    }
+                } else if (datos.estadoGPS === 'activo') {
+                    // Notificar a todos los hijos que el GPS está activo
+                    enviarMensaje('hijo2', 'ACTUALIZAR_UI', { gpsActivo: true });
+                    enviarMensaje('hijo5', 'ACTUALIZAR_UI', { gpsActivo: true });
+                }
+            }
+            
+            return { success: true };
+        }
+        
+        // Manejador para simular ubicación cuando el GPS está desactivado
+        function handleSimularUbicacion(datos) {
+            console.log('[Padre] Simulando ubicación:', datos);
+            
+            // Actualizar el estado de navegación
+            navigationState.gpsStatus = 'simulado';
+            navigationState.ubicacionActual = datos.coordenadas;
+            navigationState.ultimaActualizacionGPS = Date.now();
+            
+            // Notificar a los hijos sobre la ubicación simulada
+            enviarMensaje('hijo2', 'ACTUALIZAR_UBICACION', {
+                ...datos.coordenadas,
+                precision: 10, // Precisión alta para ubicación simulada
+                timestamp: Date.now(),
+                modoSimulacion: true
+            });
+            
+            enviarMensaje('hijo5', 'ACTUALIZAR_UBICACION', {
+                ...datos.coordenadas,
+                precision: 10,
+                timestamp: Date.now(),
+                modoSimulacion: true
+            });
+            
+            // Si se proporcionó un ID de parada o tramo, actualizar el estado correspondiente
+            if (datos.paradaId !== undefined) {
+                window.paradaActual = datos.paradaId;
+                window.tramoActual = -1;
+                
+                // Notificar a los hijos sobre la parada actual
+                enviarMensaje('hijo2', 'ACTUALIZAR_ESTADO', {
+                    paradaActual: datos.paradaId,
+                    tramoActual: -1,
+                    modoSimulacion: true
+                });
+                
+                enviarMensaje('hijo3', 'ACTUALIZAR_ESTADO', {
+                    paradaActual: datos.paradaId,
+                    modoSimulacion: true
+                });
+                
+                enviarMensaje('hijo4', 'ACTUALIZAR_ESTADO', {
+                    paradaActual: datos.paradaId,
+                    modoSimulacion: true
+                });
+            } else if (datos.tramoId !== undefined) {
+                window.tramoActual = datos.tramoId;
+                window.paradaActual = -1;
+                
+                // Notificar a los hijos sobre el tramo actual
+                enviarMensaje('hijo2', 'ACTUALIZAR_ESTADO', {
+                    tramoActual: datos.tramoId,
+                    paradaActual: -1,
+                    modoSimulacion: true
+                });
+            }
+            
+            // Desbloquear botones en hijo2
+            enviarMensaje('hijo2', 'UNLOCK_BUTTONS', { 
+                todos: true,
+                motivo: 'simulacion_ubicacion'
+            });
+            
+            return { success: true };
         }
         
         // Función para verificar el contenido multimedia de una parada
@@ -1100,22 +1249,26 @@
         function handleUbicacionSeleccionada(datos, evento) {
             console.log('[Padre] Ubicación seleccionada en el mapa:', datos);
             
+            // Verificar si hay una parada cercana a la ubicación seleccionada
             if (datos.paradaCercana !== undefined) {
-                // Actualizar la parada actual
-                window.paradaActual = datos.paradaCercana;
-                
-                // Buscar la parada seleccionada
                 const parada = PARADAS.find(p => p.parada === datos.paradaCercana);
-                if (parada && parada.coordenadas) {
-                    // Notificar a todos los componentes sobre la parada seleccionada
+                if (parada) {
+                    // Actualizar el estado de navegación
+                    navigationState.currentStop = datos.paradaCercana;
+                    window.paradaActual = datos.paradaCercana;
+                    
+                    // Notificar a los demás componentes sobre la nueva parada seleccionada
                     enviarMensaje('hijo2', 'ACTUALIZAR_UI', {
                         paradaActual: datos.paradaCercana,
-                        navegacionActiva: true
+                        estado: 'activo',
+                        gpsActivo: navigationState.gpsStatus === 'activo'
                     });
                     
+                    // Notificar al hijo 3 (audio) sobre la nueva parada
                     enviarMensaje('hijo3', 'ACTUALIZAR_ESTADO', {
                         paradaActual: datos.paradaCercana,
-                        estado: 'activo'
+                        estado: 'activo',
+                        gpsActivo: navigationState.gpsStatus === 'activo'
                     });
                     
                     // Mostrar la parada en el mapa
@@ -1446,91 +1599,147 @@
         function manejarSeleccionTramo(tramoIndex) {
             console.log(`[Padre] Seleccionado tramo ${tramoIndex}`);
             
+            // Actualizar estado actual
+            window.tramoActual = tramoIndex;
+            window.paradaActual = null;
+            
             // Desbloquear botones en hijo2
-            const hijo2 = document.getElementById('hijo2');
-            if (hijo2 && hijo2.contentWindow) {
-                hijo2.contentWindow.postMessage({ type: 'unlockAllButtons' }, '*');
-            }
+            enviarMensaje('hijo2', 'UNLOCK_BUTTONS', { todos: true });
             
             // Mostrar tramo en el mapa
-            if (map) {
-                resetMapView();
-                
-                // Encontrar el tramo seleccionado
-                const tramo = TRAMOS.find(t => t.tramo === tramoIndex);
-                if (tramo) {
-                    // Convertir los puntos de la ruta al formato correcto
-                    const puntosRuta = tramo.ruta.map(p => [p.lat, p.lng]);
-                    
-                    // Mostrar la ruta del tramo
-                    showRoute(puntosRuta, {
-                        color: '#3388ff',
-                        weight: 6,
-                        opacity: 0.8,
-                        dashArray: '10, 6',
-                        lineCap: 'round',
-                        lineJoin: 'round'
-                    });
-                    
-                    // Añadir marcador de inicio
-                    if (tramo.inicio) {
-                        const startMarker = addMarker(
-                            [tramo.inicio.lat, tramo.inicio.lng],
-                            {
-                                title: `Inicio del tramo ${tramoIndex}`,
-                                icon: L.divIcon({
-                                    className: 'custom-marker start',
-                                    html: '<div class="marker-pin start"></div>',
-                                    iconSize: [30, 42],
-                                    iconAnchor: [15, 42]
-                                })
-                            },
-                            `tramo-${tramoIndex}-inicio`
-                        );
-                    }
-                    
-                    // Añadir marcador de fin
-                    if (tramo.fin) {
-                        const endMarker = addMarker(
-                            [tramo.fin.lat, tramo.fin.lng],
-                            {
-                                title: `Fin del tramo ${tramoIndex}`,
-                                icon: L.divIcon({
-                                    className: 'custom-marker end',
-                                    html: '<div class="marker-pin end"></div>',
-                                    iconSize: [30, 42],
-                                    iconAnchor: [15, 42]
-                                })
-                            },
-                            `tramo-${tramoIndex}-fin`
-                        );
-                    }
-                    
-                    // Mostrar información del tramo
-                    mostrarMensajeInfoParada(`Tramo ${tramoIndex}: ${tramo.nombre || 'Sin nombre'}`);
-                }
-            }
-        }
-        
-        /**
-         * Limpia todos los elementos del mapa (marcadores, rutas, etc.)
-         */
-        function resetMapView() {
-            // Limpiar todos los marcadores
-            if (window.markers) {
-                Object.entries(window.markers).forEach(([id, marker]) => {
-                    if (marker && map.hasLayer(marker)) {
-                        map.removeLayer(marker);
-                    }
-                    delete window.markers[id];
-                });
+            if (!map) return;
+            
+            // Resetear vista del mapa
+            resetMapView();
+            
+            // Buscar el tramo seleccionado
+            const tramo = TRAMOS.find(t => t.tramo === tramoIndex);
+            if (!tramo) {
+                console.error(`No se encontró el tramo ${tramoIndex}`);
+                return;
             }
             
-            // Limpiar polyline actual
+            // Si hay coordenadas, usarlas para dibujar la ruta
+            if (tramo.coordenadas && tramo.coordenadas.length > 0) {
+                // Crear una polilínea para el tramo
+                const polyline = L.polyline(tramo.coordenadas, {
+                    color: '#007bff',
+                    weight: 5,
+                    opacity: 0.7,
+                    lineJoin: 'round'
+                }).addTo(map);
+                
+                // Añadir marcadores de inicio y fin
+                const inicio = tramo.coordenadas[0];
+                const fin = tramo.coordenadas[tramo.coordenadas.length - 1];
+                
+                // Marcador de inicio (verde)
+                L.marker([inicio.lat, inicio.lng], {
+                    icon: L.divIcon({
+                        className: 'custom-marker green-pin',
+                        html: '<div class="marker-pin" style="background-color: #28a745;"></div>',
+                        iconSize: [30, 42],
+                        iconAnchor: [15, 42]
+                    })
+                }).addTo(map);
+                
+                // Marcador de fin (rojo)
+                L.marker([fin.lat, fin.lng], {
+                    icon: L.divIcon({
+                        className: 'custom-marker red-pin',
+                        html: '<div class="marker-pin" style="background-color: #dc3545;"></div>',
+                        iconSize: [30, 42],
+                        iconAnchor: [15, 42]
+                    })
+                }).addTo(map);
+                
+                // Ajustar la vista del mapa para mostrar todo el tramo
+                map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
+            } 
+            // Si no hay coordenadas pero hay ruta, usar la ruta
+            else if (tramo.ruta && tramo.ruta.length > 0) {
+                // Convertir los puntos de la ruta al formato correcto
+                const puntosRuta = tramo.ruta.map(p => [p.lat, p.lng]);
+                
+                // Mostrar la ruta del tramo
+                showRoute(puntosRuta, {
+                    color: '#3388ff',
+                    weight: 6,
+                    opacity: 0.8,
+                    dashArray: '10, 6',
+                    lineCap: 'round',
+                    lineJoin: 'round'
+                });
+                
+                // Añadir marcador de inicio si está definido
+                if (tramo.inicio) {
+                    addMarker(
+                        [tramo.inicio.lat, tramo.inicio.lng],
+                        {
+                            title: `Inicio del tramo ${tramoIndex}`,
+                            icon: L.divIcon({
+                                className: 'custom-marker start',
+                                html: '<div class="marker-pin start"></div>',
+                                iconSize: [30, 42],
+                                iconAnchor: [15, 42]
+                            })
+                        },
+                        `tramo-${tramoIndex}-inicio`
+                    );
+                }
+                
+                // Añadir marcador de fin si está definido
+                if (tramo.fin) {
+                    addMarker(
+                        [tramo.fin.lat, tramo.fin.lng],
+                        {
+                            title: `Fin del tramo ${tramoIndex}`,
+                            icon: L.divIcon({
+                                className: 'custom-marker end',
+                                html: '<div class="marker-pin end"></div>',
+                                iconSize: [30, 42],
+                                iconAnchor: [15, 42]
+                            })
+                        },
+                        `tramo-${tramoIndex}-fin`
+                    );
+                }
+                
+                // Ajustar la vista del mapa para mostrar toda la ruta
+                const bounds = L.latLngBounds(puntosRuta);
+                map.fitBounds(bounds, { padding: [50, 50] });
+            } else {
+                console.error(`No se encontraron coordenadas ni ruta para el tramo ${tramoIndex}`);
+                return;
+            }
+            
+            // Mostrar mensaje informativo
+            mostrarMensajeInfoParada(`Tramo ${tramoIndex + 1}: ${tramo.nombre || 'Sin nombre'}`);
+            
+            // Notificar a Child 5 sobre la selección de tramo
+            enviarMensaje('hijo5', 'TRAMO_SELECCIONADO', {
+                tramoIndex: tramoIndex,
+                nombre: tramo.nombre || 'Sin nombre',
+                coordenadas: tramo.coordenadas || []
+            });
+        }
+        
+        // Buscar el tramo seleccionado
+        const tramo = TRAMOS.find(t => t.tramo === tramoIndex);
+        if (tramo && tramo.coordenadas && tramo.coordenadas.length > 0) {
+            // Crear una polilínea para el tramo
+            const polyline = L.polyline(tramo.coordenadas, {
+                color: '#007bff',
+                weight: 5,
+                opacity: 0.7,
+                lineJoin: 'round'
+            }).addTo(map);
+            
+            // Limpiar polyline anterior si existe
             if (window.currentPolyline && map.hasLayer(window.currentPolyline)) {
                 map.removeLayer(window.currentPolyline);
-                window.currentPolyline = null;
             }
+            window.currentPolyline = polyline;
             
             // Limpiar marcador de parada
             if (markerParada && map.hasLayer(markerParada)) {
