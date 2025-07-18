@@ -1126,6 +1126,44 @@
         // Iniciar sincronización periódica cada 3 segundos
         setInterval(sincronizarEstadoNavegacion, 3000);
         
+        // Función de utilidad para enviar mensajes a iframes hijos
+        function enviarMensajeAIframe(iframeId, tipo, datos = {}) {
+            const iframe = document.getElementById(iframeId);
+            if (!iframe || !iframe.contentWindow) {
+                console.error(`No se pudo encontrar el iframe con ID: ${iframeId}`);
+                return false;
+            }
+            
+            const mensaje = { 
+                tipo,
+                origen: 'padre',
+                timestamp: Date.now(),
+                ...datos 
+            };
+            
+            console.log(`Enviando mensaje a ${iframeId}:`, mensaje);
+            iframe.contentWindow.postMessage(mensaje, '*');
+            return true;
+        }
+        
+        // Función para sincronizar el estado con todos los iframes
+        function sincronizarEstadoConIframes() {
+            const iframes = ['hijo1-hamburguesa', 'hijo1-opciones', 'hijo1-mapa', 'hijo5-casa', 'hijo3'];
+            iframes.forEach(id => {
+                enviarMensajeAIframe(id, 'sincronizarEstado', {
+                    estado: {
+                        modo: 'fuera', // O el estado actual
+                        // Otros estados globales que necesites sincronizar
+                    }
+                });
+            });
+        }
+        
+        // Sincronizar estado al cargar la página
+        window.addEventListener('load', () => {
+            setTimeout(sincronizarEstadoConIframes, 1000); // Esperar a que los iframes se carguen
+        });
+        
         // Validación periódica del estado
         function validarEstadoNavegacion() {
             // Validar parada actual
@@ -1205,15 +1243,63 @@
             return true;
         }
         
-        // Manejador principal de mensajes
-        window.addEventListener('message', (event) => {
+        // ================== SISTEMA DE MENSAJERÍA SIMPLIFICADO ==================
+        
+        // Función para enviar mensajes a iframes hijos
+        function enviarMensaje(iframeId, tipo, datos = {}) {
+            const iframe = document.getElementById(iframeId);
+            if (!iframe || !iframe.contentWindow) {
+                console.error(`No se pudo encontrar el iframe con ID: ${iframeId}`);
+                return false;
+            }
+            
+            const mensaje = { 
+                tipo,
+                origen: 'padre',
+                timestamp: Date.now(),
+                ...datos 
+            };
+            
+            console.log(`PADRE: Enviando a ${iframeId}:`, mensaje);
+            iframe.contentWindow.postMessage(mensaje, '*');
+            return true;
+        }
+        
+        // Manejador de mensajes entrantes
+        window.addEventListener('message', function(event) {
+            // Para depuración, mostramos todos los mensajes recibidos
+            console.log('PADRE: Mensaje recibido:', event.data, 'desde:', event.origin);
+            
             const mensaje = event.data;
             if (!mensaje || !mensaje.tipo) return;
-
-            // Manejar acuses de recibo primero
-            if (mensaje.tipo === 'ack') {
-                handleAck(mensaje, event);
+            
+            // Manejar mensajes de sincronización
+            if (mensaje.tipo === 'sincronizar') {
+                console.log('PADRE: Sincronización solicitada por:', mensaje.origen);
+                // Responder con el estado actual
+                enviarMensaje(mensaje.origen, 'sincronizado', {
+                    estado: 'ok',
+                    timestamp: Date.now()
+                });
                 return;
+            }
+            
+            // Reenviar mensajes entre iframes según sea necesario
+            if (mensaje.destino) {
+                console.log(`PADRE: Reenviando mensaje a ${mensaje.destino}`);
+                enviarMensaje(mensaje.destino, mensaje.tipo, mensaje.datos || {});
+                return;
+            }
+            
+            // Manejar mensajes específicos del hijo5 (botón casa)
+            if (mensaje.origen === 'hijo5') {
+                console.log('PADRE: Mensaje de hijo5:', mensaje);
+                // Aquí puedes manejar mensajes específicos del hijo5
+                if (mensaje.tipo === 'cambiarModo') {
+                    // Notificar a otros iframes sobre el cambio de modo
+                    ['hijo1-hamburguesa', 'hijo1-opciones', 'hijo1-mapa', 'hijo3']
+                        .forEach(id => enviarMensaje(id, 'modoCambiado', { modo: mensaje.modo }));
+                }
             }
 
             if (mensaje.version !== MESSAGE_PROTOCOL_VERSION) {
