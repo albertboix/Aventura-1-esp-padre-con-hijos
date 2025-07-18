@@ -52,18 +52,21 @@
         }
 
         .nav-button {
-            width: 40px;
-            height: 40px;
+            width: var(--btn-size);
+            height: var(--btn-size);
             border-radius: 50%;
             border: none;
             background: linear-gradient(135deg, #28a745, #20c997);
             color: white;
-            font-size: 1.2em;
+            font-size: var(--icon-size);
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: all 0.3s ease;
+            transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                       background 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                       transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                       box-shadow 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
 
@@ -1868,56 +1871,74 @@
         }
 
         // Manejadores para los botones de navegación
-        document.getElementById('btn-punto').addEventListener('click', () => {
-            // Enviar mensaje al padre para mostrar el punto de interés actual
-            enviarMensajeAlPadre({
-                type: 'mostrarPuntoInteres',
-                paradaActual: paradaActual
-            });
+        function manejarClicBoton(id, tipoMensaje, datos = {}) {
+            if (modoCasa) return;
+            
+            const btn = document.getElementById(id);
+            if (!btn) return;
             
             // Efecto visual al hacer clic
-            const btn = document.getElementById('btn-punto');
             btn.style.transform = 'scale(0.9)';
             setTimeout(() => { btn.style.transform = 'scale(1)'; }, 100);
+            
+            // Si es el botón de brújula, manejar el estado local
+            if (id === 'btn-brujula') {
+                const brujulaActivada = !btn.classList.contains('active');
+                btn.classList.toggle('active', brujulaActivada);
+                
+                if (brujulaActivada) {
+                    btn.style.background = 'linear-gradient(135deg, #ffc107, #ff9800)';
+                    btn.style.boxShadow = '0 0 15px rgba(255, 193, 7, 0.8)';
+                } else {
+                    btn.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
+                    btn.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
+                }
+                
+                // Actualizar datos con el estado de la brújula
+                datos.activada = brujulaActivada;
+            }
+            
+            // Enviar mensaje al padre
+            enviarMensajeAlPadre({
+                type: tipoMensaje,
+                timestamp: Date.now(),
+                ...datos
+            });
+        }
+        
+        // Asignar manejadores de eventos a los botones
+        document.getElementById('btn-punto').addEventListener('click', () => {
+            manejarClicBoton('btn-punto', 'mostrarPuntoInteres', {
+                paradaActual: paradaActual
+            });
         });
 
         document.getElementById('btn-ruta').addEventListener('click', () => {
-            // Enviar mensaje al padre para mostrar la ruta completa
-            enviarMensajeAlPadre({
-                type: 'mostrarRutaCompleta',
+            manejarClicBoton('btn-ruta', 'mostrarRutaCompleta', {
                 paradaActual: paradaActual
             });
-            
-            // Efecto visual al hacer clic
-            const btn = document.getElementById('btn-ruta');
-            btn.style.transform = 'scale(0.9)';
-            setTimeout(() => { btn.style.transform = 'scale(1)'; }, 100);
         });
 
         document.getElementById('btn-brujula').addEventListener('click', () => {
-            // Alternar el modo brújula
-            const brujulaActivada = document.body.classList.toggle('modo-brujula');
-            
-            // Enviar mensaje al padre para activar/desactivar la brújula
-            enviarMensajeAlPadre({
-                type: 'alternarBrujula',
-                activada: brujulaActivada
-            });
-            
-            // Efecto visual al hacer clic
-            const btn = document.getElementById('btn-brujula');
-            btn.style.transform = 'scale(0.9)';
-            setTimeout(() => { btn.style.transform = 'scale(1)'; }, 100);
-            
-            // Cambiar el estilo del botón cuando está activo
-            if (brujulaActivada) {
-                btn.style.background = 'linear-gradient(135deg, #ffc107, #ff9800)';
-                btn.style.boxShadow = '0 0 15px rgba(255, 193, 7, 0.8)';
-            } else {
-                btn.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
-                btn.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
-            }
+            manejarClicBoton('btn-brujula', 'alternarBrujula');
         });
+        
+        // Función para sincronizar el estado de la brújula cuando se recibe un mensaje del padre
+        function sincronizarEstadoBrujula(activada) {
+            const btnBrujula = document.getElementById('btn-brujula');
+            if (!btnBrujula) return;
+            
+            const brujulaActivada = activada === true;
+            btnBrujula.classList.toggle('active', brujulaActivada);
+            
+            if (brujulaActivada) {
+                btnBrujula.style.background = 'linear-gradient(135deg, #ffc107, #ff9800)';
+                btnBrujula.style.boxShadow = '0 0 15px rgba(255, 193, 7, 0.8)';
+            } else {
+                btnBrujula.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
+                btnBrujula.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
+            }
+        }
 
         // Event listeners básicos
         btnGps.addEventListener('click', () => {
