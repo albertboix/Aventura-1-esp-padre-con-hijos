@@ -793,30 +793,81 @@
 
     // ================ FUNCIONES PRINCIPALES ================
     
-    // Cambia el estado del botón y la etiqueta
+    // Cambia el estado del botón y la etiqueta, y sincroniza con todos los componentes
     function setGpsState(on) {
+      console.log(`🔄 HIJO 5: setGpsState(${on}) - Estado actual: gpsOn=${gpsOn}, modoCasa=${modoCasa}`);
+      
+      // Actualizar estado local
+      const estadoAnterior = { gpsOn, modoCasa };
       gpsOn = on;
       modoCasa = !on;
       
+      // Actualizar UI
       const btn = document.getElementById('gps-casa-btn');
       btn.className = on ? 'on' : 'off';
       btn.querySelector('.gps-label').textContent = on ? 'ON' : 'OFF';
-      
       actualizarIndicadorModo();
       
+      // Notificar al padre sobre el cambio de estado
+      window.parent.postMessage({
+        type: 'gpsStatus',
+        on: gpsOn,
+        modoCasa: modoCasa,
+        timestamp: Date.now(),
+        origen: 'hijo5',
+        debug: `GPS ${gpsOn ? 'activado' : 'desactivado'} desde el hijo 5`
+      }, '*');
+      
+      // Notificar a los hijos relevantes
       if (modoCasa) {
+        console.log('🏠 HIJO 5: Activando modo casa - Notificando a los hijos');
+        // Notificar al hijo 2 (mapa)
         enviarMensajeAHijo2({
           tipo: 'boton-casa-activado',
-          modoCasa: true
+          modoCasa: true,
+          paradaActual: paradaActual,
+          tramoActual: tramoActual,
+          timestamp: Date.now()
         });
+        
+        // Notificar al hijo 3 (audio)
+        window.parent.postMessage({
+          tipo: 'mensaje-para-hijo3',
+          mensaje: {
+            type: 'actualizarEstado',
+            gpsActivo: false,
+            modoCasa: true,
+            timestamp: Date.now()
+          }
+        }, '*');
+        
+        // Notificar al hijo 4 (contenido)
+        window.parent.postMessage({
+          tipo: 'mensaje-para-hijo4',
+          mensaje: {
+            type: 'actualizarEstado',
+            gpsActivo: false,
+            modoCasa: true,
+            timestamp: Date.now()
+          }
+        }, '*');
+        
+        // Desbloquear funcionalidades locales
         desbloquearFuncionalidades();
       } else {
+        console.log('🌍 HIJO 5: Activando modo aventura - Notificando a los hijos');
+        // Notificar al hijo 2 (mapa)
         enviarMensajeAHijo2({
           tipo: 'boton-casa-desactivado',
-          modoCasa: false
+          modoCasa: false,
+          timestamp: Date.now()
         });
+        
+        // Restaurar restricciones locales
         restaurarRestriccionesAventura();
       }
+      
+      console.log(`✅ HIJO 5: setGpsState completado - Nuevo estado: gpsOn=${gpsOn}, modoCasa=${modoCasa}`);
     }
     
     function actualizarIndicadorModo() {
@@ -921,38 +972,84 @@
               lat: punto.coordenadas.lat, 
               lng: punto.coordenadas.lng,
               modoCasa: modoCasa,
-              imagen: punto.imagen
-            }, '*');
-            
-            // Cargar audio de la parada si existe
-            if (punto.audio) {
-              const mensajeAudio = {
-                tipo: 'mensaje-para-hijo3',
-                mensaje: {
-                  type: 'cargarAudio',
-                  src: punto.audio,
-                  paradaId: punto.parada
-                }
-              };
-              window.parent.postMessage(mensajeAudio, '*');
-              
-              // Reproducir automáticamente
-              setTimeout(() => {
-                window.parent.postMessage({
-                  tipo: 'mensaje-para-hijo3',
-                  mensaje: { type: 'play' }
-                }, '*');
-              }, 300);
-            }
-            
-            // Mostrar reto correspondiente
-            window.parent.postMessage({
-              tipo: 'mensaje-para-hijo4',
-              mensaje: {
-                type: 'mostrarReto',
-                paradaId: punto.parada
+              imagen: punto.imagen,
+              // Enviar datos completos de la parada para simulación
+              paradaData: {
+                id: punto.parada,
+                nombre: punto.nombre,
+                coordenadas: punto.coordenadas,
+                audio: punto.audio,
+                imagen: punto.imagen,
+                video: punto.video
               }
             }, '*');
+            
+            // Si el GPS está apagado, simular que estamos en la ubicación seleccionada
+            if (modoCasa) {
+              // Notificar al hijo 2 (botones) para desbloquear funcionalidades
+              window.parent.postMessage({
+                tipo: 'mensaje-para-hijo2',
+                mensaje: {
+                  type: 'simularUbicacion',
+                  coordenadas: punto.coordenadas,
+                  paradaId: punto.parada,
+                  modoCasa: true
+                }
+              }, '*');
+              
+              // Notificar al hijo 3 (audio) para cargar el audio de la parada
+              if (punto.audio) {
+                window.parent.postMessage({
+                  tipo: 'mensaje-para-hijo3',
+                  mensaje: {
+                    type: 'cargarAudio',
+                    src: punto.audio,
+                    paradaId: punto.parada,
+                    autoplay: true
+                  }
+                }, '*');
+              }
+              
+              // Notificar al hijo 4 (retos) para mostrar el reto correspondiente
+              window.parent.postMessage({
+                tipo: 'mensaje-para-hijo4',
+                mensaje: {
+                  type: 'mostrarReto',
+                  paradaId: punto.parada,
+                  modoCasa: true
+                }
+              }, '*');
+            } else {
+              // Si el GPS está activo, comportamiento normal
+              if (punto.audio) {
+                const mensajeAudio = {
+                  tipo: 'mensaje-para-hijo3',
+                  mensaje: {
+                    type: 'cargarAudio',
+                    src: punto.audio,
+                    paradaId: punto.parada
+                  }
+                };
+                window.parent.postMessage(mensajeAudio, '*');
+                
+                // Reproducir automáticamente
+                setTimeout(() => {
+                  window.parent.postMessage({
+                    tipo: 'mensaje-para-hijo3',
+                    mensaje: { type: 'play' }
+                  }, '*');
+                }, 300);
+              }
+              
+              // Mostrar reto correspondiente
+              window.parent.postMessage({
+                tipo: 'mensaje-para-hijo4',
+                mensaje: {
+                  type: 'mostrarReto',
+                  paradaId: punto.parada
+                }
+              }, '*');
+            }
             
             // Actualizar la vista
             renderParadasYTramos();
@@ -991,8 +1088,57 @@
               waypoints: punto.waypoints,
               imagen: punto.imagen,
               video: punto.video,
-              modoCasa: modoCasa
+              modoCasa: modoCasa,
+              // Enviar datos completos del tramo para simulación
+              tramoData: {
+                id: punto.tramo,
+                nombre: punto.nombre,
+                inicio: punto.inicio,
+                fin: punto.fin,
+                waypoints: punto.waypoints,
+                imagen: punto.imagen,
+                video: punto.video
+              }
             }, '*');
+            
+            // Si el GPS está apagado, simular que estamos en el inicio del tramo
+            if (modoCasa) {
+              // Notificar al hijo 2 (botones) para desbloquear funcionalidades
+              window.parent.postMessage({
+                tipo: 'mensaje-para-hijo2',
+                mensaje: {
+                  type: 'simularUbicacion',
+                  coordenadas: punto.inicio, // Usar las coordenadas de inicio del tramo
+                  tramoId: punto.tramo,
+                  modoCasa: true
+                }
+              }, '*');
+              
+              // Si hay video, notificar al reproductor de video
+              if (punto.video) {
+                window.parent.postMessage({
+                  tipo: 'mensaje-para-hijo3',
+                  mensaje: {
+                    type: 'cargarVideo',
+                    src: punto.video,
+                    tramoId: punto.tramo,
+                    autoplay: true
+                  }
+                }, '*');
+              }
+              
+              // Si hay imagen, notificar al visor de imágenes
+              if (punto.imagen) {
+                window.parent.postMessage({
+                  tipo: 'mensaje-para-hijo4',
+                  mensaje: {
+                    type: 'mostrarImagen',
+                    src: punto.imagen,
+                    tramoId: punto.tramo
+                  }
+                }, '*');
+              }
+            }
             
             // Actualizar la vista
             renderParadasYTramos();
@@ -1082,6 +1228,57 @@
       });
     }
 
+    // ================ MANEJO DE MENSAJES ================
+    
+    // Manejador de mensajes entrantes
+    window.addEventListener('message', function(event) {
+        const mensaje = event.data;
+        if (!mensaje) return;
+        
+        // Manejar mensajes del padre
+        if (mensaje.tipo === 'mensaje-para-hijo5') {
+            const datos = mensaje.mensaje || {};
+            console.log('📨 HIJO 5: Mensaje recibido:', datos);
+            
+            // Actualizar estado del GPS
+            if (datos.type === 'actualizarEstadoGPS') {
+                if (datos.estadoGPS === 'apagado') {
+                    setGpsState(false);
+                } else if (datos.estadoGPS === 'encendido') {
+                    setGpsState(true);
+                }
+            }
+            
+            // Actualizar estado de navegación
+            if (datos.type === 'ACTUALIZAR_ESTADO') {
+                if (datos.paradaActual !== undefined) {
+                    paradaActual = datos.paradaActual;
+                    tramoActual = -1;
+                    renderParadasYTramos();
+                }
+                if (datos.tramoActual !== undefined) {
+                    tramoActual = datos.tramoActual;
+                    paradaActual = -1;
+                    renderParadasYTramos();
+                }
+            }
+            
+            // Sincronizar estado inicial
+            if (datos.type === 'sincronizarEstado') {
+                const estado = {
+                    modoCasa: modoCasa,
+                    gpsOn: gpsOn,
+                    paradaActual: paradaActual,
+                    tramoActual: tramoActual
+                };
+                window.parent.postMessage({
+                    tipo: 'respuesta-sincronizacion-hijo5',
+                    estado: estado
+                }, '*');
+            }
+        }
+    });
+    
     // ================ EVENTOS ================
     
     // Click en el botón principal
@@ -1125,33 +1322,70 @@
       const data = event.data;
       if (!data) return;
       
+      console.log('[Hijo5] Mensaje recibido:', data);
+      
       // Mensajes del padre
-      if (data.type === 'gpsStatus') {
-        setGpsState(!!data.on);
-        if (!data.on) mostrarParadasYTramos();
-        else ocultarParadas();
+      if (data.tipo === 'gpsStatus' || data.type === 'gpsStatus') {
+        const gpsActivo = data.estadoGPS === 'activo' || data.on === true;
+        setGpsState(gpsActivo);
+        
+        if (gpsActivo) {
+          ocultarParadas();
+          // Notificar al padre que el modo aventura está activo
+          window.parent.postMessage({
+            tipo: 'ACTUALIZAR_ESTADO_GPS',
+            estadoGPS: 'activo',
+            timestamp: Date.now()
+          }, '*');
+        } else {
+          mostrarParadasYTramos();
+          // Notificar al padre que el modo casa está activo
+          window.parent.postMessage({
+            tipo: 'ACTUALIZAR_ESTADO_GPS',
+            estadoGPS: 'inactivo',
+            timestamp: Date.now()
+          }, '*');
+        }
       }
       
       // Mensajes del hijo 2
       if (data.tipo === 'confirmacion-modo-casa' && data.activo && !modoCasa) {
+        modoCasa = true;
         setGpsState(false);
         mostrarParadasYTramos();
+        
+        // Notificar al padre sobre el cambio de estado
+        window.parent.postMessage({
+          tipo: 'ACTUALIZAR_ESTADO_GPS',
+          estadoGPS: 'inactivo',
+          timestamp: Date.now()
+        }, '*');
       }
       
       if (data.tipo === 'confirmacion-modo-aventura' && data.activo && modoCasa) {
+        modoCasa = false;
         setGpsState(true);
         ocultarParadas();
+        
+        // Notificar al padre sobre el cambio de estado
+        window.parent.postMessage({
+          tipo: 'ACTUALIZAR_ESTADO_GPS',
+          estadoGPS: 'activo',
+          timestamp: Date.now()
+        }, '*');
       }
       
-      if (data.tipo === 'estado-modo-actual') {
-        modoCasa = data.modoCasa;
-        paradaActual = data.paradaActual || 0;
-        tramoActual = data.tramoActual || -1;
+      if (data.tipo === 'estado-modo-actual' || data.tipo === 'ACTUALIZAR_UI') {
+        modoCasa = data.modoCasa || data.gpsActivo === false;
+        paradaActual = data.paradaActual || paradaActual || 0;
+        tramoActual = data.tramoActual || tramoActual || -1;
         
         setGpsState(!modoCasa);
         
         if (modoCasa && document.getElementById('paradas-window').style.display === 'flex') {
           renderParadasYTramos();
+        } else if (!modoCasa) {
+          ocultarParadas();
         }
         
         if (modoCasa) {
@@ -1159,19 +1393,43 @@
         }
       }
       
-      if (data.tipo === 'cambio-parada-actual') {
-        paradaActual = data.parada;
-        tramoActual = -1;
-        if (document.getElementById('paradas-window').style.display === 'flex') {
-          renderParadasYTramos();
+      if (data.tipo === 'cambio-parada-actual' || data.tipo === 'PARADA_SELECCIONADA') {
+        const nuevaParada = data.parada || data.paradaIndex;
+        if (nuevaParada !== undefined && nuevaParada !== paradaActual) {
+          paradaActual = nuevaParada;
+          tramoActual = -1;
+          
+          // Actualizar la interfaz de usuario
+          if (document.getElementById('paradas-window').style.display === 'flex') {
+            renderParadasYTramos();
+          }
+          
+          // Notificar al padre sobre la nueva parada seleccionada
+          window.parent.postMessage({
+            tipo: 'PARADA_SELECCIONADA',
+            paradaIndex: paradaActual,
+            timestamp: Date.now()
+          }, '*');
         }
       }
       
-      if (data.tipo === 'cambio-tramo-actual') {
-        tramoActual = data.tramo;
-        paradaActual = -1;
-        if (document.getElementById('paradas-window').style.display === 'flex') {
-          renderParadasYTramos();
+      if (data.tipo === 'cambio-tramo-actual' || data.tipo === 'TRAMO_SELECCIONADO') {
+        const nuevoTramo = data.tramo || data.tramoIndex;
+        if (nuevoTramo !== undefined && nuevoTramo !== tramoActual) {
+          tramoActual = nuevoTramo;
+          paradaActual = -1;
+          
+          // Actualizar la interfaz de usuario
+          if (document.getElementById('paradas-window').style.display === 'flex') {
+            renderParadasYTramos();
+          }
+          
+          // Notificar al padre sobre el nuevo tramo seleccionado
+          window.parent.postMessage({
+            tipo: 'TRAMO_SELECCIONADO',
+            tramoIndex: tramoActual,
+            timestamp: Date.now()
+          }, '*');
         }
       }
     });
