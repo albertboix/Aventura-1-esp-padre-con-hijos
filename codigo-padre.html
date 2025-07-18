@@ -344,69 +344,157 @@
         // ================== ESCUCHA MENSAJES DE LOS HIJOS ==================
         window.addEventListener('message', (event) => {
             const data = event.data;
+            if (!data) return;
+
+            // Manejo de selección de parada/tramo
+            if (data.tipo === 'seleccionParada' && data.parada !== undefined) {
+                manejarSeleccionParada(data.parada);
+                return;
+            }
+            if (data.tipo === 'seleccionTramo' && data.tramo !== undefined) {
+                manejarSeleccionTramo(data.tramo);
+                return;
+            }
 
             // HIJO 4: Retos/preguntas
-            if (data && data.type === 'ocultarReto') {
+            if (data.type === 'ocultarReto') {
                 ocultarHijo4();
             }
             // HIJO 2: Coordenadas (GPS)
-            if (data && data.tipo === 'mostrar-ruta-navegacion') {
+            else if (data.tipo === 'mostrar-ruta-navegacion') {
                 procesarZoomNavegacion(data);
             }
-            if (data && data.tipo === 'ya-estoy-aqui') {
+            else if (data.tipo === 'ya-estoy-aqui') {
                 window.paradaActual = data.parada;
                 avanzarAParada(data.parada);
                 mostrarMensajeInfoParada(`¡Has llegado a la Parada ${window.paradaActual + 1}: ${PARADAS[window.paradaActual]?.nombre || ''}!`);
             }
-            if (data && data.tipo === 'mostrar-imagen') {
+            else if (data.tipo === 'mostrar-imagen') {
                 mostrarImagenParada(data.info);
             }
-            if (data && data.tipo === 'mostrar-video') {
+            else if (data.tipo === 'mostrar-video') {
                 mostrarVideoParada(data.info);
             }
-            if (data && data.tipo === 'mostrar-video-con-zoom-secuencial') {
-                // Primero hacer zoom suave, luego mostrar video al 70%
+            else if (data.tipo === 'mostrar-video-con-zoom-secuencial') {
                 if (data.coordenadasZoom && map) {
                     console.log('🎬 Iniciando zoom secuencial + video');
                     
-                    // Paso 1: Zoom suave al punto
                     map.setView([data.coordenadasZoom.lat, data.coordenadasZoom.lng], 18, {
                         duration: (data.secuencia.paso1.duracion / 1000) || 2.0,
                         easeLinearity: 0.25
                     });
                     
-                    // Paso 2: Mostrar video después del zoom
                     setTimeout(() => {
                         console.log('🎬 Mostrando video al 70% de la pantalla');
                         mostrarVideoParada({ video: data.videoSrc });
                     }, data.secuencia.paso1.duracion || 2000);
                 } else {
-                    // Si no hay coordenadas, mostrar video directamente
                     mostrarVideoParada({ video: data.videoSrc });
                 }
             }
-            if (data && data.tipo === 'cambio-estado-navegacion') {
+            else if (data.tipo === 'cambio-estado-navegacion') {
                 console.log(`[Padre] Estado navegación: ${data.estado}`, data);
-                // Aquí puedes agregar lógica específica según el estado
             }
-            if (data && data.tipo === 'actualizar-flecha-navegacion') {
-                // Actualizar flecha direccional en el mapa
+            else if (data.tipo === 'actualizar-flecha-navegacion') {
                 actualizarFlechaEnMapa(data);
             }
             // HIJO 3: Audio
-            if (data && data.type === 'audioFinalizado') {
+            else if (data.type === 'audioFinalizado') {
                 mostrarMensajeInfoParada(`Audio finalizado en Parada ${window.paradaActual + 1}: ${PARADAS[window.paradaActual]?.nombre || ''}`);
                 mostrarRetoEnHijo4(PARADAS[window.paradaActual] ? PARADAS[window.paradaActual].reto : null);
             }
             // HIJO 4: Retos/preguntas
-            if (data && data.type === 'reto-interactivo-completado') {
+            else if (data.type === 'reto-interactivo-completado') {
                 avanzarRuta();
+            }
+            // Forzar mostrar reto
+            else if (data.type === 'forceShowChallenge' && data.challengeId) {
+                mostrarRetoEnHijo4(data.challengeId);
             }
         });
 
+        // ================== MANEJO DE SELECCIÓN DE PARADAS/TRAMOS ==================
+        function manejarSeleccionParada(paradaIndex) {
+            console.log(`[Padre] Seleccionada parada ${paradaIndex}`);
+            
+            // Actualizar estado actual
+            window.paradaActual = paradaIndex;
+            
+            // Desbloquear botones en hijo2
+            const hijo2 = document.getElementById('hijo2');
+            if (hijo2 && hijo2.contentWindow) {
+                hijo2.contentWindow.postMessage({ type: 'unlockAllButtons' }, '*');
+            }
+            
+            // Mostrar parada en el mapa
+            if (map) {
+                // Resetear vista del mapa
+                resetMapView();
+                
+                // Mostrar marcador de la parada seleccionada
+                const parada = PARADAS.find(p => p.parada === paradaIndex);
+                if (parada) {
+                    map.setView([parada.coordenadas.lat, parada.coordenadas.lng], 18, { animate: true });
+                    
+                    // Mostrar mensaje informativo
+                    mostrarMensajeInfoParada(`Parada ${paradaIndex + 1}: ${parada.nombre}`);
+                    
+                    // Forzar mostrar el reto si existe, sin esperar al audio
+                    if (parada.reto) {
+                        mostrarRetoEnHijo4(parada.reto);
+                    }
+                }
+            }
+        }
+        
+        function manejarSeleccionTramo(tramoIndex) {
+            console.log(`[Padre] Seleccionado tramo ${tramoIndex}`);
+            
+            // Desbloquear botones en hijo2
+            const hijo2 = document.getElementById('hijo2');
+            if (hijo2 && hijo2.contentWindow) {
+                hijo2.contentWindow.postMessage({ type: 'unlockAllButtons' }, '*');
+            }
+            
+            // Mostrar tramo en el mapa
+            if (map) {
+                resetMapView();
+                
+                // Encontrar el tramo seleccionado
+                const tramo = TRAMOS.find(t => t.tramo === tramoIndex);
+                if (tramo) {
+                    // Mostrar ruta del tramo
+                    mostrarRutaEnMapa(tramo.ruta, tramo.inicio, tramo.fin);
+                    
+                    // Ajustar vista para mostrar todo el tramo
+                    const bounds = L.latLngBounds([
+                        [tramo.inicio.lat, tramo.inicio.lng],
+                        [tramo.fin.lat, tramo.fin.lng]
+                    ]);
+                    map.fitBounds(bounds, { padding: [50, 50] });
+                }
+            }
+        }
+        
+        function resetMapView() {
+            // Limpiar marcadores y rutas existentes
+            if (window.markers) {
+                Object.values(window.markers).forEach(marker => map.removeLayer(marker));
+            }
+            if (window.currentPolyline) {
+                map.removeLayer(window.currentPolyline);
+                window.currentPolyline = null;
+            }
+        }
+        
         function enviarGPSaHijo2(origen, destino) {
-            if (document.getElementById('hijo2')) {
-                document.getElementById('hijo2').contentWindow.postMessage({ tipo: 'navegar-de-a-b', origen: origen, destino: destino }, '*');
+            const hijo2 = document.getElementById('hijo2');
+            if (hijo2 && hijo2.contentWindow) {
+                hijo2.contentWindow.postMessage({ 
+                    tipo: 'navegar-de-a-b', 
+                    origen: origen, 
+                    destino: destino 
+                }, '*');
             } else {
                 console.warn("Advertencia: Iframe 'hijo2' no encontrado. No se puede enviar GPS.");
             }
