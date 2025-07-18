@@ -537,50 +537,104 @@
             isDraggingProgress = false;
         });
 
-        // ================== COMUNICACIÓN CON EL PADRE ==================
+        // ================== FUNCIONES DE SINCRONIZACIÓN ==================
         
-        window.addEventListener('message', (event) => {
-            const data = event.data;
+        // Función para manejar la sincronización de estado con el padre
+        function manejarSincronizacionEstado(estado) {
+            console.log('[Hijo3] Sincronizando estado con el padre:', estado);
             
-            // Habilitar controles (modo casa - OFF)
-            if (data && data.type === 'enableControls') {
-                console.log('🔓 HIJO 3: Recibido mensaje para habilitar controles');
-                enableControls();
+            // Actualizar modo (casa/aventura)
+            if (estado.modo && (estado.modo === 'casa' || estado.modo === 'aventura')) {
+                const nuevoModo = estado.modo === 'casa';
+                if (nuevoModo) {
+                    console.log('🔓 HIJO 3: Activando modo casa - controles habilitados');
+                    enableControls();
+                } else {
+                    console.log('🔒 HIJO 3: Activando modo aventura - controles deshabilitados');
+                    disableControls();
+                }
             }
             
-            // Deshabilitar controles (modo aventura - ON)
-            if (data && data.type === 'disableControls') {
-                console.log('🔒 HIJO 3: Recibido mensaje para deshabilitar controles');
-                disableControls();
-            }
-            
-            // Establecer audio de parada específica
-            if (data && data.type === 'setAudioParada') {
-                const audioIndex = data.index;
-                console.log(`🎯 HIJO 3: Estableciendo audio de parada ${audioIndex}`);
-                if (audioIndex !== undefined && audioIndex >= 0 && audioIndex < audioFiles.length) {
-                    loadAudio(audioIndex);
-                    // En modo aventura, el audio se reproduce automáticamente si los controles están habilitados
-                    if (!controlsDisabled) {
-                        playAudio();
+            // Actualizar audio según el punto actual
+            if (estado.puntoActual) {
+                if (estado.puntoActual.tipo === 'parada' && estado.puntoActual.id !== undefined) {
+                    const audioIndex = estado.puntoActual.id - 1; // Asumiendo que los índices de audio empiezan en 0
+                    console.log(`🎵 HIJO 3: Cargando audio para parada ${estado.puntoActual.id}`);
+                    if (audioIndex >= 0 && audioIndex < audioFiles.length) {
+                        loadAudio(audioIndex);
+                        // Reproducir automáticamente si estamos en modo casa
+                        if (estado.modo === 'casa') {
+                            playAudio();
+                        }
                     }
                 }
             }
             
+            // Actualizar datos compartidos
+            if (estado.datosCompartidos) {
+                // Aquí podrías actualizar otros estados compartidos si es necesario
+                console.log('[Hijo3] Datos compartidos actualizados:', estado.datosCompartidos);
+            }
+        }
+        
+        // ================== COMUNICACIÓN CON EL PADRE ==================
+        
+        window.addEventListener('message', (event) => {
+            const data = event.data;
+            if (!data) return;
+            
+            // Manejar mensajes de sincronización de estado
+            if (data.type === 'sincronizarEstado' && data.estado) {
+                manejarSincronizacionEstado(data.estado);
+                return;
+            }
+            
+            // Mantener compatibilidad con mensajes antiguos
+            
+            // Habilitar controles (modo casa - OFF)
+            if (data.type === 'enableControls') {
+                console.log('🔓 HIJO 3: Recibido mensaje legacy para habilitar controles');
+                enableControls();
+                return;
+            }
+            
+            // Deshabilitar controles (modo aventura - ON)
+            if (data.type === 'disableControls') {
+                console.log('🔒 HIJO 3: Recibido mensaje legacy para deshabilitar controles');
+                disableControls();
+                return;
+            }
+            
+            // Establecer audio de parada específica
+            if (data.type === 'setAudioParada') {
+                const audioIndex = data.index;
+                console.log(`🎯 HIJO 3: Estableciendo audio de parada ${audioIndex} (mensaje legacy)`);
+                if (audioIndex !== undefined && audioIndex >= 0 && audioIndex < audioFiles.length) {
+                    loadAudio(audioIndex);
+                    // Reproducir automáticamente si los controles están habilitados
+                    if (!controlsDisabled) {
+                        playAudio();
+                    }
+                }
+                return;
+            }
+            
             // Control de reproducción desde el padre
-            if (data && data.type === 'playAudio') {
+            if (data.type === 'playAudio') {
                 if (!controlsDisabled) {
                     playAudio();
                 }
+                return;
             }
             
-            if (data && data.type === 'pauseAudio') {
+            if (data.type === 'pauseAudio') {
                 if (!controlsDisabled && isPlaying) {
                     pauseAudio();
                 }
+                return;
             }
             
-            if (data && data.type === 'stopAudio') {
+            if (data.type === 'stopAudio') {
                 if (!controlsDisabled) {
                     audioPlayer.pause();
                     audioPlayer.currentTime = 0;
@@ -589,6 +643,7 @@
                     playPauseBtn.classList.remove('active');
                     updateProgress();
                 }
+                return;
             }
         });
 
