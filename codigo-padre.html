@@ -39,21 +39,75 @@
         #info-parada {
             font-weight:bold;
             margin:0;
-            padding: 7px 12px;
-            background-color: rgba(255,255,255,0.9);
-            border-radius: 7px;
+            padding: 12px 20px;
+            background-color: rgba(255,255,255,0.95);
+            border-radius: 10px;
             position: fixed;
             left: 50%;
             transform: translateX(-50%);
             z-index: 1201;
             display: none;
-            color: #333;
-            font-family: sans-serif;
+            color: #2c3e50;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             text-align: center;
-            bottom: 325px;
-            min-width: 220px;
+            bottom: 340px;
+            min-width: 250px;
             max-width: 90vw;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            border-left: 4px solid #3498db;
+            transition: all 0.3s ease;
+        }
+        
+        /* Estilos para los marcadores personalizados */
+        .custom-marker {
+            position: relative;
+            text-align: center;
+            font-weight: bold;
+            font-size: 14px;
+            color: white;
+            text-shadow: 0 0 3px rgba(0,0,0,0.7);
+        }
+        
+        .marker-pin {
+            width: 30px;
+            height: 30px;
+            border-radius: 50% 50% 50% 0;
+            background: #e74c3c;
+            position: absolute;
+            transform: rotate(-45deg);
+            left: 0;
+            top: 0;
+            margin: -15px 0 0 -15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .marker-pin::after {
+            content: '';
+            width: 24px;
+            height: 24px;
+            margin: 3px 0 0 3px;
+            background: #fff;
+            position: absolute;
+            border-radius: 50%;
+            opacity: 0.3;
+        }
+        
+        .marker-pin.start {
+            background: #2ecc71;
+        }
+        
+        .marker-pin.end {
+            background: #3498db;
+        }
+        
+        .custom-marker span {
+            position: relative;
+            top: -10px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            display: inline-block;
+            transform: rotate(45deg);
         }
         #info-parada.error {
             background-color: #ffeaea;
@@ -257,8 +311,7 @@
 
         // ================== MAPA LEAFLET ==================
         let map;
-        let userLocationMarker = null;
-
+        
         // Inicializar mapa
         document.addEventListener('DOMContentLoaded', function() {
             map = L.map('mapa', {
@@ -281,10 +334,11 @@
             }, 100);
         });
 
-        // --- Estado global ---
-        let polyline = null;
-        let markerA = null, markerB = null;
-        let markerParada = null;
+        // --- Estado global del mapa ---
+        window.markers = {}; // Almacena todos los marcadores
+        window.currentPolyline = null; // Almacena la polyline actual
+        let userLocationMarker = null; // Marcador de ubicación del usuario
+        let markerParada = null; // Marcador de parada actual
 
         // ================== CONTROL DE VISIBILIDAD HIJO 4 ==================
         const iframeHijo4 = document.getElementById('hijo4');
@@ -414,6 +468,10 @@
         });
 
         // ================== MANEJO DE SELECCIÓN DE PARADAS/TRAMOS ==================
+        /**
+         * Maneja la selección de una parada en el mapa
+         * @param {number} paradaIndex - Índice de la parada seleccionada
+         */
         function manejarSeleccionParada(paradaIndex) {
             console.log(`[Padre] Seleccionada parada ${paradaIndex}`);
             
@@ -431,22 +489,64 @@
                 // Resetear vista del mapa
                 resetMapView();
                 
-                // Mostrar marcador de la parada seleccionada
+                // Buscar la parada seleccionada
                 const parada = PARADAS.find(p => p.parada === paradaIndex);
                 if (parada) {
-                    map.setView([parada.coordenadas.lat, parada.coordenadas.lng], 18, { animate: true });
+                    // Añadir marcador de la parada seleccionada
+                    const marker = addMarker(
+                        [parada.coordenadas.lat, parada.coordenadas.lng],
+                        {
+                            title: `Parada ${paradaIndex + 1}: ${parada.nombre}`,
+                            icon: L.divIcon({
+                                className: 'custom-marker',
+                                html: `<div class="marker-pin"></div><span>${paradaIndex + 1}</span>`,
+                                iconSize: [30, 42],
+                                iconAnchor: [15, 42],
+                                popupAnchor: [0, -42]
+                            })
+                        },
+                        `parada-${paradaIndex}`
+                    );
+                    
+                    // Añadir popup informativo
+                    marker.bindPopup(`
+                        <div style="text-align: center;">
+                            <h4 style="margin: 5px 0;">Parada ${paradaIndex + 1}</h4>
+                            <p style="margin: 5px 0;">${parada.nombre}</p>
+                        </div>
+                    `);
+                    
+                    // Centrar el mapa en la parada seleccionada
+                    map.setView([parada.coordenadas.lat, parada.coordenadas.lng], 18, { 
+                        animate: true,
+                        duration: 1
+                    });
                     
                     // Mostrar mensaje informativo
                     mostrarMensajeInfoParada(`Parada ${paradaIndex + 1}: ${parada.nombre}`);
                     
                     // Forzar mostrar el reto si existe, sin esperar al audio
                     if (parada.reto) {
+                        // Enviar mensaje al hijo3 (audio) para que se prepare
+                        const hijo3 = document.getElementById('hijo3');
+                        if (hijo3 && hijo3.contentWindow) {
+                            hijo3.contentWindow.postMessage({
+                                type: 'prepararAudioParada',
+                                paradaIndex: paradaIndex
+                            }, '*');
+                        }
+                        
+                        // Mostrar el reto inmediatamente
                         mostrarRetoEnHijo4(parada.reto);
                     }
                 }
             }
         }
         
+        /**
+         * Maneja la selección de un tramo en el mapa
+         * @param {number} tramoIndex - Índice del tramo seleccionado
+         */
         function manejarSeleccionTramo(tramoIndex) {
             console.log(`[Padre] Seleccionado tramo ${tramoIndex}`);
             
@@ -463,28 +563,142 @@
                 // Encontrar el tramo seleccionado
                 const tramo = TRAMOS.find(t => t.tramo === tramoIndex);
                 if (tramo) {
-                    // Mostrar ruta del tramo
-                    mostrarRutaEnMapa(tramo.ruta, tramo.inicio, tramo.fin);
+                    // Convertir los puntos de la ruta al formato correcto
+                    const puntosRuta = tramo.ruta.map(p => [p.lat, p.lng]);
                     
-                    // Ajustar vista para mostrar todo el tramo
-                    const bounds = L.latLngBounds([
-                        [tramo.inicio.lat, tramo.inicio.lng],
-                        [tramo.fin.lat, tramo.fin.lng]
-                    ]);
-                    map.fitBounds(bounds, { padding: [50, 50] });
+                    // Mostrar la ruta del tramo
+                    showRoute(puntosRuta, {
+                        color: '#3388ff',
+                        weight: 6,
+                        opacity: 0.8,
+                        dashArray: '10, 6',
+                        lineCap: 'round',
+                        lineJoin: 'round'
+                    });
+                    
+                    // Añadir marcador de inicio
+                    if (tramo.inicio) {
+                        const startMarker = addMarker(
+                            [tramo.inicio.lat, tramo.inicio.lng],
+                            {
+                                title: `Inicio del tramo ${tramoIndex}`,
+                                icon: L.divIcon({
+                                    className: 'custom-marker start',
+                                    html: '<div class="marker-pin start"></div>',
+                                    iconSize: [30, 42],
+                                    iconAnchor: [15, 42]
+                                })
+                            },
+                            `tramo-${tramoIndex}-inicio`
+                        );
+                    }
+                    
+                    // Añadir marcador de fin
+                    if (tramo.fin) {
+                        const endMarker = addMarker(
+                            [tramo.fin.lat, tramo.fin.lng],
+                            {
+                                title: `Fin del tramo ${tramoIndex}`,
+                                icon: L.divIcon({
+                                    className: 'custom-marker end',
+                                    html: '<div class="marker-pin end"></div>',
+                                    iconSize: [30, 42],
+                                    iconAnchor: [15, 42]
+                                })
+                            },
+                            `tramo-${tramoIndex}-fin`
+                        );
+                    }
+                    
+                    // Mostrar información del tramo
+                    mostrarMensajeInfoParada(`Tramo ${tramoIndex}: ${tramo.nombre || 'Sin nombre'}`);
                 }
             }
         }
         
+        /**
+         * Limpia todos los elementos del mapa (marcadores, rutas, etc.)
+         */
         function resetMapView() {
-            // Limpiar marcadores y rutas existentes
+            // Limpiar todos los marcadores
             if (window.markers) {
-                Object.values(window.markers).forEach(marker => map.removeLayer(marker));
+                Object.entries(window.markers).forEach(([id, marker]) => {
+                    if (marker && map.hasLayer(marker)) {
+                        map.removeLayer(marker);
+                    }
+                    delete window.markers[id];
+                });
             }
-            if (window.currentPolyline) {
+            
+            // Limpiar polyline actual
+            if (window.currentPolyline && map.hasLayer(window.currentPolyline)) {
                 map.removeLayer(window.currentPolyline);
                 window.currentPolyline = null;
             }
+            
+            // Limpiar marcador de parada
+            if (markerParada && map.hasLayer(markerParada)) {
+                map.removeLayer(markerParada);
+                markerParada = null;
+            }
+            
+            // Limpiar marcador de ubicación del usuario
+            if (userLocationMarker && map.hasLayer(userLocationMarker)) {
+                map.removeLayer(userLocationMarker);
+                userLocationMarker = null;
+            }
+        }
+        
+        /**
+         * Añade un marcador al mapa
+         * @param {Object} latlng - Coordenadas {lat, lng}
+         * @param {Object} options - Opciones del marcador
+         * @param {string} id - Identificador único del marcador
+         * @returns {L.Marker} - El marcador creado
+         */
+        function addMarker(latlng, options = {}, id = null) {
+            const marker = L.marker(latlng, options).addTo(map);
+            if (id) {
+                // Si ya existe un marcador con este ID, lo eliminamos primero
+                if (window.markers[id]) {
+                    map.removeLayer(window.markers[id]);
+                }
+                window.markers[id] = marker;
+            }
+            return marker;
+        }
+        
+        /**
+         * Muestra una ruta en el mapa
+         * @param {Array} points - Array de puntos de la ruta [{lat, lng}, ...]
+         * @param {Object} options - Opciones de la polyline
+         * @returns {L.Polyline} - La polyline creada
+         */
+        function showRoute(points, options = {}) {
+            // Elimina la ruta anterior si existe
+            if (window.currentPolyline) {
+                map.removeLayer(window.currentPolyline);
+            }
+            
+            // Crea una nueva polyline con las opciones por defecto
+            const defaultOptions = {
+                color: '#3388ff',
+                weight: 5,
+                opacity: 0.7,
+                lineJoin: 'round',
+                ...options
+            };
+            
+            // Crea la polyline y la añade al mapa
+            window.currentPolyline = L.polyline(points, defaultOptions).addTo(map);
+            
+            // Ajusta la vista para mostrar toda la ruta
+            map.fitBounds(window.currentPolyline.getBounds(), { 
+                padding: [50, 50],
+                maxZoom: 18
+            });
+            
+            return window.currentPolyline;
         }
         
         function enviarGPSaHijo2(origen, destino) {
