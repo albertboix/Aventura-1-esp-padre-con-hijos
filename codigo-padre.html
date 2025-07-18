@@ -244,6 +244,65 @@
     
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
+        // ================== ESTADO GLOBAL CENTRALIZADO ==================
+        const estadoGlobal = {
+            modo: 'aventura', // 'aventura' o 'casa'
+            puntoActual: null, // { tipo: 'parada'|'tramo', id: number, datos: {...} }
+            ultimaActualizacion: Date.now(),
+            // Datos compartidos entre iframes
+            datosCompartidos: {
+                // Datos de navegación
+                navegacionActiva: false,
+                // Estado de reproducción de audio
+                audio: {
+                    reproduciendo: false,
+                    paradaId: null,
+                    src: null
+                },
+                // Estado de retos
+                reto: {
+                    activo: false,
+                    completado: false,
+                    paradaId: null
+                },
+                // Estado de la brújula
+                brujulaActiva: false
+            }
+        };
+
+        // ================== FUNCIONES DE SINCRONIZACIÓN ==================
+        /**
+         * Sincroniza el estado global con todos los iframes hijos
+         */
+        function sincronizarEstadoConHijos() {
+            // Actualizar timestamp
+            estadoGlobal.ultimaActualizacion = Date.now();
+            
+            const mensaje = {
+                type: 'sincronizarEstado',
+                estado: JSON.parse(JSON.stringify(estadoGlobal)) // Deep clone
+            };
+
+            // Enviar a todos los iframes hijos
+            ['hijo2', 'hijo3', 'hijo4', 'hijo5'].forEach(id => {
+                const iframe = document.getElementById(id);
+                if (iframe && iframe.contentWindow) {
+                    iframe.contentWindow.postMessage(mensaje, '*');
+                }
+            });
+        }
+
+        /**
+         * Actualiza el estado global y sincroniza con los hijos
+         * @param {Object} actualizacion - Objeto con las propiedades a actualizar
+         */
+        function actualizarEstadoGlobal(actualizacion) {
+            // Fusionar la actualización con el estado global
+            Object.assign(estadoGlobal, actualizacion);
+            // Sincronizar con los hijos
+            sincronizarEstadoConHijos();
+        }
+
         // ================== ESTRUCTURA SIMPLIFICADA ==================
         // Ruta base para los archivos de audio
         const AUDIO_BASE_PATH = './audios/';
@@ -500,6 +559,26 @@
             }
         }
 
+        // ================== FUNCIONES AUXILIARES ==================
+        /**
+         * Obtiene el ID de un iframe a partir de su ventana de contenido
+         * @param {Window} window - La ventana del iframe
+         * @returns {string|null} - El ID del iframe o null si no se encuentra
+         */
+        function obtenerIdIframeRemitente(window) {
+            const iframes = document.getElementsByTagName('iframe');
+            for (let i = 0; i < iframes.length; i++) {
+                try {
+                    if (iframes[i].contentWindow === window) {
+                        return iframes[i].id;
+                    }
+                } catch (e) {
+                    // Ignorar errores de política de mismo origen
+                }
+            }
+            return null;
+        }
+
         // ================== MANEJO DE MENSAJES ==================
         // Versión del protocolo de mensajes
         const MESSAGE_PROTOCOL_VERSION = '1.0';
@@ -686,6 +765,75 @@
 
         // Mapa de manejadores de mensajes
         const messageHandlers = {
+            // Mensajes de sincronización
+            'sincronizarEstado': function(datos, evento) {
+                // Actualizar estado global con los datos recibidos
+                if (datos.estado) {
+                    // Preservar la estructura existente del estado global
+                    const nuevoEstado = {
+                        ...estadoGlobal,
+                        ...datos.estado,
+                        datosCompartidos: {
+                            ...estadoGlobal.datosCompartidos,
+                            ...(datos.estado.datosCompartidos || {})
+                        }
+                    };
+                    
+                    // Actualizar estado global sin perder referencias
+                    Object.assign(estadoGlobal, nuevoEstado);
+                    
+                    // Sincronizar con todos los hijos excepto el remitente
+                    const mensaje = {
+                        type: 'sincronizarEstado',
+                        estado: JSON.parse(JSON.stringify(estadoGlobal)),
+                        origen: 'padre',
+                        timestamp: Date.now()
+                    };
+                    
+                    // Determinar el ID del iframe remitente (si existe)
+                    const remitente = obtenerIdIframeRemitente(evento.source);
+                    
+                    // Enviar a todos los hijos excepto al remitente
+                    ['hijo2', 'hijo3', 'hijo4', 'hijo5']
+                        .filter(id => id !== remitente)
+                        .forEach(id => {
+                            const iframe = document.getElementById(id);
+                            if (iframe && iframe.contentWindow) {
+                                iframe.contentWindow.postMessage(mensaje, '*');
+                            }
+                        });
+                }
+                return { success: true };
+            },
+            
+            // Mensaje para actualizar el modo (casa/aventura)
+            'actualizarModo': function(datos) {
+                if (datos.modo && (datos.modo === 'casa' || datos.modo === 'aventura')) {
+                    actualizarEstadoGlobal({
+                        modo: datos.modo,
+                        ultimaActualizacion: Date.now()
+                    });
+                    return { success: true };
+                }
+                return { success: false, error: 'Modo no válido' };
+            },
+            
+            // Mensaje para actualizar el punto actual (parada o tramo)
+            'actualizarPuntoActual': function(datos) {
+                if (datos.puntoActual && datos.puntoActual.tipo && datos.puntoActual.id) {
+                    actualizarEstadoGlobal({
+                        puntoActual: {
+                            tipo: datos.puntoActual.tipo,
+                            id: datos.puntoActual.id,
+                            datos: datos.puntoActual.datos || null
+                        },
+                        ultimaActualizacion: Date.now()
+                    });
+                    return { success: true };
+                }
+                return { success: false, error: 'Datos de punto actual no válidos' };
+            },
+            
             // Mensajes del Hijo 5 (mapa)
             'PARADA_SELECCIONADA': function(datos, evento) {
                 console.log('[Padre] Parada seleccionada en el mapa:', datos);
