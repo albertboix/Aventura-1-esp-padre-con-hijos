@@ -1222,12 +1222,60 @@
       });
     }
 
-    // ================ MANEJO DE MENSAJES ================
+    // ================ SISTEMA DE MENSAJERÍA SIMPLIFICADO ================
+    
+    // Función para enviar mensajes al padre
+    function enviarAlPadre(tipo, datos = {}) {
+        const mensaje = {
+            tipo,
+            origen: 'hijo5',
+            timestamp: Date.now(),
+            ...datos
+        };
+        console.log('HIJO5: Enviando al padre:', mensaje);
+        window.parent.postMessage(mensaje, '*');
+    }
+    
+    // Función para solicitar sincronización
+    function sincronizarConPadre() {
+        console.log('HIJO5: Solicitando sincronización...');
+        enviarAlPadre('sincronizar');
+    }
     
     // Manejador de mensajes entrantes
     window.addEventListener('message', function(event) {
+        // Para depuración
+        console.log('HIJO5: Mensaje recibido:', event.data);
+        
         const mensaje = event.data;
-        if (!mensaje) return;
+        if (!mensaje || !mensaje.tipo) return;
+        
+        // Manejar mensajes de sincronización
+        if (mensaje.tipo === 'sincronizado') {
+            console.log('HIJO5: Sincronización completada:', mensaje.estado);
+            return;
+        }
+        
+        // Manejar mensajes de cambio de modo
+        if (mensaje.tipo === 'modoCambiado') {
+            console.log('HIJO5: Modo cambiado a:', mensaje.modo);
+            // Actualizar la interfaz según el modo
+            const boton = document.getElementById('gps-casa-btn');
+            if (mensaje.modo === 'casa') {
+                boton.classList.add('on');
+                boton.classList.remove('off');
+                boton.title = 'Desactivar GPS';
+            } else {
+                boton.classList.remove('on');
+                boton.classList.add('off');
+                boton.title = 'Activar GPS';
+            }
+            return;
+        }
+        
+        // Manejar otros tipos de mensajes según sea necesario
+        
+        console.log('HIJO5: Tipo de mensaje no manejado:', mensaje.tipo);
         
         // Manejar mensajes del padre
         if (mensaje.tipo === 'mensaje-para-hijo5') {
@@ -1277,32 +1325,36 @@
     
     // Click en el botón principal
     document.getElementById('gps-casa-btn').onclick = function() {
-      console.log(`🎯 HIJO 5: Click en botón GPS - Estado actual: ${gpsOn ? 'ON' : 'OFF'}`);
+      const nuevoModo = gpsOn ? 'fuera' : 'casa';
+      console.log(`🎯 HIJO5: Cambiando a modo ${nuevoModo}`);
       
-      if (gpsOn) {
-        // Cambiar a OFF (modo casa) y mostrar paradas/tramos
-        console.log('🏠 HIJO 5: Cambiando a modo OFF (casa)');
+      // Cambiar el estado visual del botón
+      if (nuevoModo === 'casa') {
+        // Cambiar a modo casa (GPS OFF)
         setGpsState(false);
-        
-        setTimeout(() => {
-          console.log(`🔍 HIJO 5: Después de setGpsState - gpsOn: ${gpsOn}, modoCasa: ${modoCasa}`);
-          mostrarParadasYTramos();
-        }, 50);
-        
-        window.parent.postMessage({ type: 'gpsStatus', on: false }, '*');
+        mostrarParadasYTramos();
       } else {
-        // Cambiar a ON (modo aventura) y ocultar paradas/tramos
-        console.log('🗺️ HIJO 5: Cambiando a modo ON (aventura)');
+        // Cambiar a modo aventura (GPS ON)
         setGpsState(true);
-        
-        setTimeout(() => {
-          console.log(`🔍 HIJO 5: Después de setGpsState - gpsOn: ${gpsOn}, modoCasa: ${modoCasa}`);
-          ocultarParadas();
-        }, 50);
-        
-        window.parent.postMessage({ type: 'gpsStatus', on: true }, '*');
+        ocultarParadas();
       }
+      
+      // Notificar al padre sobre el cambio de modo
+      enviarAlPadre('cambiarModo', { 
+        modo: nuevoModo,
+        timestamp: Date.now()
+      });
+      
+      // Sincronizar el estado después del cambio
+      setTimeout(sincronizarConPadre, 100);
     };
+    
+    // Sincronizar con el padre cuando se carga la página
+    window.addEventListener('load', function() {
+      console.log('HIJO5: Cargado, solicitando sincronización...');
+      // Esperar un momento para asegurar que el padre esté listo
+      setTimeout(sincronizarConPadre, 1000);
+    });
 
     // Cerrar ventana de paradas
     document.getElementById('cerrar-paradas').onclick = function() {
