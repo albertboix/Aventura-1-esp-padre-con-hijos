@@ -505,46 +505,97 @@
         }
     });
 
+    // ================== FUNCIONES DE SINCRONIZACIÓN ==================
+
+    // Función para manejar la sincronización de estado con el padre
+    function manejarSincronizacionEstado(estado) {
+        console.log('[Hijo4] Sincronizando estado con el padre:', estado);
+        
+        // Actualizar modo (casa/aventura)
+        if (estado.modo && (estado.modo === 'casa' || estado.modo === 'aventura')) {
+            const nuevoModo = estado.modo === 'casa';
+            if (nuevoModo) {
+                console.log('🔓 HIJO 4: Activando modo casa - retos habilitados');
+                enableRetos();
+            } else {
+                console.log('🔒 HIJO 4: Activando modo aventura - retos deshabilitados');
+                disableRetos();
+            }
+        }
+        
+        // Actualizar reto según el punto actual
+        if (estado.puntoActual) {
+            if (estado.puntoActual.tipo === 'parada' && estado.puntoActual.id !== undefined) {
+                const retoIndex = estado.puntoActual.id - 1; // Asumiendo que los índices de retos coinciden con las paradas
+                console.log(`🧩 HIJO 4: Punto actual actualizado - ${estado.puntoActual.tipo} ${estado.puntoActual.id}`);
+                
+                // Solo cargar el reto si estamos en modo casa
+                if (estado.modo === 'casa' && retoIndex >= 0 && retoIndex < retosAventura1Es.length) {
+                    renderizarReto(retoIndex);
+                }
+            }
+        }
+        
+        // Actualizar datos compartidos
+        if (estado.datosCompartidos) {
+            // Aquí podrías actualizar otros estados compartidos si es necesario
+            console.log('[Hijo4] Datos compartidos actualizados:', estado.datosCompartidos);
+        }
+    }
+
     // ================== MANEJADOR DE MENSAJES DEL PADRE ==================
 
     window.addEventListener("message", (event) => {
         // En producción, verificar el origen del mensaje para mayor seguridad
         // if (event.origin !== "https://tu-dominio.com") return;
         
-        if (event.data && typeof event.data === 'object') {
-            const data = event.data;
-            
-            // --- HABILITAR/DESHABILITAR RETOS ---
-            if (data.type === 'enableRetos') {
-                console.log('🔓 HIJO 4: Recibido mensaje para habilitar retos');
-                enableRetos();
+        if (!event.data || typeof event.data !== 'object') return;
+        
+        const data = event.data;
+        
+        // Manejar mensajes de sincronización de estado
+        if (data.type === 'sincronizarEstado' && data.estado) {
+            manejarSincronizacionEstado(data.estado);
+            return;
+        }
+        
+        // Mantener compatibilidad con mensajes antiguos
+        
+        // --- HABILITAR/DESHABILITAR RETOS ---
+        if (data.type === 'enableRetos') {
+            console.log('🔓 HIJO 4: Recibido mensaje legacy para habilitar retos');
+            enableRetos();
+            return;
+        }
+        
+        if (data.type === 'disableRetos') {
+            console.log('🔒 HIJO 4: Recibido mensaje legacy para deshabilitar retos');
+            disableRetos();
+            return;
+        }
+        
+        // --- MOSTRAR UN RETO ESPECÍFICO ---
+        if (data.type === 'mostrarRetoIndex' && typeof data.index === 'number') {
+            console.log(`🎯 HIJO 4: Recibido mensaje legacy para mostrar reto ${data.index}`);
+            renderizarReto(data.index);
+            return;
+        }
+        
+        // --- CARGAR LISTA DE RETOS PERSONALIZADA ---
+        if (data.type === 'cargarRetos' && Array.isArray(data.retos)) {
+            console.log('📋 HIJO 4: Cargando lista de retos personalizada');
+            retosAventura1Es.length = 0; // Limpiar array existente
+            Array.prototype.push.apply(retosAventura1Es, data.retos); // Agregar nuevos retos
+            return;
+        }
+        
+        // --- REINICIAR RETO ACTUAL ---
+        if (data.type === 'reiniciarReto') {
+            if (currentRetoIndex !== -1) {
+                console.log('🔄 HIJO 4: Reiniciando reto actual');
+                renderizarReto(currentRetoIndex);
             }
-            
-            if (data.type === 'disableRetos') {
-                console.log('🔒 HIJO 4: Recibido mensaje para deshabilitar retos');
-                disableRetos();
-            }
-            
-            // --- MOSTRAR UN RETO ESPECÍFICO ---
-            if (data.type === 'mostrarRetoIndex' && typeof data.index === 'number') {
-                console.log(`🎯 HIJO 4: Recibido mensaje para mostrar reto ${data.index}`);
-                renderizarReto(data.index);
-            }
-            
-            // --- CARGAR LISTA DE RETOS PERSONALIZADA ---
-            if (data.type === 'cargarRetos' && Array.isArray(data.retos)) {
-                console.log('📋 HIJO 4: Cargando lista de retos personalizada');
-                retosAventura1Es.length = 0; // Limpiar array existente
-                Array.prototype.push.apply(retosAventura1Es, data.retos); // Agregar nuevos retos
-            }
-            
-            // --- REINICIAR RETO ACTUAL ---
-            if (data.type === 'reiniciarReto') {
-                if (currentRetoIndex !== -1) {
-                    console.log('🔄 HIJO 4: Reiniciando reto actual');
-                    renderizarReto(currentRetoIndex);
-                }
-            }
+            return;
         }
     });
 
