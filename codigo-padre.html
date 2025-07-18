@@ -502,48 +502,141 @@
         
         // Manejadores para los botones de navegación
         function handleMostrarPuntoInteres(datos, evento) {
-            console.log('Mostrando punto de interés para la parada:', datos.paradaActual);
-            // Aquí puedes implementar la lógica para mostrar el punto de interés
-            // Por ejemplo, centrar el mapa en la parada actual
-            if (isValidStopIndex(datos.paradaActual)) {
-                const parada = PARADAS[datos.paradaActual];
-                if (parada && parada.coordenadas) {
-                    map.setView([parada.coordenadas.lat, parada.coordenadas.lng], 18);
-                    mostrarMensajeInfoParada(`Punto de interés: ${parada.nombre}`);
-                }
+            console.log('[Padre] Mostrando punto de interés para la parada:', datos.paradaActual);
+            
+            if (!isValidStopIndex(datos.paradaActual)) {
+                console.error('Índice de parada no válido:', datos.paradaActual);
+                return { success: false, error: 'Índice de parada no válido' };
             }
-            return { success: true };
+            
+            const parada = PARADAS[datos.paradaActual];
+            if (!parada || !parada.coordenadas) {
+                console.error('Datos de parada no encontrados:', datos.paradaActual);
+                return { success: false, error: 'Datos de parada no encontrados' };
+            }
+            
+            try {
+                // Centrar el mapa en la parada con zoom cercano
+                map.setView(
+                    [parada.coordenadas.lat, parada.coordenadas.lng], 
+                    18, 
+                    { animate: true, duration: 1 }
+                );
+                
+                // Mostrar marcador de la parada si no está visible
+                mostrarParadaEnMapa(parada);
+                
+                // Mostrar mensaje informativo
+                mostrarMensajeInfoParada(`Punto de interés: ${parada.nombre || 'Parada ' + (datos.paradaActual + 1)}`);
+                
+                return { success: true };
+            } catch (error) {
+                console.error('Error al mostrar el punto de interés:', error);
+                return { success: false, error: error.message };
+            }
         }
 
         function handleMostrarRutaCompleta(datos, evento) {
-            console.log('Mostrando ruta completa desde la parada:', datos.paradaActual);
-            // Aquí puedes implementar la lógica para mostrar la ruta completa
-            // Por ejemplo, mostrar todas las paradas restantes
-            if (isValidStopIndex(datos.paradaActual)) {
-                // Centrar el mapa en la parada actual
-                const parada = PARADAS[datos.paradaActual];
-                if (parada && parada.coordenadas) {
-                    map.setView([parada.coordenadas.lat, parada.coordenadas.lng], 14);
-                }
-                // Aquí podrías mostrar todas las paradas restantes en el mapa
-                mostrarMensajeInfoParada('Mostrando ruta completa');
+            console.log('[Padre] Mostrando ruta completa desde la parada:', datos.paradaActual);
+            
+            if (!isValidStopIndex(datos.paradaActual)) {
+                console.error('Índice de parada no válido:', datos.paradaActual);
+                return { success: false, error: 'Índice de parada no válido' };
             }
-            return { success: true };
+            
+            try {
+                const parada = PARADAS[datos.paradaActual];
+                if (!parada || !parada.coordenadas) {
+                    throw new Error('Datos de parada no encontrados');
+                }
+                
+                // Centrar el mapa en la parada actual con un zoom más amplio
+                map.setView(
+                    [parada.coordenadas.lat, parada.coordenadas.lng], 
+                    14, 
+                    { animate: true, duration: 1 }
+                );
+                
+                // Mostrar todas las paradas restantes
+                mostrarParadasRestantes(datos.paradaActual);
+                
+                // Mostrar ruta si está disponible
+                if (parada.ruta) {
+                    mostrarRutaEnMapa(parada.ruta);
+                }
+                
+                mostrarMensajeInfoParada('Mostrando ruta completa');
+                return { success: true };
+                
+            } catch (error) {
+                console.error('Error al mostrar la ruta completa:', error);
+                return { success: false, error: error.message };
+            }
         }
 
         function handleAlternarBrujula(datos, evento) {
-            console.log('Modo brújula:', datos.activada ? 'activado' : 'desactivado');
-            // Aquí puedes implementar la lógica para activar/desactivar la brújula
-            if (datos.activada) {
-                // Activar modo brújula
-                mostrarMensajeInfoParada('Modo brújula activado');
-                // Aquí iría el código para activar la brújula
-            } else {
-                // Desactivar modo brújula
-                mostrarMensajeInfoParada('Modo brújula desactivado');
-                // Aquí iría el código para desactivar la brújula
+            console.log('[Padre] Modo brújula:', datos.activada ? 'activado' : 'desactivado');
+            
+            try {
+                // Actualizar el estado de navegación
+                navigationState.brújulaActiva = datos.activada === true;
+                
+                // Aquí iría la lógica para activar/desactivar la brújula
+                if (navigationState.brújulaActiva) {
+                    // Activar seguimiento de orientación
+                    if (window.DeviceOrientationEvent) {
+                        window.addEventListener('deviceorientation', manejarOrientacion, false);
+                        mostrarMensajeInfoParada('Modo brújula activado');
+                    } else {
+                        mostrarMensajeInfoParada('Tu dispositivo no soporta la brújula', true);
+                        return { success: false, error: 'Dispositivo no compatible' };
+                    }
+                } else {
+                    // Desactivar seguimiento de orientación
+                    window.removeEventListener('deviceorientation', manejarOrientacion, false);
+                    mostrarMensajeInfoParada('Modo brújula desactivado');
+                }
+                
+                // Sincronizar con el hijo2
+                enviarMensaje('hijo2', 'sincronizarBrujula', {
+                    activada: navigationState.brújulaActiva
+                });
+                
+                return { success: true };
+                
+            } catch (error) {
+                console.error('Error al alternar la brújula:', error);
+                return { success: false, error: error.message };
             }
-            return { success: true };
+        }
+        
+        // Función auxiliar para manejar la orientación del dispositivo
+        function manejarOrientacion(event) {
+            if (!event.alpha) return; // No hay datos de orientación
+            
+            // Aquí iría la lógica para rotar el mapa según la orientación
+            // Por ejemplo:
+            // const rotacion = event.alpha; // Grados (0-360)
+            // map.setBearing(rotacion);
+        }
+        
+        // Función auxiliar para mostrar una parada en el mapa
+        function mostrarParadaEnMapa(parada) {
+            // Implementar lógica para mostrar un marcador de parada
+            // Por ejemplo:
+            // L.marker([parada.coordenadas.lat, parada.coordenadas.lng]).addTo(map);
+        }
+        
+        // Función auxiliar para mostrar paradas restantes
+        function mostrarParadasRestantes(desdeIndice) {
+            // Implementar lógica para mostrar marcadores de paradas restantes
+            // Por ejemplo:
+            // for (let i = desdeIndice; i < PARADAS.length; i++) {
+            //     const p = PARADAS[i];
+            //     if (p.coordenadas) {
+            //         L.marker([p.coordenadas.lat, p.coordenadas.lng]).addTo(map);
+            //     }
+            // }
         }
 
         // Mapa de manejadores de mensajes
