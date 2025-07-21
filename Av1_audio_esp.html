@@ -262,7 +262,44 @@
     </div>
 
     <script>
-        // ================== VARIABLES GLOBALES ==================
+        // ================== CONSTANTES Y CONFIGURACIÓN ==================
+        const COMPONENT_ID = 'hijo3';
+        const MESSAGE_PROTOCOL_VERSION = '1.0';
+        
+        // Tipos de mensajes soportados
+        const MessageType = {
+            // Mensajes del hijo al padre
+            ESTADO_REPRODUCTOR: 'estadoReproductor',
+            REPRODUCCION_INICIADA: 'reproduccionIniciada',
+            REPRODUCCION_PAUSADA: 'reproduccionPausada',
+            REPRODUCCION_TERMINADA: 'reproduccionTerminada',
+            PROGRESO_REPRODUCCION: 'progresoReproduccion',
+            ERROR_REPRODUCTOR: 'errorReproductor',
+            
+            // Mensajes del padre al hijo
+            REPRODUCIR: 'reproducir',
+            PAUSAR: 'pausar',
+            DETENER: 'detener',
+            ESTABLECER_VOLUMEN: 'establecerVolumen',
+            ESTABLECER_PROGRESO: 'establecerProgreso',
+            ACTUALIZAR_ESTADO: 'actualizarEstado',
+            SOLICITUD_ESTADO: 'solicitudEstado',
+            
+            // Mensajes de sistema
+            ACK: 'ack',
+            ERROR: 'error',
+            SINCRONIZAR_ESTADO: 'sincronizarEstado'
+        };
+        
+        // Estados del reproductor
+        const EstadoReproductor = {
+            DETENIDO: 'detenido',
+            REPRODUCIENDO: 'reproduciendo',
+            PAUSADO: 'pausado',
+            ERROR: 'error'
+        };
+        
+        // ================== ELEMENTOS DEL DOM ==================
         const playPauseBtn = document.getElementById('playPauseBtn');
         const retosBtn = document.getElementById('retosBtn');
         const progressBar = document.getElementById('progressBar');
@@ -270,11 +307,80 @@
         const currentTimeSpan = document.getElementById('currentTime');
         const durationSpan = document.getElementById('duration');
         const audioPlayer = document.getElementById('audioPlayer');
-
-        let isPlaying = false;
-        let currentMediaIndex = 0;
+        
+        // ================== ESTADO DEL REPRODUCTOR ==================
+        let estado = {
+            version: MESSAGE_PROTOCOL_VERSION,
+            estado: EstadoReproductor.DETENIDO,
+            indiceActual: 0,
+            progreso: 0,
+            volumen: 1,
+            modoAventura: true, // Por defecto en modo aventura (controles deshabilitados)
+            ultimoError: null,
+            metadatos: {
+                duracion: 0,
+                titulo: '',
+                ruta: ''
+            },
+            // Suscriptores para notificaciones de cambio de estado
+            _suscriptores: new Set(),
+            
+            // Método para actualizar el estado y notificar a los suscriptores
+            actualizar(nuevoEstado) {
+                const estadoAnterior = { ...this };
+                Object.assign(this, { ...nuevoEstado, _suscriptores: this._suscriptores });
+                this._notificarCambios(estadoAnterior);
+                this._notificarPadre(estadoAnterior);
+            },
+            
+            // Suscribirse a cambios de estado
+            suscribir(callback) {
+                this._suscriptores.add(callback);
+                return () => this._suscriptores.delete(callback);
+            },
+            
+            // Notificar a los suscriptores sobre cambios
+            _notificarCambios(estadoAnterior) {
+                const cambios = {};
+                
+                // Identificar qué propiedades cambiaron
+                Object.keys(this).forEach(key => {
+                    if (key !== '_suscriptores' && this[key] !== estadoAnterior[key]) {
+                        cambios[key] = this[key];
+                    }
+                });
+                
+                // Solo notificar si hay cambios
+                if (Object.keys(cambios).length > 0) {
+                    this._suscriptores.forEach(callback => callback(this, estadoAnterior, cambios));
+                }
+            },
+            
+            // Notificar al padre sobre cambios importantes
+            _notificarPadre(estadoAnterior) {
+                // No notificar si no hay cambios relevantes
+                if (this.estado === estadoAnterior?.estado && 
+                    this.indiceActual === estadoAnterior?.indiceActual &&
+                    this.progreso === estadoAnterior?.progreso) {
+                    return;
+                }
+                
+                enviarMensajeAlPadre({
+                    tipo: MessageType.ESTADO_REPRODUCTOR,
+                    estado: this.estado,
+                    indiceActual: this.indiceActual,
+                    progreso: this.progreso,
+                    volumen: this.volumen,
+                    modoAventura: this.modoAventura
+                });
+            }
+        };
+        
+        // Variables de control
         let isDraggingProgress = false;
-        let controlsDisabled = true; // Empezar con controles deshabilitados (modo aventura)
+        let ultimoMensajeId = 0;
+        const pendientesAck = new Map();
+        const TIEMPO_ESPERA_ACK = 5000; // 5 segundos
 
         // Array de audios correspondientes a las paradas
         const audioFiles = [
@@ -335,77 +441,442 @@
             console.log('🚫 HIJO 3: Controles de audio deshabilitados y desactivados visualmente (rojo)');
         }
 
+        // ================== FUNCIONES DE MENSAJERÍA ==================
+
+        /**
+         * Envía un mensaje al padre con el protocolo estandarizado
+         * @param {Object} mensaje - El mensaje a enviar
+         * @param {boolean} [requiereAck=false] - Si el mensaje requiere confirmación de recepción
+         * @returns {Promise} Promesa que se resuelve cuando se recibe ACK o se rechaza por timeout
+         */
+        function enviarMensajeAlPadre(mensaje, requiereAck = false) {
+            const mensajeId = ++ultimoMensajeId;
+            const mensajeConId = {
+                ...mensaje,
+                origen: COMPONENT_ID,
+                version: MESSAGE_PROTOCOL_VERSION,
+                timestamp: Date.now(),
+                id: mensajeId
+            };
+
+            console.log(`📤 HIJO 3: Enviando mensaje al padre:`, mensajeConId);
+            window.parent.postMessage(mensajeConId, '*');
+
+            if (!requiereAck) return Promise.resolve();
+
+            return new Promise((resolve, reject) => {
+                const timeoutId = setTimeout(() => {
+                    pendientesAck.delete(mensajeId);
+                    reject(new Error(`Timeout esperando ACK para mensaje ${mensajeId}`));
+                }, TIEMPO_ESPERA_ACK);
+
+                pendientesAck.set(mensajeId, { resolve, timeoutId });
+            });
+        }
+
+        /**
+         * Maneja los mensajes entrantes del padre
+         * @param {MessageEvent} event - Evento de mensaje recibido
+         */
+        function manejarMensajeDelPadre(event) {
+            const mensaje = event.data;
+            
+            // Validar el mensaje básico
+            if (!mensaje) return;
+            if (mensaje.origen === COMPONENT_ID) return;
+            if (mensaje.destino && mensaje.destino !== COMPONENT_ID) return;
+
+            console.log(`📥 HIJO 3: Mensaje recibido del padre:`, mensaje);
+
+            // Manejar ACKs primero (tanto para mensajes nuevos como legacy)
+            if (mensaje.tipo === 'ACK' || mensaje.type === 'ack') {
+                const idMensaje = mensaje.id || mensaje.idMensaje;
+                if (idMensaje && pendientesAck.has(idMensaje)) {
+                    const { resolve, timeoutId } = pendientesAck.get(idMensaje);
+                    clearTimeout(timeoutId);
+                    resolve();
+                    pendientesAck.delete(idMensaje);
+                }
+                return;
+            }
+
+            // Enviar ACK si el mensaje lo requiere (solo para el protocolo nuevo)
+            if (mensaje.id && mensaje.protocolo === 'hijo3-audio') {
+                enviarMensajeAlPadre({
+                    protocolo: 'hijo3-audio',
+                    version: '1.0',
+                    tipo: 'ack',
+                    idMensaje: mensaje.id,
+                    timestamp: Date.now(),
+                    origen: COMPONENT_ID,
+                    destino: mensaje.origen || 'padre'
+                }, false); // No esperar ACK para el ACK
+            }
+
+            // Procesar el mensaje según su tipo
+            try {
+                // Manejar mensajes del protocolo estandarizado
+                if (mensaje.protocolo === 'hijo3-audio') {
+                    manejarMensajeEstandarizado(mensaje);
+                } 
+                // Manejar mensajes legacy
+                else if (mensaje.type) {
+                    manejarMensajeLegacy(mensaje);
+                } 
+                // Mensaje sin tipo reconocido
+                else {
+                    console.warn('Mensaje sin tipo reconocido:', mensaje);
+                }
+            } catch (error) {
+                console.error('❌ Error al procesar mensaje:', error);
+                enviarMensajeAlPadre({
+                    protocolo: 'hijo3-audio',
+                    version: '1.0',
+                    tipo: 'error',
+                    error: error.message,
+                    detalles: error.stack,
+                    origen: COMPONENT_ID,
+                    timestamp: Date.now()
+                });
+            }
+        }
+
+        /**
+         * Maneja mensajes que siguen el protocolo estandarizado
+         * @param {Object} mensaje - Mensaje estandarizado
+         */
+        function manejarMensajeEstandarizado(mensaje) {
+            const { tipo, datos } = mensaje;
+            
+            switch (tipo) {
+                case 'reproducir':
+                    if (!controlsDisabled) playAudio();
+                    break;
+                
+                case 'pausar':
+                    if (!controlsDisabled) pauseAudio();
+                    break;
+                
+                case 'detener':
+                    if (!controlsDisabled) detenerAudio();
+                    break;
+                
+                case 'establecerVolumen':
+                    if (typeof datos?.volumen === 'number' && !controlsDisabled) {
+                        establecerVolumen(datos.volumen);
+                    }
+                    break;
+                
+                case 'establecerProgreso':
+                    if (typeof datos?.progreso === 'number' && !controlsDisabled) {
+                        establecerProgreso(datos.progreso);
+                    }
+                    break;
+                
+                case 'sincronizarEstado':
+                    if (datos?.estado) {
+                        sincronizarEstado(datos.estado);
+                    }
+                    break;
+                
+                case 'solicitarEstado':
+                    enviarMensajeAlPadre({
+                        tipo: 'estadoActual',
+                        estado: {
+                            modo: controlsDisabled ? 'aventura' : 'casa',
+                            pistaActual: estado.indiceActual,
+                            estadoReproduccion: estado.estado,
+                            volumen: estado.volumen,
+                            progreso: estado.progreso,
+                            tiempoActual: audioPlayer.currentTime,
+                            duracion: audioPlayer.duration || 0
+                        }
+                    });
+                    break;
+                
+                case 'cambiarPista':
+                    if (typeof datos?.indice === 'number' && !isNaN(datos.indice)) {
+                        loadAudio(datos.indice);
+                        if (datos.reproducirAutomaticamente && !controlsDisabled) {
+                            playAudio();
+                        }
+                    }
+                    break;
+                
+                default:
+                    console.warn(`Tipo de mensaje estandarizado no reconocido: ${tipo}`, mensaje);
+            }
+        }
+
+        /**
+         * Maneja mensajes del protocolo legacy para mantener compatibilidad
+         * @param {Object} mensaje - Mensaje en formato legacy
+         */
+        function manejarMensajeLegacy(mensaje) {
+            console.warn('⚠️ Usando manejador legacy para mensaje:', mensaje.type);
+            
+            const legacyHandlers = {
+                'playAudio': () => !controlsDisabled && playAudio(),
+                'pauseAudio': () => !controlsDisabled && pauseAudio(),
+                'stopAudio': () => !controlsDisabled && detenerAudio(),
+                'setAudioParada': () => {
+                    if (typeof mensaje.index === 'number' && !controlsDisabled) {
+                        loadAudio(mensaje.index);
+                    }
+                },
+                'setVolume': () => {
+                    if (typeof mensaje.volume === 'number' && !controlsDisabled) {
+                        establecerVolumen(mensaje.volume);
+                    }
+                },
+                'seek': () => {
+                    if (typeof mensaje.time === 'number' && !controlsDisabled) {
+                        audioPlayer.currentTime = mensaje.time;
+                        updateProgress();
+                    }
+                },
+                'enableControls': enableControls,
+                'disableControls': disableControls,
+                'sincronizarEstado': () => mensaje.estado && sincronizarEstado(mensaje.estado)
+            };
+            
+            const handler = legacyHandlers[mensaje.type];
+            if (handler) {
+                handler();
+            } else {
+                console.warn(`Tipo de mensaje legacy no reconocido: ${mensaje.type}`, mensaje);
+            }
+        }
+        }
+
+        /**
+         * Actualiza el estado del reproductor y notifica a los suscriptores
+         * @param {Object} nuevoEstado - Nuevos valores de estado
+         */
+        function actualizarEstado(nuevoEstado) {
+            estado.actualizar({
+                ...estado,
+                ...nuevoEstado,
+                _suscriptores: estado._suscriptores // Preservar los suscriptores
+            });
+        }
+
         // ================== FUNCIONES DEL REPRODUCTOR ==================
 
+        /**
+         * Formatea segundos a formato MM:SS
+         * @param {number} seconds - Tiempo en segundos
+         * @returns {string} Tiempo formateado
+         */
         function formatTime(seconds) {
             const minutes = Math.floor(seconds / 60);
             const remainingSeconds = Math.floor(seconds % 60);
             return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
         }
 
+        /**
+         * Actualiza la interfaz de usuario con el progreso actual de la reproducción
+         */
         function updateProgress() {
-            if (audioPlayer.duration) {
-                const progress = (audioPlayer.currentTime / audioPlayer.duration) * 100;
-                progressBar.style.width = `${progress}%`;
-                currentTimeSpan.textContent = formatTime(audioPlayer.currentTime);
-                durationSpan.textContent = formatTime(audioPlayer.duration);
+            if (audioPlayer.duration && audioPlayer.duration > 0) {
+                const progressPercent = (audioPlayer.currentTime / audioPlayer.duration) * 100;
+                progressBar.style.width = progressPercent + '%';
+                currentTimeDisplay.textContent = formatTime(audioPlayer.currentTime);
+                
+                // Actualizar el estado con el progreso actual
+                if (estado) {
+                    estado.actualizar({
+                        progreso: progressPercent,
+                        tiempoActual: audioPlayer.currentTime,
+                        metadatos: {
+                            ...estado.metadatos,
+                            duracion: audioPlayer.duration
+                        }
+                    });
+                    
+                    // Notificar al padre periódicamente del progreso (pero no en cada frame para no saturar)
+                    if (Date.now() - ultimaActualizacionProgreso > 250) { // Actualizar cada 250ms
+                        ultimaActualizacionProgreso = Date.now();
+                        enviarMensajeAlPadre({
+                            tipo: 'actualizacionProgreso',
+                            progreso: progressPercent,
+                            tiempoActual: audioPlayer.currentTime,
+                            duracion: audioPlayer.duration,
+                            indiceActual: estado.indiceActual
+                        });
+                    }
+                }
             }
         }
 
+        /**
+         * Carga un archivo de audio por su índice
+         * @param {number} index - Índice del audio en el array audioFiles
+         */
         function loadAudio(index) {
             if (index >= 0 && index < audioFiles.length) {
-                currentMediaIndex = index;
+                // Actualizar el estado con el nuevo índice
+                estado.actualizar({
+                    indiceActual: index,
+                    estado: EstadoReproductor.DETENIDO,
+                    metadatos: {
+                        titulo: audioFiles[index].title,
+                        ruta: audioFiles[index].file,
+                        duracion: 0
+                    }
+                });
+                
+                // Cargar el audio
                 audioPlayer.src = audioFiles[index].file;
                 console.log(`🎵 HIJO 3: Cargando audio - ${audioFiles[index].title}`);
                 
-                // Notificar al padre sobre el cambio de medio
-                window.parent.postMessage({ 
-                    type: 'audioLoaded', 
-                    index: currentMediaIndex, 
-                    title: audioFiles[currentMediaIndex].title 
-                }, '*');
+                // Notificar al padre
+                enviarMensajeAlPadre({
+                    tipo: MessageType.ESTADO_REPRODUCTOR,
+                    estado: estado.estado,
+                    indiceActual: index,
+                    titulo: audioFiles[index].title
+                });
+                
+                // Precargar el audio
+                const precargar = () => {
+                    audioPlayer.load();
+                    audioPlayer.removeEventListener('canplaythrough', precargar);
+                };
+                audioPlayer.addEventListener('canplaythrough', precargar);
             }
         }
-
-        function playAudio() {
-            if (controlsDisabled) {
-                console.log('🚫 HIJO 3: No se puede reproducir - controles deshabilitados');
-                return;
+        
+        /**
+         * Establece el volumen del reproductor
+         * @param {number} volumen - Nivel de volumen (0 a 1)
+         */
+        function establecerVolumen(volumen) {
+            const nuevoVolumen = Math.max(0, Math.min(1, volumen));
+            audioPlayer.volume = nuevoVolumen;
+            estado.actualizar({ volumen: nuevoVolumen });
+        }
+        
+        /**
+         * Establece el progreso de reproducción
+         * @param {number} progreso - Porcentaje de progreso (0 a 100)
+         */
+        function establecerProgreso(progreso) {
+            if (audioPlayer.duration) {
+                const nuevoTiempo = (progreso / 100) * audioPlayer.duration;
+                audioPlayer.currentTime = nuevoTiempo;
+                updateProgress(); // Actualizar la UI
             }
+        }
+        
+        /**
+         * Detiene la reproducción y reinicia el audio
+         */
+        function detenerAudio() {
+            audioPlayer.pause();
+            audioPlayer.currentTime = 0;
             
-            audioPlayer.play().then(() => {
-                isPlaying = true;
-                playPauseBtn.innerHTML = '<span class="icon-play"><i class="fas fa-pause"></i></span>';
-                playPauseBtn.classList.add('active');
-                console.log(`▶️ HIJO 3: Reproduciendo audio - ${audioFiles[currentMediaIndex].title}`);
-                
-                // Actualizar progreso mientras se reproduce
-                updateProgress();
-                
-                window.parent.postMessage({ 
-                    type: 'audioPlaying', 
-                    index: currentMediaIndex 
-                }, '*');
-            }).catch(error => {
-                console.error('❌ Error al reproducir audio:', error);
+            estado.actualizar({
+                estado: EstadoReproductor.DETENIDO,
+                progreso: 0
+            });
+            
+            // Actualizar la UI
+            playPauseBtn.innerHTML = '<span class="icon-play"><i class="fas fa-play"></i></span>';
+            playPauseBtn.classList.remove('active');
+            updateProgress();
+            
+            console.log('⏹️ HIJO 3: Reproducción detenida');
+            
+            // Notificar al padre
+            enviarMensajeAlPadre({
+                tipo: MessageType.REPRODUCCION_TERMINADA,
+                indiceActual: estado.indiceActual
             });
         }
 
-        function pauseAudio() {
-            audioPlayer.pause();
-            isPlaying = false;
-            playPauseBtn.innerHTML = '<span class="icon-play"><i class="fas fa-play"></i></span>';
-            playPauseBtn.classList.remove('active');
-            console.log(`⏸️ HIJO 3: Audio pausado - ${audioFiles[currentMediaIndex].title}`);
+        /**
+         * Inicia o reanuda la reproducción del audio
+         * @returns {Promise} Promesa que se resuelve cuando la reproducción comienza
+         */
+        function playAudio() {
+            if (estado.modoAventura) {
+                console.log('🚫 HIJO 3: No se puede reproducir - controles deshabilitados (modo aventura)');
+                return Promise.reject(new Error('Controles deshabilitados en modo aventura'));
+            }
             
-            window.parent.postMessage({ 
-                type: 'audioPaused', 
-                index: currentMediaIndex 
-            }, '*');
+            return audioPlayer.play().then(() => {
+                // Actualizar el estado
+                estado.actualizar({
+                    estado: EstadoReproductor.REPRODUCIENDO
+                });
+                
+                // Actualizar la UI
+                playPauseBtn.innerHTML = '<span class="icon-play"><i class="fas fa-pause"></i></span>';
+                playPauseBtn.classList.add('active');
+                
+                console.log(`▶️ HIJO 3: Reproduciendo audio - ${audioFiles[estado.indiceActual]?.title || 'Desconocido'}`);
+                
+                // Notificar al padre
+                enviarMensajeAlPadre({
+                    tipo: MessageType.REPRODUCCION_INICIADA,
+                    indiceActual: estado.indiceActual,
+                    tiempoActual: audioPlayer.currentTime,
+                    duracion: audioPlayer.duration
+                });
+                
+                return true;
+            }).catch(error => {
+                console.error('❌ Error al reproducir audio:', error);
+                
+                // Actualizar el estado de error
+                estado.actualizar({
+                    estado: EstadoReproductor.ERROR,
+                    ultimoError: error.message
+                });
+                
+                // Notificar al padre del error
+                enviarMensajeAlPadre({
+                    tipo: MessageType.ERROR_REPRODUCTOR,
+                    error: error.message,
+                    stack: error.stack
+                });
+                
+                return Promise.reject(error);
+            });
         }
 
+        /**
+         * Pausa la reproducción del audio
+         */
+        function pauseAudio() {
+            audioPlayer.pause();
+            
+            // Actualizar el estado
+            estado.actualizar({
+                estado: EstadoReproductor.PAUSADO
+            });
+            
+            // Actualizar la UI
+            playPauseBtn.innerHTML = '<span class="icon-play"><i class="fas fa-play"></i></span>';
+            playPauseBtn.classList.remove('active');
+            
+            console.log(`⏸️ HIJO 3: Audio pausado - ${audioFiles[estado.indiceActual]?.title || 'Desconocido'}`);
+            
+            // Notificar al padre
+            enviarMensajeAlPadre({
+                tipo: MessageType.REPRODUCCION_PAUSADA,
+                indiceActual: estado.indiceActual,
+                tiempoActual: audioPlayer.currentTime,
+                duracion: audioPlayer.duration
+            });
+        }
+
+        /**
+         * Alterna entre reproducir y pausar el audio
+         */
         function togglePlayPause() {
-            if (isPlaying) {
+            if (estado.estado === EstadoReproductor.REPRODUCIENDO) {
                 pauseAudio();
             } else {
                 playAudio();
@@ -413,31 +884,35 @@
         }
 
         function seekTo(e) {
-            if (controlsDisabled || !audioPlayer.duration) return;
-
+            if (controlsDisabled) return;
+            
             const rect = progressContainer.getBoundingClientRect();
-            let clickX = e.clientX - rect.left;
-
-            if (e.touches && e.touches.length > 0) {
-                clickX = e.touches[0].clientX - rect.left;
-            }
-
-            const newTime = (clickX / rect.width) * audioPlayer.duration;
-            const clampedTime = Math.max(0, Math.min(newTime, audioPlayer.duration));
-            audioPlayer.currentTime = clampedTime;
+            const pos = (e.clientX - rect.left) / rect.width;
+            const seekTime = Math.max(0, Math.min(pos * audioPlayer.duration, audioPlayer.duration));
             
-            // Actualizar inmediatamente la visualización
-            updateProgress();
+            // Actualizar la posición del audio
+            audioPlayer.currentTime = seekTime;
             
-            // Notificar al padre sobre el cambio de posición
-            const progressPercent = (clampedTime / audioPlayer.duration) * 100;
-            window.parent.postMessage({ 
-                type: 'audioSeeked', 
-                index: currentMediaIndex,
-                currentTime: clampedTime,
-                duration: audioPlayer.duration,
-                progress: progressPercent
-            }, '*');
+            // Actualizar el estado y la UI
+            const progressPercent = (seekTime / audioPlayer.duration) * 100;
+            estado.actualizar({
+                progreso: progressPercent,
+                tiempoActual: seekTime
+            });
+            
+            // Actualizar la barra de progreso visualmente
+            progressBar.style.width = progressPercent + '%';
+            currentTimeDisplay.textContent = formatTime(seekTime);
+            
+            // Notificar al padre del cambio de posición
+            enviarMensajeAlPadre({
+                tipo: 'busquedaRealizada',
+                tiempoActual: seekTime,
+                progreso: progressPercent,
+                indiceActual: estado.indiceActual
+            });
+            
+            console.log(`🔍 HIJO 3: Búsqueda a ${seekTime.toFixed(2)}s (${progressPercent.toFixed(1)}%)`);
         }
 
         // ================== EVENT LISTENERS ==================
@@ -464,43 +939,91 @@
             }, '*');
         });
 
-        // Eventos de audio
-        audioPlayer.addEventListener('timeupdate', () => {
-            updateProgress();
-            
-            // Enviar actualización de progreso al padre
-            if (audioPlayer.duration) {
-                const progressPercent = (audioPlayer.currentTime / audioPlayer.duration) * 100;
-                window.parent.postMessage({ 
-                    type: 'audioProgress', 
-                    index: currentMediaIndex,
-                    currentTime: audioPlayer.currentTime,
-                    duration: audioPlayer.duration,
-                    progress: progressPercent
-                }, '*');
+        // Eventos del reproductor de audio
+        audioPlayer.addEventListener('play', () => {
+            // El evento 'play' se dispara cuando la reproducción comienza o se reanuda
+            if (estado.estado !== EstadoReproductor.REPRODUCIENDO) {
+                estado.actualizar({
+                    estado: EstadoReproductor.REPRODUCIENDO,
+                    ultimoError: null
+                });
             }
         });
+
+        audioPlayer.addEventListener('pause', () => {
+            // Solo actualizamos el estado a PAUSADO si no está en estado DETENIDO o ERROR
+            if (estado.estado === EstadoReproductor.REPRODUCIENDO) {
+                estado.actualizar({
+                    estado: EstadoReproductor.PAUSADO
+                });
+            }
+        });
+
+        audioPlayer.addEventListener('timeupdate', updateProgress);
         
         audioPlayer.addEventListener('loadedmetadata', () => {
+            // Actualizar la duración en el estado cuando se cargan los metadatos
+            estado.actualizar({
+                metadatos: {
+                    ...estado.metadatos,
+                    duracion: audioPlayer.duration
+                }
+            });
+            
+            // Actualizar la UI
             updateProgress();
             
-            // Notificar duración al padre cuando se carga el metadata
-            window.parent.postMessage({ 
-                type: 'audioMetadataLoaded', 
-                index: currentMediaIndex,
-                duration: audioPlayer.duration
-            }, '*');
+            // Notificar al padre
+            enviarMensajeAlPadre({
+                tipo: 'metadatosCargados',
+                duracion: audioPlayer.duration,
+                indiceActual: estado.indiceActual
+            });
         });
         
         audioPlayer.addEventListener('ended', () => {
-            isPlaying = false;
+            console.log('✅ HIJO 3: Reproducción finalizada');
+            
+            // Actualizar el estado
+            estado.actualizar({
+                estado: EstadoReproductor.DETENIDO,
+                progreso: 100
+            });
+            
+            // Actualizar la UI
             playPauseBtn.innerHTML = '<span class="icon-play"><i class="fas fa-play"></i></span>';
             playPauseBtn.classList.remove('active');
+            updateProgress();
             
-            window.parent.postMessage({ 
-                type: 'audioEnded', 
-                index: currentMediaIndex 
-            }, '*');
+            // Notificar al padre
+            enviarMensajeAlPadre({
+                tipo: 'reproduccionTerminada',
+                indiceActual: estado.indiceActual
+            });
+        });
+
+        audioPlayer.addEventListener('error', () => {
+            const error = {
+                code: audioPlayer.error ? audioPlayer.error.code : 'UNKNOWN',
+                message: 'Error en el reproductor de audio',
+                details: audioPlayer.error ? audioPlayer.error.message : 'Error desconocido'
+            };
+            
+            console.error('❌ Error en el reproductor de audio:', error);
+            
+            // Actualizar el estado de error
+            estado.actualizar({
+                estado: EstadoReproductor.ERROR,
+                ultimoError: error
+            });
+            
+            // Notificar al padre
+            enviarMensajeAlPadre({
+                tipo: 'errorReproductor',
+                error: error.message,
+                detalles: error.details,
+                codigo: error.code
+            });
         });
 
         // Eventos de la barra de progreso
