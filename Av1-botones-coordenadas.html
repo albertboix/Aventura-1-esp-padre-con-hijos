@@ -842,7 +842,204 @@
     }
 ];
 
-        // Variables globales
+        // ================== SISTEMA DE MENSAJERÍA ==================
+        const Mensajes = {
+            // Tipos de mensajes estándar
+            TIPOS: {
+                // Mensajes del hijo al padre
+                ESTADO: 'estado',
+                NAVEGACION: 'navegacion',
+                ERROR: 'error',
+                CONFIRMACION: 'confirmacion',
+                SOLICITUD: 'solicitud',
+                
+                // Mensajes del padre al hijo
+                ACCION: 'accion',
+                ACTUALIZACION_ESTADO: 'actualizacion_estado',
+                RESPUESTA: 'respuesta',
+                
+                // Compatibilidad con sistema existente
+                SINCRONIZAR_ESTADO: 'sincronizarEstado',
+                SINCRONIZAR_BRUJULA: 'sincronizarBrujula'
+            },
+            
+            // Creador de mensajes estandarizado
+            crear(tipo, datos = {}, idMensaje = null) {
+                return {
+                    tipo,
+                    origen: 'hijo2',
+                    destino: 'padre',
+                    id: idMensaje || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                    timestamp: Date.now(),
+                    datos: { ...datos }
+                };
+            },
+            
+            // Verificar si un mensaje es válido
+            esValido(mensaje) {
+                return mensaje && 
+                       typeof mensaje === 'object' &&
+                       mensaje.tipo &&
+                       mensaje.timestamp &&
+                       mensaje.origen;
+            },
+            
+            // Manejadores de mensajes
+            manejadores: new Map(),
+            
+            // Registrar manejador para un tipo de mensaje
+            registrarManejador(tipo, callback) {
+                if (!this.manejadores.has(tipo)) {
+                    this.manejadores.set(tipo, new Set());
+                }
+                this.manejadores.get(tipo).add(callback);
+                return () => this.manejadores.get(tipo)?.delete(callback);
+            },
+            
+            // Procesar mensaje entrante
+            procesarMensaje(mensaje, event) {
+                if (!this.esValido(mensaje)) {
+                    console.warn('Mensaje recibido no válido:', mensaje);
+                    return;
+                }
+                
+                const manejadores = this.manejadores.get(mensaje.tipo) || [];
+                manejadores.forEach(manejador => {
+                    try {
+                        manejador(mensaje, event);
+                    } catch (error) {
+                        console.error(`Error en manejador para mensaje ${mensaje.tipo}:`, error);
+                        this.enviarError(
+                            'ERROR_MANEJADOR', 
+                            `Error procesando mensaje ${mensaje.tipo}: ${error.message}`,
+                            mensaje.id
+                        );
+                    }
+                });
+            },
+            
+            // Enviar mensaje al padre
+            enviar(tipo, datos = {}) {
+                const mensaje = this.crear(tipo, datos);
+                window.parent.postMessage(mensaje, '*');
+                console.log('Mensaje enviado al padre:', tipo, datos);
+                return mensaje.id;
+            },
+            
+            // Enviar error al padre
+            enviarError(codigo, mensaje, idMensajeOriginal = null) {
+                return this.enviar(this.TIPOS.ERROR, {
+                    codigo,
+                    mensaje,
+                    idMensajeOriginal
+                });
+            },
+            
+            // Enviar confirmación de recepción
+            enviarConfirmacion(idMensajeOriginal, datos = {}) {
+                return this.enviar(this.TIPOS.CONFIRMACION, {
+                    ...datos,
+                    idMensajeOriginal
+                });
+            },
+            
+            // Enviar actualización de estado
+            enviarEstado(estado, datosAdicionales = {}) {
+                return this.enviar(this.TIPOS.ESTADO, {
+                    ...estado,
+                    ...datosAdicionales
+                });
+            },
+            
+            // Enviar solicitud al padre
+            enviarSolicitud(accion, datos = {}) {
+                return this.enviar(this.TIPOS.SOLICITUD, {
+                    accion,
+                    ...datos
+                });
+            },
+            
+            // Inicializar el sistema de mensajería
+            inicializar() {
+                // Configurar manejador de mensajes global
+                window.addEventListener('message', (event) => {
+                    try {
+                        const mensaje = event.data;
+                        if (mensaje && (mensaje.destino === 'hijo2' || mensaje.destino === 'todos')) {
+                            this.procesarMensaje(mensaje, event);
+                        }
+                    } catch (error) {
+                        console.error('Error procesando mensaje:', error);
+                        this.enviarError('ERROR_PROCESAMIENTO', `Error procesando mensaje: ${error.message}`);
+                    }
+                });
+                
+                // Notificar al padre que el componente está listo
+                this.enviarEstado({
+                    estado: 'listo',
+                    componente: 'hijo2',
+                    version: '1.0.0',
+                    capacidades: ['navegacion', 'gps', 'seguimiento_ruta']
+                });
+                
+                console.log('Sistema de mensajería inicializado');
+            }
+        };
+        
+        // Inicializar el sistema de mensajería cuando el DOM esté listo
+        document.addEventListener('DOMContentLoaded', () => {
+            Mensajes.inicializar();
+        });
+        
+        // ================== MANEJO DE ESTADO ==================
+        class EstadoNavegacion {
+            constructor() {
+                this.ubicacion = null;
+                this.paradaActual = 0;
+                this.estado = 'inactivo'; // 'inactivo' | 'navegando' | 'en_parada'
+                this.modoCasa = false;
+                this.suscriptores = new Set();
+                this.ultimaActualizacion = Date.now();
+            }
+            
+            actualizar(nuevoEstado) {
+                Object.assign(this, {
+                    ...nuevoEstado,
+                    ultimaActualizacion: Date.now()
+                });
+                this.notificarCambios();
+                this.notificarEstadoAlPadre();
+            }
+            
+            suscribir(callback) {
+                this.suscriptores.add(callback);
+                return () => this.suscriptores.delete(callback);
+            }
+            
+            notificarCambios() {
+                const estadoActual = this.obtenerEstado();
+                this.suscriptores.forEach(cb => cb(estadoActual));
+            }
+            
+            obtenerEstado() {
+                return {
+                    ubicacion: this.ubicacion,
+                    paradaActual: this.paradaActual,
+                    estado: this.estado,
+                    modoCasa: this.modoCasa,
+                    ultimaActualizacion: this.ultimaActualizacion
+                };
+            }
+            
+            notificarEstadoAlPadre() {
+                Mensajes.enviarEstado(this.obtenerEstado());
+            }
+        }
+
+        // Inicializar estado
+        const estadoNavegacion = new EstadoNavegacion();
+        
+        // Variables globales (compatibilidad)
         let ubicacionActual = null;
         let paradaActual = 0; // Empezamos en parada 0 (inicio)
         let tramoActual = null;
@@ -1533,12 +1730,30 @@
            - 'mostrar-navegacion-gps': { paradaActual, coordenadasDestino, ubicacionUsuario }
         */
         
+        /**
+         * Función de compatibilidad para enviar mensajes al padre
+         * @param {Object} mensaje - El mensaje a enviar
+         * @deprecated Usar Mensajes.enviar() en su lugar
+         */
         function enviarMensajeAlPadre(mensaje) {
             try {
-                window.parent.postMessage(mensaje, '*');
-                console.log('Mensaje enviado al padre:', mensaje.tipo || mensaje.type);
+                // Si el mensaje ya está en el nuevo formato, enviarlo directamente
+                if (mensaje.tipo && mensaje.origen === 'hijo2') {
+                    window.parent.postMessage(mensaje, '*');
+                    return;
+                }
+                
+                // Convertir mensajes antiguos al nuevo formato
+                const tipo = mensaje.tipo || mensaje.type || 'desconocido';
+                const datos = { ...mensaje };
+                delete datos.tipo;
+                delete datos.type;
+                
+                // Enviar usando el nuevo sistema
+                Mensajes.enviar(tipo, datos);
             } catch (error) {
                 console.error('Error enviando mensaje al padre:', error);
+                Mensajes.enviarError('ERROR_ENVIO', `Error enviando mensaje: ${error.message}`);
             }
         }
 
@@ -2201,62 +2416,59 @@
         
         // Función para manejar la sincronización de estado con el padre
         function manejarSincronizacionEstado(estado) {
-            console.log('[Hijo2] Sincronizando estado con el padre:', estado);
+            console.log('Recibido estado del padre:', estado);
             
-            // Actualizar modo (casa/aventura)
-            if (estado.modo && (estado.modo === 'casa' || estado.modo === 'aventura')) {
-                const nuevoModo = estado.modo === 'casa';
-                if (modoCasa !== nuevoModo) {
-                    modoCasa = nuevoModo;
-                    // Actualizar la interfaz según el modo
-                    if (modoCasa) {
-                        activarModoCasa();
-                    } else {
-                        activarModoAventura();
-                    }
-                }
+            // Actualizar el estado de navegación con los datos recibidos
+            const actualizaciones = {};
+            
+            // Actualizar estado de la brújula si está presente
+            if (typeof estado.brújulaActivada === 'boolean') {
+                sincronizarEstadoBrujula(estado.brújulaActivada);
             }
             
-            // Actualizar punto actual (parada o tramo)
-            if (estado.puntoActual) {
-                if (estado.puntoActual.tipo === 'parada' && estado.puntoActual.id !== undefined) {
-                    paradaActual = estado.puntoActual.id;
-                    // Actualizar la interfaz según la parada actual
-                    actualizarStatus(`Parada seleccionada: ${paradaActual}`);
-                } else if (estado.puntoActual.tipo === 'tramo' && estado.puntoActual.id !== undefined) {
-                    // Actualizar la interfaz según el tramo actual
-                    actualizarStatus(`Navegando por tramo: ${estado.puntoActual.id}`);
+            // Actualizar modo de operación (casa/aventura)
+            if (estado.modo === 'casa' || estado.modo === 'aventura') {
+                actualizaciones.modoCasa = estado.modo === 'casa';
+                
+                // Actualizar estado de los botones según el modo
+                if (actualizaciones.modoCasa) {
+                    activarModoCasa();
+                } else {
+                    activarModoAventura();
                 }
-            }
-            
-            // Actualizar datos compartidos
-            if (estado.datosCompartidos) {
-                // Aquí podrías actualizar otros estados compartidos si es necesario
+                
+                console.log('Modo actualizado a:', estado.modo);
                 console.log('[Hijo2] Datos compartidos actualizados:', estado.datosCompartidos);
             }
         }
         
-        // Manejador de mensajes del padre
-        window.addEventListener('message', function(event) {
-            const mensaje = event.data;
-            if (!mensaje) return;
-            
-            // Manejar mensajes de sincronización de estado
-            if (mensaje.type === 'sincronizarEstado' && mensaje.estado) {
+        // ================== MANEJADORES DE MENSAJES ==================
+        Mensajes.registrarManejador(Mensajes.TIPOS.ACTUALIZACION_ESTADO, (mensaje) => {
+            // Manejar actualizaciones de estado del padre
+            if (mensaje.datos.estado) {
+                manejarSincronizacionEstado(mensaje.datos.estado);
+            }
+        });
+
+        // Manejador para mensajes de sincronización de estado (compatibilidad)
+        Mensajes.registrarManejador(Mensajes.TIPOS.SINCRONIZAR_ESTADO, (mensaje) => {
+            if (mensaje.estado) {
                 manejarSincronizacionEstado(mensaje.estado);
-                return;
             }
-            
-            // Manejar mensajes antiguos
-            if (!mensaje.type) return;
-            
-            // Manejar sincronización de brújula
-            if (mensaje.type === 'sincronizarBrujula' && typeof mensaje.activada === 'boolean') {
+        });
+
+        // Manejador para sincronización de brújula
+        Mensajes.registrarManejador(Mensajes.TIPOS.SINCRONIZAR_BRUJULA, (mensaje) => {
+            if (typeof mensaje.activada === 'boolean') {
                 sincronizarEstadoBrujula(mensaje.activada);
-                return;
             }
+        });
+
+        // Manejador para acciones del padre
+        Mensajes.registrarManejador(Mensajes.TIPOS.ACCION, (mensaje) => {
+            const { accion, datos } = mensaje.datos || {};
             
-            switch(mensaje.tipo) {
+            switch(accion) {
                 case 'iniciar-estado-inicial':
                     iniciarEstadoInicial();
                     break;
@@ -2266,42 +2478,65 @@
                     break;
                     
                 case 'cambiar-modo':
-                    if (mensaje.modo === 'casa') {
+                    if (datos?.modo === 'casa') {
                         activarModoCasa();
-                    } else if (mensaje.modo === 'aventura') {
+                    } else if (datos?.modo === 'aventura') {
                         activarModoAventura();
                     }
                     break;
                     
                 case 'actualizar-parada-destino':
-                    if (mensaje.parada) {
-                        paradaDestino = mensaje.parada;
+                    if (datos?.parada) {
+                        paradaDestino = datos.parada;
+                        estadoNavegacion.actualizar({ paradaActual: paradaDestino });
                         actualizarStatus(`🎯 Nuevo destino: Parada ${paradaDestino}`);
+                        
+                        // Notificar al padre del cambio de destino
+                        Mensajes.enviarEstado({
+                            estado: 'destino_actualizado',
+                            paradaActual: paradaDestino
+                        });
                     }
                     break;
                     
                 case 'forzar-llegada':
-                    // Para testing - simular llegada
-                    if (mensaje.parada) {
-                        paradaActual = mensaje.parada;
+                    if (datos?.parada) {
+                        paradaActual = datos.parada;
+                        estadoNavegacion.actualizar({ 
+                            paradaActual,
+                            estado: 'en_parada' 
+                        });
                         procesarLlegadaAParada();
+                        
+                        // Notificar al padre de la llegada forzada
+                        Mensajes.enviarEstado({
+                            estado: 'llegada_forzada',
+                            paradaActual
+                        });
                     }
                     break;
                     
                 case 'mostrar-video-con-zoom-secuencial':
-                    // Simular comportamiento del padre
-                    simularZoomYVideo(
-                        mensaje.coordenadasZoom,
-                        mensaje.videoSrc,
-                        mensaje.secuencia.paso1.duracion
-                    );
+                    if (datos?.coordenadasZoom && datos?.videoSrc) {
+                        simularZoomYVideo(
+                            datos.coordenadasZoom,
+                            datos.videoSrc,
+                            datos.secuencia?.paso1?.duracion || 1000
+                        );
+                    }
                     break;
                     
                 case 'mostrar-ruta-navegacion':
-                    // Simular zoom automático de navegación
-                    simularZoomNavegacion(mensaje);
+                    simularZoomNavegacion(datos || {});
                     break;
+                    
+                default:
+                    console.warn('Acción no reconocida:', accion, datos);
+                    Mensajes.enviarError('ACCION_NO_RECONOCIDA', `Acción no reconocida: ${accion}`);
             }
+            
+            // Enviar confirmación de recepción
+            Mensajes.enviarConfirmacion(mensaje.id, { accion });
         });
 
         // Inicialización
