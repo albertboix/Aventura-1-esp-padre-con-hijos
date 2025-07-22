@@ -842,204 +842,7 @@
     }
 ];
 
-        // ================== SISTEMA DE MENSAJERÍA ==================
-        const Mensajes = {
-            // Tipos de mensajes estándar
-            TIPOS: {
-                // Mensajes del hijo al padre
-                ESTADO: 'estado',
-                NAVEGACION: 'navegacion',
-                ERROR: 'error',
-                CONFIRMACION: 'confirmacion',
-                SOLICITUD: 'solicitud',
-                
-                // Mensajes del padre al hijo
-                ACCION: 'accion',
-                ACTUALIZACION_ESTADO: 'actualizacion_estado',
-                RESPUESTA: 'respuesta',
-                
-                // Compatibilidad con sistema existente
-                SINCRONIZAR_ESTADO: 'sincronizarEstado',
-                SINCRONIZAR_BRUJULA: 'sincronizarBrujula'
-            },
-            
-            // Creador de mensajes estandarizado
-            crear(tipo, datos = {}, idMensaje = null) {
-                return {
-                    tipo,
-                    origen: 'hijo2',
-                    destino: 'padre',
-                    id: idMensaje || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-                    timestamp: Date.now(),
-                    datos: { ...datos }
-                };
-            },
-            
-            // Verificar si un mensaje es válido
-            esValido(mensaje) {
-                return mensaje && 
-                       typeof mensaje === 'object' &&
-                       mensaje.tipo &&
-                       mensaje.timestamp &&
-                       mensaje.origen;
-            },
-            
-            // Manejadores de mensajes
-            manejadores: new Map(),
-            
-            // Registrar manejador para un tipo de mensaje
-            registrarManejador(tipo, callback) {
-                if (!this.manejadores.has(tipo)) {
-                    this.manejadores.set(tipo, new Set());
-                }
-                this.manejadores.get(tipo).add(callback);
-                return () => this.manejadores.get(tipo)?.delete(callback);
-            },
-            
-            // Procesar mensaje entrante
-            procesarMensaje(mensaje, event) {
-                if (!this.esValido(mensaje)) {
-                    console.warn('Mensaje recibido no válido:', mensaje);
-                    return;
-                }
-                
-                const manejadores = this.manejadores.get(mensaje.tipo) || [];
-                manejadores.forEach(manejador => {
-                    try {
-                        manejador(mensaje, event);
-                    } catch (error) {
-                        console.error(`Error en manejador para mensaje ${mensaje.tipo}:`, error);
-                        this.enviarError(
-                            'ERROR_MANEJADOR', 
-                            `Error procesando mensaje ${mensaje.tipo}: ${error.message}`,
-                            mensaje.id
-                        );
-                    }
-                });
-            },
-            
-            // Enviar mensaje al padre
-            enviar(tipo, datos = {}) {
-                const mensaje = this.crear(tipo, datos);
-                window.parent.postMessage(mensaje, '*');
-                console.log('Mensaje enviado al padre:', tipo, datos);
-                return mensaje.id;
-            },
-            
-            // Enviar error al padre
-            enviarError(codigo, mensaje, idMensajeOriginal = null) {
-                return this.enviar(this.TIPOS.ERROR, {
-                    codigo,
-                    mensaje,
-                    idMensajeOriginal
-                });
-            },
-            
-            // Enviar confirmación de recepción
-            enviarConfirmacion(idMensajeOriginal, datos = {}) {
-                return this.enviar(this.TIPOS.CONFIRMACION, {
-                    ...datos,
-                    idMensajeOriginal
-                });
-            },
-            
-            // Enviar actualización de estado
-            enviarEstado(estado, datosAdicionales = {}) {
-                return this.enviar(this.TIPOS.ESTADO, {
-                    ...estado,
-                    ...datosAdicionales
-                });
-            },
-            
-            // Enviar solicitud al padre
-            enviarSolicitud(accion, datos = {}) {
-                return this.enviar(this.TIPOS.SOLICITUD, {
-                    accion,
-                    ...datos
-                });
-            },
-            
-            // Inicializar el sistema de mensajería
-            inicializar() {
-                // Configurar manejador de mensajes global
-                window.addEventListener('message', (event) => {
-                    try {
-                        const mensaje = event.data;
-                        if (mensaje && (mensaje.destino === 'hijo2' || mensaje.destino === 'todos')) {
-                            this.procesarMensaje(mensaje, event);
-                        }
-                    } catch (error) {
-                        console.error('Error procesando mensaje:', error);
-                        this.enviarError('ERROR_PROCESAMIENTO', `Error procesando mensaje: ${error.message}`);
-                    }
-                });
-                
-                // Notificar al padre que el componente está listo
-                this.enviarEstado({
-                    estado: 'listo',
-                    componente: 'hijo2',
-                    version: '1.0.0',
-                    capacidades: ['navegacion', 'gps', 'seguimiento_ruta']
-                });
-                
-                console.log('Sistema de mensajería inicializado');
-            }
-        };
-        
-        // Inicializar el sistema de mensajería cuando el DOM esté listo
-        document.addEventListener('DOMContentLoaded', () => {
-            Mensajes.inicializar();
-        });
-        
-        // ================== MANEJO DE ESTADO ==================
-        class EstadoNavegacion {
-            constructor() {
-                this.ubicacion = null;
-                this.paradaActual = 0;
-                this.estado = 'inactivo'; // 'inactivo' | 'navegando' | 'en_parada'
-                this.modoCasa = false;
-                this.suscriptores = new Set();
-                this.ultimaActualizacion = Date.now();
-            }
-            
-            actualizar(nuevoEstado) {
-                Object.assign(this, {
-                    ...nuevoEstado,
-                    ultimaActualizacion: Date.now()
-                });
-                this.notificarCambios();
-                this.notificarEstadoAlPadre();
-            }
-            
-            suscribir(callback) {
-                this.suscriptores.add(callback);
-                return () => this.suscriptores.delete(callback);
-            }
-            
-            notificarCambios() {
-                const estadoActual = this.obtenerEstado();
-                this.suscriptores.forEach(cb => cb(estadoActual));
-            }
-            
-            obtenerEstado() {
-                return {
-                    ubicacion: this.ubicacion,
-                    paradaActual: this.paradaActual,
-                    estado: this.estado,
-                    modoCasa: this.modoCasa,
-                    ultimaActualizacion: this.ultimaActualizacion
-                };
-            }
-            
-            notificarEstadoAlPadre() {
-                Mensajes.enviarEstado(this.obtenerEstado());
-            }
-        }
-
-        // Inicializar estado
-        const estadoNavegacion = new EstadoNavegacion();
-        
-        // Variables globales (compatibilidad)
+        // Variables globales
         let ubicacionActual = null;
         let paradaActual = 0; // Empezamos en parada 0 (inicio)
         let tramoActual = null;
@@ -1517,123 +1320,135 @@
 
         // Resto de funciones GPS (iniciarGPS, detenerGPS, etc.)
         function iniciarGPS() {
-            if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
-                actualizarStatus('GPS requiere HTTPS en producción');
-                return;
-            }
+            return new Promise((resolve, reject) => {
+                if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+                    const error = 'GPS requiere HTTPS en producción';
+                    actualizarStatus(error);
+                    reject(new Error(error));
+                    return;
+                }
 
-            if (!navigator.geolocation) {
-                actualizarStatus('GPS no disponible en este dispositivo');
-                return;
-            }
+                if (!navigator.geolocation) {
+                    const error = 'GPS no disponible en este dispositivo';
+                    actualizarStatus(error);
+                    reject(new Error(error));
+                    return;
+                }
 
-            actualizarStatus('Obteniendo ubicación GPS...', true);
-            
-            resetTripProgress();
-            totalTimeSpan.textContent = formatTime(totalTripTime);
-            startTripProgressSimulation();
+                actualizarStatus('Obteniendo ubicación GPS...', true);
+                
+                resetTripProgress();
+                totalTimeSpan.textContent = formatTime(totalTripTime);
+                startTripProgressSimulation();
 
-            const options = {
-                enableHighAccuracy: true,
-                timeout: 10000,
-                maximumAge: 60000
-            };
+                const options = {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 60000
+                };
 
-            navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    ubicacionActual = {
-                        lat: position.coords.latitude,
-                        lng: position.coords.longitude
-                    };
-                    
-                    // Actualizar flecha de navegación si estamos navegando
-                    if (estadoNavegacion === 'navegando') {
-                        actualizarFlechaNavegacion();
-                    }
-                    
-                    enviarMensajeAlPadre({
-                        tipo: 'actualizarUbicacionMapa',
-                        lat: ubicacionActual.lat,
-                        lng: ubicacionActual.lng
-                    });
-
-                    actualizarStatus(`GPS activo - Precisión: ${Math.round(position.coords.accuracy)}m`);
-                    
-                    // Informar estado GPS al padre
-                    informarEstadoGPS('activo', {
-                        precision: Math.round(position.coords.accuracy),
-                        coordenadas: ubicacionActual
-                    });
-                    
-                    verificarUbicacionCompleta(); // ← MEJORADO: verificar paradas y tramos
-                },
-                (error) => {
-                    console.error('Error GPS:', error);
-                    let mensajeError = 'Error al obtener ubicación GPS';
-                    
-                    switch(error.code) {
-                        case error.PERMISSION_DENIED:
-                            mensajeError = 'Permisos GPS denegados. Actívalos en configuración.';
-                            break;
-                        case error.POSITION_UNAVAILABLE:
-                            mensajeError = 'Ubicación GPS no disponible';
-                            break;
-                        case error.TIMEOUT:
-                            mensajeError = 'Tiempo de espera GPS agotado';
-                            break;
-                    }
-                    
-                    actualizarStatus(mensajeError);
-                    
-                    setTimeout(() => {
-                        if (!ubicacionActual) {
-                            actualizarStatus('Activando modo sin GPS...');
-                            activarModoCasa();
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        ubicacionActual = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+                        
+                        // Actualizar flecha de navegación si estamos navegando
+                        if (estadoNavegacion === 'navegando') {
+                            actualizarFlechaNavegacion();
                         }
-                    }, 3000);
-                },
-                options
-            );
+                        
+                        enviarMensajeAlPadre({
+                            tipo: 'actualizarUbicacionMapa',
+                            lat: ubicacionActual.lat,
+                            lng: ubicacionActual.lng
+                        });
 
-            // Seguimiento continuo
-            watchId = navigator.geolocation.watchPosition(
-                (position) => {
-                    ubicacionActual = {
-                        lat: position.coords.latitude,
-                        lng: position.coords.longitude
-                    };
-                    
-                    enviarMensajeAlPadre({
-                        tipo: 'actualizarUbicacionMapa',
-                        lat: ubicacionActual.lat,
-                        lng: ubicacionActual.lng
-                    });
-
-                    verificarUbicacionCompleta(); // ← MEJORADO: verificar paradas y tramos
-                },
-                (error) => {
-                    console.error('Error GPS tracking:', error);
-                    if (!ubicacionActual) {
-                        let mensajeError = 'Error en seguimiento GPS';
+                        actualizarStatus(`GPS activo - Precisión: ${Math.round(position.coords.accuracy)}m`);
+                        
+                        // Informar estado GPS al padre
+                        informarEstadoGPS('activo', {
+                            precision: Math.round(position.coords.accuracy),
+                            coordenadas: ubicacionActual
+                        });
+                        
+                        verificarUbicacionCompleta(); // ← MEJORADO: verificar paradas y tramos
+                        
+                        // Resolver la promesa con la ubicación actual
+                        resolve(ubicacionActual);
+                    },
+                    (error) => {
+                        console.error('Error GPS:', error);
+                        let mensajeError = 'Error al obtener ubicación GPS';
                         
                         switch(error.code) {
                             case error.PERMISSION_DENIED:
-                                mensajeError = 'Permisos GPS revocados';
-                                activarModoCasa();
+                                mensajeError = 'Permisos GPS denegados. Actívalos en configuración.';
                                 break;
                             case error.POSITION_UNAVAILABLE:
-                                mensajeError = 'GPS temporalmente no disponible';
+                                mensajeError = 'Ubicación GPS no disponible';
                                 break;
                             case error.TIMEOUT:
-                                mensajeError = 'Conexión GPS lenta';
+                                mensajeError = 'Tiempo de espera GPS agotado';
                                 break;
                         }
                         
                         actualizarStatus(mensajeError);
-                    }
-                },
-                options
-            );
+                        
+                        setTimeout(() => {
+                            if (!ubicacionActual) {
+                                actualizarStatus('Activando modo sin GPS...');
+                                activarModoCasa();
+                            }
+                        }, 3000);
+                        
+                        // Rechazar la promesa con el error
+                        reject(error);
+                    },
+                    options
+                );
+
+                // Seguimiento continuo
+                watchId = navigator.geolocation.watchPosition(
+                    (position) => {
+                        ubicacionActual = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+                        
+                        enviarMensajeAlPadre({
+                            tipo: 'actualizarUbicacionMapa',
+                            lat: ubicacionActual.lat,
+                            lng: ubicacionActual.lng
+                        });
+
+                        verificarUbicacionCompleta(); // ← MEJORADO: verificar paradas y tramos
+                    },
+                    (error) => {
+                        console.error('Error GPS tracking:', error);
+                        if (!ubicacionActual) {
+                            let mensajeError = 'Error en seguimiento GPS';
+                            
+                            switch(error.code) {
+                                case error.PERMISSION_DENIED:
+                                    mensajeError = 'Permisos GPS revocados';
+                                    activarModoCasa();
+                                    break;
+                                case error.POSITION_UNAVAILABLE:
+                                    mensajeError = 'GPS temporalmente no disponible';
+                                    break;
+                                case error.TIMEOUT:
+                                    mensajeError = 'Conexión GPS lenta';
+                                    break;
+                            }
+                            
+                            actualizarStatus(mensajeError);
+                        }
+                    },
+                    options
+                );
+            });
         }
 
         function detenerGPS() {
@@ -1730,30 +1545,12 @@
            - 'mostrar-navegacion-gps': { paradaActual, coordenadasDestino, ubicacionUsuario }
         */
         
-        /**
-         * Función de compatibilidad para enviar mensajes al padre
-         * @param {Object} mensaje - El mensaje a enviar
-         * @deprecated Usar Mensajes.enviar() en su lugar
-         */
         function enviarMensajeAlPadre(mensaje) {
             try {
-                // Si el mensaje ya está en el nuevo formato, enviarlo directamente
-                if (mensaje.tipo && mensaje.origen === 'hijo2') {
-                    window.parent.postMessage(mensaje, '*');
-                    return;
-                }
-                
-                // Convertir mensajes antiguos al nuevo formato
-                const tipo = mensaje.tipo || mensaje.type || 'desconocido';
-                const datos = { ...mensaje };
-                delete datos.tipo;
-                delete datos.type;
-                
-                // Enviar usando el nuevo sistema
-                Mensajes.enviar(tipo, datos);
+                window.parent.postMessage(mensaje, '*');
+                console.log('Mensaje enviado al padre:', mensaje.tipo || mensaje.type);
             } catch (error) {
                 console.error('Error enviando mensaje al padre:', error);
-                Mensajes.enviarError('ERROR_ENVIO', `Error enviando mensaje: ${error.message}`);
             }
         }
 
@@ -2088,6 +1885,29 @@
             }, 3000);
         }
 
+        // Función para obtener la siguiente parada o tramo
+        function obtenerSiguienteParadaTramo() {
+            if (typeof window.paradaActual === 'undefined') {
+                window.paradaActual = 0; // Empezar desde la primera parada
+                return { tipo: 'parada', indice: 0, datos: COORDENADAS_PARADAS.find(p => p.parada === 0) };
+            }
+            
+            const esParada = COORDENADAS_PARADAS.some(p => p.parada === window.paradaActual);
+            
+            if (esParada) {
+                // Buscar siguiente tramo
+                const tramo = COORDENADAS_PARADAS.find(p => p.tipo === 'tramo' && p.tramo === window.paradaActual + 1);
+                if (tramo) return { tipo: 'tramo', indice: tramo.tramo, datos: tramo };
+            } else {
+                // Buscar siguiente parada
+                const siguienteParada = window.paradaActual + 1;
+                const parada = COORDENADAS_PARADAS.find(p => p.parada === siguienteParada);
+                if (parada) return { tipo: 'parada', indice: siguienteParada, datos: parada };
+            }
+            
+            return null; // No hay más paradas/tramos
+        }
+
         // Manejador simple para los botones
         function manejarClicBoton(id) {
             if (modoCasa) return;
@@ -2119,13 +1939,24 @@
                     console.log(`Mostrando última parada conocida: ${window.paradaActual}`);
                 }
                 
-            } else if (id === 'btn-ruta') {
-                // Map button - Show full route
-                window.open('Av1_mapa_completo.html', '_blank');
+            } else if (id === 'btn-ruta' || id === 'btn-brujula') {
+                // Obtener la siguiente parada o tramo
+                const siguiente = obtenerSiguienteParadaTramo();
+                if (!siguiente) {
+                    console.log('No hay más paradas o tramos disponibles');
+                    return;
+                }
                 
-            } else if (id === 'btn-brujula') {
-                // Compass button - Show map image
-                window.open('mapas/Av1_mapa.jpg', '_blank');
+                // Enviar mensaje al padre con la información de navegación
+                enviarMensajeAlPadre({
+                    type: 'mostrarNavegacion',
+                    origen: ubicacionActual,
+                    destino: siguiente.datos,
+                    tipo: siguiente.tipo,
+                    indice: siguiente.indice
+                });
+                
+                console.log(`Navegación a ${siguiente.tipo} ${siguiente.indice}: ${siguiente.datos.nombre}`);
             }
         }
         
@@ -2155,24 +1986,44 @@
         btnGps.addEventListener('click', () => {
             if (btnGps.classList.contains('disabled') || modoCasa) return;
             
+            // Obtener la siguiente parada o tramo
+            const siguiente = obtenerSiguienteParadaTramo();
+            if (!siguiente) {
+                console.log('No hay más paradas o tramos disponibles');
+                return;
+            }
+            
             // Informar interacción al padre
             informarInteraccionUsuario('gps', {
-                accion: !ubicacionActual ? 'iniciar-gps' : 'mostrar-navegacion'
+                accion: 'mostrar-navegacion',
+                tipo: siguiente.tipo,
+                indice: siguiente.indice
             });
             
+            // Iniciar GPS si no está activo
             if (!ubicacionActual) {
-                iniciarGPS();
-            } else {
-                const paradaDestino = COORDENADAS_PARADAS.find(p => p.parada === paradaActual);
-                if (paradaDestino) {
+                iniciarGPS().then(() => {
+                    // Una vez que el GPS está listo, enviar la información de navegación
                     enviarMensajeAlPadre({
-                        tipo: 'mostrar-navegacion-gps',
-                        paradaActual: paradaActual,
-                        coordenadasDestino: paradaDestino,
-                        ubicacionUsuario: ubicacionActual
+                        type: 'mostrarNavegacion',
+                        origen: ubicacionActual,
+                        destino: siguiente.datos,
+                        tipo: siguiente.tipo,
+                        indice: siguiente.indice
                     });
-                }
+                });
+            } else {
+                // GPS ya activo, solo enviar la información de navegación
+                enviarMensajeAlPadre({
+                    type: 'mostrarNavegacion',
+                    origen: ubicacionActual,
+                    destino: siguiente.datos,
+                    tipo: siguiente.tipo,
+                    indice: siguiente.indice
+                });
             }
+            
+            console.log(`Navegación GPS a ${siguiente.tipo} ${siguiente.indice}: ${siguiente.datos.nombre}`);
         });
 
         btnImagen.addEventListener('click', () => {
@@ -2416,59 +2267,62 @@
         
         // Función para manejar la sincronización de estado con el padre
         function manejarSincronizacionEstado(estado) {
-            console.log('Recibido estado del padre:', estado);
+            console.log('[Hijo2] Sincronizando estado con el padre:', estado);
             
-            // Actualizar el estado de navegación con los datos recibidos
-            const actualizaciones = {};
-            
-            // Actualizar estado de la brújula si está presente
-            if (typeof estado.brújulaActivada === 'boolean') {
-                sincronizarEstadoBrujula(estado.brújulaActivada);
+            // Actualizar modo (casa/aventura)
+            if (estado.modo && (estado.modo === 'casa' || estado.modo === 'aventura')) {
+                const nuevoModo = estado.modo === 'casa';
+                if (modoCasa !== nuevoModo) {
+                    modoCasa = nuevoModo;
+                    // Actualizar la interfaz según el modo
+                    if (modoCasa) {
+                        activarModoCasa();
+                    } else {
+                        activarModoAventura();
+                    }
+                }
             }
             
-            // Actualizar modo de operación (casa/aventura)
-            if (estado.modo === 'casa' || estado.modo === 'aventura') {
-                actualizaciones.modoCasa = estado.modo === 'casa';
-                
-                // Actualizar estado de los botones según el modo
-                if (actualizaciones.modoCasa) {
-                    activarModoCasa();
-                } else {
-                    activarModoAventura();
+            // Actualizar punto actual (parada o tramo)
+            if (estado.puntoActual) {
+                if (estado.puntoActual.tipo === 'parada' && estado.puntoActual.id !== undefined) {
+                    paradaActual = estado.puntoActual.id;
+                    // Actualizar la interfaz según la parada actual
+                    actualizarStatus(`Parada seleccionada: ${paradaActual}`);
+                } else if (estado.puntoActual.tipo === 'tramo' && estado.puntoActual.id !== undefined) {
+                    // Actualizar la interfaz según el tramo actual
+                    actualizarStatus(`Navegando por tramo: ${estado.puntoActual.id}`);
                 }
-                
-                console.log('Modo actualizado a:', estado.modo);
+            }
+            
+            // Actualizar datos compartidos
+            if (estado.datosCompartidos) {
+                // Aquí podrías actualizar otros estados compartidos si es necesario
                 console.log('[Hijo2] Datos compartidos actualizados:', estado.datosCompartidos);
             }
         }
         
-        // ================== MANEJADORES DE MENSAJES ==================
-        Mensajes.registrarManejador(Mensajes.TIPOS.ACTUALIZACION_ESTADO, (mensaje) => {
-            // Manejar actualizaciones de estado del padre
-            if (mensaje.datos.estado) {
-                manejarSincronizacionEstado(mensaje.datos.estado);
-            }
-        });
-
-        // Manejador para mensajes de sincronización de estado (compatibilidad)
-        Mensajes.registrarManejador(Mensajes.TIPOS.SINCRONIZAR_ESTADO, (mensaje) => {
-            if (mensaje.estado) {
-                manejarSincronizacionEstado(mensaje.estado);
-            }
-        });
-
-        // Manejador para sincronización de brújula
-        Mensajes.registrarManejador(Mensajes.TIPOS.SINCRONIZAR_BRUJULA, (mensaje) => {
-            if (typeof mensaje.activada === 'boolean') {
-                sincronizarEstadoBrujula(mensaje.activada);
-            }
-        });
-
-        // Manejador para acciones del padre
-        Mensajes.registrarManejador(Mensajes.TIPOS.ACCION, (mensaje) => {
-            const { accion, datos } = mensaje.datos || {};
+        // Manejador de mensajes del padre
+        window.addEventListener('message', function(event) {
+            const mensaje = event.data;
+            if (!mensaje) return;
             
-            switch(accion) {
+            // Manejar mensajes de sincronización de estado
+            if (mensaje.type === 'sincronizarEstado' && mensaje.estado) {
+                manejarSincronizacionEstado(mensaje.estado);
+                return;
+            }
+            
+            // Manejar mensajes antiguos
+            if (!mensaje.type) return;
+            
+            // Manejar sincronización de brújula
+            if (mensaje.type === 'sincronizarBrujula' && typeof mensaje.activada === 'boolean') {
+                sincronizarEstadoBrujula(mensaje.activada);
+                return;
+            }
+            
+            switch(mensaje.tipo) {
                 case 'iniciar-estado-inicial':
                     iniciarEstadoInicial();
                     break;
@@ -2478,65 +2332,42 @@
                     break;
                     
                 case 'cambiar-modo':
-                    if (datos?.modo === 'casa') {
+                    if (mensaje.modo === 'casa') {
                         activarModoCasa();
-                    } else if (datos?.modo === 'aventura') {
+                    } else if (mensaje.modo === 'aventura') {
                         activarModoAventura();
                     }
                     break;
                     
                 case 'actualizar-parada-destino':
-                    if (datos?.parada) {
-                        paradaDestino = datos.parada;
-                        estadoNavegacion.actualizar({ paradaActual: paradaDestino });
+                    if (mensaje.parada) {
+                        paradaDestino = mensaje.parada;
                         actualizarStatus(`🎯 Nuevo destino: Parada ${paradaDestino}`);
-                        
-                        // Notificar al padre del cambio de destino
-                        Mensajes.enviarEstado({
-                            estado: 'destino_actualizado',
-                            paradaActual: paradaDestino
-                        });
                     }
                     break;
                     
                 case 'forzar-llegada':
-                    if (datos?.parada) {
-                        paradaActual = datos.parada;
-                        estadoNavegacion.actualizar({ 
-                            paradaActual,
-                            estado: 'en_parada' 
-                        });
+                    // Para testing - simular llegada
+                    if (mensaje.parada) {
+                        paradaActual = mensaje.parada;
                         procesarLlegadaAParada();
-                        
-                        // Notificar al padre de la llegada forzada
-                        Mensajes.enviarEstado({
-                            estado: 'llegada_forzada',
-                            paradaActual
-                        });
                     }
                     break;
                     
                 case 'mostrar-video-con-zoom-secuencial':
-                    if (datos?.coordenadasZoom && datos?.videoSrc) {
-                        simularZoomYVideo(
-                            datos.coordenadasZoom,
-                            datos.videoSrc,
-                            datos.secuencia?.paso1?.duracion || 1000
-                        );
-                    }
+                    // Simular comportamiento del padre
+                    simularZoomYVideo(
+                        mensaje.coordenadasZoom,
+                        mensaje.videoSrc,
+                        mensaje.secuencia.paso1.duracion
+                    );
                     break;
                     
                 case 'mostrar-ruta-navegacion':
-                    simularZoomNavegacion(datos || {});
+                    // Simular zoom automático de navegación
+                    simularZoomNavegacion(mensaje);
                     break;
-                    
-                default:
-                    console.warn('Acción no reconocida:', accion, datos);
-                    Mensajes.enviarError('ACCION_NO_RECONOCIDA', `Acción no reconocida: ${accion}`);
             }
-            
-            // Enviar confirmación de recepción
-            Mensajes.enviarConfirmacion(mensaje.id, { accion });
         });
 
         // Inicialización
