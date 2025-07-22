@@ -1650,16 +1650,39 @@
 
     // Estado GPS: true = ON (aventura), false = OFF (casa)
     let gpsOn = true;
+    let modoCasa = false; // Asegurarse de que esta variable esté definida
     let estadoModo = document.getElementById('estado-modo');
 
     // ================ FUNCIONES PRINCIPALES ================
+    
+    // Función para alternar el estado del GPS
+    function toggleGPS() {
+      console.log('🔄 HIJO 5: toggleGPS() - Cambiando estado GPS. Actual:', gpsOn ? 'ON' : 'OFF');
+      // Invertir el estado actual
+      const nuevoEstado = !gpsOn;
+      
+      // Mostrar feedback visual inmediato
+      const btn = document.getElementById('gps-casa-btn');
+      if (btn) {
+        btn.classList.add('cambiando');
+        setTimeout(() => btn.classList.remove('cambiando'), 300);
+      }
+      
+      // Actualizar el estado
+      setGpsState(nuevoEstado);
+    }
     
     // Cambia el estado del botón y la etiqueta, y sincroniza con el estado global
     function setGpsState(on) {
       console.log(`🔄 HIJO 5: setGpsState(${on}) - Estado actual: gpsOn=${gpsOn}, modoCasa=${modoCasa}`);
       
+      // Si el estado no está cambiando, no hacer nada
+      if (gpsOn === on) {
+        console.log('🔄 HIJO 5: El estado GPS ya está en', on ? 'ON' : 'OFF');
+        return;
+      }
+      
       // Actualizar estado local
-      const estadoAnterior = { gpsOn, modoCasa };
       gpsOn = on;
       modoCasa = !on;
       
@@ -1669,8 +1692,15 @@
       
       // Actualizar UI
       const btn = document.getElementById('gps-casa-btn');
-      btn.className = on ? 'on' : 'off';
-      btn.querySelector('.gps-label').textContent = on ? 'ON' : 'OFF';
+      if (btn) {
+        btn.className = on ? 'on' : 'off';
+        const label = btn.querySelector('.gps-label');
+        if (label) {
+          label.textContent = on ? 'ON' : 'OFF';
+        }
+        btn.title = on ? 'Desactivar GPS' : 'Activar GPS';
+      }
+      
       actualizarIndicadorModo();
       
       // Notificar al padre sobre el cambio de estado
@@ -1681,20 +1711,27 @@
         timestamp: estadoLocal.ultimaActualizacion,
         puntoActual: paradaActual >= 0 ? 
           { tipo: 'parada', id: paradaActual } : 
-          (tramoActual >= 0 ? { tipo: 'tramo', id: tramoActual } : null)
+          (tramoActual >= 0 ? { tipo: 'tramo', id: tramoActual } : null),
+        ackId: 'gps_toggle_' + Date.now() // Añadir ID único para seguimiento
       };
       
       console.log('📤 HIJO 5: Enviando actualización al padre:', mensajePadre);
-      padre.postMessage(mensajePadre, '*');
+      
+      // Enviar mensaje al padre con manejo de reintentos
+      enviarMensajeConReintento(mensajePadre, 3, 1000)
+        .then(() => {
+          console.log('✅ HIJO 5: Confirmación de cambio de estado GPS recibida');
+        })
+        .catch(error => {
+          console.error('❌ HIJO 5: Error al confirmar cambio de estado GPS:', error);
+        });
       
       // Actualizar estado local según el modo
       if (modoCasa) {
-        console.log('🏠 HIJO 5: Activando modo casa - Sincronizando con el estado global');
-        // Desbloquear funcionalidades locales
+        console.log('🏠 HIJO 5: Activando modo casa');
         desbloquearFuncionalidades();
       } else {
-        console.log('🌍 HIJO 5: Activando modo aventura - Sincronizando con el estado global');
-        // Restaurar restricciones locales
+        console.log('🌍 HIJO 5: Activando modo aventura');
         restaurarRestriccionesAventura();
       }
       
@@ -2222,6 +2259,64 @@
     
     // ================ MANEJADORES DE EVENTOS DE INTERFAZ ================
     
+    // Configurar manejador de clic para el botón GPS
+    function configurarBotonGPS() {
+        const btn = document.getElementById('gps-casa-btn');
+        if (btn) {
+            btn.onclick = function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('Botón GPS clickeado');
+                try {
+                    toggleGPS();
+                } catch (error) {
+                    console.error('Error al alternar GPS:', error);
+                }
+                return false;
+            };
+            console.log('Manejador de clic configurado para el botón GPS');
+        } else {
+            console.warn('No se encontró el botón GPS para configurar el manejador');
+        }
+    }
+    
+    // Función auxiliar para enviar mensajes con reintentos
+    function enviarMensajeConReintento(mensaje, intentosMaximos, tiempoEspera) {
+        return new Promise((resolve, reject) => {
+            let intentos = 0;
+            const intentarEnviar = () => {
+                intentos++;
+                
+                // Crear un canal de mensajería para la respuesta
+                const channel = new MessageChannel();
+                const timeoutId = setTimeout(() => {
+                    channel.port1.close();
+                    if (intentos < intentosMaximos) {
+                        console.log(`⏳ HIJO 5: Reintentando envío (${intentos}/${intentosMaximos})...`);
+                        setTimeout(intentarEnviar, tiempoEspera);
+                    } else {
+                        reject(new Error('Tiempo de espera agotado sin confirmación'));
+                    }
+                }, tiempoEspera);
+                
+                channel.port1.onmessage = (event) => {
+                    clearTimeout(timeoutId);
+                    channel.port1.close();
+                    if (event.data && event.data.type === 'ack' && event.data.ackId === mensaje.ackId) {
+                        resolve();
+                    } else {
+                        reject(new Error('Respuesta inesperada del padre'));
+                    }
+                };
+                
+                // Enviar el mensaje con el puerto para la respuesta
+                window.parent.postMessage(mensaje, '*', [channel.port2]);
+            };
+            
+            intentarEnviar();
+        });
+    }
+    
     // Click en el botón principal
     document.getElementById('gps-casa-btn').onclick = function() {
         try {
@@ -2267,14 +2362,57 @@
         try {
             console.log('HIJO5: Inicializando...');
             
-            // Configurar manejador de mensajes centralizado
-            window.addEventListener('message', manejarMensajeCentralizado);
+            // Asegurarse de que el botón GPS esté en el estado correcto
+            const btn = document.getElementById('gps-casa-btn');
+            if (btn) {
+                // Inicializar el estado visual del botón
+                btn.className = gpsOn ? 'on' : 'off';
+                const label = btn.querySelector('.gps-label');
+                if (label) {
+                    label.textContent = gpsOn ? 'ON' : 'OFF';
+                }
+                btn.title = gpsOn ? 'Desactivar GPS' : 'Activar GPS';
+                
+                // Configurar el manejador de clic
+                btn.onclick = function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('Botón GPS clickeado - Estado actual:', gpsOn ? 'ON' : 'OFF');
+                    try {
+                        toggleGPS();
+                    } catch (error) {
+                        console.error('Error al alternar GPS:', error);
+                    }
+                    return false;
+                };
+                
+                console.log('Botón GPS inicializado correctamente');
+            } else {
+                console.warn('No se encontró el botón GPS durante la inicialización');
+            }
             
-            // Configurar manejadores de eventos de la interfaz
+            // Inicializar la comunicación
+            inicializarComunicacion();
+            
+            // Inicializar puntos de ruta
+            inicializarPuntosRuta();
+            
+            // Configurar manejadores de eventos
             configurarManejadoresUI();
             
-            // Inicializar la estructura de datos
-            inicializarPuntosRuta();
+            // Sincronizar estado inicial con el padre
+            setTimeout(() => {
+                console.log('Sincronizando estado inicial con el padre...');
+                sincronizarConPadre();
+                
+                // Forzar una actualización del estado después de un breve retraso
+                setTimeout(() => {
+                    console.log('Forzando actualización del estado GPS:', gpsOn ? 'ON' : 'OFF');
+                    setGpsState(gpsOn);
+                }, 500);
+            }, 1000);
+            
+            console.log('HIJO5: Inicialización completada');
             
             // Notificar al padre que el hijo está listo
             enviarAlPadre('hijoListo', { 
@@ -2284,7 +2422,6 @@
             
             // Sincronizar con el padre después de un breve retraso
             setTimeout(sincronizarConPadre, 1000);
-            
             console.log('HIJO5: Inicialización completada');
         } catch (error) {
             console.error('Error durante la inicialización:', error);
