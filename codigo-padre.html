@@ -6,11 +6,51 @@
     <title>Aventura 1 - Padre</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        /* Estilos del padre original... */
-        html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; }
-        #mapa { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
-        body { margin: 0; padding: 0; background: transparent; }
-        iframe { background: transparent; }
+        /* Estilos del padre */
+        html, body { 
+            height: 100%; 
+            margin: 0; 
+            padding: 0; 
+            overflow: auto; /* Changed from hidden to auto to allow scrolling */
+        }
+        
+        /* Container for all elements above the map */
+        #content-container {
+            position: relative;
+            z-index: 10;
+            background: transparent;
+            min-height: 100vh;
+            padding-bottom: 100vh; /* Space for the map */
+        }
+        
+        /* Map styling */
+        #mapa { 
+            position: fixed; 
+            top: 100vh; /* Position below the content */
+            left: 0; 
+            width: 100vw; 
+            height: 100vh; 
+            z-index: 1; 
+            border-top: 2px solid #ccc; /* Visual separation */
+        }
+        
+        /* Ensure iframes are transparent */
+        iframe { 
+            background: transparent; 
+            position: relative;
+            z-index: 20;
+        }
+        
+        /* Adjust logo position */
+        #logo-aventura {
+            position: fixed !important;
+            top: 20px !important;
+            left: 50% !important;
+            transform: translateX(-50%) !important;
+            z-index: 3000 !important;
+            max-width: 300px !important;
+            height: auto !important;
+        }
         
         /* ================== VARIABLES Y ESTILO HIJO 4 (RETOS) ================== */
         :root {
@@ -192,10 +232,8 @@
     </style>
 </head>
 <body>
-
-    <img id="logo-aventura" src="https://valenciavguides.github.io/Aventura-1-esp-padre-con-hijos/fotos_Av1/LOGO%20LETRAS%20FINAL%20transparente%20recorte.png" alt="Logo" style="position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 3000; max-width: 300px; height: auto;" />
-
-    <div id="mapa"></div>
+    <div id="content-container">
+        <img id="logo-aventura" src="https://valenciavguides.github.io/Aventura-1-esp-padre-con-hijos/fotos_Av1/LOGO%20LETRAS%20FINAL%20transparente%20recorte.png" alt="Logo" />
 
     <div id="info-parada"></div>
 
@@ -234,6 +272,11 @@
 
     <iframe id="hijo4" src="./Av1-esp-retos-preguntas.html" style="display:none;"></iframe>
 
+    </div> <!-- Close content-container -->
+    
+    <!-- Mapa -->
+    <div id="mapa"></div>
+
     <div id="media-overlay">
         <div id="media-container">
             <button id="close-media">X</button>
@@ -243,6 +286,17 @@
     </div>
     
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Ensure map is properly sized when window is resized
+        window.addEventListener('resize', function() {
+            const mapa = document.getElementById('mapa');
+            if (mapa && map) {
+                setTimeout(() => {
+                    map.invalidateSize();
+                }, 100);
+            }
+        });
+    </script>
     <script>
         // ================== ESTADO GLOBAL CENTRALIZADO ==================
         const estadoGlobal = {
@@ -284,7 +338,7 @@
             };
 
             // Enviar a todos los iframes hijos
-            ['hijo2', 'hijo3', 'hijo4', 'hijo5'].forEach(id => {
+            ['hijo2', 'hijo3', 'hijo4', 'hijo5-casa'].forEach(id => {
                 const iframe = document.getElementById(id);
                 if (iframe && iframe.contentWindow) {
                     iframe.contentWindow.postMessage(mensaje, '*');
@@ -828,7 +882,7 @@
                     const remitente = obtenerIdIframeRemitente(evento.source);
                     
                     // Enviar a todos los hijos excepto al remitente
-                    ['hijo2', 'hijo3', 'hijo4', 'hijo5']
+                    ['hijo2', 'hijo3', 'hijo4', 'hijo5-casa']
                         .filter(id => id !== remitente)
                         .forEach(id => {
                             const iframe = document.getElementById(id);
@@ -1008,7 +1062,7 @@
                     navigationState.ubicacionActual = datos.ubicacion;
                     
                     // Notificar a Child 5 (mapa) sobre la actualización de ubicación
-                    enviarMensaje('hijo5', 'ACTUALIZAR_UBICACION', {
+                    enviarMensaje('hijo5-casa', 'ACTUALIZAR_UBICACION', {
                         lat: datos.ubicacion.lat,
                         lng: datos.ubicacion.lng,
                         precision: datos.precision,
@@ -1022,7 +1076,7 @@
                     
                     // Notificar a todos los hijos sobre el estado del GPS
                     enviarMensaje('hijo2', 'ACTUALIZAR_UI', { gpsActivo: false });
-                    enviarMensaje('hijo5', 'ACTUALIZAR_UI', { gpsActivo: false });
+                    enviarMensaje('hijo5-casa', 'ACTUALIZAR_UI', { gpsActivo: false });
                     
                     // Si estamos en modo simulación, no mostrar el error como un problema
                     if (datos.modoSimulacion) {
@@ -1032,7 +1086,7 @@
                 } else if (datos.estadoGPS === 'activo') {
                     // Notificar a todos los hijos que el GPS está activo
                     enviarMensaje('hijo2', 'ACTUALIZAR_UI', { gpsActivo: true });
-                    enviarMensaje('hijo5', 'ACTUALIZAR_UI', { gpsActivo: true });
+                    enviarMensaje('hijo5-casa', 'ACTUALIZAR_UI', { gpsActivo: true });
                 }
             }
             
@@ -1146,7 +1200,7 @@
                         navigationState.isNavigating = estado.navegando;
                         
                         // Sincronizar con Child 5
-                        return enviarMensaje('hijo5', 'ACTUALIZAR_ESTADO_NAVEGACION', {
+                        return enviarMensaje('hijo5-casa', 'ACTUALIZAR_ESTADO_NAVEGACION', {
                             paradaActual: estado.paradaActual,
                             navegando: estado.navegando
                         });
@@ -1307,9 +1361,9 @@
             const mensaje = event.data;
             if (!mensaje || !mensaje.tipo) return;
             
-            // Manejar mensajes específicos del hijo5 (botón casa)
+            // Manejar mensajes específicos del hijo5-casa (botón casa)
             if (mensaje.origen === 'hijo5' || mensaje.origen === 'hijo5-casa') {
-                console.log('PADRE: Mensaje de hijo5:', mensaje);
+                console.log('PADRE: Mensaje de hijo5-casa:', mensaje);
                 
                 // Manejar cambio de modo
                 if (mensaje.tipo === 'cambiarModo') {
@@ -1319,7 +1373,7 @@
                 }
                 // Manejar actualización de estado GPS
                 else if (mensaje.tipo === 'estadoGPSActualizado') {
-                    console.log('PADRE: Actualizando estado GPS desde hijo5:', mensaje.datos);
+                    console.log('PADRE: Actualizando estado GPS desde hijo5-casa:', mensaje.datos);
                     // Actualizar el estado global del GPS
                     if (mensaje.datos.gpsOn !== undefined) {
                         navigationState.gpsStatus = mensaje.datos.gpsOn ? 'activo' : 'inactivo';
@@ -1625,7 +1679,7 @@ window.addEventListener('message', function(event) {
                         estado: 'activo'
                     });
                     
-                    enviarMensaje('hijo5', 'ACTUALIZAR_MARCADOR', {
+                    enviarMensaje('hijo5-casa', 'ACTUALIZAR_MARCADOR', {
                         paradaIndex: datos.id,
                         activo: true,
                         coordenadas: parada.coordenadas
@@ -1859,7 +1913,7 @@ window.addEventListener('message', function(event) {
                     mostrarMensajeInfoParada(`Parada ${paradaIndex + 1}: ${parada.nombre}`);
                     
                     // Notificar a Child 5 sobre la selección de parada
-                    enviarMensaje('hijo5', 'PARADA_SELECCIONADA', {
+                    enviarMensaje('hijo5-casa', 'PARADA_SELECCIONADA', {
                         paradaIndex: paradaIndex,
                         coordenadas: parada.coordenadas,
                         nombre: parada.nombre
@@ -2007,7 +2061,7 @@ window.addEventListener('message', function(event) {
             mostrarMensajeInfoParada(`Tramo ${tramoIndex + 1}: ${tramo.nombre || 'Sin nombre'}`);
             
             // Notificar a Child 5 sobre la selección de tramo
-            enviarMensaje('hijo5', 'TRAMO_SELECCIONADO', {
+            enviarMensaje('hijo5-casa', 'TRAMO_SELECCIONADO', {
                 tramoIndex: tramoIndex,
                 nombre: tramo.nombre || 'Sin nombre',
                 coordenadas: tramo.coordenadas || []
