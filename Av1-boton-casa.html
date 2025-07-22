@@ -970,7 +970,7 @@
         }).catch(error => {
             console.error('Error al seleccionar tramo:', error);
             // Revertir la selección en caso de error
-    }
+        });
 
     // ================== SUSCRIPCIONES A CAMBIOS DE ESTADO ==================
     
@@ -2077,12 +2077,14 @@
     
     // Función para enviar mensajes al padre
     function enviarAlPadre(tipo, datos = {}) {
+        // Enviar mensaje al padre
         const mensaje = {
             tipo,
-            origen: 'hijo5',
+            origen: 'hijo5-casa',  // Usar el mismo ID que el iframe
             timestamp: Date.now(),
-            ...datos
+            datos
         };
+        
         console.log('HIJO5: Enviando al padre:', mensaje);
         window.parent.postMessage(mensaje, '*');
     }
@@ -2104,6 +2106,12 @@
             const mensaje = event.data;
             if (!mensaje || !mensaje.tipo) {
                 console.warn('Mensaje recibido sin tipo:', mensaje);
+                return;
+            }
+
+            // Verificar si el mensaje es para este iframe
+            if (mensaje.destino && mensaje.destino !== 'hijo5') {
+                console.log('Mensaje no es para este iframe:', mensaje);
                 return;
             }
 
@@ -2129,14 +2137,12 @@
                     break;
                     
                 case 'ACTUALIZAR_UI':
-                    console.log('HIJO5: Actualizando UI con:', mensaje);
-                    if (mensaje.gpsActivo !== undefined) {
-                        console.log('HIJO5: Actualizando estado GPS a:', mensaje.gpsActivo ? 'activo' : 'inactivo');
-                        setGpsState(mensaje.gpsActivo);
-                        // Notificar al padre que hemos actualizado el estado
-                        enviarAlPadre('estadoGPSActualizado', { 
-                            gpsOn: mensaje.gpsActivo 
-                        });
+                    console.log('HIJO5: Recibido ACTUALIZAR_UI:', mensaje);
+                    if (mensaje.datos.gpsActivo !== undefined) {
+                        console.log('HIJO5: Actualizando estado GPS a:', mensaje.datos.gpsActivo);
+                        setGpsState(mensaje.datos.gpsActivo);
+                        // Notificar al padre sobre el cambio de estado
+                        enviarAlPadre('estadoGPSActualizado', { gpsOn: mensaje.datos.gpsActivo });
                     }
                     break;
                     
@@ -2438,13 +2444,13 @@
             }
         }
           
-          // Actualizar la interfaz de usuario
-          if (document.getElementById('paradas-window').style.display === 'flex') {
+        // Actualizar la interfaz de usuario
+        if (document.getElementById('paradas-window').style.display === 'flex') {
             renderParadasYTramos();
-          }
-          
-          // Notificar al padre sobre el nuevo tramo seleccionado
-          window.parent.postMessage({
+        }
+        
+        // Notificar al padre sobre el nuevo tramo seleccionado
+        window.parent.postMessage({
             tipo: 'TRAMO_SELECCIONADO',
             tramoIndex: tramoActual,
             timestamp: Date.now()
