@@ -202,7 +202,7 @@
     <!-- Rutas actualizadas para GitHub Pages -->
     <iframe id="hijo1-hamburguesa" src="./botones-y-subfunciones-hamburguesa.html" style="position:fixed; left:1vw; bottom:0vw; height: 265px; width:57px; z-index:1005; border: transparent; background:transparent; pointer-events:auto;"></iframe>
     <iframe id="hijo1-opciones" src="./botones-y-subfunciones-opciones.html" style="position:fixed; right:1vw; bottom:0vw; height: 265px; width:57px; z-index:1005; border: transparent; background:transparent; pointer-events:auto;"></iframe>
-    <iframe id="hijo1-mapa" src="./botones-y-subfunciones-mapa.html" style="position:fixed; right:1vw; top:20vw; height: 200px; width:57px; z-index:1005; border: transparent; background:transparent; pointer-events:auto;"></iframe>
+   
     <iframe id="hijo5-casa" src="./Av1-boton-casa.html" style="position:fixed; left:10px; top:10px; height:350px; width:100px; z-index:1005; border: transparent; background:transparent; pointer-events:auto; transition:width 0.3s;"></iframe>
 
     <iframe id="hijo3" src="./Av1_audio_esp.html"
@@ -1273,6 +1273,31 @@
             const mensaje = event.data;
             if (!mensaje || !mensaje.tipo) return;
             
+            // Manejar mensajes específicos del hijo5 (botón casa)
+            if (mensaje.origen === 'hijo5' || mensaje.origen === 'hijo5-casa') {
+                console.log('PADRE: Mensaje de hijo5:', mensaje);
+                
+                // Manejar cambio de modo
+                if (mensaje.tipo === 'cambiarModo') {
+                    // Notificar a otros iframes sobre el cambio de modo
+                    ['hijo1-hamburguesa', 'hijo1-opciones', 'hijo1-mapa', 'hijo3']
+                        .forEach(id => enviarMensaje(id, 'modoCambiado', { modo: mensaje.modo }));
+                }
+                // Manejar actualización de estado GPS
+                else if (mensaje.tipo === 'estadoGPSActualizado') {
+                    console.log('PADRE: Actualizando estado GPS desde hijo5:', mensaje.datos);
+                    // Actualizar el estado global del GPS
+                    if (mensaje.datos.gpsOn !== undefined) {
+                        navigationState.gpsStatus = mensaje.datos.gpsOn ? 'activo' : 'inactivo';
+                        // Notificar a otros componentes sobre el cambio de estado del GPS
+                        enviarMensaje('hijo2', 'ACTUALIZAR_UI', { 
+                            gpsActivo: mensaje.datos.gpsOn 
+                        });
+                        console.log('PADRE: Estado GPS actualizado a:', navigationState.gpsStatus);
+                    }
+                }
+            }
+            
             // Manejar mensajes de sincronización
             if (mensaje.tipo === 'sincronizar') {
                 console.log('PADRE: Sincronización solicitada por:', mensaje.origen);
@@ -1286,25 +1311,22 @@
             
             // Reenviar mensajes entre iframes según sea necesario
             if (mensaje.destino) {
-                console.log(`PADRE: Reenviando mensaje a ${mensaje.destino}`);
-                enviarMensaje(mensaje.destino, mensaje.tipo, mensaje.datos || {});
-                return;
-            }
-            
-            // Manejar mensajes específicos del hijo5 (botón casa)
-            if (mensaje.origen === 'hijo5') {
-                console.log('PADRE: Mensaje de hijo5:', mensaje);
-                // Aquí puedes manejar mensajes específicos del hijo5
-                if (mensaje.tipo === 'cambiarModo') {
-                    // Notificar a otros iframes sobre el cambio de modo
-                    ['hijo1-hamburguesa', 'hijo1-opciones', 'hijo1-mapa', 'hijo3']
-                        .forEach(id => enviarMensaje(id, 'modoCambiado', { modo: mensaje.modo }));
-                }
-            }
 
-            if (mensaje.version !== MESSAGE_PROTOCOL_VERSION) {
-                console.warn(`Versión de protocolo no coincidente: ${mensaje.version} (esperado: ${MESSAGE_PROTOCOL_VERSION})`);
-            }
+// Manejador de mensajes entrantes
+window.addEventListener('message', function(event) {
+    // Para depuración, mostramos todos los mensajes recibidos
+    console.log('PADRE: Mensaje recibido:', event.data, 'desde:', event.origin);
+    
+    const mensaje = event.data;
+    if (!mensaje || !mensaje.tipo) return;
+    
+    // Manejar mensajes de sincronización
+    if (mensaje.tipo === 'sincronizar') {
+        console.log('PADRE: Sincronización solicitada por:', mensaje.origen);
+        // Responder con el estado actual
+        enviarMensaje(mensaje.origen, 'sincronizado', {
+            estado: 'ok',
+            timestamp: Date.now()
 
             console.debug(`[Padre] Mensaje recibido:`, mensaje);
 
