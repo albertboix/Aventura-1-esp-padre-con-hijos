@@ -233,12 +233,12 @@
     <div id="info-parada"></div>
     
     <!-- Fondo blanco para el logo con borde naranja -->
-    <div style="position: fixed; top: 0; left: 2px; width: 98%; height: 80px; background: white; z-index: 2999; border: 2px solid #ec7c26; border-top: none; border-bottom-left-radius: 15px; border-bottom-right-radius: 15px;"></div>
+    <div style="position: fixed; top: 0; left: 0; right: 0; width: 99%; margin: 0 auto; height: 80px; background: white; z-index: 2999; border: 2px solid #ec7c26; border-top: none; border-bottom-left-radius: 15px; border-bottom-right-radius: 15px;"></div>
 
     <!-- Rutas actualizadas para GitHub Pages -->
     <iframe id="hijo1-hamburguesa" src="./botones-y-subfunciones-hamburguesa.html" style="position:fixed; left:1vw; bottom:0vw; height: 265px; width:57px; z-index:1005; border: transparent; background:transparent; pointer-events:auto;"></iframe>
     <iframe id="hijo1-opciones" src="./botones-y-subfunciones-opciones.html" style="position:fixed; right:1vw; bottom:0vw; height: 265px; width:57px; z-index:1005; border: transparent; background:transparent; pointer-events:auto;"></iframe>
-    <iframe id="hijo5-casa" src="./Av1-boton-casa.html" style="position:fixed; left:5px; top:81px; width:100px; height:calc(100vh - 105px); z-index:3002; border: transparent; background:transparent; pointer-events:auto; transition:width 0.3s; overflow:hidden;"></iframe>
+    <iframe id="hijo5-casa" src="./Av1-boton-casa.html" style="position:fixed; left:0; top:0; width:99%; height:80px; margin: 0 auto; right:0; z-index:3002; border: none; background:transparent; pointer-events:auto;"></iframe>
 
     <iframe id="hijo3" src="./Av1_audio_esp.html"
             style="position:fixed;
@@ -809,103 +809,152 @@
             const data = event.data;
             if (!data || !data.type) return;
             
-            console.log('❓ PADRE: Mensaje recibido de hijo4 (retos):', data.type, data);
+            const timestamp = new Date().toISOString();
+            console.group(`🎮 PADRE [${timestamp}] - Mensaje de hijo4 (retos): ${data.type}`);
+            console.log('📦 Datos recibidos:', data);
+            console.log('🔗 Origen:', event.origin);
             
-            switch(data.type) {
-                case 'hijo4Ready':
-                case 'retos-hijo-listo':
-                    console.log('✅ PADRE: Hijo 4 (Retos) listo y operativo');
-                    // Confirmar recepción
-                    iframe.contentWindow.postMessage({ 
-                        type: 'confirmacion',
-                        origen: 'padre',
-                        destino: 'hijo4',
-                        mensaje: 'Estado sincronizado',
-                        timestamp: Date.now(),
-                        estado: {
-                            modo: estadoGlobal.modo || 'aventura',
-                            retoActivo: estadoGlobal.datosCompartidos.reto.activo || false,
-                            retoCompletado: estadoGlobal.datosCompartidos.reto.completado || false,
-                            paradaActual: estadoGlobal.puntoActual?.id || null
-                        }
-                    }, '*');
-                    break;
-                    
-                case 'iniciarReto':
-                    console.log('🎮 PADRE: Iniciando reto para parada:', data.paradaId);
-                    // Mostrar el iframe de retos
-                    document.getElementById('hijo4').style.display = 'block';
-                    // Actualizar estado global
-                    actualizarEstadoGlobal({
-                        datosCompartidos: {
-                            ...estadoGlobal.datosCompartidos,
+            try {
+                switch(data.type) {
+                    case 'hijo4Ready':
+                    case 'retos-hijo-listo':
+                        console.log('✅ PADRE: Hijo 4 (Retos) listo y operativo');
+                        // Confirmar recepción y sincronizar estado actual
+                        const respuesta = {
+                            type: 'sincronizarEstado',
+                            origen: 'padre',
+                            destino: 'hijo4',
+                            timestamp: Date.now(),
+                            estado: {
+                                modo: estadoGlobal.modo || 'aventura',
+                                retoActivo: estadoGlobal.datosCompartidos?.reto?.activo || false,
+                                retoCompletado: estadoGlobal.datosCompartidos?.reto?.completado || false,
+                                paradaActual: estadoGlobal.puntoActual?.id || null,
+                                puntoActual: estadoGlobal.puntoActual || null
+                            }
+                        };
+                        
+                        iframe.contentWindow.postMessage(respuesta, '*');
+                        console.log('🔄 PADRE: Estado sincronizado con hijo4', respuesta.estado);
+                        break;
+                        
+                    case 'retoIniciado':
+                        console.log('🎯 PADRE: Reto iniciado:', data.retoId);
+                        // Actualizar estado global
+                        const nuevoEstado = {
                             reto: {
                                 activo: true,
                                 completado: false,
-                                paradaId: data.paradaId
-                            }
+                                id: data.retoId,
+                                timestamp: Date.now()
+                            },
+                            // Pausar la reproducción de audio cuando se inicia un reto
+                            reproduciendoAudio: false
+                        };
+                        
+                        actualizarEstadoGlobal(nuevoEstado);
+                        
+                        // Notificar al hijo3 (audio) que debe pausar la reproducción
+                        const hijo3 = document.getElementById('hijo3');
+                        if (hijo3 && hijo3.contentWindow) {
+                            hijo3.contentWindow.postMessage({
+                                type: 'pausarReproduccion',
+                                motivo: 'reto_iniciado',
+                                retoId: data.retoId,
+                                timestamp: Date.now()
+                            }, '*');
+                            console.log('⏸️ PADRE: Solicitada pausa de reproducción por inicio de reto');
                         }
-                    });
-                    break;
-                    
-                case 'retoCompletado':
-                    console.log('🏆 PADRE: Reto completado para parada:', data.paradaId);
-                    // Ocultar el iframe de retos
-                    document.getElementById('hijo4').style.display = 'none';
-                    // Actualizar estado global
-                    actualizarEstadoGlobal({
-                        datosCompartidos: {
-                            ...estadoGlobal.datosCompartidos,
+                        break;
+                        
+                    case 'retoCompletado':
+                        console.log('🏆 PADRE: Reto completado:', data.retoId);
+                        // Actualizar estado global
+                        actualizarEstadoGlobal({
                             reto: {
                                 activo: false,
                                 completado: true,
-                                paradaId: data.paradaId
+                                id: data.retoId,
+                                timestamp: Date.now()
                             }
+                        });
+                        
+                        // Notificar al hijo3 (audio) que puede reanudar la reproducción si es necesario
+                        const hijo3Audio = document.getElementById('hijo3');
+                        if (hijo3Audio && hijo3Audio.contentWindow) {
+                            hijo3Audio.contentWindow.postMessage({
+                                type: 'reanudarReproduccion',
+                                motivo: 'reto_completado',
+                                retoId: data.retoId,
+                                timestamp: Date.now()
+                            }, '*');
+                            console.log('▶️ PADRE: Solicitada reanudación de reproducción por finalización de reto');
                         }
-                    });
-                    // Notificar a otros hijos del reto completado
-                    sincronizarEstadoConHijos();
-                    break;
-                    
-                case 'cerrarReto':
-                    console.log('🚪 PADRE: Cerrando reto sin completar');
-                    document.getElementById('hijo4').style.display = 'none';
-                    actualizarEstadoGlobal({
-                        datosCompartidos: {
-                            ...estadoGlobal.datosCompartidos,
+                        break;
+                        
+                    case 'cerrarReto':
+                        console.log('🚪 PADRE: Cerrando reto sin completar');
+                        // Actualizar estado global
+                        actualizarEstadoGlobal({
                             reto: {
                                 activo: false,
                                 completado: false,
-                                paradaId: null
+                                id: null,
+                                timestamp: Date.now()
                             }
+                        });
+                        break;
+                        
+                    case 'solicitarSincronizacion':
+                        console.log('🔄 PADRE: Sincronización solicitada por hijo4');
+                        // Enviar estado actual al hijo 4
+                        iframe.contentWindow.postMessage({
+                            type: 'sincronizarEstado',
+                            origen: 'padre',
+                            destino: 'hijo4',
+                            timestamp: Date.now(),
+                            estado: {
+                                modo: estadoGlobal.modo || 'aventura',
+                                retoActivo: estadoGlobal.datosCompartidos?.reto?.activo || false,
+                                retoCompletado: estadoGlobal.datosCompartidos?.reto?.completado || false,
+                                paradaActual: estadoGlobal.puntoActual?.id || null,
+                                puntoActual: estadoGlobal.puntoActual || null
+                            }
+                        }, '*');
+                        break;
+                        
+                    case 'cambioModo':
+                        console.log(`🔄 PADRE: Hijo4 notifica cambio de modo a ${data.modo}`);
+                        // Actualizar estado global y sincronizar con otros hijos
+                        actualizarEstadoGlobal({
+                            modo: data.modo,
+                            ultimaActualizacion: Date.now()
+                        });
+                        
+                        // Notificar al hijo3 (audio) sobre el cambio de modo
+                        const hijo3Modo = document.getElementById('hijo3');
+                        if (hijo3Modo && hijo3Modo.contentWindow) {
+                            hijo3Modo.contentWindow.postMessage({
+                                type: 'cambioModo',
+                                modo: data.modo,
+                                timestamp: Date.now()
+                            }, '*');
+                            console.log(`📤 PADRE: Notificado cambio de modo a hijo3: ${data.modo}`);
                         }
-                    });
-                    break;
-                    
-                case 'error':
-                    console.error('❌ PADRE: Error en hijo4 (retos):', data.mensaje);
-                    mostrarMensajeInfoParada(`Error en retos: ${data.mensaje}`, true);
-                    break;
-                    
-                case 'solicitarSincronizacion':
-                    console.log('🔄 PADRE: Sincronización solicitada por hijo4');
-                    // Enviar estado actual al hijo 4
-                    iframe.contentWindow.postMessage({
-                        type: 'sincronizarEstado',
-                        origen: 'padre',
-                        destino: 'hijo4',
-                        timestamp: Date.now(),
-                        estado: {
-                            modo: estadoGlobal.modo || 'aventura',
-                            retoActivo: estadoGlobal.datosCompartidos.reto.activo || false,
-                            retoCompletado: estadoGlobal.datosCompartidos.reto.completado || false,
-                            paradaActual: estadoGlobal.puntoActual?.id || null
-                        }
-                    }, '*');
-                    break;
-                    
-                default:
-                    console.log('ℹ️ PADRE: Mensaje no manejado de hijo4 (retos):', data);
+                        break;
+                        
+                    case 'error':
+                        console.error('❌ PADRE: Error en hijo 4 (retos):', data.mensaje || 'Error desconocido');
+                        mostrarMensajeInfoParada(`Error en retos: ${data.mensaje || 'Error desconocido'}`, true);
+                        break;
+                        
+                    default:
+                        console.log('ℹ️ PADRE: Mensaje no manejado de hijo4 (retos):', data);
+                }
+            } catch (error) {
+                console.error('❌ PADRE: Error al procesar mensaje de hijo4:', error, data);
+            } finally {
+                console.groupEnd();
             }
         });
         
@@ -917,45 +966,116 @@
             const data = event.data;
             if (!data || !data.type) return;
             
-            console.log('📥 PADRE: Mensaje recibido de hijo 3 (audio):', data.type, data);
+            const timestamp = new Date().toISOString();
+            console.group(`🎵 PADRE [${timestamp}] - Mensaje de hijo3 (audio): ${data.type}`);
+            console.log('📦 Datos recibidos:', data);
+            console.log('🔗 Origen:', event.origin);
             
-            switch(data.type) {
-                case 'hijo3Ready':
-                case 'audio-hijo-listo':
-                    console.log('✅ PADRE: Hijo 3 (Reproductor) listo y operativo');
-                    // Confirmar recepción
-                    iframe.contentWindow.postMessage({ 
-                        type: 'confirmacion',
-                        mensaje: 'Estado sincronizado',
-                        timestamp: Date.now()
-                    }, '*');
-                    break;
-                    
-                case 'estadoReproduccion':
-                    console.log('🎵 PADRE: Estado de reproducción actualizado:', {
-                        reproduciendo: data.reproduciendo,
-                        paradaActual: data.paradaActual,
-                        tiempoActual: data.tiempoActual
-                    });
-                    // Actualizar estado global
-                    actualizarEstadoGlobal({
-                        reproduciendoAudio: data.reproduciendo,
-                        audioActual: data.paradaActual
-                    });
-                    break;
-                    
-                case 'error':
-                    console.error('❌ PADRE: Error en hijo 3 (audio):', data.mensaje);
-                    mostrarMensajeInfoParada(`Error en reproductor: ${data.mensaje}`, true);
-                    break;
-                    
-                case 'audioFinalizado':
-                    console.log('🏁 PADRE: Audio finalizado:', data.paradaActual);
-                    // Aquí podrías manejar la lógica de qué hacer cuando termina un audio
-                    break;
-                    
-                default:
-                    console.log('ℹ️ PADRE: Mensaje no manejado de hijo 3 (audio):', data);
+            try {
+                switch(data.type) {
+                    case 'hijo3Ready':
+                    case 'audio-hijo-listo':
+                        console.log('✅ PADRE: Hijo 3 (Reproductor) listo y operativo');
+                        // Confirmar recepción y sincronizar estado actual
+                        const respuesta = {
+                            type: 'sincronizarEstado',
+                            origen: 'padre',
+                            destino: 'hijo3',
+                            timestamp: Date.now(),
+                            estado: {
+                                modo: estadoGlobal.modo || 'aventura',
+                                puntoActual: estadoGlobal.puntoActual?.id || null,
+                                reproduciendo: estadoGlobal.reproduciendoAudio || false
+                            }
+                        };
+                        
+                        iframe.contentWindow.postMessage(respuesta, '*');
+                        console.log('🔄 PADRE: Estado sincronizado con hijo3', respuesta.estado);
+                        break;
+                        
+                    case 'estadoReproduccion':
+                        console.log('🎵 PADRE: Estado de reproducción actualizado:', {
+                            reproduciendo: data.reproduciendo,
+                            paradaActual: data.paradaActual,
+                            tiempoActual: data.tiempoActual
+                        });
+                        
+                        // Actualizar estado global
+                        actualizarEstadoGlobal({
+                            reproduciendoAudio: data.reproduciendo,
+                            audioActual: data.paradaActual
+                        });
+                        
+                        // Notificar a otros componentes si es necesario
+                        if (data.paradaActual) {
+                            // Notificar al hijo4 (retos) sobre el cambio de parada
+                            const hijo4 = document.getElementById('hijo4');
+                            if (hijo4 && hijo4.contentWindow) {
+                                hijo4.contentWindow.postMessage({
+                                    type: 'cambioParada',
+                                    parada: data.paradaActual,
+                                    modo: estadoGlobal.modo,
+                                    timestamp: Date.now()
+                                }, '*');
+                                console.log(`📤 PADRE: Notificado cambio de parada a hijo4: ${data.paradaActual}`);
+                            }
+                        }
+                        break;
+                        
+                    case 'solicitarSincronizacion':
+                        console.log('🔄 PADRE: Sincronización solicitada por hijo3');
+                        // Enviar estado actual al hijo 3
+                        iframe.contentWindow.postMessage({
+                            type: 'sincronizarEstado',
+                            origen: 'padre',
+                            destino: 'hijo3',
+                            timestamp: Date.now(),
+                            estado: {
+                                modo: estadoGlobal.modo || 'aventura',
+                                puntoActual: estadoGlobal.puntoActual?.id || null,
+                                reproduciendo: estadoGlobal.reproduciendoAudio || false
+                            }
+                        }, '*');
+                        break;
+                        
+                    case 'error':
+                        console.error('❌ PADRE: Error en hijo 3 (audio):', data.mensaje || 'Error desconocido');
+                        mostrarMensajeInfoParada(`Error en reproductor: ${data.mensaje || 'Error desconocido'}`, true);
+                        break;
+                        
+                    case 'audioFinalizado':
+                        console.log('🏁 PADRE: Audio finalizado:', data.paradaActual);
+                        // Notificar a otros componentes que el audio ha terminado
+                        if (data.paradaActual) {
+                            // Notificar al hijo4 (retos) que el audio ha terminado
+                            const hijo4 = document.getElementById('hijo4');
+                            if (hijo4 && hijo4.contentWindow) {
+                                hijo4.contentWindow.postMessage({
+                                    type: 'audioFinalizado',
+                                    parada: data.paradaActual,
+                                    timestamp: Date.now()
+                                }, '*');
+                                console.log(`📤 PADRE: Notificado finalización de audio a hijo4: ${data.paradaActual}`);
+                            }
+                        }
+                        break;
+                        
+                    case 'cambioModo':
+                        console.log(`🔄 PADRE: Hijo3 notifica cambio de modo a ${data.modo}`);
+                        // Actualizar estado global y sincronizar con otros hijos
+                        actualizarEstadoGlobal({
+                            modo: data.modo,
+                            ultimaActualizacion: Date.now()
+                        });
+                        break;
+                        
+                    default:
+                        console.log('ℹ️ PADRE: Mensaje no manejado de hijo 3 (audio):', data);
+                }
+            } catch (error) {
+                console.error('❌ PADRE: Error al procesar mensaje de hijo3:', error, data);
+            } finally {
+                console.groupEnd();
             }
         });
         
