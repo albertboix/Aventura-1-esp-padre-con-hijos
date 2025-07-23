@@ -991,52 +991,100 @@
             console.log('📦 Datos recibidos:', data);
             console.log('🔗 Origen del mensaje:', origen);
             
-            // Función auxiliar para reenviar mensajes a otros iframes
+            // Función auxiliar mejorada para reenviar mensajes a otros iframes
             const reenviarAMensaje = (tipoDestino, mensaje) => {
-                const destino = document.getElementById(tipoDestino);
-                if (destino && destino.contentWindow) {
-                    console.log(`🔄 PADRE: Reenviando a ${tipoDestino}:`, mensaje);
-                    destino.contentWindow.postMessage(mensaje, '*');
-                    return true;
-                } else {
-                    console.error(`❌ PADRE: No se pudo reenviar a ${tipoDestino} - Iframe no encontrado`);
-                    return false;
-                }
+                // Si el destino es 'todos', enviar a todos los hijos
+                const destinos = tipoDestino === 'todos' 
+                    ? ['hijo2', 'hijo3', 'hijo4'] 
+                    : [tipoDestino];
+                
+                let exitosos = 0;
+                const errores = [];
+                
+                destinos.forEach(dest => {
+                    const destino = document.getElementById(dest);
+                    if (destino && destino.contentWindow) {
+                        try {
+                            // Asegurarse de que el mensaje tenga un timestamp
+                            const mensajeConTimestamp = {
+                                ...mensaje,
+                                timestamp: Date.now(),
+                                origen: 'padre',
+                                destino: dest
+                            };
+                            
+                            console.log(`🔄 PADRE: Reenviando a ${dest}:`, mensajeConTimestamp);
+                            destino.contentWindow.postMessage(mensajeConTimestamp, '*');
+                            exitosos++;
+                        } catch (error) {
+                            console.error(`❌ PADRE: Error al enviar a ${dest}:`, error);
+                            errores.push(dest);
+                        }
+                    } else {
+                        console.warn(`⚠️ PADRE: No se pudo reenviar a ${dest} - Iframe no encontrado`);
+                        errores.push(dest);
+                    }
+                });
+                
+                // Devolver resumen de la operación
+                return {
+                    exitosos,
+                    total: destinos.length,
+                    errores: errores.length,
+                    destinosConError: errores
+                };
             };
             
             // Manejar mensajes que pueden venir con o sin tipo
             if (!tipoMensaje || data.type?.startsWith('mensaje-para-')) {
-                console.warn('⚠️ PADRE: Mensaje sin tipo o para reenviar, procesando...');
+                console.log('🔍 PADRE: Procesando mensaje especial de hijo5-casa...');
                 
-                // Si es un mensaje para reenviar a otro hijo (formato: {type: 'mensaje-para-hijoX', ...})
+                // Caso 1: Mensaje directo a un hijo específico (formato: {type: 'mensaje-para-hijoX', ...})
                 if (tipoMensaje?.startsWith('mensaje-para-')) {
-                    const tipoDestino = tipoMensaje.replace('mensaje-para-', '');
+                    const tipoDestino = tipoDestino = tipoMensaje.replace('mensaje-para-', '');
                     console.log(`🔄 PADRE: Reenviando mensaje directo a ${tipoDestino}`, data);
-                    reenviarAMensaje(tipoDestino, data);
+                    const resultado = reenviarAMensaje(tipoDestino, data);
+                    console.log(`📊 PADRE: Resultado del reenvío: ${resultado.exitosos}/${resultado.total} exitosos`);
                     console.groupEnd();
                     return;
                 } 
-                // Si es un mensaje con estructura {tipo: 'mensaje-para-hijoX', mensaje: {...}}
-                else if (data.tipo && data.mensaje) {
+                
+                // Caso 2: Mensaje estructurado (formato: {tipo: 'mensaje-para-hijoX', mensaje: {...}})
+                if (data.tipo && data.mensaje) {
                     const tipoDestino = data.tipo.replace('mensaje-para-', '');
                     console.log(`🔄 PADRE: Reenviando mensaje estructurado a ${tipoDestino}`, data.mensaje);
-                    reenviarAMensaje(tipoDestino, data.mensaje);
+                    const resultado = reenviarAMensaje(tipoDestino, data.mensaje);
+                    console.log(`📊 PADRE: Resultado del reenvío: ${resultado.exitosos}/${resultado.total} exitosos`);
                     console.groupEnd();
                     return;
                 } 
-                // Si es un mensaje sin tipo pero con datos para reenviar
-                else if (data.destino && data.datos) {
+                
+                // Caso 3: Mensaje con destino explícito (formato: {destino: 'hijoX', datos: {...}})
+                if (data.destino && data.datos) {
                     console.log(`🔄 PADRE: Reenviando mensaje a ${data.destino}`, data.datos);
-                    reenviarAMensaje(data.destino, data.datos);
-                    console.groupEnd();
-                    return;
-                } 
-                // Si no se puede determinar el destino
-                else {
-                    console.warn('⚠️ PADRE: No se pudo determinar el destino del mensaje - Formato no reconocido');
+                    const resultado = reenviarAMensaje(data.destino, data.datos);
+                    console.log(`📊 PADRE: Resultado del reenvío: ${resultado.exitosos}/${resultado.total} exitosos`);
                     console.groupEnd();
                     return;
                 }
+                
+                // Caso 4: Mensaje para todos los hijos (broadcast)
+                if (data.broadcast === true) {
+                    console.log('📣 PADRE: Enviando mensaje de difusión a todos los hijos', data.datos || data);
+                    const mensajeBroadcast = data.datos || data;
+                    const resultado = reenviarAMensaje('todos', mensajeBroadcast);
+                    console.log(`📊 PADRE: Resultado del broadcast: ${resultado.exitosos}/${resultado.total} exitosos`);
+                    if (resultado.errores > 0) {
+                        console.warn(`⚠️ PADRE: Errores en el envío a: ${resultado.destinosConError.join(', ')}`);
+                    }
+                    console.groupEnd();
+                    return;
+                }
+                
+                // Si no coincide con ningún formato conocido
+                console.warn('⚠️ PADRE: No se pudo determinar el destino del mensaje - Formato no reconocido');
+                console.groupEnd();
+                return;
             }
             
             console.log('📌 Tipo de mensaje:', tipoMensaje);
