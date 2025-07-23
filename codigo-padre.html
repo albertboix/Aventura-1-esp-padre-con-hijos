@@ -982,19 +982,61 @@
             // Log detallado de los mensajes recibidos
             const timestamp = new Date().toISOString();
             const origen = event.origin || 'unknown-origin';
-            
-            console.group(`📨 PADRE [${timestamp}] - Mensaje de hijo5-casa (${origen})`);
-            console.log('📦 Datos recibidos:', event.data);
-            console.log('🔗 Origen del mensaje:', origen);
-            
-            // Si el mensaje no tiene tipo, intentar usar 'tipo' como alternativa a 'type'
             const data = event.data || {};
+            
+            // Normalizar el tipo de mensaje (aceptar tanto 'type' como 'tipo')
             const tipoMensaje = data.type || data.tipo;
             
-            if (!tipoMensaje) {
-                console.warn('⚠️ PADRE: Mensaje sin tipo recibido, ignorando...');
-                console.groupEnd();
-                return;
+            console.group(`📨 PADRE [${timestamp}] - Mensaje de hijo5-casa (${origen})`);
+            console.log('📦 Datos recibidos:', data);
+            console.log('🔗 Origen del mensaje:', origen);
+            
+            // Función auxiliar para reenviar mensajes a otros iframes
+            const reenviarAMensaje = (tipoDestino, mensaje) => {
+                const destino = document.getElementById(tipoDestino);
+                if (destino && destino.contentWindow) {
+                    console.log(`🔄 PADRE: Reenviando a ${tipoDestino}:`, mensaje);
+                    destino.contentWindow.postMessage(mensaje, '*');
+                    return true;
+                } else {
+                    console.error(`❌ PADRE: No se pudo reenviar a ${tipoDestino} - Iframe no encontrado`);
+                    return false;
+                }
+            };
+            
+            // Manejar mensajes que pueden venir con o sin tipo
+            if (!tipoMensaje || data.type?.startsWith('mensaje-para-')) {
+                console.warn('⚠️ PADRE: Mensaje sin tipo o para reenviar, procesando...');
+                
+                // Si es un mensaje para reenviar a otro hijo (formato: {type: 'mensaje-para-hijoX', ...})
+                if (tipoMensaje?.startsWith('mensaje-para-')) {
+                    const tipoDestino = tipoMensaje.replace('mensaje-para-', '');
+                    console.log(`🔄 PADRE: Reenviando mensaje directo a ${tipoDestino}`, data);
+                    reenviarAMensaje(tipoDestino, data);
+                    console.groupEnd();
+                    return;
+                } 
+                // Si es un mensaje con estructura {tipo: 'mensaje-para-hijoX', mensaje: {...}}
+                else if (data.tipo && data.mensaje) {
+                    const tipoDestino = data.tipo.replace('mensaje-para-', '');
+                    console.log(`🔄 PADRE: Reenviando mensaje estructurado a ${tipoDestino}`, data.mensaje);
+                    reenviarAMensaje(tipoDestino, data.mensaje);
+                    console.groupEnd();
+                    return;
+                } 
+                // Si es un mensaje sin tipo pero con datos para reenviar
+                else if (data.destino && data.datos) {
+                    console.log(`🔄 PADRE: Reenviando mensaje a ${data.destino}`, data.datos);
+                    reenviarAMensaje(data.destino, data.datos);
+                    console.groupEnd();
+                    return;
+                } 
+                // Si no se puede determinar el destino
+                else {
+                    console.warn('⚠️ PADRE: No se pudo determinar el destino del mensaje - Formato no reconocido');
+                    console.groupEnd();
+                    return;
+                }
             }
             
             console.log('📌 Tipo de mensaje:', tipoMensaje);
@@ -1002,8 +1044,6 @@
             
             // Normalizar el tipo de mensaje
             data.type = tipoMensaje;
-            
-            console.log(`🏠 PADRE: Mensaje de hijo5-casa - Tipo: ${data.type}`, data);
             
             try {
                 switch(data.type) {
@@ -1028,7 +1068,8 @@
                                 tipo: 'respuestaSincronizacion',
                                 origen: 'padre',
                                 modo: window.estadoGlobal?.modo || 'aventura',
-                                gpsActivo: window.estadoGlobal?.modo === 'aventura'
+                                gpsActivo: window.estadoGlobal?.modo === 'aventura',
+                                puntoActual: window.estadoGlobal?.puntoActual
                             }
                         }, '*');
                         console.log('✅ PADRE: Estado sincronizado con hijo5-casa');
