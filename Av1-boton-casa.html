@@ -155,28 +155,32 @@
       background-color: #ccc;
       border-radius: 2px;
     }
-    .parada-btn, .tramo-btn {
-      background: linear-gradient(90deg, #007aff 0%, #00c6ff 100%);
-      color: #fff;
-      border: none;
-      border-radius: 20px;
-      padding: 6px 15px;
-      margin: 0 2px;
-      font-size: 0.9em;
+    .parada-tramo-btn {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 8px 16px;
+      margin: 0 5px;
+      text-align: left;
       cursor: pointer;
-      text-align: center;
-      transition: all 0.2s;
+      transition: all 0.2s ease;
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-      font-family: inherit;
-      white-space: nowrap;
-      line-height: 1.3;
       flex: 0 0 auto;
+      white-space: nowrap;
       display: inline-flex;
       align-items: center;
-      justify-content: center;
-      min-width: 40px;
-      height: 36px;
-      box-sizing: border-box;
+      height: 50px;
+    }
+    
+    .parada-tramo-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+    }
+    
+    .parada-tramo-btn.actual {
+      border: 2px solid #ff9800;
+      background-color: #fff8e1;
+      font-weight: bold;
     }
     .tramo-btn {
       background: linear-gradient(90deg, #8e44ad 0%, #9b59b6 100%);
@@ -255,12 +259,8 @@
 <body>
   <div id="contenedor-flex">
     <!-- Ventana desplegable de paradas y tramos -->
-    <div id="paradas-window" style="display: none; position: fixed; top: 120px; right: 20px; width: 300px; max-height: 70vh; background: white; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); z-index: 10000; overflow-y: auto; padding: 15px;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #eee;">
-        <h3 style="margin: 0; font-size: 1.2em; color: #333;">Selecciona una parada o tramo</h3>
-        <button id="cerrar-paradas" style="background: none; border: none; font-size: 1.2em; cursor: pointer;">×</button>
-      </div>
-      <div id="paradas-list" style="display: flex; flex-direction: column; gap: 8px;">
+    <div id="paradas-window" style="display: none; position: fixed; top: 70px; left: 10px; right: 10px; height: 90px; background: rgba(255, 255, 255, 0.95); border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); z-index: 10000; overflow-x: auto; overflow-y: hidden; padding: 10px;">
+      <div id="paradas-list" style="display: flex; flex-direction: row; align-items: center; gap: 10px; width: max-content; min-width: 100%; padding: 5px 15px;">
         <!-- Aquí se cargarán las paradas y tramos dinámicamente -->
       </div>
     </div>
@@ -613,6 +613,7 @@
     // Variables para rastrear el estado local
     let paradas = [];
     let tramos = [];
+    let watchId = null; // Para el seguimiento de la geolocalización
     let modoCasa = true; // Iniciar en modo casa por defecto
     let paradaActual = -1;
     let tramoActual = -1;
@@ -1173,26 +1174,26 @@
         const btn = document.createElement('button');
         btn.className = 'parada-tramo-btn';
         
-        // Resaltar si es el punto actual
+        // Determinar si es parada o tramo
         const esParada = punto.tipo === 'parada' || punto.tipo === 'inicio';
         const esActual = (esParada && punto.parada === paradaActual) || 
                         (!esParada && punto.tramo === tramoActual);
         
+        // Añadir clase 'actual' si es el punto actual
         if (esActual) {
           btn.classList.add('actual');
         }
         
         // Construir el contenido del botón
         const numero = esParada ? punto.parada : punto.tramo;
-        const tipoClase = esParada ? 'parada' : 'tramo';
         const colorFondo = esParada ? '#4CAF50' : '#2196F3';
         
         btn.innerHTML = `
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <span style="background: ${colorFondo}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.8em; min-width: 30px; text-align: center;">
+          <div style="display: flex; align-items: center; gap: 10px; white-space: nowrap;">
+            <span style="background: ${colorFondo}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.9em; min-width: 40px; text-align: center; font-weight: bold;">
               ${esParada ? 'P' : 'T'}${numero}
             </span>
-            <span>${punto.nombre}</span>
+            <span style="font-size: 0.95em;">${punto.nombre}</span>
           </div>
         `;
         
@@ -1220,19 +1221,17 @@
               tipo: esParada ? 'parada' : 'tramo',
               id: esParada ? `P-${punto.parada}` : `TR-${punto.tramo}`,
               numero: esParada ? punto.parada : punto.tramo,
-              nombre: punto.nombre
+              nombre: punto.nombre,
+              coordenadas: punto.coordenadas,
+              audio: punto.audio,
+              video: punto.video,
+              imagen: punto.imagen
             },
             modo: 'casa',
             gpsActivo: false
           }, '*');
           
-          // Cerrar la ventana después de seleccionar
-          const paradasWindow = document.getElementById('paradas-window');
-          if (paradasWindow) {
-            paradasWindow.style.display = 'none';
-          }
-          
-          // Actualizar la vista
+          // No cerramos la ventana, solo actualizamos la vista
           renderParadasYTramos();
         });
         
@@ -1793,6 +1792,115 @@
         }
       }
     });
+    
+    function setGpsState(on) {
+      const gpsBtn = document.getElementById('gps-casa-btn');
+      const gpsIcon = gpsBtn?.querySelector('i');
+      
+      if (!gpsBtn || !gpsIcon) {
+        console.error('No se encontró el botón de GPS o su icono');
+        return;
+      }
+      
+      if (on) {
+        // Modo Aventura (GPS ON)
+        gpsBtn.classList.remove('off');
+        gpsBtn.classList.add('on');
+        gpsBtn.title = 'Desactivar GPS';
+        gpsIcon.className = 'fas fa-satellite-dish';
+        
+        // Ocultar la ventana de paradas
+        const paradasWindow = document.getElementById('paradas-window');
+        if (paradasWindow) {
+          paradasWindow.style.display = 'none';
+        }
+        
+        // Notificar a todos los componentes que el GPS está activo
+        window.parent.postMessage({
+          type: 'gpsStateChange',
+          origen: 'hijo5-casa',
+          gpsActivo: true,
+          modo: 'aventura'
+        }, '*');
+        
+        // Notificar al hijo2 para que actualice el estado del botón chincheta
+        window.parent.postMessage({
+          tipo: 'mensaje-para-hijo2',
+          mensaje: {
+            type: 'actualizarEstadoGPS',
+            gpsActivo: true
+          }
+        }, '*');
+        
+        // Iniciar la geolocalización
+        if (navigator.geolocation) {
+          if (watchId === null) {
+            watchId = navigator.geolocation.watchPosition(
+              (position) => {
+                // Actualizar posición actual
+                const pos = {
+                  lat: position.coords.latitude,
+                  lng: position.coords.longitude
+                };
+                
+                // Notificar al padre sobre la nueva posición
+                window.parent.postMessage({
+                  type: 'ubicacionActualizada',
+                  origen: 'hijo5-casa',
+                  coordenadas: pos
+                }, '*');
+              },
+              (error) => {
+                console.error('Error en la geolocalización:', error);
+              },
+              { 
+                enableHighAccuracy: true,
+                maximumAge: 10000,
+                timeout: 5000
+              }
+            );
+          }
+        } else {
+          console.error('Geolocalización no soportada por el navegador');
+        }
+      } else {
+        // Modo Casa (GPS OFF)
+        gpsBtn.classList.remove('on');
+        gpsBtn.classList.add('off');
+        gpsBtn.title = 'Activar GPS';
+        gpsIcon.className = 'fas fa-house';
+        
+        // Mostrar la ventana de paradas
+        const paradasWindow = document.getElementById('paradas-window');
+        if (paradasWindow) {
+          paradasWindow.style.display = 'block';
+          renderParadasYTramos();
+        }
+        
+        // Detener la geolocalización
+        if (watchId !== null) {
+          navigator.geolocation.clearWatch(watchId);
+          watchId = null;
+        }
+        
+        // Notificar a todos los componentes que el GPS está inactivo
+        window.parent.postMessage({
+          type: 'gpsStateChange',
+          origen: 'hijo5-casa',
+          gpsActivo: false,
+          modo: 'casa'
+        }, '*');
+        
+        // Notificar al hijo2 para que actualice el estado del botón chincheta
+        window.parent.postMessage({
+          tipo: 'mensaje-para-hijo2',
+          mensaje: {
+            type: 'actualizarEstadoGPS',
+            gpsActivo: false
+          }
+        }, '*');
+      }
+    }
     
     // ================ INICIALIZACIÓN ================
     
