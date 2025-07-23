@@ -1555,24 +1555,69 @@
         }
 
         function activarModoCasa() {
+            console.log('🔵 Activando modo casa - Deteniendo GPS de la aplicación');
+            
+            // 1. Detener completamente el seguimiento GPS
+            if (watchId) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+                console.log('📍 GPS detenido en modo casa');
+            }
+            
+            // 2. Limpiar estado de navegación
+            ubicacionActual = null;
+            tramoActual = null;
+            
+            // 3. Detener cualquier intervalo activo
+            clearInterval(tripProgressInterval);
+            resetTripProgress();
+            
+            // 4. Actualizar estado local
             modoCasa = true;
-            detenerGPS();
+            
+            // 5. Actualizar interfaz de usuario
             desactivarBoton(btnGps);
             activarBoton(btnImagen);
             activarBoton(btnVideo);
-            clearInterval(tripProgressInterval);
-            resetTripProgress();
-            actualizarStatus('Modo Casa activado - GPS desactivado');
+            
+            // 6. Notificar al padre que el GPS está desactivado
+            informarEstadoGPS('gps_desactivado');
+            
+            // 7. Actualizar estado visual
+            actualizarStatus('Modo Casa - Navegación desactivada');
+            console.log('🏠 Modo casa activado - GPS de la aplicación desactivado');
         }
 
         function activarModoAventura() {
+            console.log('🟢 Activando modo aventura - Iniciando GPS de la aplicación');
+            
+            // 1. Actualizar estado local
             modoCasa = false;
+            
+            // 2. Iniciar el GPS si no está activo
+            if (!watchId) {
+                console.log('📍 Iniciando seguimiento GPS para modo aventura');
+                iniciarGPS().catch(error => {
+                    console.error('Error al iniciar GPS en modo aventura:', error);
+                    actualizarStatus('Error al activar GPS', true);
+                });
+            } else {
+                console.log('📍 GPS ya está activo, verificando ubicación actual');
+            }
+            
+            // 3. Actualizar interfaz de usuario
             if (ubicacionActual) {
                 verificarUbicacionCompleta();
             } else {
+                // Si no hay ubicación, desactivar temporalmente los botones hasta obtener una
                 desactivarTodosBotones();
+                actualizarStatus('Buscando señal GPS...');
             }
-            actualizarStatus('Modo Aventura activado - GPS disponible');
+            
+            // 4. Notificar al padre que el GPS está activo
+            informarEstadoGPS('gps_activado');
+            
+            console.log('🌍 Modo aventura activado - GPS de la aplicación activado');
         }
 
         // === FLUJO DE NAVEGACIÓN COMPLETO ===
