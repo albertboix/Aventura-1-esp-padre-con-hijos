@@ -1053,7 +1053,14 @@
             },
             sincronizacionEstado: {
                 camposRequeridos: ['type', 'estado'],
-                descripcion: 'Mensaje de sincronización de estado'
+                descripcion: 'Mensaje de sincronización de estado',
+                validarTipo: (mensaje) => {
+                    if (!mensaje.estado || typeof mensaje.estado !== 'object') {
+                        console.error('❌ HIJO 3: El estado debe ser un objeto', mensaje);
+                        return false;
+                    }
+                    return true;
+                }
             },
             comandoAudio: {
                 camposRequeridos: ['type'],
@@ -1062,6 +1069,17 @@
                     const comandosValidos = ['enableControls', 'disableControls', 'playAudio', 'pauseAudio', 'stopAudio'];
                     if (!comandosValidos.includes(mensaje.type)) {
                         console.error(`❌ HIJO 3: Tipo de comando no reconocido: ${mensaje.type}`);
+                        return false;
+                    }
+                    return true;
+                }
+            },
+            mensajeParaHijo3: {
+                camposRequeridos: ['type', 'datos'],
+                descripcion: 'Mensaje específico para el hijo3',
+                validarTipo: (mensaje) => {
+                    if (typeof mensaje.datos !== 'object') {
+                        console.error('❌ HIJO 3: El campo datos debe ser un objeto', mensaje);
                         return false;
                     }
                     return true;
@@ -1081,10 +1099,15 @@
             
             try {
                 switch(tipo) {
-                    case 'cambiarModo':
+                    case 'cambioModo':
+                    case 'cambiarModo': // Mantener compatibilidad con mensajes antiguos
                         console.log(`🎵 HIJO 3: Cambiando a modo '${datos.modo}'`);
                         if (datos.modo === 'casa') {
                             enableControls();
+                            // Si hay un audio cargado, reproducirlo automáticamente en modo casa
+                            if (audioElement && audioElement.src && !audioElement.paused) {
+                                playAudio();
+                            }
                         } else if (datos.modo === 'aventura') {
                             disableControls();
                         } else {
@@ -1093,8 +1116,9 @@
                         break;
                         
                     case 'cambiarParada':
+                    case 'cambioParada': // Mantener compatibilidad con mensajes antiguos
                         console.log(`🎵 HIJO 3: Solicitado cambio a parada`, datos);
-                        const paradaId = datos.paradaId || datos.parada; // Compatibilidad con viejo formato
+                        const paradaId = datos.paradaId || datos.parada || (datos.parada !== undefined ? datos.parada : null);
                         const audioIndex = typeof paradaId === 'string' && paradaId.startsWith('P-') 
                             ? parseInt(paradaId.substring(2), 10) 
                             : paradaId;
@@ -1189,102 +1213,115 @@
         };
         
         // Manejador principal de mensajes
-        window.addEventListener('message', (event) => {
-            const data = event.data;
-            if (!data || typeof data !== 'object') {
-                console.warn('⚠️ HIJO 3: Mensaje recibido no es un objeto válido', data);
+        window.addEventListener('message', function(event) {
+            const mensaje = event.data;
+            if (!mensaje || typeof mensaje !== 'object') {
+                console.warn('⚠️ HIJO 3: Mensaje no válido o vacío recibido', mensaje);
                 return;
             }
             
-            const timestamp = new Date().toISOString();
-            console.group(`📨 HIJO 3 [${timestamp}] - Mensaje recibido desde ${event.origin || 'origen desconocido'}`);
-            console.log('📦 Datos del mensaje:', data);
+            console.log('🎵 HIJO 3: Mensaje recibido:', mensaje);
             
             try {
-                // 1. Manejar mensajes estructurados (nuevo formato)
-                if (data.tipo === 'mensaje-para-hijo3' && data.mensaje) {
-                    console.log('🔍 HIJO 3: Procesando mensaje estructurado');
-                    if (validarMensaje(data, esquemasMensajes.mensajeEstructurado)) {
-                        manejarMensajeEspecifico(data.mensaje.tipo, data.mensaje.datos || {});
-                    } else {
-                        console.error('❌ HIJO 3: Mensaje estructurado no válido', data);
-                    }
-                }
-                // 2. Manejar sincronización de estado
-                else if (data.type === 'sincronizarEstado' && data.estado) {
+                // 1. Manejar mensajes de sincronización de estado
+                if (mensaje.type === 'sincronizarEstado' && mensaje.estado) {
                     console.log('🔄 HIJO 3: Procesando sincronización de estado');
-                    if (validarMensaje(data, esquemasMensajes.sincronizacionEstado)) {
-                        manejarSincronizacionEstado(data.estado);
+                    if (validarMensaje(mensaje, esquemasMensajes.sincronizacionEstado)) {
+                        manejarSincronizacionEstado(mensaje.estado);
                     } else {
-                        console.error('❌ HIJO 3: Mensaje de sincronización no válido', data);
+                        console.error('❌ HIJO 3: Error en la sincronización de estado', mensaje);
                     }
+                    return;
                 }
+                
+                // 2. Manejar mensajes específicos para este hijo (nuevo formato)
+                if (mensaje.type === 'mensaje-para-hijo3') {
+                    console.log('📨 HIJO 3: Mensaje específico para este hijo:', mensaje);
+                    
+                    // Si el mensaje tiene un campo 'datos', es el nuevo formato
+                    if (mensaje.datos) {
+                        manejarMensajeEspecifico(mensaje.datos.type || 'desconocido', mensaje.datos);
+                    } 
+                    // Si no, es posible que sea un mensaje directo
+                    else if (mensaje.mensaje) {
+                        manejarMensajeEspecifico(mensaje.mensaje.type || 'desconocido', mensaje.mensaje);
+                    }
+                    return;
+                }
+                
                 // 3. Manejar mensajes legacy
-                else if (data.type && typeof data.type === 'string') {
+                if (mensaje.type && typeof mensaje.type === 'string') {
                     console.warn('⚠️ HIJO 3: Procesando mensaje legacy');
-                    if (validarMensaje(data, esquemasMensajes.comandoAudio)) {
-                        manejarMensajeLegacy(data.type, data);
+                    if (validarMensaje(mensaje, esquemasMensajes.comandoAudio)) {
+                        manejarMensajeLegacy(mensaje.type, mensaje);
                     } else {
-                        console.error('❌ HIJO 3: Comando de audio no válido', data);
+                        console.error('❌ HIJO 3: Comando de audio no válido', mensaje);
                     }
+                    return;
                 }
-                // 4. Mensaje no reconocido
-                else {
-                    console.warn('⚠️ HIJO 3: Tipo de mensaje no reconocido', {
-                        tipo: data.type || data.tipo || 'desconocido',
-                        origen: event.origin,
-                        datos: data
-                    });
+                
+                // 4. Manejar mensajes de audio específicos
+                if (mensaje.type === 'setAudioParada') {
+                    const audioIndex = mensaje.index;
+                    console.log(`🎯 HIJO 3: Estableciendo audio de parada ${audioIndex} (mensaje legacy)`);
+                    if (audioIndex !== undefined && audioIndex >= 0 && audioIndex < audioFiles.length) {
+                        loadAudio(audioIndex);
+                        // Reproducir automáticamente si los controles están habilitados
+                        if (!controlsDisabled) {
+                            playAudio();
+                        }
+                    }
+                    return;
                 }
-            } catch (error) {
-                console.error('❌ HIJO 3: Error crítico al procesar mensaje:', error, { data });
-            } finally {
-                console.groupEnd();
-            }
-                return;
-            }
-            
-            // Establecer audio de parada específica
-            if (data.type === 'setAudioParada') {
-                const audioIndex = data.index;
-                console.log(`🎯 HIJO 3: Estableciendo audio de parada ${audioIndex} (mensaje legacy)`);
-                if (audioIndex !== undefined && audioIndex >= 0 && audioIndex < audioFiles.length) {
-                    loadAudio(audioIndex);
-                    // Reproducir automáticamente si los controles están habilitados
+                
+                // 5. Manejar comandos de control de reproducción
+                if (mensaje.type === 'playAudio') {
                     if (!controlsDisabled) {
                         playAudio();
                     }
+                    return;
                 }
-                return;
-            }
-            
-            // Control de reproducción desde el padre
-            if (data.type === 'playAudio') {
-                if (!controlsDisabled) {
-                    playAudio();
+                
+                if (mensaje.type === 'pauseAudio') {
+                    if (!controlsDisabled) {
+                        pauseAudio();
+                    }
+                    return;
                 }
-                return;
-            }
-            
-            if (data.type === 'pauseAudio') {
-                if (!controlsDisabled && isPlaying) {
-                    pauseAudio();
+                
+                if (mensaje.type === 'stopAudio') {
+                    if (!controlsDisabled) {
+                        audioPlayer.pause();
+                        audioPlayer.currentTime = 0;
+                        isPlaying = false;
+                        playPauseBtn.innerHTML = '<span class="icon-play"><i class="fas fa-play"></i></span>';
+                        playPauseBtn.classList.remove('active');
+                        updateProgress();
+                    }
+                    return;
                 }
-                return;
-            }
-            
-            if (data.type === 'stopAudio') {
-                if (!controlsDisabled) {
-                    audioPlayer.pause();
-                    audioPlayer.currentTime = 0;
-                    isPlaying = false;
-                    playPauseBtn.innerHTML = '<span class="icon-play"><i class="fas fa-play"></i></span>';
-                    playPauseBtn.classList.remove('active');
-                    updateProgress();
+                
+                console.warn('⚠️ HIJO 3: Mensaje no reconocido', mensaje);
+                
+            } catch (error) {
+                console.error('❌ HIJO 3: Error al procesar mensaje:', error, mensaje);
+                
+                // Mostrar mensaje de error en la interfaz si está disponible
+                if (statusElement) {
+                    statusElement.textContent = 'Error al procesar mensaje';
+                    statusElement.style.color = '#d32f2f';
+                    statusElement.style.fontWeight = 'bold';
+                    
+                    // Ocultar el mensaje después de 3 segundos
+                    setTimeout(() => {
+                        statusElement.textContent = '';
+                        statusElement.style.color = '';
+                        statusElement.style.fontWeight = '';
+                    }, 3000);
                 }
-                return;
             }
-        });
+        });    
+        
 
         // ================== INICIALIZACIÓN ==================
         
