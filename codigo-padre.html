@@ -226,7 +226,7 @@
 </head>
 <body>
 
-    <img id="logo-aventura" src="https://valenciavguides.github.io/Aventura-1-esp-padre-con-hijos/fotos_Av1/LOGO%20LETRAS%20FINAL%20transparente%20recorte.png" alt="Logo" style="position: fixed; top: -3px; left: 50%; transform: translateX(-50%); z-index: 3000; width: 360px; height: 140px;" />
+    <img id="logo-aventura" src="https://valenciavguides.github.io/Aventura-1-esp-padre-con-hijos/fotos_Av1/LOGO%20LETRAS%20FINAL%20transparente%20recorte.png" alt="Logo" style="position: fixed; top: -32px; left: 50%; transform: translateX(-50%); z-index: 3000; width: 360px; height: 140px;" />
 
     <div id="mapa"></div>
 
@@ -986,14 +986,22 @@
             console.group(`📨 PADRE [${timestamp}] - Mensaje de hijo5-casa (${origen})`);
             console.log('📦 Datos recibidos:', event.data);
             console.log('🔗 Origen del mensaje:', origen);
-            console.groupEnd();
-
-            // Si el mensaje no tiene tipo, ignorarlo
-            const data = event.data;
-            if (!data || !data.type) {
+            
+            // Si el mensaje no tiene tipo, intentar usar 'tipo' como alternativa a 'type'
+            const data = event.data || {};
+            const tipoMensaje = data.type || data.tipo;
+            
+            if (!tipoMensaje) {
                 console.warn('⚠️ PADRE: Mensaje sin tipo recibido, ignorando...');
+                console.groupEnd();
                 return;
             }
+            
+            console.log('📌 Tipo de mensaje:', tipoMensaje);
+            console.groupEnd();
+            
+            // Normalizar el tipo de mensaje
+            data.type = tipoMensaje;
             
             console.log(`🏠 PADRE: Mensaje de hijo5-casa - Tipo: ${data.type}`, data);
             
@@ -1001,20 +1009,29 @@
                 switch(data.type) {
                     case 'hijo5Ready':
                     case 'casa-hijo-listo':
-                        console.log('✅ PADRE: Hijo 5 (Botón casa) listo y operativo');
-                        // Confirmar recepción
+                    case 'sincronizarEstado':
+                        console.log('🔄 PADRE: Sincronizando estado con hijo5-casa...');
+                        // Confirmar recepción y enviar estado actual
                         iframe.contentWindow.postMessage({ 
-                            type: 'confirmacion',
+                            type: 'sincronizarEstado',
                             origen: 'padre',
                             destino: 'hijo5-casa',
                             mensaje: 'Estado sincronizado',
                             timestamp: Date.now(),
                             estado: {
                                 modo: window.estadoGlobal?.modo || 'aventura',
-                                paradaActual: window.estadoGlobal?.paradaActual,
+                                paradaActual: window.estadoGlobal?.puntoActual?.id || null,
+                                puntoActual: window.estadoGlobal?.puntoActual || null,
                                 ultimaActualizacion: Date.now()
+                            },
+                            datos: {
+                                tipo: 'respuestaSincronizacion',
+                                origen: 'padre',
+                                modo: window.estadoGlobal?.modo || 'aventura',
+                                gpsActivo: window.estadoGlobal?.modo === 'aventura'
                             }
                         }, '*');
+                        console.log('✅ PADRE: Estado sincronizado con hijo5-casa');
                         break;
                         
                     case 'cambioModo':
