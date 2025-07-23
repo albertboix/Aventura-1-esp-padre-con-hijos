@@ -226,16 +226,18 @@
 </head>
 <body>
 
-    <img id="logo-aventura" src="https://valenciavguides.github.io/Aventura-1-esp-padre-con-hijos/fotos_Av1/LOGO%20LETRAS%20FINAL%20transparente%20recorte.png" alt="Logo" style="position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 3000; max-width: 300px; height: auto;" />
+    <img id="logo-aventura" src="https://valenciavguides.github.io/Aventura-1-esp-padre-con-hijos/fotos_Av1/LOGO%20LETRAS%20FINAL%20transparente%20recorte.png" alt="Logo" style="position: fixed; top: -39px; left: 50%; transform: translateX(-50%); z-index: 3000; width: 270px; height: 160px;" />
 
     <div id="mapa"></div>
 
     <div id="info-parada"></div>
+    
+    <!-- Fondo blanco para el logo -->
+    <div style="position: fixed; top: 0; left: 0; width: 100%; height: 140px; background: white; z-index: 2999; border-bottom-left-radius: 15px; border-bottom-right-radius: 15px;"></div>
 
     <!-- Rutas actualizadas para GitHub Pages -->
     <iframe id="hijo1-hamburguesa" src="./botones-y-subfunciones-hamburguesa.html" style="position:fixed; left:1vw; bottom:0vw; height: 265px; width:57px; z-index:1005; border: transparent; background:transparent; pointer-events:auto;"></iframe>
     <iframe id="hijo1-opciones" src="./botones-y-subfunciones-opciones.html" style="position:fixed; right:1vw; bottom:0vw; height: 265px; width:57px; z-index:1005; border: transparent; background:transparent; pointer-events:auto;"></iframe>
-    <iframe id="hijo1-mapa" src="./botones-y-subfunciones-mapa.html" style="position:fixed; right:1vw; top:20vw; height: 200px; width:57px; z-index:1005; border: transparent; background:transparent; pointer-events:auto;"></iframe>
     <iframe id="hijo5-casa" src="./Av1-boton-casa.html" style="position:fixed; left:10px; top:10px; height:350px; width:100px; z-index:1005; border: transparent; background:transparent; pointer-events:auto; transition:width 0.3s;"></iframe>
 
     <iframe id="hijo3" src="./Av1_audio_esp.html"
@@ -973,32 +975,25 @@
 
         // ================== MANEJADOR DE MENSAJES DEL HIJO 5 (BOTÓN CASA) ==================
         window.addEventListener('message', function(event) {
-            // Log detallado de todos los mensajes recibidos
-            const timestamp = new Date().toISOString();
-            const origen = event.origin || 'unknown-origin';
-            const sourceId = Object.entries({
-                'hijo2': document.getElementById('hijo2')?.contentWindow,
-                'hijo3': document.getElementById('hijo3')?.contentWindow,
-                'hijo4': document.getElementById('hijo4')?.contentWindow,
-                'hijo5-casa': document.getElementById('hijo5-casa')?.contentWindow
-            }).find(([_, win]) => win === event.source)?.[0] || 'unknown-source';
-
-            console.group(`📨 PADRE [${timestamp}] - Mensaje de ${sourceId} (${origen})`);
-            console.log('📦 Datos recibidos:', event.data);
-            console.log('🔗 Origen del mensaje:', origen);
-            console.log('🆔 ID del iframe:', sourceId);
-            console.groupEnd();
-
-            // Si el mensaje no tiene tipo, ignorarlo
-            if (!event.data || !event.data.type) {
-                console.warn('⚠️ Mensaje sin tipo recibido, ignorando...');
-                return;
-            }
+            // Primero verificar si el mensaje es del hijo5-casa
             const iframe = document.getElementById('hijo5-casa');
             if (!iframe || event.source !== iframe.contentWindow) return;
             
+            // Log detallado de los mensajes recibidos
+            const timestamp = new Date().toISOString();
+            const origen = event.origin || 'unknown-origin';
+            
+            console.group(`📨 PADRE [${timestamp}] - Mensaje de hijo5-casa (${origen})`);
+            console.log('📦 Datos recibidos:', event.data);
+            console.log('🔗 Origen del mensaje:', origen);
+            console.groupEnd();
+
+            // Si el mensaje no tiene tipo, ignorarlo
             const data = event.data;
-            if (!data || !data.type) return;
+            if (!data || !data.type) {
+                console.warn('⚠️ Mensaje sin tipo recibido, ignorando...');
+                return;
+            }
             
             console.log('🏠 PADRE: Mensaje recibido de hijo5-casa (botón casa):', data.type, data);
             
@@ -1014,7 +1009,7 @@
                         mensaje: 'Estado sincronizado',
                         timestamp: Date.now(),
                         estado: {
-                            modo: estadoGlobal.modo || 'aventura'
+                            modo: window.estadoGlobal?.modo || 'aventura'
                         }
                     }, '*');
                     break;
@@ -1022,16 +1017,18 @@
                 case 'cambioModo':
                     console.log('🔄 PADRE: Cambio de modo detectado:', data.modo);
                     // Actualizar estado global
-                    actualizarEstadoGlobal({
-                        modo: data.modo // 'casa' o 'aventura'
-                    });
-                    // Notificar a otros hijos del cambio de modo
-                    sincronizarEstadoConHijos();
+                    if (window.actualizarEstadoGlobal) {
+                        window.actualizarEstadoGlobal({
+                            modo: data.modo // 'casa' o 'aventura'
+                        });
+                    }
                     break;
                     
                 case 'error':
                     console.error('❌ PADRE: Error en hijo5-casa (botón casa):', data.mensaje);
-                    mostrarMensajeInfoParada(`Error en botón casa: ${data.mensaje}`, true);
+                    if (window.mostrarMensajeInfoParada) {
+                        window.mostrarMensajeInfoParada(`Error en botón casa: ${data.mensaje}`, true);
+                    }
                     break;
                     
                 case 'solicitarSincronizacion':
@@ -1043,7 +1040,7 @@
                         destino: 'hijo5-casa',
                         timestamp: Date.now(),
                         estado: {
-                            modo: estadoGlobal.modo || 'aventura',
+                            modo: window.estadoGlobal?.modo || 'aventura',
                             // Agregar más estados según sea necesario
                         }
                     }, '*');
