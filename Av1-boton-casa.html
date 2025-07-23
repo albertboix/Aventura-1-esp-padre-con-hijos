@@ -528,15 +528,284 @@
     let gpsOn = true;
     let estadoModo = document.getElementById('estado-modo');
 
+    // ================ FUNCIONES DE REGISTRO ================
+    
+    /**
+     * Registra un mensaje de depuración con formato consistente
+     * @param {string} mensaje - Mensaje a registrar
+     * @param {string} tipo - Tipo de mensaje (info, warn, error, debug)
+     * @param {*} [datos] - Datos adicionales para registrar
+     */
+    function log(mensaje, tipo = 'info', datos) {
+        const timestamp = new Date().toISOString();
+        const prefijo = `[${timestamp}] HIJO5-CASA:`;
+        const mensajeFormateado = `${prefijo} ${mensaje}`;
+        
+        // Usar el método de consola apropiado según el tipo
+        switch(tipo.toLowerCase()) {
+            case 'warn':
+                console.warn(mensajeFormateado, datos || '');
+                break;
+            case 'error':
+                console.error(mensajeFormateado, datos || '');
+                break;
+            case 'debug':
+                console.debug(mensajeFormateado, datos || '');
+                break;
+            default: // info
+                console.log(mensajeFormateado, datos || '');
+        }
+    }
+    
+    // ================ FUNCIONES AUXILIARES ================
+    
+    // Cache para elementos DOM frecuentemente accedidos
+    const domCache = {
+        gpsBtn: null,
+        gpsLabel: null,
+        estadoModo: null,
+        paradasWindow: null,
+        listaParadas: null
+    };
+    
+    /**
+     * Inicializa la caché de elementos DOM
+     */
+    function inicializarCacheDOM() {
+        if (!domCache.gpsBtn) {
+            domCache.gpsBtn = document.getElementById('gps-casa-btn');
+            domCache.gpsLabel = domCache.gpsBtn?.querySelector('.gps-label');
+            domCache.estadoModo = document.getElementById('estado-modo');
+            domCache.paradasWindow = document.getElementById('paradas-window');
+            domCache.listaParadas = document.getElementById('lista-paradas');
+        }
+    }
+    
+    /**
+     * Actualiza los elementos de la interfaz de usuario según el estado actual.
+     */
+    function actualizarInterfazUsuario() {
+        inicializarCacheDOM();
+        
+        if (domCache.gpsBtn) {
+            // Actualizar clases y apariencia del botón
+            const modo = gpsOn ? 'Aventura' : 'Casa';
+            const clase = gpsOn ? 'on' : 'off';
+            
+            // Aplicar cambios solo si son necesarios para evitar repintados innecesarios
+            if (!domCache.gpsBtn.classList.contains(clase)) {
+                domCache.gpsBtn.className = clase;
+                log(`Interfaz actualizada: Modo ${modo}`, 'debug');
+            }
+            
+            // Actualizar etiqueta del botón
+            if (domCache.gpsLabel) {
+                const nuevoTexto = gpsOn ? 'ON' : 'OFF';
+                if (domCache.gpsLabel.textContent !== nuevoTexto) {
+                    domCache.gpsLabel.textContent = nuevoTexto;
+                }
+            }
+            
+            // Actualizar tooltip
+            const nuevoTitulo = gpsOn ? 'Desactivar GPS (Modo Aventura)' : 'Activar GPS (Modo Casa)';
+            if (domCache.gpsBtn.title !== nuevoTitulo) {
+                domCache.gpsBtn.title = nuevoTitulo;
+            }
+        }
+        
+        // Actualizar indicador de modo visual
+        actualizarIndicadorModo();
+    }
+    
+    /**
+     * Obtiene el punto actual (parada o tramo) basado en el estado actual.
+     * @returns {Object|null} Punto actual o null si no hay ninguno.
+     */
+    function obtenerPuntoActual() {
+        if (paradaActual >= 0) {
+            return { tipo: 'parada', id: paradaActual };
+        } else if (tramoActual >= 0) {
+            return { tipo: 'tramo', id: tramoActual };
+        }
+        return null;
+    }
+    
+    /**
+     * Notifica al componente padre sobre el cambio de estado.
+     * @param {Object|null} puntoActual - Punto actual (parada o tramo).
+     * @param {string} modo - Modo actual ('casa' o 'aventura').
+     */
+    function notificarCambioEstado(puntoActual, modo) {
+        const mensajePadre = {
+            type: 'actualizarModo',
+            modo: modo,
+            origen: 'hijo5-casa',
+            timestamp: Date.now(),
+            puntoActual: puntoActual
+        };
+        
+        console.log('📤 HIJO5-CASA: Notificando cambio de estado al padre:', mensajePadre);
+        window.parent.postMessage(mensajePadre, '*');
+    }
+    
+    /**
+     * Envía un mensaje al padre u otros iframes hijos de manera optimizada
+     * @param {Object} config - Configuración del mensaje
+     * @param {string} config.tipo - Tipo de mensaje
+     * @param {string} [config.destino] - Destino del mensaje ('padre' o ID del hijo)
+     * @param {Object} [config.datos] - Datos adicionales del mensaje
+     * @param {boolean} [config.esMensajeParaHijo] - Si es un mensaje para un hijo específico
+     */
+    function enviarMensaje({ tipo, destino = 'padre', datos = {}, esMensajeParaHijo = false }) {
+        const mensaje = {
+            tipo: esMensajeParaHijo ? `mensaje-para-${destino}` : tipo,
+            origen: 'hijo5-casa',
+            timestamp: Date.now(),
+            ...(esMensajeParaHijo ? { mensaje: { ...datos, origen: 'hijo5-casa' } } : datos)
+        };
+        
+        log(`Enviando mensaje a ${destino}: ${tipo}`, 'debug', mensaje);
+        window.parent.postMessage(mensaje, '*');
+    }
+    
+    /**
+     * Maneja la lógica específica para el modo Casa (GPS desactivado).
+     * @param {Object|null} puntoActual - Punto actual (parada o tramo).
+     */
+    function manejarModoCasa(puntoActual) {
+        log('Activando modo Casa - Configurando modo simulación', 'info');
+        
+        // Usar requestAnimationFrame para mejor rendimiento en actualizaciones de UI
+        requestAnimationFrame(() => {
+            // Si hay un punto actual, notificar a los componentes
+            if (puntoActual) {
+                // Usar find con una función de búsqueda optimizada
+                const punto = puntosRuta.find(p => {
+                    if (p.tipo === 'parada' && puntoActual.tipo === 'parada') {
+                        return p.parada === puntoActual.id;
+                    } else if (p.tipo === 'tramo' && puntoActual.tipo === 'tramo') {
+                        return p.tramo === puntoActual.id;
+                    }
+                    return false;
+                });
+                
+                if (punto) {
+                    log(`Notificando punto actual a los componentes: ${punto.tipo} ${punto.tipo === 'parada' ? punto.parada : punto.tramo}`, 'debug', punto);
+                    
+                    // Determinar coordenadas de manera eficiente
+                    let coords;
+                    if (punto.tipo === 'parada') {
+                        coords = punto.coordenadas || { lat: 39.4699, lng: -0.3763 };
+                    } else {
+                        coords = punto.inicio || 
+                                (punto.waypoints?.[0]) || 
+                                { lat: 39.4699, lng: -0.3763 };
+                    }
+                    
+                    // Notificar al hijo 2 (mapa) sobre la ubicación simulada
+                    enviarMensaje({
+                        destino: 'hijo2',
+                        tipo: 'simularUbicacion',
+                        datos: {
+                            coordenadas: coords,
+                            [punto.tipo + 'Id']: punto[punto.tipo === 'parada' ? 'parada' : 'tramo'],
+                            modoCasa: true
+                        },
+                        esMensajeParaHijo: true
+                    });
+                    
+                    // Si es una parada, notificar al hijo 3 (audio) y 4 (retos)
+                    if (punto.tipo === 'parada' && punto.audio) {
+                        enviarMensaje({
+                            destino: 'hijo3',
+                            tipo: 'cargarAudio',
+                            datos: {
+                                type: 'cargarAudio',
+                                src: punto.audio,
+                                paradaId: punto.parada,
+                                autoplay: false
+                            },
+                            esMensajeParaHijo: true
+                        });
+                        
+                        if (punto.reto) {
+                            enviarMensaje({
+                                destino: 'hijo4',
+                                tipo: 'mostrarReto',
+                                datos: {
+                                    type: 'mostrarReto',
+                                    paradaId: punto.parada,
+                                    modoCasa: true
+                                },
+                                esMensajeParaHijo: true
+                            });
+                        }
+                    } 
+                    // Si es un tramo, notificar al hijo 3 (video) si hay video
+                    else if (punto.tipo === 'tramo' && punto.video) {
+                        enviarMensaje({
+                            destino: 'hijo3',
+                            tipo: 'cargarVideo',
+                            datos: {
+                                type: 'cargarVideo',
+                                src: punto.video,
+                                tramoId: punto.tramo,
+                                autoplay: false
+                            },
+                            esMensajeParaHijo: true
+                        });
+                    }
+                }
+            }
+            
+            // Mostrar la ventana de selección de paradas/tramos
+            mostrarParadasYTramos();
+        });
+    }
+    
+    /**
+     * Maneja la lógica específica para el modo Aventura (GPS activado).
+     */
+    function manejarModoAventura() {
+        log('Activando modo Aventura - Usando GPS en tiempo real', 'info');
+        
+        // Usar requestAnimationFrame para mejor rendimiento en actualizaciones de UI
+        requestAnimationFrame(() => {
+            try {
+                // Notificar al hijo 2 (mapa) para que use el GPS real
+                enviarMensaje({
+                    destino: 'hijo2',
+                    tipo: 'iniciarGPS',
+                    datos: {
+                        type: 'iniciarGPS',
+                        motivo: 'modo_aventura_activado'
+                    },
+                    esMensajeParaHijo: true
+                });
+                
+                // Ocultar la ventana de paradas/tramos
+                ocultarParadas();
+            } catch (error) {
+                log(`Error al activar modo Aventura: ${error.message}`, 'error', error);
+            }
+        });
+    }
+    
     // ================ FUNCIONES PRINCIPALES ================
     
-    // Cambia el estado del botón y la etiqueta, y sincroniza con el estado global
+    /**
+     * Gestiona el estado del GPS y alterna entre los modos Aventura (GPS activado) y Casa (GPS desactivado).
+     * Actualiza la interfaz de usuario, sincroniza el estado con el componente padre y notifica a los
+     * componentes hijos según el modo activado.
+     * 
+     * @param {boolean} on - True para activar el modo Aventura (GPS activado), false para modo Casa (GPS desactivado).
+     */
     function setGpsState(on) {
-        console.log(`🔄 HIJO 5: setGpsState(${on}) - Estado actual: gpsOn=${gpsOn}, modoCasa=${modoCasa}`);
+        console.log(`🔄 HIJO5-CASA: Iniciando cambio de estado - Modo actual: ${on ? 'Aventura' : 'Casa'}`);
         
         // Si el estado no ha cambiado, no hacer nada
         if (gpsOn === on) {
-            console.log('🔄 El estado del GPS no ha cambiado, ignorando...');
+            console.log('🔄 HIJO5-CASA: El estado del GPS no ha cambiado, ignorando...');
             return;
         }
         
@@ -545,127 +814,26 @@
         modoCasa = !on;
         
         // Actualizar estado local sincronizado
-        estadoLocal.modo = modoCasa ? 'casa' : 'aventura';
+        const modo = modoCasa ? 'casa' : 'aventura';
+        estadoLocal.modo = modo;
         estadoLocal.ultimaActualizacion = Date.now();
         
-        // Actualizar UI
-        const btn = document.getElementById('gps-casa-btn');
-        if (btn) {
-            btn.className = on ? 'on' : 'off';
-            const label = btn.querySelector('.gps-label');
-            if (label) {
-                label.textContent = on ? 'ON' : 'OFF';
-            }
-            btn.title = on ? 'Desactivar GPS' : 'Activar GPS';
-        }
-        
-        // Actualizar indicador de modo
-        actualizarIndicadorModo();
+        // Actualizar interfaz de usuario
+        actualizarInterfazUsuario();
         
         // Obtener el punto actual (parada o tramo)
-        let puntoActual = null;
-        if (paradaActual >= 0) {
-            puntoActual = { tipo: 'parada', id: paradaActual };
-        } else if (tramoActual >= 0) {
-            puntoActual = { tipo: 'tramo', id: tramoActual };
-        }
+        const puntoActual = obtenerPuntoActual();
         
         // Notificar al padre sobre el cambio de estado
-        const mensajePadre = {
-            type: 'actualizarModo',
-            modo: estadoLocal.modo,
-            origen: 'hijo5',
-            timestamp: estadoLocal.ultimaActualizacion,
-            puntoActual: puntoActual
-        };
-        
-        console.log('📤 HIJO 5: Notificando cambio de estado al padre:', mensajePadre);
-        window.parent.postMessage(mensajePadre, '*');
+        notificarCambioEstado(puntoActual, modo);
         
         if (modoCasa) {
-            console.log('🏠 Modo casa activado - Configurando modo simulación');
-            
-            // Si hay un punto actual, notificar a los componentes
-            if (puntoActual) {
-                const punto = puntosRuta.find(p => 
-                    (p.tipo === 'parada' && p.parada === puntoActual.id) || 
-                    (p.tipo === 'tramo' && p.tramo === puntoActual.id)
-                );
-                
-                if (punto) {
-                    console.log(`🏠 Notificando punto actual a los componentes:`, punto);
-                    
-                    // Notificar al hijo 2 (mapa) sobre la ubicación simulada
-                    const coords = punto.tipo === 'parada' ? 
-                        punto.coordenadas : 
-                        (punto.inicio || (punto.waypoints && punto.waypoints[0]) || { lat: 39.4699, lng: -0.3763 });
-                    
-                    window.parent.postMessage({
-                        tipo: 'mensaje-para-hijo2',
-                        mensaje: {
-                            type: 'simularUbicacion',
-                            coordenadas: coords,
-                            [punto.tipo + 'Id']: punto.tipo === 'parada' ? punto.parada : punto.tramo,
-                            modoCasa: true
-                        }
-                    }, '*');
-                    
-                    // Si es una parada, notificar al hijo 3 (audio) y 4 (retos)
-                    if (punto.tipo === 'parada' && punto.audio) {
-                        window.parent.postMessage({
-                            tipo: 'mensaje-para-hijo3',
-                            mensaje: {
-                                type: 'cargarAudio',
-                                src: punto.audio,
-                                paradaId: punto.parada,
-                                autoplay: true
-                            }
-                        }, '*');
-                        
-                        if (punto.reto) {
-                            window.parent.postMessage({
-                                tipo: 'mensaje-para-hijo4',
-                                mensaje: {
-                                    type: 'mostrarReto',
-                                    paradaId: punto.parada,
-                                    modoCasa: true
-                                }
-                            }, '*');
-                        }
-                    } 
-                    // Si es un tramo, notificar al hijo 3 (video) si hay video
-                    else if (punto.tipo === 'tramo' && punto.video) {
-                        window.parent.postMessage({
-                            tipo: 'mensaje-para-hijo3',
-                            mensaje: {
-                                type: 'cargarVideo',
-                                src: punto.video,
-                                tramoId: punto.tramo,
-                                autoplay: true
-                            }
-                        }, '*');
-                    }
-                }
-            }
-            
-            // Mostrar la ventana de selección de paradas/tramos
-            mostrarParadasYTramos();
+            manejarModoCasa(puntoActual);
         } else {
-            console.log('🌍 Modo GPS activado - Reanudando seguimiento de ubicación');
-            // Notificar al hijo 2 (botones) para reanudar el seguimiento GPS
-            window.parent.postMessage({
-                tipo: 'mensaje-para-hijo2',
-                mensaje: {
-                    type: 'iniciarGPS',
-                    motivo: 'modo_aventura_activado'
-                }
-            }, '*');
-            
-            // Ocultar la ventana de selección de paradas/tramos
-            ocultarParadas();
+            manejarModoAventura();
         }
         
-        console.log(`✅ HIJO 5: setGpsState completado - Nuevo estado: gpsOn=${gpsOn}, modoCasa=${modoCasa}`);
+        console.log(`✅ HIJO5-CASA: Cambio de estado completado - Modo: ${modo}, GPS: ${on ? 'ON' : 'OFF'}`);
     }
     
     function actualizarIndicadorModo() {
@@ -676,28 +844,30 @@
 
     // Mostrar/ocultar ventana de paradas y tramos
     function mostrarParadasYTramos() {
-      console.log(`📋 HIJO 5: Mostrar paradas y tramos - gpsOn: ${gpsOn}, modoCasa: ${modoCasa}`);
+      console.log(`📋 HIJO5-CASA: Mostrar paradas y tramos - gpsOn: ${gpsOn}, modoCasa: ${modoCasa}`);
       if (!gpsOn) {
         document.getElementById('paradas-window').style.display = 'flex';
         renderParadasYTramos();
-        console.log('✅ HIJO 5: Ventana de paradas y tramos mostrada');
+        console.log('✅ HIJO5-CASA: Ventana de paradas y tramos mostrada');
         
         window.parent.postMessage({ 
-          type: 'expandirIframe', 
+          type: 'expandirIframe',
+          origen: 'hijo5-casa',
           width: '250px',
           debug: 'Expansión para mostrar paradas y tramos'
         }, '*');
       } else {
-        console.log('⚠️ HIJO 5: No se puede mostrar - GPS está ON');
+        console.log('⚠️ HIJO5-CASA: No se puede mostrar - GPS está ON');
       }
     }
     
     function ocultarParadas() {
-      console.log('❌ HIJO 5: Ocultando ventana de paradas y tramos');
+      console.log('❌ HIJO5-CASA: Ocultando ventana de paradas y tramos');
       document.getElementById('paradas-window').style.display = 'none';
       
       window.parent.postMessage({ 
-        type: 'contraerIframe', 
+        type: 'contraerIframe',
+        origen: 'hijo5-casa',
         width: '80px',
         debug: 'Contraer ventana de paradas'
       }, '*');
@@ -963,66 +1133,96 @@
 
     // ================ FUNCIONES DE CONTROL ================
     
+    /**
+     * Desbloquea las funcionalidades del modo Casa
+     */
     function desbloquearFuncionalidades() {
-      console.log('🔓 INICIANDO DESBLOQUEO DE FUNCIONALIDADES - MODO CASA');
-      
-      // Activar botones de imagen y video en hijo 2 (NO GPS)
-      enviarMensajeAHijo2({
-        tipo: 'activar-modo-casa-botones'
-      });
-      
-      // Habilitar controles de audio en hijo 3
-      const mensajeAudio = {
-        tipo: 'mensaje-para-hijo3',
-        mensaje: {
-          type: 'enableControls',
-          enabled: true
-        }
-      };
-      window.parent.postMessage(mensajeAudio, '*');
-      
-      // Desbloquear botón retos en hijo 4
-      const mensajeRetos = {
-        tipo: 'mensaje-para-hijo4',
-        mensaje: {
-          type: 'enableRetos',
-          enabled: true
-        }
-      };
-      window.parent.postMessage(mensajeRetos, '*');
-      
-      console.log('🔓 Funcionalidades desbloqueadas - Modo Casa activado');
+        log('Iniciando desbloqueo de funcionalidades - Modo Casa', 'debug');
+        
+        // Usar requestAnimationFrame para mejor rendimiento en actualizaciones de UI
+        requestAnimationFrame(() => {
+            try {
+                // Activar botones de imagen y video en hijo 2 (NO GPS)
+                enviarMensaje({
+                    destino: 'hijo2',
+                    tipo: 'activar-modo-casa-botones',
+                    datos: {},
+                    esMensajeParaHijo: true
+                });
+                
+                // Habilitar controles de audio en hijo 3
+                enviarMensaje({
+                    destino: 'hijo3',
+                    tipo: 'enableControls',
+                    datos: {
+                        type: 'enableControls',
+                        enabled: true
+                    },
+                    esMensajeParaHijo: true
+                });
+                
+                // Desbloquear botón retos en hijo 4
+                enviarMensaje({
+                    destino: 'hijo4',
+                    tipo: 'enableRetos',
+                    datos: {
+                        type: 'enableRetos',
+                        enabled: true
+                    },
+                    esMensajeParaHijo: true
+                });
+                
+                log('Funcionalidades desbloqueadas - Modo Casa activado', 'debug');
+            } catch (error) {
+                log(`Error al desbloquear funcionalidades: ${error.message}`, 'error', error);
+            }
+        });
     }
     
+    /**
+     * Restaura las restricciones del modo Aventura
+     */
     function restaurarRestriccionesAventura() {
-      console.log('🔒 RESTAURANDO RESTRICCIONES - MODO AVENTURA');
-      
-      // Desactivar todos los botones en hijo 2
-      enviarMensajeAHijo2({
-        tipo: 'desactivar-todos-botones'
-      });
-      
-      // Bloquear controles de audio en hijo 3
-      const mensajeAudio = {
-        tipo: 'mensaje-para-hijo3',
-        mensaje: {
-          type: 'disableControls',
-          enabled: false
-        }
-      };
-      window.parent.postMessage(mensajeAudio, '*');
-      
-      // Bloquear botón retos en hijo 4
-      const mensajeRetos = {
-        tipo: 'mensaje-para-hijo4',
-        mensaje: {
-          type: 'disableRetos',
-          enabled: false
-        }
-      };
-      window.parent.postMessage(mensajeRetos, '*');
-      
-      console.log('🔒 Restricciones restauradas - Modo Aventura activado');
+        log('Restaurando restricciones - Modo Aventura', 'debug');
+        
+        // Usar requestAnimationFrame para mejor rendimiento en actualizaciones de UI
+        requestAnimationFrame(() => {
+            try {
+                // Desactivar todos los botones en hijo 2
+                enviarMensaje({
+                    destino: 'hijo2',
+                    tipo: 'desactivar-todos-botones',
+                    datos: {},
+                    esMensajeParaHijo: true
+                });
+                
+                // Bloquear controles de audio en hijo 3
+                enviarMensaje({
+                    destino: 'hijo3',
+                    tipo: 'disableControls',
+                    datos: {
+                        type: 'disableControls',
+                        enabled: false
+                    },
+                    esMensajeParaHijo: true
+                });
+                
+                // Bloquear botón retos en hijo 4
+                enviarMensaje({
+                    destino: 'hijo4',
+                    tipo: 'disableRetos',
+                    datos: {
+                        type: 'disableRetos',
+                        enabled: false
+                    },
+                    esMensajeParaHijo: true
+                });
+                
+                log('Restricciones restauradas - Modo Aventura activado', 'debug');
+            } catch (error) {
+                log(`Error al restaurar restricciones: ${error.message}`, 'error', error);
+            }
+        });
     }
 
     // ================ COMUNICACIÓN CON EL HIJO 2 ================
@@ -1046,87 +1246,99 @@
     function enviarAlPadre(tipo, datos = {}) {
         const mensaje = {
             tipo,
-            origen: 'hijo5',
+            origen: 'hijo5-casa',
             timestamp: Date.now(),
             ...datos
         };
-        console.log('HIJO5: Enviando al padre:', mensaje);
+        console.log(`HIJO5-CASA: Enviando mensaje al padre (${tipo}):`, mensaje);
         window.parent.postMessage(mensaje, '*');
     }
     
     // Función para solicitar sincronización
     function sincronizarConPadre() {
-        console.log('HIJO5: Solicitando sincronización...');
+        console.log('HIJO5-CASA: Solicitando sincronización...');
         enviarAlPadre('sincronizar');
     }
     
-    // Manejador de mensajes entrantes
-    window.addEventListener('message', function(event) {
-        // Para depuración
-        console.log('📨 HIJO 5: Mensaje recibido:', event.data);
+    /**
+     * Manejador de mensajes entrantes optimizado
+     * @param {MessageEvent} event - Evento de mensaje recibido
+     */
+    const manejarMensaje = (event) => {
+        const { data } = event;
         
-        const mensaje = event.data;
-        if (!mensaje) return;
-        
-        // Verificar si el mensaje es para este iframe
-        if (mensaje.destino === 'hijo5') {
-            console.log('📩 HIJO 5: Mensaje dirigido a este iframe');
-            const datos = mensaje.mensaje || {};
-            
-            // Manejar mensajes de sincronización
-            if (mensaje.type === 'sincronizarEstado' || 
-                mensaje.type === 'actualizarModo' || 
-                mensaje.type === 'actualizarPuntoActual') {
-                manejarSincronizacionEstado(mensaje, 'padre');
-                return;
-            }
-            
-            // Manejar mensajes específicos para este hijo
-            if (datos.type === 'actualizarEstadoGPS') {
-                console.log('🔄 HIJO 5: Actualizando estado GPS a', datos.estadoGPS);
-                if (datos.estadoGPS === 'apagado') {
-                    setGpsState(false);
-                } else if (datos.estadoGPS === 'encendido') {
-                    setGpsState(true);
-                }
-                return;
-            }
-            
-            // Actualizar estado de navegación
-            if (datos.type === 'ACTUALIZAR_ESTADO') {
-                console.log('📍 HIJO 5: Actualizando estado de navegación:', datos);
-                if (datos.paradaActual !== undefined) {
-                    paradaActual = datos.paradaActual;
-                    tramoActual = -1;
-                    renderParadasYTramos();
-                }
-                if (datos.tramoActual !== undefined) {
-                    tramoActual = datos.tramoActual;
-                    paradaActual = -1;
-                    renderParadasYTramos();
-                }
-                return;
-            }
-            
-            // Sincronizar estado inicial
-            if (datos.type === 'sincronizarEstado') {
-                console.log('🔄 HIJO 5: Sincronizando estado con el padre');
-                const estado = {
-                    modoCasa: modoCasa,
-                    gpsOn: gpsOn,
-                    paradaActual: paradaActual,
-                    tramoActual: tramoActual
-                };
-                window.parent.postMessage({
-                    tipo: 'respuesta-sincronizacion-hijo5',
-                    estado: estado
-                }, '*');
-                return;
-            }
-            
-            console.log('⚠️ HIJO 5: Tipo de mensaje no manejado:', datos.type);
+        // Validación básica del mensaje
+        if (!data || !data.tipo) {
+            return; // Ignorar mensajes sin tipo
         }
-    });
+        
+        // Usar requestIdleCallback para manejar mensajes de baja prioridad
+        const procesarMensaje = (deadline) => {
+            try {
+                // Manejar mensajes críticos de inmediato
+                if (data.tipo === 'sincronizarEstado' || data.tipo === 'actualizar-estado-hijo5') {
+                    manejarSincronizacionEstado(data, 'padre');
+                    return;
+                }
+                
+                // Para mensajes menos críticos, verificar si hay tiempo en el frame actual
+                if (deadline.timeRemaining() > 2) {
+                    switch(data.tipo) {
+                        case 'ACTUALIZAR_ESTADO':
+                            log('Actualizando estado de navegación', 'debug', data);
+                            if (data.paradaActual !== undefined) {
+                                paradaActual = data.paradaActual;
+                                tramoActual = -1;
+                                renderParadasYTramos();
+                            }
+                            if (data.tramoActual !== undefined) {
+                                tramoActual = data.tramoActual;
+                                paradaActual = -1;
+                                renderParadasYTramos();
+                            }
+                            break;
+                            
+                        case 'cambiar-modo':
+                            log(`Cambiando modo a: ${data.modo}`, 'debug');
+                            setGpsState(data.modo === 'aventura');
+                            break;
+                            
+                        case 'seleccionar-parada':
+                            log(`Seleccionando parada: ${data.paradaId}`, 'debug');
+                            // Aquí iría la lógica para seleccionar una parada
+                            break;
+                            
+                        case 'seleccionar-tramo':
+                            log(`Seleccionando tramo: ${data.tramoId}`, 'debug');
+                            // Aquí iría la lógica para seleccionar un tramo
+                            break;
+                            
+                        default:
+                            log(`Mensaje no manejado: ${data.tipo}`, 'warn', data);
+                    }
+                } else {
+                    // Si no hay tiempo suficiente, programar para el siguiente frame
+                    requestIdleCallback(procesarMensaje, { timeout: 100 });
+                    return;
+                }
+            } catch (error) {
+                log(`Error al procesar mensaje: ${error.message}`, 'error', {
+                    mensaje: data,
+                    error: error.stack
+                });
+            }
+        };
+        
+        // Registrar el mensaje recibido para depuración
+        log(`Mensaje recibido: ${data.tipo}`, 'debug', data);
+        
+        // Programar el manejo del mensaje
+        requestIdleCallback(procesarMensaje, { timeout: 100 });
+    };
+    
+    // Registrar el manejador de mensajes con opciones de rendimiento
+    const opcionesEvento = { passive: true };
+    window.addEventListener('message', manejarMensaje, opcionesEvento);
     
     // ================ EVENTOS ================
     
@@ -1158,7 +1370,7 @@
     
     // Sincronizar con el padre cuando se carga la página
     window.addEventListener('load', function() {
-      console.log('HIJO5: Cargado, solicitando sincronización...');
+      console.log('HIJO5-CASA: Cargado, solicitando sincronización...');
       // Esperar un momento para asegurar que el padre esté listo
       setTimeout(sincronizarConPadre, 1000);
     });
@@ -1166,14 +1378,17 @@
     // Cerrar ventana de paradas
     document.getElementById('cerrar-paradas').onclick = function() {
       ocultarParadas();
-      window.parent.postMessage({ type: 'cerrarParadas' }, '*');
+      window.parent.postMessage({ 
+        type: 'cerrarParadas',
+        origen: 'hijo5-casa'
+      }, '*');
     };
 
     // ================ MANEJO DE MENSAJES ================
     
     // Función para manejar la sincronización de estado con el padre
     function manejarSincronizacionEstado(data, origen) {
-      console.log('📥 HIJO 5: Sincronizando estado con el padre:', data);
+      console.log('📥 HIJO5-CASA: Sincronizando estado con el padre:', data);
       
       // Si el mensaje viene directamente con puntoActual (sin estado.estado)
       if (data.puntoActual) {
@@ -1205,17 +1420,18 @@
               punto.coordenadas : 
               (punto.inicio || (punto.waypoints && punto.waypoints[0]) || { lat: 39.4699, lng: -0.3763 });
             
-            console.log(`🏠 HIJO 5: Simulando ubicación para ${punto.tipo} ${punto.tipo === 'parada' ? punto.parada : punto.tramo}`, coords);
+            console.log(`🏠 HIJO5-CASA: Simulando ubicación para ${punto.tipo} ${punto.tipo === 'parada' ? punto.parada : punto.tramo}`, coords);
             
             // Notificar al hijo 2 (mapa) sobre la ubicación simulada
             window.parent.postMessage({
               tipo: 'mensaje-para-hijo2',
+              origen: 'hijo5-casa',
               mensaje: {
                 type: 'simularUbicacion',
                 coordenadas: coords,
                 [punto.tipo + 'Id']: punto.tipo === 'parada' ? punto.parada : punto.tramo,
                 modoCasa: true,
-                origen: 'sincronizacion',
+                origen: 'hijo5-casa',
                 timestamp: estadoLocal.ultimaActualizacion
               }
             }, '*');
@@ -1224,12 +1440,13 @@
             if (punto.tipo === 'parada' && punto.audio) {
               window.parent.postMessage({
                 tipo: 'mensaje-para-hijo3',
+                origen: 'hijo5-casa',
                 mensaje: {
                   type: 'cargarAudio',
                   src: punto.audio,
                   paradaId: punto.parada,
                   autoplay: true,
-                  origen: 'sincronizacion',
+                  origen: 'hijo5-casa',
                   timestamp: estadoLocal.ultimaActualizacion
                 }
               }, '*');
@@ -1237,11 +1454,12 @@
               if (punto.reto) {
                 window.parent.postMessage({
                   tipo: 'mensaje-para-hijo4',
+                  origen: 'hijo5-casa',
                   mensaje: {
                     type: 'mostrarReto',
                     paradaId: punto.parada,
                     modoCasa: true,
-                    origen: 'sincronizacion',
+                    origen: 'hijo5-casa',
                     timestamp: estadoLocal.ultimaActualizacion
                   }
                 }, '*');
@@ -1251,12 +1469,13 @@
             else if (punto.tipo === 'tramo' && punto.video) {
               window.parent.postMessage({
                 tipo: 'mensaje-para-hijo3',
+                origen: 'hijo5-casa',
                 mensaje: {
                   type: 'cargarVideo',
                   src: punto.video,
                   tramoId: punto.tramo,
                   autoplay: true,
-                  origen: 'sincronizacion',
+                  origen: 'hijo5-casa',
                   timestamp: estadoLocal.ultimaActualizacion
                 }
               }, '*');
