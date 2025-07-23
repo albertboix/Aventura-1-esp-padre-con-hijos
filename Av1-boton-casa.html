@@ -600,6 +600,11 @@
      * Actualiza los elementos de la interfaz de usuario según el estado actual.
      */
     function actualizarInterfazUsuario() {
+        console.log('🔄 HIJO5: Actualizando interfaz de usuario...');
+        
+        // Forzar la reinicialización de la caché del DOM
+        domCache.gpsBtn = null;
+        domCache.gpsLabel = null;
         inicializarCacheDOM();
         
         if (domCache.gpsBtn) {
@@ -607,29 +612,34 @@
             const modo = gpsOn ? 'Aventura' : 'Casa';
             const clase = gpsOn ? 'on' : 'off';
             
-            // Aplicar cambios solo si son necesarios para evitar repintados innecesarios
-            if (!domCache.gpsBtn.classList.contains(clase)) {
-                domCache.gpsBtn.className = clase;
-                log(`Interfaz actualizada: Modo ${modo}`, 'debug');
-            }
+            console.log(`🔄 HIJO5: Actualizando botón a modo ${modo} (clase: ${clase})`);
+            
+            // Eliminar todas las clases existentes
+            domCache.gpsBtn.classList.remove('on', 'off');
+            // Agregar la clase correcta
+            domCache.gpsBtn.classList.add(clase);
             
             // Actualizar etiqueta del botón
             if (domCache.gpsLabel) {
                 const nuevoTexto = gpsOn ? 'ON' : 'OFF';
-                if (domCache.gpsLabel.textContent !== nuevoTexto) {
-                    domCache.gpsLabel.textContent = nuevoTexto;
-                }
+                domCache.gpsLabel.textContent = nuevoTexto;
+                console.log(`🔄 HIJO5: Etiqueta actualizada a: ${nuevoTexto}`);
             }
             
             // Actualizar tooltip
             const nuevoTitulo = gpsOn ? 'Desactivar GPS (Modo Aventura)' : 'Activar GPS (Modo Casa)';
-            if (domCache.gpsBtn.title !== nuevoTitulo) {
-                domCache.gpsBtn.title = nuevoTitulo;
-            }
+            domCache.gpsBtn.title = nuevoTitulo;
+            
+            console.log('✅ HIJO5: Interfaz actualizada correctamente');
+        } else {
+            console.error('❌ HIJO5: No se pudo encontrar el botón GPS en el DOM');
         }
         
         // Actualizar indicador de modo visual
         actualizarIndicadorModo();
+        
+        // Forzar un reflow para asegurar que los cambios se apliquen
+        if (domCache.gpsBtn) void domCache.gpsBtn.offsetHeight;
     }
     
     /**
@@ -874,43 +884,50 @@
 
     // Mostrar/ocultar ventana de paradas y tramos
     function mostrarParadasYTramos() {
-      console.log(`📋 HIJO5-CASA: Mostrar paradas y tramos - gpsOn: ${gpsOn}, modoCasa: ${modoCasa}`);
+      console.log(`📋 HIJO5: Mostrar paradas y tramos - gpsOn: ${gpsOn}, modoCasa: ${modoCasa}`);
       
-      const paradasWindow = document.getElementById('paradas-window');
-      if (!paradasWindow) {
-        console.error('❌ HIJO5-CASA: No se encontró el elemento paradas-window');
+      // Forzar la reinicialización de la caché del DOM
+      domCache.paradasWindow = null;
+      inicializarCacheDOM();
+      
+      if (!domCache.paradasWindow) {
+        console.error('❌ HIJO5: No se encontró el elemento paradas-window en el DOM');
         return;
       }
       
       if (!gpsOn) {
-        console.log('🔄 HIJO5-CASA: Mostrando ventana de paradas...');
+        console.log('🔄 HIJO5: Mostrando ventana de paradas...');
         
-        // Asegurarse de que el contenedor sea visible
-        paradasWindow.style.display = 'flex';
-        
-        // Renderizar las paradas
-        renderParadasYTramos();
-        
-        // Forzar un reflow para asegurar que los estilos se apliquen
-        void paradasWindow.offsetHeight;
-        
-        console.log('✅ HIJO5-CASA: Ventana de paradas y tramos mostrada correctamente');
-        
-        // Notificar al padre para expandir el iframe
         try {
-          window.parent.postMessage({ 
-            type: 'expandirIframe',
-            origen: 'hijo5-casa',
-            width: '250px',
-            debug: 'Expansión para mostrar paradas y tramos',
-            timestamp: Date.now()
-          }, '*');
-          console.log('📤 HIJO5-CASA: Mensaje de expansión enviado al padre');
+          // Asegurarse de que el contenedor sea visible
+          domCache.paradasWindow.style.display = 'flex';
+          
+          // Forzar un reflow para asegurar que el navegador registre el cambio
+          void domCache.paradasWindow.offsetHeight;
+          
+          // Renderizar las paradas
+          renderParadasYTramos();
+          
+          console.log('✅ HIJO5: Ventana de paradas y tramos mostrada correctamente');
+          
+          // Notificar al padre para expandir el iframe
+          try {
+            window.parent.postMessage({ 
+              type: 'expandirIframe',
+              origen: 'hijo5-casa',
+              width: '250px',
+              debug: 'Expansión para mostrar paradas y tramos',
+              timestamp: Date.now()
+            }, '*');
+            console.log('📤 HIJO5: Mensaje de expansión enviado al padre');
+          } catch (error) {
+            console.error('❌ HIJO5: Error al enviar mensaje al padre:', error);
+          }
         } catch (error) {
-          console.error('❌ HIJO5-CASA: Error al enviar mensaje al padre:', error);
+          console.error('❌ HIJO5: Error al mostrar paradas:', error);
         }
       } else {
-        console.log('⚠️ HIJO5-CASA: No se puede mostrar - GPS está ON');
+        console.log('⚠️ HIJO5: No se puede mostrar - GPS está ON');
       }
     }
     
@@ -1396,28 +1413,42 @@
     // ================ EVENTOS ================
     
     // Click en el botón principal
-    document.getElementById('gps-casa-btn').onclick = function() {
-      const nuevoModo = gpsOn ? 'fuera' : 'casa';
-      console.log(`🎯 HIJO5: Cambiando a modo ${nuevoModo}`);
+    document.getElementById('gps-casa-btn').onclick = function(event) {
+      // Prevenir el comportamiento por defecto
+      event.preventDefault();
+      event.stopPropagation();
       
-      // Cambiar el estado visual del botón
-      if (nuevoModo === 'casa') {
-        // Cambiar a modo casa (GPS OFF)
-        setGpsState(false);
+      // Cambiar el estado del GPS (invertir el estado actual)
+      const nuevoEstadoGPS = !gpsOn;
+      const modo = nuevoEstadoGPS ? 'aventura' : 'casa';
+      
+      console.log(`🎯 HIJO5: Cambiando a modo ${modo} (GPS: ${nuevoEstadoGPS ? 'ON' : 'OFF'})`);
+      
+      // Actualizar el estado local
+      gpsOn = nuevoEstadoGPS;
+      modoCasa = !nuevoEstadoGPS;
+      
+      // Actualizar la interfaz de usuario
+      actualizarInterfazUsuario();
+      
+      // Mostrar u ocultar las paradas según el estado
+      if (modoCasa) {
+        console.log('🏠 HIJO5: Mostrando paradas');
         mostrarParadasYTramos();
       } else {
-        // Cambiar a modo aventura (GPS ON)
-        setGpsState(true);
+        console.log('🌍 HIJO5: Ocultando paradas');
         ocultarParadas();
       }
       
       // Notificar al padre sobre el cambio de modo
-      enviarAlPadre('cambiarModo', { 
-        modo: nuevoModo,
-        timestamp: Date.now()
+      enviarAlPadre('cambioModo', { 
+        modo: modo,
+        timestamp: Date.now(),
+        origen: 'hijo5-casa',
+        gpsActivo: nuevoEstadoGPS
       });
       
-      // Sincronizar el estado después del cambio
+      console.log('✅ HIJO5: Cambio de estado completado');
       setTimeout(sincronizarConPadre, 100);
     };
     
