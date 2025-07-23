@@ -254,6 +254,17 @@
 </head>
 <body>
   <div id="contenedor-flex">
+    <!-- Ventana desplegable de paradas y tramos -->
+    <div id="paradas-window" style="display: none; position: fixed; top: 120px; right: 20px; width: 300px; max-height: 70vh; background: white; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); z-index: 10000; overflow-y: auto; padding: 15px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #eee;">
+        <h3 style="margin: 0; font-size: 1.2em; color: #333;">Selecciona una parada o tramo</h3>
+        <button id="cerrar-paradas" style="background: none; border: none; font-size: 1.2em; cursor: pointer;">×</button>
+      </div>
+      <div id="paradas-list" style="display: flex; flex-direction: column; gap: 8px;">
+        <!-- Aquí se cargarán las paradas y tramos dinámicamente -->
+      </div>
+    </div>
+    
     <div id="zona-boton-casa">
       <div id="gps-casa-btn" class="on" title="Activar GPS">
         <span class="casa-icon"><i class="fa-solid fa-house"></i></span>
@@ -1142,282 +1153,90 @@
     // Renderiza la lista de paradas y tramos
     function renderParadasYTramos() {
       const lista = document.getElementById('paradas-list');
+      if (!lista) {
+        console.error('❌ HIJO5: No se encontró el elemento paradas-list');
+        return;
+      }
+      
+      // Limpiar la lista
       lista.innerHTML = '';
       
-      // Recorrer la estructura unificada de puntos de ruta
-      puntosRuta.forEach((punto, index) => {
-        if (punto.tipo === 'parada' || punto.tipo === 'inicio') {
-          // Crear botón para parada
-          const btn = document.createElement('button');
-          btn.className = 'parada-btn';
+      // Ordenar los puntos por el número de parada o tramo
+      const puntosOrdenados = [...puntosRuta].sort((a, b) => {
+        const numA = a.parada !== undefined ? a.parada : a.tramo;
+        const numB = b.parada !== undefined ? b.parada : b.tramo;
+        return numA - numB;
+      });
+      
+      // Recorrer la estructura ordenada de puntos de ruta
+      puntosOrdenados.forEach((punto) => {
+        const btn = document.createElement('button');
+        btn.className = 'parada-tramo-btn';
+        
+        // Resaltar si es el punto actual
+        const esParada = punto.tipo === 'parada' || punto.tipo === 'inicio';
+        const esActual = (esParada && punto.parada === paradaActual) || 
+                        (!esParada && punto.tramo === tramoActual);
+        
+        if (esActual) {
+          btn.classList.add('actual');
+        }
+        
+        // Construir el contenido del botón
+        const numero = esParada ? punto.parada : punto.tramo;
+        const tipoClase = esParada ? 'parada' : 'tramo';
+        const colorFondo = esParada ? '#4CAF50' : '#2196F3';
+        
+        btn.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="background: ${colorFondo}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.8em; min-width: 30px; text-align: center;">
+              ${esParada ? 'P' : 'T'}${numero}
+            </span>
+            <span>${punto.nombre}</span>
+          </div>
+        `;
+        
+        // Manejar clic en el botón
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
           
-          // Resaltar si es la parada actual
-          if (punto.parada === paradaActual && tramoActual === -1) {
-            btn.classList.add('actual');
-          }
-          
-          // Construir el contenido del botón
-          btn.innerHTML = `
-            <span class="badge badge-parada">P${punto.parada}</span>
-            ${punto.nombre}
-          `;
-          
-          // Manejar clic en la parada
-          btn.onclick = (e) => {
-            e.stopPropagation(); // Evitar que el evento se propague
-            
-            // Usar el ID estandarizado (P-0, P-1, etc.)
-            const puntoId = `P-${punto.parada}`;
-            console.log(`🔄 HIJO5: Clic en parada ${puntoId} - ${punto.nombre}`);
-            
-            // Actualizar estado local
+          if (esParada) {
+            // Es una parada
             paradaActual = punto.parada;
             tramoActual = -1;
-            
-            // Actualizar estado local sincronizado
-            estadoLocal.puntoActual = { 
-              tipo: 'parada', 
-              id: puntoId,
-              datos: punto
-            };
-            estadoLocal.ultimaActualizacion = Date.now();
-            
-            // Notificar al padre sobre el cambio de punto actual
-            const mensajePadre = {
-              type: 'actualizarPuntoActual',
-              origen: 'hijo5-casa',
-              destino: 'padre',
-              timestamp: Date.now(),
-              datos: {
-                puntoActual: estadoLocal.puntoActual,
-                modo: 'casa', // Forzar modo casa al seleccionar manualmente
-                gpsActivo: false // Forzar GPS desactivado
-              }
-            };
-            
-            console.log('📤 HIJO5: Notificando cambio de parada al padre:', mensajePadre);
-            window.parent.postMessage(mensajePadre, '*');
-            
-            // Actualizar UI
-            renderParadasYTramos();
-            
-            // Preparar mensaje común para los hijos
-            const mensajeBase = {
-              origen: 'hijo5-casa',
-              destino: 'padre',
-              timestamp: Date.now(),
-              datos: {
-                paradaId: puntoId,
-                paradaNumero: punto.parada, // Mantener compatibilidad
-                modoCasa: modoCasa,
-                coordenadas: punto.coordenadas,
-                audio: punto.audio
-              }
-            };
-            
-            // Si el GPS está apagado, simular que estamos en la ubicación seleccionada
-            if (modoCasa) {
-              console.log('🏠 HIJO5: Modo Casa - Simulando ubicación y desbloqueando funcionalidades');
-              
-              // Mensaje para hijo2 (botones)
-              const mensajeHijo2 = {
-                ...mensajeBase,
-                type: 'mensaje-para-hijo2',
-                datos: {
-                  ...mensajeBase.datos,
-                  type: 'simularUbicacion'
-                }
-              };
-              console.log('📤 HIJO5: Enviando a hijo2:', mensajeHijo2);
-              window.parent.postMessage(mensajeHijo2, '*');
-              
-              // Mensaje para hijo3 (audio) si hay audio
-              if (punto.audio) {
-                const mensajeHijo3 = {
-                  ...mensajeBase,
-                  type: 'mensaje-para-hijo3',
-                  datos: {
-                    ...mensajeBase.datos,
-                    type: 'cargarAudio',
-                    src: punto.audio,
-                    autoplay: true
-                  }
-                };
-                console.log('📤 HIJO5: Enviando a hijo3:', mensajeHijo3);
-                window.parent.postMessage(mensajeHijo3, '*');
-              }
-              
-              // Mensaje para hijo4 (retos)
-              const mensajeHijo4 = {
-                ...mensajeBase,
-                type: 'mensaje-para-hijo4',
-                datos: {
-                  ...mensajeBase.datos,
-                  type: 'mostrarReto'
-                }
-              };
-              console.log('📤 HIJO5: Enviando a hijo4:', mensajeHijo4);
-              window.parent.postMessage(mensajeHijo4, '*');
-              
-            } else {
-              console.log('🌍 HIJO5: Modo Aventura - Comportamiento normal');
-              
-              // Si el GPS está activo, comportamiento normal
-              if (punto.audio) {
-                const mensajeAudio = {
-                  ...mensajeBase,
-                  type: 'mensaje-para-hijo3',
-                  datos: {
-                    ...mensajeBase.datos,
-                    type: 'cargarAudio'
-                  }
-                };
-                console.log('📤 HIJO5: Enviando audio a hijo3:', mensajeAudio);
-                window.parent.postMessage(mensajeAudio, '*');
-                
-                // Reproducir automáticamente después de cargar
-                setTimeout(() => {
-                  const mensajePlay = {
-                    type: 'mensaje-para-hijo3',
-                    origen: 'hijo5-casa',
-                    destino: 'padre',
-                    timestamp: Date.now(),
-                    datos: { 
-                      type: 'play',
-                      paradaId: punto.parada
-                    }
-                  };
-                  console.log('▶️ HIJO5: Enviando play a hijo3:', mensajePlay);
-                  window.parent.postMessage(mensajePlay, '*');
-                }, 500);
-              }
-              
-              // Mostrar reto correspondiente
-              const mensajeReto = {
-                ...mensajeBase,
-                type: 'mensaje-para-hijo4',
-                datos: {
-                  ...mensajeBase.datos,
-                  type: 'mostrarReto'
-                }
-              };
-              console.log('📤 HIJO5: Enviando reto a hijo4:', mensajeReto);
-              window.parent.postMessage(mensajeReto, '*');
-            }
-            
-            // Actualizar la vista
-            renderParadasYTramos();
-          };
-          
-          lista.appendChild(btn);
-          
-        } else if (punto.tipo === 'tramo') {
-          // Crear botón para tramo
-          const btn = document.createElement('button');
-          btn.className = 'tramo-btn';
-          
-          // Resaltar si es el tramo actual
-          if (punto.tramo === tramoActual) {
-            btn.classList.add('actual');
-          }
-          
-          // Construir el contenido del botón
-          btn.innerHTML = `
-            <span class="badge badge-tramo">T${punto.tramo}</span>
-            ${punto.descripcion || `Tramo ${punto.tramo}`}
-          `;
-          
-          // Manejar clic en el tramo
-          btn.onclick = (e) => {
-            e.stopPropagation(); // Evitar que el evento se propague
-            
-            // Usar el ID estandarizado (TR-1, TR-2, etc.)
-            const tramoId = `TR-${punto.tramo}`;
-            console.log(`🔄 HIJO5: Clic en tramo ${tramoId}`);
-            
-            // Actualizar estado local
+            console.log(`Seleccionada parada P${punto.parada}: ${punto.nombre}`);
+          } else {
+            // Es un tramo
             tramoActual = punto.tramo;
             paradaActual = -1;
-            
-            // Actualizar estado local sincronizado
-            estadoLocal.puntoActual = { 
-              tipo: 'tramo', 
-              id: tramoId,
-              datos: punto
-            };
-            estadoLocal.ultimaActualizacion = Date.now();
-            
-            // Notificar al padre sobre el cambio de punto actual
-            const mensajePadre = {
-              type: 'actualizarPuntoActual',
-              puntoActual: estadoLocal.puntoActual,
-              origen: 'hijo5',
-              timestamp: estadoLocal.ultimaActualizacion
-            };
-            
-            console.log('📤 HIJO 5: Notificando cambio de tramo al padre:', mensajePadre);
-            padre.postMessage(mensajePadre, '*');
-            
-            // Notificar al hijo 2 (mapa) a través del padre
-            window.parent.postMessage({
-              tipo: 'mensaje-para-hijo2',
-              mensaje: {
-                type: 'seleccionarTramo',
-                tramoId: tramoId,
-                tramoNumero: punto.tramo, // Mantener compatibilidad
-                inicio: punto.inicio,
-                fin: punto.fin,
-                waypoints: punto.waypoints,
-                modoCasa: modoCasa,
-                timestamp: Date.now()
-              }
-            }, '*');
-            
-            // Si el GPS está apagado, simular que estamos en el inicio del tramo
-            if (modoCasa) {
-              // Notificar al hijo 2 (botones) para desbloquear funcionalidades
-              window.parent.postMessage({
-                tipo: 'mensaje-para-hijo2',
-                mensaje: {
-                  type: 'simularUbicacion',
-                  coordenadas: punto.inicio, // Usar las coordenadas de inicio del tramo
-                  tramoId: tramoId,
-                  modoCasa: true
-                }
-              }, '*');
-              
-              // Si hay video, notificar al reproductor de video
-              if (punto.video) {
-                window.parent.postMessage({
-                  tipo: 'mensaje-para-hijo3',
-                  mensaje: {
-                    type: 'cargarVideo',
-                    src: punto.video,
-                    tramoId: tramoId,
-                    autoplay: true
-                  }
-                }, '*');
-              }
-              
-              // Si hay imagen, notificar al visor de imágenes
-              if (punto.imagen) {
-                window.parent.postMessage({
-                  tipo: 'mensaje-para-hijo4',
-                  mensaje: {
-                    type: 'mostrarImagen',
-                    src: punto.imagen,
-                    tramoId: tramoId
-                  }
-                }, '*');
-              }
-            }
-            
-            // Actualizar la vista
-            renderParadasYTramos();
-          };
+            console.log(`Seleccionado tramo T${punto.tramo}: ${punto.nombre}`);
+          }
           
-          lista.appendChild(tramoBtn);
-        }
+          // Notificar al padre
+          window.parent.postMessage({
+            type: 'actualizarPuntoActual',
+            origen: 'hijo5-casa',
+            puntoActual: {
+              tipo: esParada ? 'parada' : 'tramo',
+              id: esParada ? `P-${punto.parada}` : `TR-${punto.tramo}`,
+              numero: esParada ? punto.parada : punto.tramo,
+              nombre: punto.nombre
+            },
+            modo: 'casa',
+            gpsActivo: false
+          }, '*');
+          
+          // Cerrar la ventana después de seleccionar
+          const paradasWindow = document.getElementById('paradas-window');
+          if (paradasWindow) {
+            paradasWindow.style.display = 'none';
+          }
+          
+          // Actualizar la vista
+          renderParadasYTramos();
+        });
+        
+        lista.appendChild(btn);
       });
     }
 
