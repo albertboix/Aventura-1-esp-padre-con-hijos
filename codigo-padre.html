@@ -14,33 +14,42 @@
         
         /* ================== VARIABLES Y ESTILO HIJO 4 (RETOS) ================== */
         :root {
-            --iframe-hijo4-width: 60vw;
-            --iframe-hijo4-height: 40vh;
-            --iframe-hijo4-top: 10vh;
+            --iframe-hijo4-width: 90%;
+            --iframe-hijo4-max-width: 600px;
+            --iframe-hijo4-height: 70vh;
+            --iframe-hijo4-top: 15vh;
             --iframe-hijo4-left: 50%;
             --iframe-hijo4-translate-x: -50%;
             --iframe-hijo4-z: 2000;
+            --iframe-hijo4-bg: rgba(255, 255, 255, 0.95);
+            --iframe-hijo4-border-radius: 15px;
+            --iframe-hijo4-box-shadow: 0 5px 25px rgba(0, 0, 0, 0.3);
         }
         #hijo4 {
             position: fixed;
             top: var(--iframe-hijo4-top);
             left: var(--iframe-hijo4-left);
             width: var(--iframe-hijo4-width);
+            max-width: var(--iframe-hijo4-max-width);
             height: var(--iframe-hijo4-height);
             transform: translateX(var(--iframe-hijo4-translate-x));
             z-index: var(--iframe-hijo4-z);
-            border: 2px solid red;
-            background: transparent;
+            background: var(--iframe-hijo4-bg);
+            border-radius: var(--iframe-hijo4-border-radius);
+            box-shadow: var(--iframe-hijo4-box-shadow);
+            border: none;
             pointer-events: auto;
             display: none;
+            overflow: hidden;
+            transition: all 0.3s ease;
         }
 
         /* ESTILO ACTUALIZADO PARA info-parada */
         #info-parada {
-            font-weight:bold;
-            margin:0;
+            font-weight: bold;
+            margin: 0;
             padding: 12px 20px;
-            background-color: rgba(255,255,255,0.95);
+            background-color: rgba(255, 255, 255, 0.95);
             border-radius: 10px;
             position: fixed;
             left: 50%;
@@ -53,9 +62,33 @@
             bottom: 340px;
             min-width: 250px;
             max-width: 90vw;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
             border-left: 4px solid #3498db;
             transition: all 0.3s ease;
+        }
+        
+        /* Estilos para los marcadores de navegación */
+        .marcador-inicio {
+            color: #4CAF50; /* Verde para el punto de inicio */
+            font-size: 24px;
+            text-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+        }
+        
+        .marcador-destino {
+            color: #F44336; /* Rojo para el destino */
+            font-size: 24px;
+            text-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+        }
+        
+        /* Estilo para la flecha de navegación */
+        .flecha-navegacion {
+            color: #1E88E5; /* Azul para la flecha */
+            font-size: 24px;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+            transform-origin: center;
+            transform: rotate(0deg);
+            transition: transform 0.3s ease;
+            z-index: 1000;
         }
         
         /* Estilos para los marcadores personalizados */
@@ -276,28 +309,70 @@
         // ================== FUNCIONES DE SINCRONIZACIÓN ==================
         /**
          * Sincroniza el estado global con todos los iframes hijos
-         */
+         // ================== COMUNICACIÓN CON IFRAMES ==================
         function sincronizarEstadoConHijos() {
-            // Actualizar timestamp
-            estadoGlobal.ultimaActualizacion = Date.now();
-            
+            const timestamp = Date.now();
             const mensaje = {
                 type: 'sincronizarEstado',
-                estado: JSON.parse(JSON.stringify(estadoGlobal)) // Deep clone
+                timestamp: timestamp,
+                origen: 'padre',
+                estado: {
+                    modo: estadoGlobal.modo,
+                    puntoActual: estadoGlobal.puntoActual,
+                    datosCompartidos: estadoGlobal.datosCompartidos
+                }
             };
 
-            // Enviar a todos los iframes hijos
-            ['hijo2', 'hijo3', 'hijo4', 'hijo5'].forEach(id => {
+            console.log(`🔄 PADRE [${new Date(timestamp).toISOString()}]: Enviando sincronización a todos los hijos`, {
+                modo: estadoGlobal.modo,
+                puntoActual: estadoGlobal.puntoActual?.id || 'ninguno',
+                origen: 'padre'
+            });
+
+            // Enviar a todos los iframes hijos con verificación de disponibilidad
+            const iframes = ['hijo2', 'hijo3', 'hijo4', 'hijo5-casa'];
+            let iframesActivos = 0;
+            let iframesConError = [];
+
+            iframes.forEach(id => {
                 const iframe = document.getElementById(id);
                 if (iframe && iframe.contentWindow) {
-                    iframe.contentWindow.postMessage(mensaje, '*');
+                    try {
+                        iframe.contentWindow.postMessage(mensaje, '*');
+                        console.log(`   ✅ Enviado a ${id}`);
+                        iframesActivos++;
+                    } catch (error) {
+                        console.error(`   ❌ Error enviando a ${id}:`, error);
+                        iframesConError.push(id);
+                    }
+                } else {
+                    console.warn(`   ⚠️ Iframe ${id} no encontrado`);
+                    iframesConError.push(id);
                 }
             });
+
+            // Registrar resumen de la sincronización
+            console.group('📊 Resumen de sincronización');
+            console.log(`📤 Total iframes: ${iframes.length}`);
+            console.log(`✅ Iframes activos: ${iframesActivos}`);
+            if (iframesConError.length > 0) {
+                console.warn(`❌ Iframes con error: ${iframesConError.join(', ')}`);
+            }
+            console.groupEnd();
+
+            return {
+                total: iframes.length,
+                exitosos: iframesActivos,
+                errores: iframesConError.length,
+                iframesConError: iframesConError
+            };
         }
 
         /**
          * Actualiza el estado global y sincroniza con los hijos
          * @param {Object} actualizacion - Objeto con las propiedades a actualizar
+         * @param {boolean} [sincronizar=true] - Indica si se debe sincronizar con los hijos
+         * @returns {Promise<void>}
          */
         function actualizarEstadoGlobal(actualizacion) {
             // Fusionar la actualización con el estado global
@@ -549,6 +624,435 @@
         } else {
             inicializarAplicacion();
         }
+        
+        // Variables para los elementos de navegación en el mapa
+        let rutaPolyline = null;
+        let marcadorInicio = null;
+        let marcadorDestino = null;
+        let direccionFlecha = null;
+
+        // Función para limpiar la navegación actual del mapa
+        function limpiarNavegacion() {
+            if (rutaPolyline) {
+                map.removeLayer(rutaPolyline);
+                rutaPolyline = null;
+            }
+            
+            if (marcadorInicio) {
+                map.removeLayer(marcadorInicio);
+                marcadorInicio = null;
+            }
+            
+            if (marcadorDestino) {
+                map.removeLayer(marcadorDestino);
+                marcadorDestino = null;
+            }
+            
+            if (direccionFlecha) {
+                map.removeLayer(direccionFlecha);
+                direccionFlecha = null;
+            }
+        }
+
+        // Función para dibujar una flecha en la ruta
+        function dibujarFlecha(latlng, angulo) {
+            // Usar un ícono de marcador con rotación para simular una flecha
+            const iconoFlecha = L.divIcon({
+                className: 'flecha-navegacion',
+                html: '➤',
+                iconSize: [24, 24],
+                iconAnchor: [12, 12],
+                popupAnchor: [0, -12]
+            });
+            
+            // Crear el marcador con rotación
+            const flecha = L.marker(latlng, {
+                icon: iconoFlecha,
+                rotationAngle: angulo,
+                rotationOrigin: 'center',
+                zIndexOffset: 1000
+            });
+            
+            return flecha;
+        }
+
+        // ================== MANEJADOR DE MENSAJES DEL HIJO 2 (COORDENADAS) ==================
+        window.addEventListener('message', function(event) {
+            const iframe = document.getElementById('hijo2');
+            if (!iframe || event.source !== iframe.contentWindow) return;
+            
+            const data = event.data;
+            if (!data || !data.type) return;
+            
+            console.log(`📩 PADRE: Mensaje recibido de hijo 2 (${data.type})`, data);
+            
+            switch(data.type) {
+                case 'mostrarNavegacion':
+                    console.log('📍 PADRE: Mostrando navegación a destino:', data.destino.nombre);
+                    
+                    // Limpiar navegación anterior
+                    limpiarNavegacion();
+                    
+                    // Crear los puntos de la ruta (simplificado: línea recta entre origen y destino)
+                    const puntosRuta = [
+                        [data.origen.lat, data.origen.lng],
+                        [data.destino.coordenadas.lat, data.destino.coordenadas.lng]
+                    ];
+                    
+                    // Dibujar la línea de ruta
+                    rutaPolyline = L.polyline(puntosRuta, {
+                        color: '#1E88E5', // Azul
+                        weight: 6,
+                        opacity: 0.8,
+                        lineJoin: 'round'
+                    }).addTo(map);
+                    
+                    // Añadir marcador de inicio (verde)
+                    marcadorInicio = L.marker([data.origen.lat, data.origen.lng], {
+                        icon: L.divIcon({
+                            className: 'marcador-inicio',
+                            html: '📍',
+                            iconSize: [30, 30],
+                            iconAnchor: [15, 30],
+                            popupAnchor: [0, -30]
+                        })
+                    }).addTo(map);
+                    
+                    // Añadir marcador de destino (rojo)
+                    marcadorDestino = L.marker([data.destino.coordenadas.lat, data.destino.coordenadas.lng], {
+                        icon: L.divIcon({
+                            className: 'marcador-destino',
+                            html: '📍',
+                            iconSize: [30, 30],
+                            iconAnchor: [15, 30],
+                            popupAnchor: [0, -30]
+                        })
+                    }).addTo(map);
+                    
+                    // Añadir etiqueta al destino
+                    marcadorDestino.bindPopup(`<b>${data.destino.nombre}</b>`).openPopup();
+                    
+                    // Calcular punto medio para la flecha (80% del camino desde el origen)
+                    const puntoIntermedio = {
+                        lat: data.origen.lat + (data.destino.coordenadas.lat - data.origen.lat) * 0.8,
+                        lng: data.origen.lng + (data.destino.coordenadas.lng - data.origen.lng) * 0.8
+                    };
+                    
+                    // Calcular ángulo de la flecha
+                    const angulo = Math.atan2(
+                        data.destino.coordenadas.lat - data.origen.lat,
+                        data.destino.coordenadas.lng - data.origen.lng
+                    ) * (180 / Math.PI);
+                    
+                    // Añadir flecha de dirección
+                    direccionFlecha = dibujarFlecha(puntoIntermedio, angulo).addTo(map);
+                    
+                    // Ajustar el mapa para mostrar toda la ruta con un margen
+                    map.fitBounds(rutaPolyline.getBounds(), {
+                        padding: [50, 50],
+                        maxZoom: 17
+                    });
+                    
+                    console.log('🗺️ PADRE: Navegación mostrada en el mapa');
+                    break;
+                    
+                case 'cambio-estado':
+                    console.log('🔄 PADRE: Cambio de estado en navegación:', data.estado);
+                    // Aquí puedes agregar lógica para manejar cambios de estado
+                    break;
+                    
+                case 'interaccion-usuario':
+                    console.log('🖱️ PADRE: Interacción del usuario:', data.tipoBoton, data.datos);
+                    // Aquí puedes manejar interacciones del usuario
+                    break;
+                    
+                case 'estado-gps':
+                    if (data.estado === 'activo') {
+                        console.log('📍 PADRE: GPS activado');
+                    } else if (data.estado === 'inactivo') {
+                        console.log('⏸️ PADRE: GPS desactivado');
+                    } else if (data.estado === 'error') {
+                        console.error('❌ PADRE: Error en GPS:', data.error);
+                    }
+                    break;
+                    
+                case 'llegada-parada':
+                    console.log('🎯 PADRE: Llegada a parada detectada:', data.parada);
+                    // Limpiar navegación al llegar al destino
+                    limpiarNavegacion();
+                    break;
+                    
+                case 'inicio-navegacion':
+                    console.log('🚀 PADRE: Inicio de navegación a parada:', data.parada);
+                    // Aquí puedes manejar el inicio de la navegación
+                    break;
+                    
+                case 'fin-navegacion':
+                    console.log('🏁 PADRE: Navegación finalizada');
+                    // Limpiar navegación al finalizar
+                    limpiarNavegacion();
+                    break;
+                    
+                default:
+                    console.log('ℹ️ PADRE: Mensaje no manejado de hijo 2:', data);
+            }
+        });
+        
+        // ================== MANEJADOR DE MENSAJES DEL HIJO 4 (RETOS Y PREGUNTAS) ==================
+        window.addEventListener('message', function(event) {
+            const iframe = document.getElementById('hijo4');
+            if (!iframe || event.source !== iframe.contentWindow) return;
+            
+            const data = event.data;
+            if (!data || !data.type) return;
+            
+            console.log('❓ PADRE: Mensaje recibido de hijo4 (retos):', data.type, data);
+            
+            switch(data.type) {
+                case 'hijo4Ready':
+                case 'retos-hijo-listo':
+                    console.log('✅ PADRE: Hijo 4 (Retos) listo y operativo');
+                    // Confirmar recepción
+                    iframe.contentWindow.postMessage({ 
+                        type: 'confirmacion',
+                        origen: 'padre',
+                        destino: 'hijo4',
+                        mensaje: 'Estado sincronizado',
+                        timestamp: Date.now(),
+                        estado: {
+                            modo: estadoGlobal.modo || 'aventura',
+                            retoActivo: estadoGlobal.datosCompartidos.reto.activo || false,
+                            retoCompletado: estadoGlobal.datosCompartidos.reto.completado || false,
+                            paradaActual: estadoGlobal.puntoActual?.id || null
+                        }
+                    }, '*');
+                    break;
+                    
+                case 'iniciarReto':
+                    console.log('🎮 PADRE: Iniciando reto para parada:', data.paradaId);
+                    // Mostrar el iframe de retos
+                    document.getElementById('hijo4').style.display = 'block';
+                    // Actualizar estado global
+                    actualizarEstadoGlobal({
+                        datosCompartidos: {
+                            ...estadoGlobal.datosCompartidos,
+                            reto: {
+                                activo: true,
+                                completado: false,
+                                paradaId: data.paradaId
+                            }
+                        }
+                    });
+                    break;
+                    
+                case 'retoCompletado':
+                    console.log('🏆 PADRE: Reto completado para parada:', data.paradaId);
+                    // Ocultar el iframe de retos
+                    document.getElementById('hijo4').style.display = 'none';
+                    // Actualizar estado global
+                    actualizarEstadoGlobal({
+                        datosCompartidos: {
+                            ...estadoGlobal.datosCompartidos,
+                            reto: {
+                                activo: false,
+                                completado: true,
+                                paradaId: data.paradaId
+                            }
+                        }
+                    });
+                    // Notificar a otros hijos del reto completado
+                    sincronizarEstadoConHijos();
+                    break;
+                    
+                case 'cerrarReto':
+                    console.log('🚪 PADRE: Cerrando reto sin completar');
+                    document.getElementById('hijo4').style.display = 'none';
+                    actualizarEstadoGlobal({
+                        datosCompartidos: {
+                            ...estadoGlobal.datosCompartidos,
+                            reto: {
+                                activo: false,
+                                completado: false,
+                                paradaId: null
+                            }
+                        }
+                    });
+                    break;
+                    
+                case 'error':
+                    console.error('❌ PADRE: Error en hijo4 (retos):', data.mensaje);
+                    mostrarMensajeInfoParada(`Error en retos: ${data.mensaje}`, true);
+                    break;
+                    
+                case 'solicitarSincronizacion':
+                    console.log('🔄 PADRE: Sincronización solicitada por hijo4');
+                    // Enviar estado actual al hijo 4
+                    iframe.contentWindow.postMessage({
+                        type: 'sincronizarEstado',
+                        origen: 'padre',
+                        destino: 'hijo4',
+                        timestamp: Date.now(),
+                        estado: {
+                            modo: estadoGlobal.modo || 'aventura',
+                            retoActivo: estadoGlobal.datosCompartidos.reto.activo || false,
+                            retoCompletado: estadoGlobal.datosCompartidos.reto.completado || false,
+                            paradaActual: estadoGlobal.puntoActual?.id || null
+                        }
+                    }, '*');
+                    break;
+                    
+                default:
+                    console.log('ℹ️ PADRE: Mensaje no manejado de hijo4 (retos):', data);
+            }
+        });
+        
+        // ================== MANEJADOR DE MENSAJES DEL HIJO 3 (REPRODUCTOR DE AUDIO) ==================
+        window.addEventListener('message', function(event) {
+            const iframe = document.getElementById('hijo3');
+            if (!iframe || event.source !== iframe.contentWindow) return;
+            
+            const data = event.data;
+            if (!data || !data.type) return;
+            
+            console.log('📥 PADRE: Mensaje recibido de hijo 3 (audio):', data.type, data);
+            
+            switch(data.type) {
+                case 'hijo3Ready':
+                case 'audio-hijo-listo':
+                    console.log('✅ PADRE: Hijo 3 (Reproductor) listo y operativo');
+                    // Confirmar recepción
+                    iframe.contentWindow.postMessage({ 
+                        type: 'confirmacion',
+                        mensaje: 'Estado sincronizado',
+                        timestamp: Date.now()
+                    }, '*');
+                    break;
+                    
+                case 'estadoReproduccion':
+                    console.log('🎵 PADRE: Estado de reproducción actualizado:', {
+                        reproduciendo: data.reproduciendo,
+                        paradaActual: data.paradaActual,
+                        tiempoActual: data.tiempoActual
+                    });
+                    // Actualizar estado global
+                    actualizarEstadoGlobal({
+                        reproduciendoAudio: data.reproduciendo,
+                        audioActual: data.paradaActual
+                    });
+                    break;
+                    
+                case 'error':
+                    console.error('❌ PADRE: Error en hijo 3 (audio):', data.mensaje);
+                    mostrarMensajeInfoParada(`Error en reproductor: ${data.mensaje}`, true);
+                    break;
+                    
+                case 'audioFinalizado':
+                    console.log('🏁 PADRE: Audio finalizado:', data.paradaActual);
+                    // Aquí podrías manejar la lógica de qué hacer cuando termina un audio
+                    break;
+                    
+                default:
+                    console.log('ℹ️ PADRE: Mensaje no manejado de hijo 3 (audio):', data);
+            }
+        });
+        
+        // ================== FUNCIÓN PARA VERIFICAR ESTADO DE IFRAMES ==================
+        function verificarEstadoIframes() {
+            console.group('🔍 Estado actual de iframes');
+            ['hijo2', 'hijo3', 'hijo4', 'hijo5-casa'].forEach(id => {
+                const iframe = document.getElementById(id);
+                console.log(`📺 ${id}:`, {
+                    existe: !!iframe,
+                    cargado: iframe?.contentDocument?.readyState === 'complete',
+                    src: iframe?.src
+                });
+            });
+            console.groupEnd();
+        }
+
+        // ================== MANEJADOR DE MENSAJES DEL HIJO 5 (BOTÓN CASA) ==================
+        window.addEventListener('message', function(event) {
+            // Log detallado de todos los mensajes recibidos
+            const timestamp = new Date().toISOString();
+            const origen = event.origin || 'unknown-origin';
+            const sourceId = Object.entries({
+                'hijo2': document.getElementById('hijo2')?.contentWindow,
+                'hijo3': document.getElementById('hijo3')?.contentWindow,
+                'hijo4': document.getElementById('hijo4')?.contentWindow,
+                'hijo5-casa': document.getElementById('hijo5-casa')?.contentWindow
+            }).find(([_, win]) => win === event.source)?.[0] || 'unknown-source';
+
+            console.group(`📨 PADRE [${timestamp}] - Mensaje de ${sourceId} (${origen})`);
+            console.log('📦 Datos recibidos:', event.data);
+            console.log('🔗 Origen del mensaje:', origen);
+            console.log('🆔 ID del iframe:', sourceId);
+            console.groupEnd();
+
+            // Si el mensaje no tiene tipo, ignorarlo
+            if (!event.data || !event.data.type) {
+                console.warn('⚠️ Mensaje sin tipo recibido, ignorando...');
+                return;
+            }
+            const iframe = document.getElementById('hijo5-casa');
+            if (!iframe || event.source !== iframe.contentWindow) return;
+            
+            const data = event.data;
+            if (!data || !data.type) return;
+            
+            console.log('🏠 PADRE: Mensaje recibido de hijo5-casa (botón casa):', data.type, data);
+            
+            switch(data.type) {
+                case 'hijo5Ready':
+                case 'casa-hijo-listo':
+                    console.log('✅ PADRE: Hijo 5 (Botón casa) listo y operativo');
+                    // Confirmar recepción
+                    iframe.contentWindow.postMessage({ 
+                        type: 'confirmacion',
+                        origen: 'padre',
+                        destino: 'hijo5-casa',
+                        mensaje: 'Estado sincronizado',
+                        timestamp: Date.now(),
+                        estado: {
+                            modo: estadoGlobal.modo || 'aventura'
+                        }
+                    }, '*');
+                    break;
+                    
+                case 'cambioModo':
+                    console.log('🔄 PADRE: Cambio de modo detectado:', data.modo);
+                    // Actualizar estado global
+                    actualizarEstadoGlobal({
+                        modo: data.modo // 'casa' o 'aventura'
+                    });
+                    // Notificar a otros hijos del cambio de modo
+                    sincronizarEstadoConHijos();
+                    break;
+                    
+                case 'error':
+                    console.error('❌ PADRE: Error en hijo5-casa (botón casa):', data.mensaje);
+                    mostrarMensajeInfoParada(`Error en botón casa: ${data.mensaje}`, true);
+                    break;
+                    
+                case 'solicitarSincronizacion':
+                    console.log('🔄 PADRE: Sincronización solicitada por hijo5-casa');
+                    // Enviar estado actual al hijo 5
+                    iframe.contentWindow.postMessage({
+                        type: 'sincronizarEstado',
+                        origen: 'padre',
+                        destino: 'hijo5-casa',
+                        timestamp: Date.now(),
+                        estado: {
+                            modo: estadoGlobal.modo || 'aventura',
+                            // Agregar más estados según sea necesario
+                        }
+                    }, '*');
+                    break;
+                    
+                default:
+                    console.log('ℹ️ PADRE: Mensaje no manejado de hijo5-casa (botón casa):', data);
+            }
+        });
+        
         }());
     </script>
 </body>
