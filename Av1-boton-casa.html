@@ -580,19 +580,40 @@
         gpsLabel: null,
         estadoModo: null,
         paradasWindow: null,
-        listaParadas: null
+        listaParadas: null,
+        cerrarParadas: null
     };
     
     /**
      * Inicializa la caché de elementos DOM
      */
     function inicializarCacheDOM() {
-        if (!domCache.gpsBtn) {
-            domCache.gpsBtn = document.getElementById('gps-casa-btn');
-            domCache.gpsLabel = domCache.gpsBtn?.querySelector('.gps-label');
-            domCache.estadoModo = document.getElementById('estado-modo');
-            domCache.paradasWindow = document.getElementById('paradas-window');
-            domCache.listaParadas = document.getElementById('lista-paradas');
+        console.log('🔄 HIJO5: Inicializando caché del DOM...');
+        
+        // Forzar la búsqueda de elementos cada vez para asegurar que los tenemos
+        domCache.gpsBtn = document.getElementById('gps-casa-btn');
+        domCache.gpsLabel = document.querySelector('#gps-casa-btn .gps-label');
+        domCache.estadoModo = document.getElementById('estado-modo');
+        domCache.paradasWindow = document.getElementById('paradas-window');
+        domCache.listaParadas = document.getElementById('paradas-list');
+        domCache.cerrarParadas = document.getElementById('cerrar-paradas');
+        
+        console.log('✅ HIJO5: Caché del DOM inicializada', {
+            gpsBtn: !!domCache.gpsBtn,
+            gpsLabel: !!domCache.gpsLabel,
+            estadoModo: !!domCache.estadoModo,
+            paradasWindow: !!domCache.paradasWindow,
+            listaParadas: !!domCache.listaParadas,
+            cerrarParadas: !!domCache.cerrarParadas
+        });
+        
+        // Configurar manejador de eventos para el botón de cerrar
+        if (domCache.cerrarParadas && !domCache.cerrarParadas._hasEventListener) {
+            domCache.cerrarParadas.addEventListener('click', function() {
+                console.log('🔄 HIJO5: Cerrando ventana de paradas');
+                ocultarParadas();
+            });
+            domCache.cerrarParadas._hasEventListener = true;
         }
     }
     
@@ -884,7 +905,7 @@
 
     // Mostrar/ocultar ventana de paradas y tramos
     function mostrarParadasYTramos() {
-      console.log(`📋 HIJO5: Mostrar paradas y tramos - gpsOn: ${gpsOn}, modoCasa: ${modoCasa}`);
+      console.log('🔄 HIJO5: Intentando mostrar paradas y tramos...');
       
       // Forzar la reinicialización de la caché del DOM
       domCache.paradasWindow = null;
@@ -892,7 +913,17 @@
       
       if (!domCache.paradasWindow) {
         console.error('❌ HIJO5: No se encontró el elemento paradas-window en el DOM');
-        return;
+        
+        // Intentar encontrar el elemento manualmente
+        const paradasWindow = document.getElementById('paradas-window');
+        if (paradasWindow) {
+          console.log('✅ HIJO5: Elemento paradas-window encontrado manualmente');
+          domCache.paradasWindow = paradasWindow;
+          domCache.listaParadas = document.getElementById('paradas-list');
+        } else {
+          console.error('❌ HIJO5: No se pudo encontrar el elemento paradas-window en el DOM');
+          return;
+        }
       }
       
       if (!gpsOn) {
@@ -932,15 +963,31 @@
     }
     
     function ocultarParadas() {
-      console.log('❌ HIJO5-CASA: Ocultando ventana de paradas y tramos');
-      document.getElementById('paradas-window').style.display = 'none';
+      console.log('🔄 HIJO5: Ocultando ventana de paradas...');
       
-      window.parent.postMessage({ 
-        type: 'contraerIframe',
-        origen: 'hijo5-casa',
-        width: '80px',
-        debug: 'Contraer ventana de paradas'
-      }, '*');
+      // Asegurarse de que la caché esté inicializada
+      inicializarCacheDOM();
+      
+      if (domCache.paradasWindow) {
+        domCache.paradasWindow.style.display = 'none';
+        console.log('✅ HIJO5: Ventana de paradas ocultada');
+        
+        // Notificar al padre para contraer el iframe
+        try {
+          window.parent.postMessage({ 
+            type: 'contraerIframe',
+            origen: 'hijo5-casa',
+            width: '100px',
+            debug: 'Contracción después de ocultar paradas',
+            timestamp: Date.now()
+          }, '*');
+          console.log('📤 HIJO5: Mensaje de contracción enviado al padre');
+        } catch (error) {
+          console.error('❌ HIJO5: Error al enviar mensaje de contracción al padre:', error);
+        }
+      } else {
+        console.error('❌ HIJO5: No se pudo ocultar la ventana de paradas - Elemento no encontrado');
+      }
     }
 
     // Inicializar las listas de paradas y tramos desde la estructura unificada
