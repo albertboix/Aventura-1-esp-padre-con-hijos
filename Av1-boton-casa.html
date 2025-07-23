@@ -927,16 +927,41 @@
         // Notificar al padre sobre el cambio de estado
         notificarCambioEstado(puntoActual, modo);
         
+        // Enviar mensaje al padre para sincronizar con otros iframes
+        const mensajeSincronizacion = {
+            type: 'sincronizarEstado',
+            estado: {
+                modo: modo,
+                puntoActual: puntoActual,
+                timestamp: Date.now()
+            },
+            origen: 'hijo5-casa'
+        };
+        
+        window.parent.postMessage(mensajeSincronizacion, '*');
+        
         // Manejar la lógica específica del modo
         if (modoCasa) {
             console.log('🏠 HIJO5-CASA: Activando modo Casa (GPS OFF)');
             manejarModoCasa(puntoActual);
+            
+            // Notificar a los demás iframes que estamos en modo casa
+            enviarMensajeAHijo('hijo2', 'cambioModo', { modo: 'casa' });
+            enviarMensajeAHijo('hijo3', 'cambioModo', { modo: 'casa' });
+            enviarMensajeAHijo('hijo4', 'cambioModo', { modo: 'casa' });
+            
             // Mostrar paradas después de un pequeño retraso para asegurar que el DOM esté actualizado
             setTimeout(() => {
                 mostrarParadasYTramos();
             }, 50);
         } else {
             console.log('🌍 HIJO5-CASA: Activando modo Aventura (GPS ON)');
+            
+            // Notificar a los demás iframes que volvemos al modo aventura
+            enviarMensajeAHijo('hijo2', 'cambioModo', { modo: 'aventura' });
+            enviarMensajeAHijo('hijo3', 'cambioModo', { modo: 'aventura' });
+            enviarMensajeAHijo('hijo4', 'cambioModo', { modo: 'aventura' });
+            
             manejarModoAventura();
             ocultarParadas();
         }
@@ -949,6 +974,14 @@
         }
         
         console.log(`✅ HIJO5-CASA: Cambio de estado completado - Modo: ${modo}, GPS: ${on ? 'ON' : 'OFF'}`);
+        
+        // Notificar al padre sobre el cambio de estado del GPS
+        window.parent.postMessage({
+            type: 'gpsStateChanged',
+            enabled: on,
+            modo: modo,
+            timestamp: Date.now()
+        }, '*');
     }
     
     function actualizarIndicadorModo() {
