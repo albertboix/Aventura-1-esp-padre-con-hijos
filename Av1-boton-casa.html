@@ -46,8 +46,8 @@
     
     /* Estilos del botón casa */
     :root {
-      --emoji-size: 30px;
-      --label-size: 15px;
+      --emoji-size: 35px;
+      --label-size: 25px;
     }
     
     /* Estilos base del botón */
@@ -57,7 +57,7 @@
       height: 30px;
       min-width: 30px; /* Evita que el botón se encoja */
       min-height: 30px; /* Asegura una altura mínima */
-      border-radius: 4px;
+      border-radius: 1px;
       border: 1px solid #fff;
       
       /* Colores */
@@ -1955,16 +1955,35 @@
           return;
         }
         
+        // Asegurarse de que el botón tenga la estructura necesaria
+        if (!gpsBtn.querySelector('.button-content')) {
+          console.log('🔨 Reconstruyendo estructura del botón...');
+          gpsBtn.innerHTML = `
+            <div class="button-content">
+              <span class="satellite-emoji">📡</span>
+              <span class="gps-label">${on ? 'ON' : 'OFF'}</span>
+            </div>
+          `;
+        }
+        
         const labelElement = gpsBtn.querySelector('.gps-label');
         const emojiElement = gpsBtn.querySelector('.satellite-emoji');
         const paradasWindow = document.getElementById('paradas-window');
+        
+        // Aplicar estilos directamente para asegurar que se vean
+        gpsBtn.style.display = 'flex';
+        gpsBtn.style.justifyContent = 'center';
+        gpsBtn.style.alignItems = 'center';
+        gpsBtn.style.backgroundColor = on ? '#4CAF50' : '#f44336';
         
         // Debug: Mostrar información sobre los elementos del DOM
         console.log('🔍 Elementos del botón:', { 
           gpsBtn: !!gpsBtn, 
           labelElement: !!labelElement, 
           emojiElement: !!emojiElement,
-          paradasWindow: !!paradasWindow
+          paradasWindow: !!paradasWindow,
+          currentClasses: gpsBtn.className,
+          currentStyle: gpsBtn.style.cssText
         });
         
         // Actualizar clases y estilos del botón
@@ -2164,20 +2183,13 @@
           }, '*');
         }
         
-        // Notificar a otros iframes
-        const iframes = document.getElementsByTagName('iframe');
-        for (let iframe of iframes) {
-          if (iframe.contentWindow && iframe.id !== 'hijo5-casa') {
-            iframe.contentWindow.postMessage({
-              type: 'SYNC_GPS_STATE',
-              gpsOn: nuevoEstado,
-              source: 'hijo5-casa',
-              modo: nuevoEstado ? 'aventura' : 'casa'
-            }, '*');
-          }
-        }
-        
         // Actualizar el estado en el almacenamiento local
+        try {
+          localStorage.setItem('gpsState', JSON.stringify(nuevoEstado));
+          console.log('💾 Estado del GPS guardado en localStorage:', nuevoEstado);
+        } catch (e) {
+          console.warn('No se pudo guardar el estado del GPS:', e);
+        }
         try {
           localStorage.setItem('gpsState', JSON.stringify(nuevoEstado));
           console.log('💾 Estado del GPS guardado en localStorage:', nuevoEstado);
@@ -2192,48 +2204,79 @@
     
     // Función para inicializar el botón GPS
     function inicializarBotonGPS() {
+      console.log('🔧 Inicializando botón GPS...');
+      
+      // Obtener el botón
       const gpsBtn = document.getElementById('gps-casa-btn');
       if (!gpsBtn) {
-        console.error('❌ No se encontró el botón GPS');
-        return;
+        console.error('❌ No se encontró el botón GPS en el DOM');
+        return false;
       }
       
-      // Asegurarse de que el botón tenga la estructura correcta
-      gpsBtn.innerHTML = `
-        <div class="button-content">
-          <span class="satellite-emoji">📡</span>
-          <span class="gps-label">${gpsOn ? 'ON' : 'OFF'}</span>
+      // Crear estructura HTML del botón
+      const buttonHTML = `
+        <div class="button-content" style="display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%;">
+          <span class="satellite-emoji" style="font-size: 20px; line-height: 1;">📡</span>
+          <span class="gps-label" style="font-size: 10px; line-height: 1;">${gpsOn ? 'ON' : 'OFF'}</span>
         </div>
       `;
       
-      // Establecer clases iniciales
-      gpsBtn.className = ''; // Limpiar clases existentes
-      gpsBtn.classList.add('gps-button');
+      // Aplicar HTML y estilos al botón
+      gpsBtn.innerHTML = buttonHTML;
       
-      // Establecer atributos iniciales
+      // Establecer atributos y estilos directamente
+      gpsBtn.className = 'gps-button';
       gpsBtn.title = gpsOn ? 'Desactivar GPS' : 'Activar GPS';
-      gpsBtn.style.backgroundColor = gpsOn ? '#4CAF50' : '#f44336';
       
-      // Agregar event listener (usando { once: false } para asegurar que se pueda agregar múltiples veces)
-      gpsBtn.removeEventListener('click', handleGpsButtonClick); // Eliminar cualquier listener existente
+      // Estilos en línea para asegurar que se apliquen
+      Object.assign(gpsBtn.style, {
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        width: '30px',
+        height: '30px',
+        borderRadius: '4px',
+        border: '1px solid #fff',
+        backgroundColor: gpsOn ? '#4CAF50' : '#f44336',
+        color: 'white',
+        cursor: 'pointer',
+        boxShadow: '0 2px 5px rgba(0, 0, 0, 0.3)',
+        transition: 'all 0.3s ease',
+        padding: '0',
+        margin: '0 0 0 10px',
+        position: 'relative',
+        zIndex: '10002',
+        pointerEvents: 'auto',
+        WebkitTapHighlightColor: 'transparent',
+        transform: 'translateZ(0)'
+      });
+      
+      // Manejar eventos
+      gpsBtn.removeEventListener('click', handleGpsButtonClick);
       gpsBtn.addEventListener('click', handleGpsButtonClick, { passive: true });
       
-      // Asegurarse de que el botón sea visible y clickeable
-      gpsBtn.style.display = 'flex';
-      gpsBtn.style.pointerEvents = 'auto';
-      
-      console.log('🔘 Botón GPS inicializado en estado:', gpsOn ? 'ON' : 'OFF');
+      console.log('✅ Botón GPS inicializado correctamente en estado:', gpsOn ? 'ON' : 'OFF');
+      return true;
     }
     
-    document.addEventListener('DOMContentLoaded', () => {
-      console.log('🔄 HIJO5: Inicializando...');
+    // Función para inicializar la aplicación
+    function inicializarAplicacion() {
+      console.log('🔄 HIJO5: Inicializando aplicación...');
       
       // Inicializar la estructura de datos
-      inicializarPuntosRuta();
-      actualizarIndicadorModo();
+      if (typeof inicializarPuntosRuta === 'function') {
+        inicializarPuntosRuta();
+      } else {
+        console.warn('⚠️ La función inicializarPuntosRuta no está definida');
+      }
+      
+      if (typeof actualizarIndicadorModo === 'function') {
+        actualizarIndicadorModo();
+      } else {
+        console.warn('⚠️ La función actualizarIndicadorModo no está definida');
+      }
       
       // Establecer el estado inicial del botón
-      // Intentar cargar el estado guardado, por defecto modo casa (GPS OFF)
       try {
         const savedState = localStorage.getItem('gpsState');
         if (savedState !== null) {
@@ -2252,10 +2295,28 @@
       }
       
       // Inicializar el botón GPS
-      inicializarBotonGPS();
-      
-      // Aplicar el estado actual
-      setGpsState(gpsOn);
+      if (inicializarBotonGPS()) {
+        // Configurar el estado inicial del botón
+        setGpsState(gpsOn);
+        
+        // Notificar al padre que estamos listos
+        if (window.parent) {
+          window.parent.postMessage({
+            type: 'HIJO5_LISTO',
+            origen: 'hijo5-casa',
+            gpsActivo: gpsOn,
+            timestamp: Date.now()
+          }, '*');
+        }
+      } else {
+        console.error('❌ No se pudo inicializar el botón GPS');
+      }
+    }
+    
+    // Esperar a que el DOM esté completamente cargado
+    document.addEventListener('DOMContentLoaded', () => {
+      // Inicializar la aplicación
+      inicializarAplicacion();
       
       // Asegurarse de que la ventana de paradas esté visible si estamos en modo casa
       if (modoCasa) {
@@ -2279,22 +2340,27 @@
       }
       
       // Notificar al padre que estamos listos
-      window.parent.postMessage({
-        type: 'hijo5Ready',
-        origen: 'hijo5-casa',
-        modo: gpsOn ? 'aventura' : 'casa',
-        gpsActivo: gpsOn,
-        timestamp: Date.now()
-      }, '*');
+      if (window.parent) {
+        window.parent.postMessage({
+          type: 'hijo5Ready',
+          origen: 'hijo5-casa',
+          modo: gpsOn ? 'aventura' : 'casa',
+          gpsActivo: gpsOn,
+          timestamp: Date.now()
+        }, '*');
+      }
       
       console.log(`✅ HIJO5: Inicialización completada en modo ${gpsOn ? 'Aventura (GPS ON)' : 'Casa (GPS OFF)'}`);
       
       // Solicitar estado al hijo 2 después de un breve delay
-      setTimeout(() => {
-        solicitarEstadoAHijo2();
-        // Sincronizar con el padre
-        sincronizarConPadre();
-      }, 1000);
+      if (typeof solicitarEstadoAHijo2 === 'function' && typeof sincronizarConPadre === 'function') {
+        setTimeout(() => {
+          solicitarEstadoAHijo2();
+          sincronizarConPadre();
+        }, 1000);
+      } else {
+        console.warn('⚠️ Algunas funciones de sincronización no están definidas');
+      }
     });
   </script>
 </body>
