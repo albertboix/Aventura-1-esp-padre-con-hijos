@@ -1142,12 +1142,76 @@
     }
     
     function actualizarIndicadorModo() {
+      const estadoModo = document.getElementById('estado-modo');
+      if (estadoModo) {
+        estadoModo.textContent = `Modo: ${modoCasa ? 'Casa' : 'Aventura'}`;
+        estadoModo.style.background = modoCasa ? '#ffe0e0' : '#e0f7fa';
+        estadoModo.style.color = modoCasa ? '#c62828' : '#00695c';
+      }
       estadoModo.textContent = `Modo: ${modoCasa ? 'Casa' : 'Aventura'}`;
       estadoModo.style.background = modoCasa ? '#ffe0e0' : '#e0f7fa';
       estadoModo.style.color = modoCasa ? '#c62828' : '#00695c';
     }
 
     // Mostrar/ocultar ventana de paradas y tramos
+    function mostrarParadas() {
+      if (!gpsOn) {
+        document.getElementById('paradas-window').style.display = 'flex';
+        renderParadas();
+      }
+    }
+    
+    function ocultarParadas() {
+      document.getElementById('paradas-window').style.display = 'none';
+    }
+    
+    function renderParadas() {
+      const lista = document.getElementById('paradas-list');
+      if (!lista) return;
+      
+      lista.innerHTML = '';
+      paradas.forEach((p, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'parada-btn';
+        if (i === paradaActual) btn.classList.add('actual');
+        btn.textContent = `${i}. ${p.nombre}`;
+        btn.onclick = () => {
+          paradaActual = i;
+          renderParadas();
+        };
+        lista.appendChild(btn);
+      });
+    }
+    
+    function mostrarParadas() {
+      if (!gpsOn) {
+        document.getElementById('paradas-window').style.display = 'flex';
+        renderParadas();
+      }
+    }
+    
+    function ocultarParadas() {
+      document.getElementById('paradas-window').style.display = 'none';
+    }
+    
+    function renderParadas() {
+      const lista = document.getElementById('paradas-list');
+      if (!lista) return;
+      
+      lista.innerHTML = '';
+      paradas.forEach((p, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'parada-btn';
+        if (i === paradaActual) btn.classList.add('actual');
+        btn.textContent = `${i}. ${p.nombre}`;
+        btn.onclick = () => {
+          paradaActual = i;
+          renderParadas();
+        };
+        lista.appendChild(btn);
+      });
+    }
+    
     function mostrarParadasYTramos() {
       console.log('🔄 HIJO5: Intentando mostrar paradas y tramos...');
       
@@ -1612,33 +1676,28 @@
     const opcionesEvento = { passive: true };
     window.addEventListener('message', manejarMensaje, opcionesEvento);
     
-    // ================ EVENTOS ================
-    
-    // Click en el botón principal
-    document.getElementById('gps-casa-btn').onclick = function(event) {
-      // Prevenir el comportamiento por defecto
-      event.preventDefault();
-      event.stopPropagation();
-      
-      // Alternar estado GPS
-      gpsOn = !gpsOn;
-      modoCasa = !gpsOn;
-      actualizarInterfazUsuario();
-      // Apagar GPS y mostrar paradas si está en modo Casa
-      if (!gpsOn) {
-          manejarModoCasa(obtenerPuntoActual());
-      } else {
-          manejarModoAventura();
-      }
-      // Notificar al padre
-      window.parent.postMessage({
-          type: 'cambioModo',
-          modo: gpsOn ? 'aventura' : 'casa',
-          origen: 'hijo5-casa',
-          timestamp: Date.now()
-      }, '*');
-      sincronizarConPadre();
+    // Sincronizar estado inicial
+    const estadoActual = {
+        modo: modoCasa ? 'casa' : 'aventura',
+        gpsActivo: !modoCasa,
+        puntoActual: obtenerPuntoActual()
     };
+    
+    // Usar la función enviarMensaje para garantizar consistencia
+    enviarMensaje({
+        tipo: 'sincronizarEstado',
+        destino: 'padre',
+        datos: {
+            type: 'solicitudSincronizacion',
+            timestamp: Date.now(),
+            estado: estadoActual
+        }
+    });
+    
+    console.log('✅ HIJO5: Mensaje de sincronización enviado al padre:', estadoActual);
+    
+    // También notificar a los otros hijos del cambio de estado
+    notificarCambioEstado(estadoActual.puntoActual, estadoActual.modo);
 
     // Cerrar ventana de paradas
     document.getElementById('cerrar-paradas').onclick = function() {
