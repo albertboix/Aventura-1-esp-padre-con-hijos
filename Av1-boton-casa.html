@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -46,21 +45,25 @@
     }
     
     /* Estilos del botón casa */
+    :root {
+      --emoji-size: 20px;
+      --label-size: 9px;
+    }
+    
     #gps-casa-btn {
-      width: 25px;
-      height: 25px;
+      width: 30px;
+      height: 30px;
       border-radius: 4px;
       background-color: #f44336; /* Rojo por defecto (OFF) */
       border: 1px solid #fff;
       color: white;
-      font-size: 12px;
       font-weight: bold;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
-      transition: background-color 0.3s ease;
+      transition: all 0.3s ease;
       padding: 0;
       margin: 0 0 0 10px;
       position: relative;
@@ -88,18 +91,21 @@
       line-height: 1;
     }
     
-    .house-emoji {
-      font-size: 12px;
+    .satellite-emoji {
+      font-size: var(--emoji-size);
       line-height: 1;
-      margin-bottom: 1px;
+      margin-bottom: 2px;
+      display: block;
     }
     
     #gps-casa-btn .gps-label {
-      font-size: 8px;
+      font-size: var(--label-size);
       font-weight: bold;
       line-height: 1;
       margin: 0;
       padding: 0;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
     
     /* Asegurar que el icono esté correctamente posicionado */
@@ -367,10 +373,10 @@
       <div id="paradas-container" class="paradas-scroll"></div>
     </div>
     
-    <!-- Botón casa -->
+    <!-- Botón GPS -->
     <button id="gps-casa-btn" class="on" title="Activar GPS">
       <div class="button-content">
-        <span class="house-emoji">🏠</span>
+        <span class="satellite-emoji">📡</span>
         <span class="gps-label">ON</span>
       </div>
     </button>
@@ -1904,59 +1910,39 @@
     });
     
     function setGpsState(on) {
-      console.log('🎯 HIJO5: setGpsState llamado con on =', on);
-      
-      // Actualizar estado global
-      gpsOn = on;
-      modoCasa = !on; // Sincronizar con modoCasa
-      
-      const gpsBtn = document.getElementById('gps-casa-btn');
-      const gpsIcon = gpsBtn?.querySelector('i');
-      const gpsLabel = gpsBtn?.querySelector('.gps-label');
-      const paradasWindow = document.getElementById('paradas-window');
-      
-      if (!gpsBtn || !gpsIcon || !gpsLabel) {
-        console.error('❌ HIJO5: No se encontraron los elementos del botón de GPS');
-        return;
-      }
-      
-      // Actualizar el estado del botón
-      if (on) {
-        // Modo Aventura (GPS ON)
-        gpsBtn.classList.remove('off');
-        gpsBtn.style.backgroundColor = '#4CAF50'; // Verde
-        gpsBtn.title = 'Desactivar GPS';
-        gpsIcon.className = 'fa-solid fa-satellite-dash';
-        gpsLabel.textContent = 'ON';
+      try {
+        console.log('🎯 HIJO5: setGpsState llamado con on =', on);
         
-        // Ocultar la ventana de paradas
-        if (paradasWindow) {
-          paradasWindow.style.display = 'none';
+        // Actualizar estado global
+        gpsOn = on;
+        modoCasa = !on;
+        
+        const gpsBtn = document.getElementById('gps-casa-btn');
+        if (!gpsBtn) {
+          console.error('❌ HIJO5: No se encontró el botón de GPS');
+          return;
         }
         
-        // Notificar a todos los componentes que el GPS está activo
-        window.parent.postMessage({
-          type: 'gpsStateChange',
-          origen: 'hijo5-casa',
-          gpsActivo: true,
-          modo: 'aventura'
-        }, '*');
+        const labelElement = gpsBtn.querySelector('.gps-label');
+        const emojiElement = gpsBtn.querySelector('.satellite-emoji');
+        const paradasWindow = document.getElementById('paradas-window');
         
-        // Notificar al hijo2 para que actualice el estado del botón chincheta
-        window.parent.postMessage({
-          tipo: 'mensaje-para-hijo2',
-          mensaje: {
-            type: 'actualizarEstadoGPS',
-            gpsActivo: true
-          }
-        }, '*');
-        
-        // Iniciar la geolocalización
-        if (navigator.geolocation) {
-          if (watchId === null) {
+        // Actualizar la interfaz de usuario
+        if (on) {
+          // Modo Aventura (GPS ON)
+          gpsBtn.classList.add('activo', 'on');
+          gpsBtn.classList.remove('off');
+          gpsBtn.style.backgroundColor = '#4CAF50';
+          gpsBtn.title = 'Desactivar GPS';
+          
+          if (labelElement) labelElement.textContent = 'ON';
+          if (emojiElement) emojiElement.textContent = '📡';
+          if (paradasWindow) paradasWindow.style.display = 'none';
+          
+          // Iniciar geolocalización si está disponible
+          if (navigator.geolocation && watchId === null) {
             watchId = navigator.geolocation.watchPosition(
               (position) => {
-                // Actualizar posición actual
                 const pos = {
                   lat: position.coords.latitude,
                   lng: position.coords.longitude
@@ -1970,57 +1956,71 @@
                 }, '*');
               },
               (error) => {
-                console.error('Error en la geolocalización:', error);
+                console.error('❌ Error de geolocalización:', error);
               },
-              { 
-                enableHighAccuracy: true,
-                maximumAge: 10000,
-                timeout: 5000
-              }
+              { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
             );
           }
+          
+          // Notificar a todos los componentes que el GPS está activo
+          window.parent.postMessage({
+            type: 'gpsStateChange',
+            origen: 'hijo5-casa',
+            gpsActivo: true,
+            modo: 'aventura'
+          }, '*');
+          
+          // Notificar al hijo2 para que actualice el estado del botón chincheta
+          window.parent.postMessage({
+            tipo: 'mensaje-para-hijo2',
+            mensaje: {
+              type: 'actualizarEstadoGPS',
+              gpsActivo: true
+            }
+          }, '*');
         } else {
-          console.error('Geolocalización no soportada por el navegador');
-        }
-      } else {
-        // Modo Casa (GPS OFF)
-        gpsBtn.classList.add('off');
-        gpsBtn.style.backgroundColor = '#f44336'; // Rojo
-        gpsBtn.title = 'Activar GPS';
-        gpsIcon.className = 'fa-solid fa-house';
-        gpsLabel.textContent = 'OFF';
-        
-        // Mostrar la ventana de paradas
-        if (paradasWindow) {
-          paradasWindow.style.display = 'block';
-          // Forzar el renderizado de las paradas
-          setTimeout(() => {
-            renderParadasYTramos();
-          }, 0);
-        }
-        
-        // Detener la geolocalización
-        if (watchId !== null) {
-          navigator.geolocation.clearWatch(watchId);
-          watchId = null;
-        }
-        
-        // Notificar a todos los componentes que el GPS está inactivo
-        window.parent.postMessage({
-          type: 'gpsStateChange',
-          origen: 'hijo5-casa',
-          gpsActivo: false,
-          modo: 'casa'
-        }, '*');
-        
-        // Notificar al hijo2 para que actualice el estado del botón chincheta
-        window.parent.postMessage({
-          tipo: 'mensaje-para-hijo2',
-          mensaje: {
-            type: 'actualizarEstadoGPS',
-            gpsActivo: false
+          // Modo Casa (GPS OFF)
+          gpsBtn.classList.remove('activo', 'on');
+          gpsBtn.classList.add('off');
+          gpsBtn.style.backgroundColor = '#f44336';
+          gpsBtn.title = 'Activar GPS';
+          
+          if (labelElement) labelElement.textContent = 'OFF';
+          if (emojiElement) emojiElement.textContent = '📡';
+          if (paradasWindow) paradasWindow.style.display = 'block';
+          
+          // Detener la geolocalización si está activa
+          if (watchId !== null) {
+            navigator.geolocation.clearWatch(watchId);
+            watchId = null;
           }
-        }, '*');
+          
+          // Notificar a todos los componentes que el GPS está inactivo
+          window.parent.postMessage({
+            type: 'gpsStateChange',
+            origen: 'hijo5-casa',
+            gpsActivo: false,
+            modo: 'casa'
+          }, '*');
+          
+          // Notificar al hijo2 para que actualice el estado del botón chincheta
+          window.parent.postMessage({
+            tipo: 'mensaje-para-hijo2',
+            mensaje: {
+              type: 'actualizarEstadoGPS',
+              gpsActivo: false
+            }
+          }, '*');
+        }
+        
+        // Actualizar el estado en el almacenamiento local si está disponible
+        try {
+          localStorage.setItem('gpsState', JSON.stringify(gpsOn));
+        } catch (e) {
+          console.warn('No se pudo guardar el estado del GPS en localStorage:', e);
+        }
+      } catch (error) {
+        console.error('❌ Error en setGpsState:', error);
       }
     }
     
@@ -2028,28 +2028,72 @@
     
     // Función para manejar el clic en el botón GPS
     function handleGpsButtonClick(event) {
-      // Prevenir el comportamiento por defecto
-      event.preventDefault();
-      event.stopPropagation();
+      try {
+        // Prevenir el comportamiento por defecto
+        event.preventDefault();
+        event.stopPropagation();
+        
+        // Invertir el estado actual del GPS
+        const nuevoEstado = !gpsOn;
+        
+        console.log(`🎯 HIJO5: Botón clickeado - Cambiando a modo ${nuevoEstado ? 'Aventura' : 'Casa'} (GPS: ${nuevoEstado ? 'ON' : 'OFF'})`);
+        
+        // Actualizar el estado local
+        gpsOn = nuevoEstado;
+        modoCasa = !nuevoEstado;
+        
+        // Actualizar la interfaz
+        setGpsState(nuevoEstado);
+        
+        // Notificar al padre sobre el cambio de modo
+        if (window.parent) {
+          window.parent.postMessage({
+            type: 'SET_GPS_STATE',
+            gpsOn: nuevoEstado,
+            origen: 'hijo5-casa',
+            timestamp: Date.now()
+          }, '*');
+        }
+        
+        // Notificar a otros iframes
+        const iframes = document.getElementsByTagName('iframe');
+        for (let iframe of iframes) {
+          if (iframe.contentWindow && iframe.id !== 'hijo5-casa') {
+            iframe.contentWindow.postMessage({
+              type: 'SYNC_GPS_STATE',
+              gpsOn: nuevoEstado,
+              source: 'hijo5-casa'
+            }, '*');
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error en handleGpsButtonClick:', error);
+      }
+    }
+    
+    // Función para inicializar el botón GPS
+    function inicializarBotonGPS() {
+      const gpsBtn = document.getElementById('gps-casa-btn');
+      if (!gpsBtn) {
+        console.error('❌ No se encontró el botón GPS');
+        return;
+      }
       
-      // Invertir el estado actual del GPS
-      const nuevoEstado = !gpsOn;
+      // Asegurarse de que el botón tenga la estructura correcta
+      if (!gpsBtn.querySelector('.button-content')) {
+        gpsBtn.innerHTML = `
+          <div class="button-content">
+            <span class="satellite-emoji">📡</span>
+            <span class="gps-label">${gpsOn ? 'ON' : 'OFF'}</span>
+          </div>
+        `;
+      }
       
-      console.log(`🎯 HIJO5: Botón clickeado - Cambiando a modo ${nuevoEstado ? 'Aventura' : 'Casa'} (GPS: ${nuevoEstado ? 'ON' : 'OFF'})`);
+      // Agregar event listener
+      gpsBtn.addEventListener('click', handleGpsButtonClick);
       
-      // Actualizar el estado
-      setGpsState(nuevoEstado);
-      
-      // Notificar al padre sobre el cambio de modo
-      window.parent.postMessage({
-        type: 'cambioModo',
-        modo: nuevoEstado ? 'aventura' : 'casa',
-        origen: 'hijo5-casa',
-        timestamp: Date.now()
-      }, '*');
-      
-      // Sincronizar con el padre
-      sincronizarConPadre();
+      // Establecer estado inicial
+      setGpsState(gpsOn);
     }
     
     document.addEventListener('DOMContentLoaded', () => {
@@ -2066,14 +2110,11 @@
         modoCasa = true;
       }
       
+      // Inicializar el botón GPS
+      inicializarBotonGPS();
+      
       // Aplicar el estado actual
       setGpsState(gpsOn);
-      
-      // Agregar event listener al botón GPS
-      const gpsBtn = document.getElementById('gps-casa-btn');
-      if (gpsBtn) {
-        gpsBtn.addEventListener('click', handleGpsButtonClick);
-      }
       
       // Agregar event listener al botón de cerrar paradas
       const cerrarParadas = document.getElementById('cerrar-paradas');
