@@ -46,39 +46,70 @@
     
     /* Estilos del botón casa */
     :root {
-      --emoji-size: 20px;
-      --label-size: 9px;
+      --emoji-size: 30px;
+      --label-size: 15px;
     }
     
+    /* Estilos base del botón */
     #gps-casa-btn {
+      /* Tamaño y posición */
       width: 30px;
       height: 30px;
+      min-width: 30px; /* Evita que el botón se encoja */
+      min-height: 30px; /* Asegura una altura mínima */
       border-radius: 4px;
-      background-color: #f44336; /* Rojo por defecto (OFF) */
       border: 1px solid #fff;
+      
+      /* Colores */
+      background-color: #f44336; /* Rojo por defecto (OFF) */
       color: white;
-      font-weight: bold;
-      cursor: pointer;
-      display: flex;
+      
+      /* Flexbox para centrar contenido */
+      display: flex !important; /* Forzar display flex */
       align-items: center;
       justify-content: center;
+      
+      /* Efectos visuales */
       box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
       transition: all 0.3s ease;
+      
+      /* Espaciado y posición */
       padding: 0;
       margin: 0 0 0 10px;
       position: relative;
       z-index: 10002;
-      flex-shrink: 0;
-      overflow: visible;
+      
+      /* Interactividad */
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent; /* Elimina el resaltado en móviles */
+      
+      /* Asegurar que el botón esté por encima de otros elementos */
+      transform: translateZ(0);
+      -webkit-transform: translateZ(0);
+      
+      /* Debug */
+      /* border: 1px solid red; */
     }
     
-    /* Estilo cuando el botón está activo (GPS ON) */
-    #gps-casa-btn.activo {
-      background-color: #4CAF50; /* Verde cuando está activo */
-    }
-    
+    /* Estado activo (GPS ON) */
+    #gps-casa-btn.activo,
     #gps-casa-btn.on {
-      background: #4CAF50; /* Verde cuando está ON */
+      background-color: #4CAF50 !important; /* Verde cuando está activo */
+    }
+    
+    /* Estado inactivo (GPS OFF) */
+    #gps-casa-btn:not(.activo):not(.on) {
+      background-color: #f44336 !important; /* Rojo cuando está inactivo */
+    }
+    
+    /* Efecto hover para mejor feedback */
+    #gps-casa-btn:hover {
+      opacity: 0.9;
+      transform: scale(1.05);
+    }
+    
+    #gps-casa-btn:active {
+      transform: scale(0.95);
     }
     
     .button-content {
@@ -1910,16 +1941,17 @@
     });
     
     function setGpsState(on) {
+      console.log('🎯 HIJO5: setGpsState llamado con on =', on);
+      
       try {
-        console.log('🎯 HIJO5: setGpsState llamado con on =', on);
-        
         // Actualizar estado global
         gpsOn = on;
         modoCasa = !on;
         
+        // Obtener referencias a los elementos del DOM
         const gpsBtn = document.getElementById('gps-casa-btn');
         if (!gpsBtn) {
-          console.error('❌ HIJO5: No se encontró el botón de GPS');
+          console.error('❌ HIJO5: No se encontró el botón de GPS en el DOM');
           return;
         }
         
@@ -1927,98 +1959,171 @@
         const emojiElement = gpsBtn.querySelector('.satellite-emoji');
         const paradasWindow = document.getElementById('paradas-window');
         
-        // Actualizar la interfaz de usuario
+        // Debug: Mostrar información sobre los elementos del DOM
+        console.log('🔍 Elementos del botón:', { 
+          gpsBtn: !!gpsBtn, 
+          labelElement: !!labelElement, 
+          emojiElement: !!emojiElement,
+          paradasWindow: !!paradasWindow
+        });
+        
+        // Actualizar clases y estilos del botón
         if (on) {
-          // Modo Aventura (GPS ON)
+          console.log('🟢 Activando modo Aventura (GPS ON)');
+          
+          // Actualizar clases
           gpsBtn.classList.add('activo', 'on');
           gpsBtn.classList.remove('off');
+          
+          // Actualizar estilos
           gpsBtn.style.backgroundColor = '#4CAF50';
           gpsBtn.title = 'Desactivar GPS';
           
+          // Actualizar elementos internos
           if (labelElement) labelElement.textContent = 'ON';
           if (emojiElement) emojiElement.textContent = '📡';
-          if (paradasWindow) paradasWindow.style.display = 'none';
           
-          // Iniciar geolocalización si está disponible
-          if (navigator.geolocation && watchId === null) {
+          // Ocultar ventana de paradas si existe
+          if (paradasWindow) {
+            paradasWindow.style.display = 'none';
+          }
+          
+          // Iniciar seguimiento de ubicación
+          if (navigator.geolocation) {
+            if (watchId !== null) {
+              navigator.geolocation.clearWatch(watchId);
+            }
+            
             watchId = navigator.geolocation.watchPosition(
               (position) => {
                 const pos = {
                   lat: position.coords.latitude,
                   lng: position.coords.longitude
                 };
+                console.log('📍 Ubicación actualizada:', pos);
                 
-                // Notificar al padre sobre la nueva posición
-                window.parent.postMessage({
-                  type: 'ubicacionActualizada',
-                  origen: 'hijo5-casa',
-                  coordenadas: pos
-                }, '*');
+                if (window.parent) {
+                  window.parent.postMessage({
+                    type: 'ubicacionActualizada',
+                    origen: 'hijo5-casa',
+                    coordenadas: pos
+                  }, '*');
+                }
               },
               (error) => {
                 console.error('❌ Error de geolocalización:', error);
               },
-              { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
+              { 
+                enableHighAccuracy: true, 
+                maximumAge: 10000, 
+                timeout: 5000 
+              }
             );
+            
+            console.log('🛰️ Seguimiento de ubicación iniciado con ID:', watchId);
+          } else {
+            console.warn('⚠️ La geolocalización no está disponible en este navegador');
           }
           
-          // Notificar a todos los componentes que el GPS está activo
-          window.parent.postMessage({
-            type: 'gpsStateChange',
-            origen: 'hijo5-casa',
-            gpsActivo: true,
-            modo: 'aventura'
-          }, '*');
+          // Notificar al padre que el GPS se activó
+          if (window.parent) {
+            const mensaje = {
+              type: 'gpsStateChange',
+              origen: 'hijo5-casa',
+              gpsActivo: true,
+              modo: 'aventura',
+              timestamp: Date.now()
+            };
+            
+            console.log('📤 Enviando mensaje al padre (GPS ON):', mensaje);
+            window.parent.postMessage(mensaje, '*');
+          }
           
-          // Notificar al hijo2 para que actualice el estado del botón chincheta
-          window.parent.postMessage({
-            tipo: 'mensaje-para-hijo2',
-            mensaje: {
-              type: 'actualizarEstadoGPS',
-              gpsActivo: true
-            }
-          }, '*');
         } else {
-          // Modo Casa (GPS OFF)
+          console.log('🔴 Activando modo Casa (GPS OFF)');
+          
+          // Actualizar clases
           gpsBtn.classList.remove('activo', 'on');
           gpsBtn.classList.add('off');
+          
+          // Actualizar estilos
           gpsBtn.style.backgroundColor = '#f44336';
           gpsBtn.title = 'Activar GPS';
           
+          // Actualizar elementos internos
           if (labelElement) labelElement.textContent = 'OFF';
           if (emojiElement) emojiElement.textContent = '📡';
-          if (paradasWindow) paradasWindow.style.display = 'block';
           
-          // Detener la geolocalización si está activa
+          // Mostrar ventana de paradas si existe
+          if (paradasWindow) {
+            paradasWindow.style.display = 'block';
+          }
+          
+          // Detener seguimiento de ubicación
           if (watchId !== null) {
+            console.log('🛑 Deteniendo seguimiento de ubicación con ID:', watchId);
             navigator.geolocation.clearWatch(watchId);
             watchId = null;
           }
           
-          // Notificar a todos los componentes que el GPS está inactivo
-          window.parent.postMessage({
-            type: 'gpsStateChange',
-            origen: 'hijo5-casa',
-            gpsActivo: false,
-            modo: 'casa'
-          }, '*');
-          
-          // Notificar al hijo2 para que actualice el estado del botón chincheta
-          window.parent.postMessage({
+          // Notificar al padre que el GPS se desactivó
+          if (window.parent) {
+            const mensaje = {
+              type: 'gpsStateChange',
+              origen: 'hijo5-casa',
+              gpsActivo: false,
+              modo: 'casa',
+              timestamp: Date.now()
+            };
+            
+            console.log('📤 Enviando mensaje al padre (GPS OFF):', mensaje);
+            window.parent.postMessage(mensaje, '*');
+          }
+        }
+        
+        // Notificar al hijo2 para que actualice el estado del botón
+        if (window.parent) {
+          const mensajeHijo2 = {
             tipo: 'mensaje-para-hijo2',
             mensaje: {
               type: 'actualizarEstadoGPS',
-              gpsActivo: false
+              gpsActivo: on,
+              timestamp: Date.now()
             }
-          }, '*');
+          };
+          
+          console.log('📤 Enviando mensaje a hijo2:', mensajeHijo2);
+          window.parent.postMessage(mensajeHijo2, '*');
         }
         
-        // Actualizar el estado en el almacenamiento local si está disponible
+        // Actualizar el estado en el almacenamiento local
         try {
           localStorage.setItem('gpsState', JSON.stringify(gpsOn));
+          console.log('💾 Estado del GPS guardado en localStorage:', gpsOn);
         } catch (e) {
-          console.warn('No se pudo guardar el estado del GPS en localStorage:', e);
+          console.warn('⚠️ No se pudo guardar el estado del GPS en localStorage:', e);
         }
+        
+        // Forzar repintado del botón
+        gpsBtn.style.display = 'none';
+        gpsBtn.offsetHeight; // Trigger reflow
+        gpsBtn.style.display = 'flex';
+        
+        console.log('✅ setGpsState completado para estado:', on);
+        
+      } catch (error) {
+        console.error('❌ Error en setGpsState:', error);
+        
+        // Intentar recuperar el estado del botón
+        const gpsBtn = document.getElementById('gps-casa-btn');
+        if (gpsBtn) {
+          console.log('🔍 Estado actual del botón:', {
+            classList: [...gpsBtn.classList],
+            style: gpsBtn.style.cssText,
+            innerHTML: gpsBtn.innerHTML
+          });
+        }
+      }
       } catch (error) {
         console.error('❌ Error en setGpsState:', error);
       }
@@ -2042,8 +2147,16 @@
         gpsOn = nuevoEstado;
         modoCasa = !nuevoEstado;
         
-        // Actualizar la interfaz
+        // Actualizar la interfaz y manejar la lógica de GPS
         setGpsState(nuevoEstado);
+        
+        // Si se está desactivando el GPS, asegurarse de que se muestre la ventana de paradas
+        if (!nuevoEstado) {
+          const paradasWindow = document.getElementById('paradas-window');
+          if (paradasWindow) {
+            paradasWindow.style.display = 'block';
+          }
+        }
         
         // Notificar al padre sobre el cambio de modo
         if (window.parent) {
@@ -2051,6 +2164,7 @@
             type: 'SET_GPS_STATE',
             gpsOn: nuevoEstado,
             origen: 'hijo5-casa',
+            modo: nuevoEstado ? 'aventura' : 'casa',
             timestamp: Date.now()
           }, '*');
         }
@@ -2062,10 +2176,20 @@
             iframe.contentWindow.postMessage({
               type: 'SYNC_GPS_STATE',
               gpsOn: nuevoEstado,
-              source: 'hijo5-casa'
+              source: 'hijo5-casa',
+              modo: nuevoEstado ? 'aventura' : 'casa'
             }, '*');
           }
         }
+        
+        // Actualizar el estado en el almacenamiento local
+        try {
+          localStorage.setItem('gpsState', JSON.stringify(nuevoEstado));
+          console.log('💾 Estado del GPS guardado en localStorage:', nuevoEstado);
+        } catch (e) {
+          console.warn('No se pudo guardar el estado del GPS en localStorage:', e);
+        }
+        
       } catch (error) {
         console.error('❌ Error en handleGpsButtonClick:', error);
       }
@@ -2080,20 +2204,30 @@
       }
       
       // Asegurarse de que el botón tenga la estructura correcta
-      if (!gpsBtn.querySelector('.button-content')) {
-        gpsBtn.innerHTML = `
-          <div class="button-content">
-            <span class="satellite-emoji">📡</span>
-            <span class="gps-label">${gpsOn ? 'ON' : 'OFF'}</span>
-          </div>
-        `;
-      }
+      gpsBtn.innerHTML = `
+        <div class="button-content">
+          <span class="satellite-emoji">📡</span>
+          <span class="gps-label">${gpsOn ? 'ON' : 'OFF'}</span>
+        </div>
+      `;
       
-      // Agregar event listener
-      gpsBtn.addEventListener('click', handleGpsButtonClick);
+      // Establecer clases iniciales
+      gpsBtn.className = ''; // Limpiar clases existentes
+      gpsBtn.classList.add('gps-button');
       
-      // Establecer estado inicial
-      setGpsState(gpsOn);
+      // Establecer atributos iniciales
+      gpsBtn.title = gpsOn ? 'Desactivar GPS' : 'Activar GPS';
+      gpsBtn.style.backgroundColor = gpsOn ? '#4CAF50' : '#f44336';
+      
+      // Agregar event listener (usando { once: false } para asegurar que se pueda agregar múltiples veces)
+      gpsBtn.removeEventListener('click', handleGpsButtonClick); // Eliminar cualquier listener existente
+      gpsBtn.addEventListener('click', handleGpsButtonClick, { passive: true });
+      
+      // Asegurarse de que el botón sea visible y clickeable
+      gpsBtn.style.display = 'flex';
+      gpsBtn.style.pointerEvents = 'auto';
+      
+      console.log('🔘 Botón GPS inicializado en estado:', gpsOn ? 'ON' : 'OFF');
     }
     
     document.addEventListener('DOMContentLoaded', () => {
@@ -2104,8 +2238,20 @@
       actualizarIndicadorModo();
       
       // Establecer el estado inicial del botón
-      // Si es la primera carga, forzar el modo casa (GPS OFF)
-      if (typeof gpsOn === 'undefined') {
+      // Intentar cargar el estado guardado, por defecto modo casa (GPS OFF)
+      try {
+        const savedState = localStorage.getItem('gpsState');
+        if (savedState !== null) {
+          gpsOn = JSON.parse(savedState);
+          modoCasa = !gpsOn;
+          console.log('🔍 Estado del GPS cargado desde localStorage:', gpsOn);
+        } else {
+          gpsOn = false;
+          modoCasa = true;
+          console.log('🔍 Estado del GPS no encontrado, usando valor por defecto (OFF)');
+        }
+      } catch (e) {
+        console.warn('Error al cargar el estado del GPS, usando valor por defecto (OFF):', e);
         gpsOn = false;
         modoCasa = true;
       }
@@ -2116,10 +2262,20 @@
       // Aplicar el estado actual
       setGpsState(gpsOn);
       
+      // Asegurarse de que la ventana de paradas esté visible si estamos en modo casa
+      if (modoCasa) {
+        const paradasWindow = document.getElementById('paradas-window');
+        if (paradasWindow) {
+          paradasWindow.style.display = 'block';
+        }
+      }
+      
       // Agregar event listener al botón de cerrar paradas
       const cerrarParadas = document.getElementById('cerrar-paradas');
       if (cerrarParadas) {
-        cerrarParadas.addEventListener('click', () => {
+        cerrarParadas.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
           const paradasWindow = document.getElementById('paradas-window');
           if (paradasWindow) {
             paradasWindow.style.display = 'none';
