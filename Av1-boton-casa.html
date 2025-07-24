@@ -91,15 +91,13 @@
       /* border: 1px solid red; */
     }
     
-    /* Estado activo (GPS ON) */
-    #gps-casa-btn.activo,
+    /* Estados del botón GPS */
     #gps-casa-btn.on {
-      background-color: #4CAF50 !important; /* Verde cuando está activo */
+      background-color: #4CAF50 !important; /* Verde cuando está activo (ON) */
     }
     
-    /* Estado inactivo (GPS OFF) */
-    #gps-casa-btn:not(.activo):not(.on) {
-      background-color: #f44336 !important; /* Rojo cuando está inactivo */
+    #gps-casa-btn.off {
+      background-color: #f44336 !important; /* Rojo cuando está inactivo (OFF) */
     }
     
     /* Efecto hover para mejor feedback */
@@ -149,25 +147,39 @@
     /* Ventana de paradas */
     #paradas-window {
       position: relative;
-      height: 40px;
       background: rgba(255, 255, 255, 0.95);
       border-radius: 20px;
       box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
       display: none;
-      flex-direction: row;
-      align-items: center;
-      padding: 2px;
-      margin-right: 2px;
+      flex-direction: column;
+      padding: 10px;
+      margin-left: 10px;
       border: 1px solid #e0e0e0;
-      overflow-x: auto;
-      overflow-y: hidden;
-      white-space: nowrap;
-      padding: 2px;
-      margin-right: 2px;
-      max-width: 60vw;
-      min-width: 200px;
-      scrollbar-width: thin;
-      scrollbar-color: #ccc transparent;
+      max-width: 300px;
+      min-width: 250px;
+      z-index: 10003;
+    }
+    
+    #paradas-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    
+    #paradas-header button {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #666;
+      font-size: 16px;
+    }
+    
+    #paradas-list {
+      max-height: 200px;
+      overflow-y: auto;
     }
     
     /* Estilo personalizado para la barra de desplazamiento */
@@ -187,17 +199,18 @@
     
     /* Estilos para los botones de parada */
     .parada-btn, .tramo-btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 30px;
-      height: 30px;
-      margin: 0 5px;
-      border-radius: 50%;
+      display: block;
+      width: 100%;
+      padding: 8px 12px;
+      margin: 4px 0;
       border: none;
+      border-radius: 4px;
       color: white;
       font-weight: bold;
-      font-size: 12px;
+      font-size: 14px;
+      text-align: left;
+      cursor: pointer;
+      transition: background-color 0.2s;
       cursor: pointer;
       transition: all 0.2s ease;
       box-shadow: 0 2px 5px rgba(0,0,0,0.2);
@@ -399,11 +412,6 @@
 <body>
   <!-- Contenedor de controles -->
   <div id="zona-boton-casa">
-    <!-- Ventana de paradas -->
-    <div id="paradas-window">
-      <div id="paradas-container" class="paradas-scroll"></div>
-    </div>
-    
     <!-- Botón GPS -->
     <button id="gps-casa-btn" class="on" title="Activar GPS">
       <div class="button-content">
@@ -411,16 +419,16 @@
         <span class="gps-label">ON</span>
       </div>
     </button>
-  </div>
-  
-  <!-- Ventana de paradas (inicialmente oculta) -->
-  <div id="paradas-window">
-    <div id="paradas-header">
-      <span id="estado-modo">Seleccionar parada</span>
-      <button id="cerrar-paradas" title="Cerrar"><i class="fa-solid fa-xmark"></i></button>
-    </div>
-    <div id="paradas-list">
-      <!-- Las paradas se cargarán aquí dinámicamente -->
+    
+    <!-- Ventana de paradas (inicialmente oculta) -->
+    <div id="paradas-window">
+      <div id="paradas-header">
+        <span id="estado-modo">Seleccionar parada</span>
+        <button id="cerrar-paradas" title="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div id="paradas-list">
+        <!-- Las paradas se cargarán aquí dinámicamente -->
+      </div>
     </div>
   </div>
 
@@ -1164,20 +1172,63 @@
     
     function renderParadas() {
       const lista = document.getElementById('paradas-list');
-      if (!lista) return;
+      if (!lista) {
+        console.error('No se encontró el elemento paradas-list');
+        return;
+      }
       
+      // Asegurarnos de que el array de paradas esté inicializado
+      if (!Array.isArray(paradas) || paradas.length === 0) {
+        console.log('No hay paradas para mostrar');
+        // Si no hay paradas, intentar inicializarlas
+        inicializarPuntosRuta();
+        if (Array.isArray(paradas) && paradas.length > 0) {
+          console.log(`Se encontraron ${paradas.length} paradas después de inicializar`);
+        } else {
+          console.error('No se pudieron cargar las paradas');
+          lista.innerHTML = '<div style="padding: 10px; color: #666;">No hay paradas disponibles</div>';
+          return;
+        }
+      }
+      
+      // Limpiar la lista
       lista.innerHTML = '';
-      paradas.forEach((p, i) => {
+      
+      // Agregar cada parada a la lista
+      paradas.forEach((parada, index) => {
+        if (!parada || !parada.nombre) return; // Saltar elementos inválidos
+        
         const btn = document.createElement('button');
         btn.className = 'parada-btn';
-        if (i === paradaActual) btn.classList.add('actual');
-        btn.textContent = `${i}. ${p.nombre}`;
+        if (index === paradaActual) {
+          btn.classList.add('actual');
+          btn.style.background = 'linear-gradient(135deg, #4CAF50 0%, #45a049 100%)';
+        } else {
+          btn.style.background = 'linear-gradient(135deg, #2196F3 0%, #1976D2 100%)';
+        }
+        
+        btn.textContent = `${index}. ${parada.nombre}`;
         btn.onclick = () => {
-          paradaActual = i;
+          paradaActual = index;
+          console.log(`Parada seleccionada: ${index} - ${parada.nombre}`);
           renderParadas();
+          
+          // Notificar al padre sobre la parada seleccionada
+          if (window.parent) {
+            window.parent.postMessage({
+              type: 'paradaSeleccionada',
+              parada: index,
+              nombre: parada.nombre,
+              origen: 'hijo5-casa',
+              timestamp: Date.now()
+            }, '*');
+          }
         };
+        
         lista.appendChild(btn);
       });
+      
+      console.log(`Renderizadas ${paradas.length} paradas`);
     }
     
     function mostrarParadasYTramos() {
@@ -2347,25 +2398,56 @@
         gpsOn = !gpsOn;
         modoCasa = !gpsOn;
         
-        // Actualizar el botón y el indicador
-        const btn = document.getElementById('gps-casa-btn');
-        if (btn) {
-          btn.className = gpsOn ? 'on' : 'off';
-          const label = btn.querySelector('.gps-label');
-          if (label) label.textContent = gpsOn ? 'ON' : 'OFF';
-        }
-        
-        // Actualizar indicador de modo
-        actualizarIndicadorModo();
-        
+        // Actualizar el botón
+        const btn = this;
         if (gpsOn) {
-          // Modo Aventura: ocultar paradas
-          manejarModoAventura();
+          btn.classList.remove('off');
+          btn.classList.add('on');
+          btn.style.backgroundColor = '#4CAF50'; // Verde cuando está activo
+          
+          // Actualizar etiqueta
+          const label = btn.querySelector('.gps-label');
+          if (label) label.textContent = 'ON';
+          
+          // Ocultar paradas
           ocultarParadas();
+          
+          // Notificar al padre
+          if (window.parent) {
+            window.parent.postMessage({
+              type: 'cambioModo',
+              modo: 'aventura',
+              origen: 'hijo5-casa',
+              timestamp: Date.now()
+            }, '*');
+          }
+          
+          // Manejar modo aventura
+          manejarModoAventura();
         } else {
-          // Modo Casa: mostrar paradas
-          manejarModoCasa(obtenerPuntoActual());
+          btn.classList.remove('on');
+          btn.classList.add('off');
+          btn.style.backgroundColor = '#f44336'; // Rojo cuando está inactivo
+          
+          // Actualizar etiqueta
+          const label = btn.querySelector('.gps-label');
+          if (label) label.textContent = 'OFF';
+          
+          // Mostrar paradas
           mostrarParadas();
+          
+          // Notificar al padre
+          if (window.parent) {
+            window.parent.postMessage({
+              type: 'cambioModo',
+              modo: 'casa',
+              origen: 'hijo5-casa',
+              timestamp: Date.now()
+            }, '*');
+          }
+          
+          // Manejar modo casa
+          manejarModoCasa(obtenerPuntoActual());
         }
         
         // Notificar al padre
