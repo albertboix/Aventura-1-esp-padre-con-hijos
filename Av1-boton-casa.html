@@ -1522,28 +1522,25 @@
       event.preventDefault();
       event.stopPropagation();
       
-      // Usar setGpsState para manejar el cambio de estado de manera consistente
       // Invertir el estado actual del GPS
-      const nuevoEstadoGPS = !gpsOn;
+      const nuevoEstado = !gpsOn;
       
-      console.log(`🎯 HIJO5: Solicitando cambio a modo ${nuevoEstadoGPS ? 'Aventura' : 'Casa'} (GPS: ${nuevoEstadoGPS ? 'ON' : 'OFF'})`);
+      console.log(`🎯 HIJO5: Botón clickeado - Cambiando a modo ${nuevoEstado ? 'Aventura' : 'Casa'} (GPS: ${nuevoEstado ? 'ON' : 'OFF'})`);
       
-      // Usar setGpsState para manejar el cambio de estado de manera consistente
-      setGpsState(nuevoEstadoGPS);
+      // Actualizar el estado
+      setGpsState(nuevoEstado);
       
-      // No es necesario notificar al padre aquí, ya que setGpsState lo hace
-      // Tampoco es necesario actualizar la UI, ya que setGpsState lo hace
+      // Notificar al padre sobre el cambio de modo
+      window.parent.postMessage({
+        type: 'cambioModo',
+        modo: nuevoEstado ? 'aventura' : 'casa',
+        origen: 'hijo5-casa',
+        timestamp: Date.now()
+      }, '*');
       
-      // Sincronizar después de un pequeño retraso para asegurar que el estado se haya actualizado
-      setTimeout(sincronizarConPadre, 200);
+      // Sincronizar con el padre
+      sincronizarConPadre();
     };
-    
-    // Sincronizar con el padre cuando se carga la página
-    window.addEventListener('load', function() {
-      console.log('HIJO5-CASA: Cargado, solicitando sincronización...');
-      // Esperar un momento para asegurar que el padre esté listo
-      setTimeout(sincronizarConPadre, 1000);
-    });
 
     // Cerrar ventana de paradas
     document.getElementById('cerrar-paradas').onclick = function() {
@@ -1823,14 +1820,19 @@
     });
     
     function setGpsState(on) {
-      console.log('Cambiando estado GPS a:', on ? 'ON' : 'OFF');
+      console.log('🎯 HIJO5: setGpsState llamado con on =', on);
+      
+      // Actualizar estado global
+      gpsOn = on;
+      modoCasa = !on; // Sincronizar con modoCasa
+      
       const gpsBtn = document.getElementById('gps-casa-btn');
       const gpsIcon = gpsBtn?.querySelector('i');
       const gpsLabel = gpsBtn?.querySelector('.gps-label');
       const paradasWindow = document.getElementById('paradas-window');
       
       if (!gpsBtn || !gpsIcon || !gpsLabel) {
-        console.error('No se encontraron los elementos del botón de GPS');
+        console.error('❌ HIJO5: No se encontraron los elementos del botón de GPS');
         return;
       }
       
@@ -1941,16 +1943,47 @@
     // ================ INICIALIZACIÓN ================
     
     // Función para manejar el clic en el botón GPS
-    function handleGpsButtonClick() {
-      const gpsBtn = document.getElementById('gps-casa-btn');
-      const isOn = gpsBtn.classList.contains('on');
-      setGpsState(!isOn);
+    function handleGpsButtonClick(event) {
+      // Prevenir el comportamiento por defecto
+      event.preventDefault();
+      event.stopPropagation();
+      
+      // Invertir el estado actual del GPS
+      const nuevoEstado = !gpsOn;
+      
+      console.log(`🎯 HIJO5: Botón clickeado - Cambiando a modo ${nuevoEstado ? 'Aventura' : 'Casa'} (GPS: ${nuevoEstado ? 'ON' : 'OFF'})`);
+      
+      // Actualizar el estado
+      setGpsState(nuevoEstado);
+      
+      // Notificar al padre sobre el cambio de modo
+      window.parent.postMessage({
+        type: 'cambioModo',
+        modo: nuevoEstado ? 'aventura' : 'casa',
+        origen: 'hijo5-casa',
+        timestamp: Date.now()
+      }, '*');
+      
+      // Sincronizar con el padre
+      sincronizarConPadre();
     }
     
     document.addEventListener('DOMContentLoaded', () => {
+      console.log('🔄 HIJO5: Inicializando...');
+      
       // Inicializar la estructura de datos
       inicializarPuntosRuta();
       actualizarIndicadorModo();
+      
+      // Establecer el estado inicial del botón
+      // Si es la primera carga, forzar el modo casa (GPS OFF)
+      if (typeof gpsOn === 'undefined') {
+        gpsOn = false;
+        modoCasa = true;
+      }
+      
+      // Aplicar el estado actual
+      setGpsState(gpsOn);
       
       // Agregar event listener al botón GPS
       const gpsBtn = document.getElementById('gps-casa-btn');
@@ -1969,9 +2002,22 @@
         });
       }
       
+      // Notificar al padre que estamos listos
+      window.parent.postMessage({
+        type: 'hijo5Ready',
+        origen: 'hijo5-casa',
+        modo: gpsOn ? 'aventura' : 'casa',
+        gpsActivo: gpsOn,
+        timestamp: Date.now()
+      }, '*');
+      
+      console.log(`✅ HIJO5: Inicialización completada en modo ${gpsOn ? 'Aventura (GPS ON)' : 'Casa (GPS OFF)'}`);
+      
       // Solicitar estado al hijo 2 después de un breve delay
       setTimeout(() => {
         solicitarEstadoAHijo2();
+        // Sincronizar con el padre
+        sincronizarConPadre();
       }, 1000);
     });
   </script>
