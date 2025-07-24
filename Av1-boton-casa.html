@@ -755,25 +755,25 @@
     ];
 
     // Variables para rastrear el estado local
+    let gpsOn = true; // Estado del GPS (true = encendido/aventura, false = apagado/casa)
+    let modoCasa = !gpsOn; // Modo casa activo (inverso a gpsOn)
     let paradas = [];
     let tramos = [];
     let watchId = null; // Para el seguimiento de la geolocalización
-    let modoCasa = true; // Iniciar en modo casa por defecto
     let paradaActual = -1;
     let tramoActual = -1;
     
     // Estado local sincronizado con el padre
     let estadoLocal = {
-        modo: 'casa',
+        modo: modoCasa ? 'casa' : 'aventura',
         puntoActual: null,
         ultimaActualizacion: 0
     };
     
     // Referencia al iframe padre
     const padre = window.parent;
-
-    // Estado GPS: true = ON (aventura), false = OFF (casa)
-    let gpsOn = true;
+    
+    // Referencia al elemento de estado del modo
     let estadoModo = document.getElementById('estado-modo');
 
     // ================ FUNCIONES DE REGISTRO ================
@@ -1148,41 +1148,9 @@
         estadoModo.style.background = modoCasa ? '#ffe0e0' : '#e0f7fa';
         estadoModo.style.color = modoCasa ? '#c62828' : '#00695c';
       }
-      estadoModo.textContent = `Modo: ${modoCasa ? 'Casa' : 'Aventura'}`;
-      estadoModo.style.background = modoCasa ? '#ffe0e0' : '#e0f7fa';
-      estadoModo.style.color = modoCasa ? '#c62828' : '#00695c';
     }
 
     // Mostrar/ocultar ventana de paradas y tramos
-    function mostrarParadas() {
-      if (!gpsOn) {
-        document.getElementById('paradas-window').style.display = 'flex';
-        renderParadas();
-      }
-    }
-    
-    function ocultarParadas() {
-      document.getElementById('paradas-window').style.display = 'none';
-    }
-    
-    function renderParadas() {
-      const lista = document.getElementById('paradas-list');
-      if (!lista) return;
-      
-      lista.innerHTML = '';
-      paradas.forEach((p, i) => {
-        const btn = document.createElement('button');
-        btn.className = 'parada-btn';
-        if (i === paradaActual) btn.classList.add('actual');
-        btn.textContent = `${i}. ${p.nombre}`;
-        btn.onclick = () => {
-          paradaActual = i;
-          renderParadas();
-        };
-        lista.appendChild(btn);
-      });
-    }
-    
     function mostrarParadas() {
       if (!gpsOn) {
         document.getElementById('paradas-window').style.display = 'flex';
@@ -2372,6 +2340,44 @@
           }
         });
       }
+      
+      // Evento click en el botón principal
+      document.getElementById('gps-casa-btn').addEventListener('click', function() {
+        // Alternar estado del GPS
+        gpsOn = !gpsOn;
+        modoCasa = !gpsOn;
+        
+        // Actualizar el botón y el indicador
+        const btn = document.getElementById('gps-casa-btn');
+        if (btn) {
+          btn.className = gpsOn ? 'on' : 'off';
+          const label = btn.querySelector('.gps-label');
+          if (label) label.textContent = gpsOn ? 'ON' : 'OFF';
+        }
+        
+        // Actualizar indicador de modo
+        actualizarIndicadorModo();
+        
+        if (gpsOn) {
+          // Modo Aventura: ocultar paradas
+          manejarModoAventura();
+          ocultarParadas();
+        } else {
+          // Modo Casa: mostrar paradas
+          manejarModoCasa(obtenerPuntoActual());
+          mostrarParadas();
+        }
+        
+        // Notificar al padre
+        window.parent.postMessage({
+          type: 'cambioModo',
+          modo: gpsOn ? 'aventura' : 'casa',
+          origen: 'hijo5-casa',
+          timestamp: Date.now()
+        }, '*');
+        
+        sincronizarConPadre();
+      });
       
       // Notificar al padre que estamos listos
       if (window.parent) {
