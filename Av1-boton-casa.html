@@ -80,53 +80,22 @@
       
       /* Interactividad */
       cursor: pointer;
-      -webkit-tap-highlight-color: transparent;
+      -webkit-tap-highlight-color: transparent; /* Elimina el resaltado en móviles */
       
       /* Asegurar que el botón esté por encima de otros elementos */
       transform: translateZ(0);
       -webkit-transform: translateZ(0);
     }
     
-    /* Estado cuando el GPS está apagado */
-    #gps-casa-btn.off {
-      background-color: #f44336; /* Rojo cuando está apagado */
-    }
-    
     /* Estados del botón GPS */
     #gps-casa-btn.on {
       background-color: #4CAF50 !important; /* Verde cuando está activo (ON) */
-      border: 2px solid #45a049 !important;
+      border: 1px solid #45a049 !important;
     }
     
     #gps-casa-btn.off {
       background-color: #f44336 !important; /* Rojo cuando está inactivo (OFF) */
       border: 1px solid #d32f2f !important;
-    }
-    
-    /* Estilo base del botón */
-    #gps-casa-btn {
-      background-color: #f44336; /* Color por defecto (rojo) */
-      border: 1px solid #d32f2f;
-      color: white;
-      padding: 8px 16px;
-      text-align: center;
-      text-decoration: none;
-      display: inline-block;
-      font-size: 16px;
-      margin: 4px 2px;
-      cursor: pointer;
-      border-radius: 4px;
-      transition: background-color 0.3s, border-color 0.3s;
-    }
-    
-    /* Efecto hover para mejor feedback */
-    #gps-casa-btn:hover {
-      opacity: 0.9;
-      transform: scale(1.05);
-    }
-    
-    #gps-casa-btn:active {
-      transform: scale(0.95);
     }
     
     .button-content {
@@ -156,11 +125,14 @@
       letter-spacing: 0.5px;
     }
     
-    /* Asegurar que el icono esté correctamente posicionado */
-    #gps-casa-btn i {
-      font-size: 8px;
-      line-height: 1;
-      display: block;
+    /* Efecto hover para mejor feedback */
+    #gps-casa-btn:hover {
+      opacity: 0.9;
+      transform: scale(1.05);
+    }
+    
+    #gps-casa-btn:active {
+      transform: scale(0.95);
     }
     
     /* Ventana de paradas */
@@ -2324,64 +2296,52 @@
         });
       }
       
-      // Evento click en el botón principal
+      // Manejador de clic para el botón GPS
       document.getElementById('gps-casa-btn').addEventListener('click', function() {
-        // Alternar estado del GPS
-        gpsOn = !gpsOn;
-        modoCasa = !gpsOn;
-        
-        // Obtener referencias a los elementos del botón
-        const gpsBtn = this;
-        const label = gpsBtn.querySelector('.gps-label');
-        const emoji = gpsBtn.querySelector('.satellite-emoji');
-        
-        // Actualizar la interfaz
-        if (gpsOn) {
-          // Modo ON (Aventura)
-          gpsBtn.classList.remove('off');
-          gpsBtn.classList.add('on');
-          gpsBtn.title = 'Desactivar GPS';
-          gpsBtn.style.backgroundColor = '#4CAF50';
-          if (label) label.textContent = 'ON';
-          if (emoji) emoji.textContent = '📡';
-          ocultarParadas();
-          manejarModoAventura();
-        } else {
-          // Modo OFF (Casa)
-          gpsBtn.classList.remove('on');
-          gpsBtn.classList.add('off');
-          gpsBtn.title = 'Activar GPS';
-          gpsBtn.style.backgroundColor = '#f44336';
-          if (label) label.textContent = 'OFF';
-          if (emoji) emoji.textContent = '📡';
-          mostrarParadas();
-          const puntoActual = obtenerPuntoActual();
-          manejarModoCasa(puntoActual);
-        }
-        
-        // Notificar al padre
-        if (window.parent) {
+        try {
+          // Alternar el estado del GPS
+          gpsOn = !gpsOn;
+          modoCasa = !gpsOn;
+          
+          // Actualizar las clases del botón
+          this.classList.toggle('on', gpsOn);
+          this.classList.toggle('off', !gpsOn);
+          
+          // Actualizar el texto y título del botón
+          const buttonContent = this.querySelector('.button-content');
+          if (buttonContent) {
+            const gpsLabel = buttonContent.querySelector('.gps-label');
+            if (gpsLabel) {
+              gpsLabel.textContent = gpsOn ? 'ON' : 'OFF';
+            }
+          }
+          this.title = gpsOn ? 'Desactivar GPS (Modo Aventura)' : 'Activar GPS (Modo Casa)';
+          
+          // Notificar al padre sobre el cambio de estado
           window.parent.postMessage({
-            type: 'cambioModo',
+            type: 'gpsStateChanged',
+            enabled: gpsOn,
             modo: gpsOn ? 'aventura' : 'casa',
             origen: 'hijo5-casa',
             timestamp: Date.now()
           }, '*');
+          
+          // Si el GPS se activa, ocultar la ventana de paradas
+          if (gpsOn) {
+            manejarModoAventura();
+            ocultarParadas();
+          } else {
+            // Si se desactiva el GPS, mostrar las paradas
+            const puntoActual = obtenerPuntoActual();
+            manejarModoCasa(puntoActual);
+            mostrarParadasYTramos();
+          }
+          
+          console.log(`GPS ${gpsOn ? 'activado' : 'desactivado'}`);
+        } catch (error) {
+          console.error('Error en el manejador de clic del botón GPS:', error);
         }
-        
-        sincronizarConPadre();
       });
-      
-      // Notificar al padre que estamos listos
-      if (window.parent) {
-        window.parent.postMessage({
-          type: 'hijo5Ready',
-          origen: 'hijo5-casa',
-          modo: gpsOn ? 'aventura' : 'casa',
-          gpsActivo: gpsOn,
-          timestamp: Date.now()
-        }, '*');
-      }
       
       console.log(`✅ HIJO5: Inicialización completada en modo ${gpsOn ? 'Aventura (GPS ON)' : 'Casa (GPS OFF)'}`);
       
