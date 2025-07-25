@@ -54,10 +54,11 @@
             border: 1px solid red; /* Marco rojo de 1px */
             z-index: 10000;
             overflow: visible; /* Permite que el contenido se muestre fuera del iframe */
-            background: transparent;
+            background: rgba(255, 255, 255, 0.8); /* Fondo blanco semitransparente */
             pointer-events: none; /* Deshabilitar eventos en el iframe */
             margin: 0; /* Sin márgenes */
             padding: 0; /* Sin padding */
+            border-radius: 4px; /* Bordes redondeados */
         }
         
         /* Permitir interacción con los elementos dentro del iframe */
@@ -1164,16 +1165,36 @@
         }
 
         // ================== MANEJADOR DE MENSAJES DEL HIJO 5 (BOTÓN CASA) ==================
+        // Variable para rastrear si ya hemos inicializado el manejador
+        let manejadorHijo5Inicializado = false;
+        
         // Función para manejar los mensajes del hijo5-casa
         function manejarMensajeHijo5(event) {
-            // Primero verificar si el mensaje es del hijo5-casa
-            const iframe = document.getElementById('hijo5-casa');
-            if (!iframe || event.source !== iframe.contentWindow) return;
+            // Verificar si el mensaje es del hijo5-casa
+            const iframeHijo5 = document.getElementById('hijo5-casa');
             
-            // Prevenir el comportamiento por defecto del evento
+            // Verificación más estricta del origen del mensaje
+            const esDeHijo5 = iframeHijo5 && 
+                             event.source === iframeHijo5.contentWindow && 
+                             event.origin === window.location.origin;
+            
+            if (!esDeHijo5) {
+                // Si no es del hijo5-casa, salir sin hacer nada
+                return;
+            }
+            
+            console.log('🔍 PADRE: Mensaje recibido de hijo5-casa:', event.data);
+            
+            // Prevenir el comportamiento por defecto del evento si es cancelable
             if (event.cancelable) {
                 event.preventDefault();
             }
+            
+            // Detener la propagación para evitar que otros manejadores procesen este mensaje
+            event.stopImmediatePropagation();
+            
+            // Marcar que hemos manejado este mensaje
+            event.handledByHijo5 = true;
             
             // Log detallado de los mensajes recibidos
             const timestamp = new Date().toISOString();
@@ -1401,16 +1422,64 @@
             }
         };
         
-        // Registrar el manejador de mensajes
-        // Primero, eliminar cualquier manejador existente para evitar duplicados
-        window.removeEventListener('message', manejarMensajeHijo5);
-        // Luego, agregar el manejador con { passive: true }
-        window.addEventListener('message', manejarMensajeHijo5, { passive: true });
+        // Función para inicializar el manejador de mensajes del hijo5-casa
+        function inicializarManejadorHijo5() {
+            // Si ya está inicializado, no hacer nada
+            if (manejadorHijo5Inicializado) {
+                console.log('ℹ️ Manejador de hijo5 ya estaba inicializado');
+                return;
+            }
+            
+            console.log('🔄 Inicializando manejador de mensajes para hijo5-casa...');
+            
+            // Primero, eliminar cualquier manejador existente para evitar duplicados
+            window.removeEventListener('message', manejarMensajeHijo5);
+            
+            // Luego, agregar el manejador
+            window.addEventListener('message', manejarMensajeHijo5, { 
+                capture: true,  // Capturar el evento en la fase de captura
+                passive: true   // Mejorar rendimiento
+            });
+            
+            // Marcar como inicializado
+            manejadorHijo5Inicializado = true;
+            
+            console.log('✅ Manejador de mensajes del hijo5-casa inicializado correctamente');
+        }
         
         // Inicializar el iframe hijo5-casa
-        const iframeHijo5 = document.getElementById('hijo5-casa');
-        if (iframeHijo5) {
+        function inicializarIframeHijo5() {
+            const iframeHijo5 = document.getElementById('hijo5-casa');
+            if (!iframeHijo5) {
+                console.error('❌ No se encontró el iframe hijo5-casa');
+                return;
+            }
+            
+            // Verificar si ya tiene una URL para evitar recargas innecesarias
+            if (iframeHijo5.src) {
+                console.log('ℹ️ El iframe hijo5-casa ya tiene una URL asignada');
+                return;
+            }
+            
+            // Asignar la URL del iframe
             iframeHijo5.src = 'Av1-boton-casa.html';
+            console.log('🔄 Inicializando iframe hijo5-casa con URL:', iframeHijo5.src);
+            
+            // Configurar atributos importantes
+            iframeHijo5.setAttribute('name', 'hijo5-casa');
+            iframeHijo5.setAttribute('id', 'hijo5-casa');
+            iframeHijo5.setAttribute('allow', 'geolocation');
+        }
+        
+        // Inicializar todo cuando el DOM esté listo
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                inicializarManejadorHijo5();
+                inicializarIframeHijo5();
+            });
+        } else {
+            inicializarManejadorHijo5();
+            inicializarIframeHijo5();
         }
         }());
     </script>
