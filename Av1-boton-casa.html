@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -1650,7 +1651,6 @@
 
     // Estado GPS: true = ON (aventura), false = OFF (casa)
     let gpsOn = true;
-    let modoCasa = false; // Asegurarse de que esta variable esté definida
     let estadoModo = document.getElementById('estado-modo');
 
     // ================ FUNCIONES PRINCIPALES ================
@@ -1682,9 +1682,11 @@
         return;
       }
       
-      // Actualizar estado local
+      // Actualizar el estado local primero para la respuesta inmediata
       gpsOn = on;
       modoCasa = !on;
+      
+      // El estado ya fue actualizado al inicio de la función
       
       // Actualizar estado local sincronizado
       estadoLocal.modo = modoCasa ? 'casa' : 'aventura';
@@ -1724,9 +1726,13 @@
       enviarMensajeConReintento(mensajePadre, 3, 1000)
         .then(() => {
           console.log('✅ HIJO 5: Confirmación de cambio de estado GPS recibida');
+          // Forzar actualización del estado después de confirmación
+          estado.actualizarEstado({ modo: estadoLocal.modo });
         })
         .catch(error => {
           console.error('❌ HIJO 5: Error al confirmar cambio de estado GPS:', error);
+          // Revertir el estado si hay un error
+          setGpsState(!on);
         });
       
       // Actualizar estado local según el modo
@@ -2120,13 +2126,18 @@
         // Enviar mensaje al padre
         const mensaje = {
             tipo,
-            origen: 'hijo5-casa',  // Usar el mismo ID que el iframe
+            origen: 'hijo5-casa',
+            destino: 'padre',
             timestamp: Date.now(),
-            datos
+            datos: {
+                ...datos,
+                origen: 'hijo5-casa'  // Asegurar que el origen esté en los datos también
+            }
         };
         
         console.log('HIJO5: Enviando al padre:', mensaje);
         window.parent.postMessage(mensaje, '*');
+        return mensaje;  // Retornar el mensaje para permitir encadenamiento
     }
     
     // Función para solicitar sincronización
@@ -2150,7 +2161,7 @@
             }
 
             // Verificar si el mensaje es para este iframe
-            if (mensaje.destino && mensaje.destino !== 'hijo5') {
+            if (mensaje.destino && mensaje.destino !== 'hijo5' && mensaje.destino !== 'hijo5-casa') {
                 console.log('Mensaje no es para este iframe:', mensaje);
                 return;
             }
