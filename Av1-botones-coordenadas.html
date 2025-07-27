@@ -2098,22 +2098,52 @@
             
             // Handle button clicks
             if (id === 'btn-punto') {
-                // Pin button - Show last known stop or default to stop 0 (Torres de Serranos)
-                const ultimaParadaConocida = window.paradaActual !== undefined ? window.paradaActual : 0;
+                // Get the current stop or default to 0 (Torres de Serranos) if adventure hasn't started
+                const paradaActual = window.paradaActual !== undefined ? window.paradaActual : 0;
+                const paradaInfo = COORDENADAS_PARADAS.find(p => p.parada === paradaActual);
+                const siguienteParada = COORDENADAS_PARADAS.find(p => p.parada === (paradaActual + 1));
                 
-                // Notify parent to show the stop on the map
-                enviarMensajeAlPadre({
-                    type: 'mostrarPuntoInteres',
-                    paradaActual: ultimaParadaConocida,
+                // Prepare data to send to parent
+                const datos = {
+                    tipo: 'mostrarUbicacionYProximoPunto',
+                    paradaActual: paradaActual,
+                    nombreParadaActual: paradaInfo ? paradaInfo.nombre : 'Inicio',
+                    coordenadasParadaActual: paradaInfo ? (paradaInfo.coordenadas || paradaInfo) : null,
                     esPrimeraVez: window.paradaActual === undefined
-                });
+                };
+                
+                // Add next stop info if available
+                if (siguienteParada) {
+                    datos.siguienteParada = siguienteParada.parada;
+                    datos.nombreSiguienteParada = siguienteParada.nombre;
+                    datos.coordenadasSiguienteParada = siguienteParada.coordenadas || siguienteParada;
+                }
+                
+                // Notify parent to show the location and next point
+                enviarMensajeAlPadre(datos);
                 
                 // If this is the first time, set to stop 0 (Torres de Serranos)
                 if (window.paradaActual === undefined) {
                     window.paradaActual = 0;
                     console.log('Aventura iniciada en parada 0 - Torres de Serranos');
+                    
+                    // Also update the parent about the adventure start
+                    enviarMensajeAlPadre({
+                        tipo: 'inicioAventura',
+                        paradaActual: 0,
+                        nombreParada: 'Torres de Serranos (start)'
+                    });
                 } else {
-                    console.log(`Mostrando última parada conocida: ${window.paradaActual}`);
+                    console.log(`Mostrando ubicación actual: Parada ${paradaActual}`);
+                }
+                
+                // If we have GPS location, include it
+                if (ubicacionActual) {
+                    enviarMensajeAlPadre({
+                        tipo: 'actualizarUbicacionUsuario',
+                        coordenadas: ubicacionActual,
+                        timestamp: new Date().toISOString()
+                    });
                 }
                 
             } else if (id === 'btn-ruta') {
@@ -2463,7 +2493,19 @@
 
         // Manejador para el estado del GPS
         Mensajes.registrarManejador('GPS_STATE_CHANGE', (mensaje) => {
-            console.log('Estado del GPS recibido:', mensaje.gpsOn ? 'ACTIVADO' : 'DESACTIVADO');
+            console.log('Estado del GPS recibido en hijo2:', mensaje.gpsOn ? 'ACTIVADO' : 'DESACTIVADO');
+            
+            // Obtener referencias a los botones
+            const btnGps = document.getElementById('btn-gps');
+            const btnImagen = document.getElementById('btn-imagen');
+            const btnVideo = document.getElementById('btn-video');
+            const btnPunto = document.getElementById('btn-punto');
+            
+            // Verificar que los botones existan
+            if (!btnGps || !btnImagen || !btnVideo || !btnPunto) {
+                console.error('No se encontraron todos los botones necesarios');
+                return;
+            }
             
             // Actualizar el estado de los botones según el estado del GPS
             if (mensaje.gpsOn) {
@@ -2472,18 +2514,18 @@
                 btnImagen.classList.add('disabled');
                 btnVideo.classList.add('disabled');
                 btnPunto.classList.remove('disabled');
+                console.log('Botones actualizados: GPS ON - Punto habilitado, otros deshabilitados');
             } else {
                 // GPS DESACTIVADO: Habilitar botones de GPS, Imagen y Video; deshabilitar Punto
                 btnGps.classList.remove('disabled');
                 btnImagen.classList.remove('disabled');
                 btnVideo.classList.remove('disabled');
                 btnPunto.classList.add('disabled');
+                console.log('Botones actualizados: GPS OFF - Punto deshabilitado, otros habilitados');
             }
             
             // Actualizar el estado local
             modoCasa = !mensaje.gpsOn; // modoCasa es true cuando el GPS está apagado
-            
-            console.log('Botones actualizados según estado del GPS');
         });
 
         // Manejador para acciones del padre
