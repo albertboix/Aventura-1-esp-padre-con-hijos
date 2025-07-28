@@ -1284,6 +1284,40 @@
             }
         }
         
+        // Función para bloquear/desbloquear iframes hijos según el modo
+        function actualizarEstadoIframesHijos(modo) {
+            const esModoAventura = modo === 'aventura';
+            const iframes = ['hijo2', 'hijo3', 'hijo4'];
+            
+            iframes.forEach(id => {
+                const iframe = document.getElementById(id);
+                if (iframe) {
+                    // Enviar mensaje de cambio de modo a cada iframe
+                    if (iframe.contentWindow) {
+                        iframe.contentWindow.postMessage({
+                            type: 'cambioModo',
+                            modo: modo,
+                            timestamp: Date.now()
+                        }, '*');
+                    }
+                    
+                    // Bloquear/desbloquear el iframe visualmente
+                    if (id === 'hijo2') {
+                        // Para el hijo2, controlar específicamente el botón btn-punto
+                        if (iframe.contentWindow) {
+                            iframe.contentWindow.postMessage({
+                                type: 'bloquearControles',
+                                bloquear: !esModoAventura, // Invertir lógica: bloquear si NO es modo aventura
+                                timestamp: Date.now()
+                            }, '*');
+                        }
+                    }
+                }
+            });
+            
+            console.log(`🔄 PADRE: Iframes hijos ${esModoAventura ? 'desbloqueados' : 'bloqueados'} (Modo: ${modo})`);
+        }
+
         // Función para manejar los mensajes del hijo5-casa
         function manejarMensajeHijo5(event) {
             // Verificar si el mensaje es del hijo5-casa
@@ -1367,6 +1401,36 @@
                     destinosConError: errores
                 };
             };
+            
+            // Manejar mensajes de cambio de estado del GPS
+            if (tipoMensaje === 'GPS_STATE_CHANGE') {
+                console.log(`🔄 PADRE: Cambio de estado del GPS recibido: ${data.gpsOn ? 'ENCENDIDO' : 'APAGADO'}`);
+                const modo = data.gpsOn ? 'aventura' : 'casa';
+                
+                // Actualizar estado global
+                actualizarEstadoGlobal({
+                    modo: modo,
+                    gpsActivo: data.gpsOn,
+                    ultimaActualizacion: Date.now()
+                });
+                
+                // Actualizar estado de los iframes hijos
+                actualizarEstadoIframesHijos(modo);
+                
+                // Si el GPS se apaga, forzar la actualización de la ventana de selección
+                if (!data.gpsOn) {
+                    const hijo5 = document.getElementById('hijo5-casa');
+                    if (hijo5 && hijo5.contentWindow) {
+                        hijo5.contentWindow.postMessage({
+                            type: 'forzarActualizacionVentana',
+                            mostrar: true,
+                            timestamp: Date.now()
+                        }, '*');
+                    }
+                }
+                
+                return; // Salir después de manejar el cambio de estado
+            }
             
             // Manejar mensajes que pueden venir con o sin tipo
             if (!tipoMensaje || data.type?.startsWith('mensaje-para-')) {
