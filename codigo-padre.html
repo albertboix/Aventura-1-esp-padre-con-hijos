@@ -1168,6 +1168,122 @@
         // Variable para rastrear si ya hemos inicializado el manejador
         let manejadorHijo5Inicializado = false;
         
+        // Función para manejar el cambio de parada
+        function manejarCambioParada(data) {
+            console.log('🔄 PADRE: Cambio de parada solicitado:', data);
+            
+            // Normalizar el ID de la parada (aceptar tanto 'P-X' como número)
+            const idParada = data.id || `P-${data.parada}`;
+            const numParada = data.parada || parseInt(idParada.replace('P-', ''));
+            
+            // Buscar la parada en el array PARADAS
+            const parada = PARADAS.find(p => 
+                (p.tipo === 'parada' || p.tipo === 'inicio') && 
+                (p.parada === numParada || `P-${p.parada}` === idParada)
+            );
+            
+            if (parada) {
+                // Actualizar estado global
+                window.actualizarEstadoGlobal({
+                    puntoActual: {
+                        tipo: 'parada',
+                        id: `P-${parada.parada}`,
+                        numero: parada.parada,
+                        nombre: parada.nombre,
+                        coordenadas: parada.coordenadas,
+                        audio: parada.audio,
+                        reto: parada.reto
+                    },
+                    origen: 'hijo5-casa',
+                    timestamp: Date.now()
+                });
+                
+                // Notificar a otros iframes
+                const mensaje = {
+                    type: 'cambiarParada',
+                    parada: parada.parada,
+                    id: `P-${parada.parada}`,
+                    nombre: parada.nombre,
+                    coordenadas: parada.coordenadas,
+                    audio: parada.audio,
+                    reto: parada.reto,
+                    origen: 'padre',
+                    timestamp: Date.now()
+                };
+                
+                // Enviar a todos los iframes excepto al que originó el mensaje
+                ['hijo2', 'hijo3', 'hijo4'].forEach(id => {
+                    const iframe = document.getElementById(id);
+                    if (iframe && iframe.contentWindow) {
+                        iframe.contentWindow.postMessage(mensaje, '*');
+                    }
+                });
+                
+                console.log(`✅ PADRE: Parada cambiada a P-${parada.parada}: ${parada.nombre}`);
+            } else {
+                console.error(`❌ PADRE: No se encontró la parada con ID ${idParada} (${numParada})`);
+            }
+        }
+        
+        // Función para manejar el cambio de tramo
+        function manejarCambioTramo(data) {
+            console.log('🔄 PADRE: Cambio de tramo solicitado:', data);
+            
+            // Normalizar el ID del tramo (aceptar tanto 'TR-X' como número)
+            const idTramo = data.id || `TR-${data.tramo}`;
+            const numTramo = data.tramo || parseInt(idTramo.replace('TR-', ''));
+            
+            // Buscar el tramo en el array PARADAS
+            const tramo = PARADAS.find(p => 
+                p.tipo === 'tramo' && 
+                (p.tramo === numTramo || `TR-${p.tramo}` === idTramo)
+            );
+            
+            if (tramo) {
+                // Actualizar estado global
+                window.actualizarEstadoGlobal({
+                    puntoActual: {
+                        tipo: 'tramo',
+                        id: `TR-${tramo.tramo}`,
+                        numero: tramo.tramo,
+                        nombre: tramo.nombre,
+                        inicio: tramo.inicio,
+                        fin: tramo.fin,
+                        waypoints: tramo.waypoints || [],
+                        audio: tramo.audio
+                    },
+                    origen: 'hijo5-casa',
+                    timestamp: Date.now()
+                });
+                
+                // Notificar a otros iframes
+                const mensaje = {
+                    type: 'cambiarTramo',
+                    tramo: tramo.tramo,
+                    id: `TR-${tramo.tramo}`,
+                    nombre: tramo.nombre,
+                    inicio: tramo.inicio,
+                    fin: tramo.fin,
+                    waypoints: tramo.waypoints || [],
+                    audio: tramo.audio,
+                    origen: 'padre',
+                    timestamp: Date.now()
+                };
+                
+                // Enviar a todos los iframes excepto al que originó el mensaje
+                ['hijo2', 'hijo3', 'hijo4'].forEach(id => {
+                    const iframe = document.getElementById(id);
+                    if (iframe && iframe.contentWindow) {
+                        iframe.contentWindow.postMessage(mensaje, '*');
+                    }
+                });
+                
+                console.log(`✅ PADRE: Tramo cambiado a TR-${tramo.tramo}: ${tramo.nombre}`);
+            } else {
+                console.error(`❌ PADRE: No se encontró el tramo con ID ${idTramo} (${numTramo})`);
+            }
+        }
+        
         // Función para manejar los mensajes del hijo5-casa
         function manejarMensajeHijo5(event) {
             // Verificar si el mensaje es del hijo5-casa
@@ -1316,28 +1432,52 @@
                     case 'casa-hijo-listo':
                     case 'sincronizarEstado':
                         console.log('🔄 PADRE: Sincronizando estado con hijo5-casa...');
-                        // Confirmar recepción y enviar estado actual
+                        
+                        // Obtener el estado actual normalizado
+                        const estadoActual = {
+                            modo: window.estadoGlobal?.modo || 'aventura',
+                            puntoActual: null,
+                            ultimaActualizacion: Date.now()
+                        };
+                        
+                        // Asegurar que el punto actual tenga un ID consistente
+                        if (window.estadoGlobal?.puntoActual) {
+                            const punto = window.estadoGlobal.puntoActual;
+                            if (punto.tipo === 'parada') {
+                                estadoActual.puntoActual = {
+                                    ...punto,
+                                    id: `P-${punto.numero || punto.parada}`,
+                                    tipo: 'parada',
+                                    numero: punto.numero || punto.parada
+                                };
+                            } else if (punto.tipo === 'tramo') {
+                                estadoActual.puntoActual = {
+                                    ...punto,
+                                    id: `TR-${punto.numero || punto.tramo}`,
+                                    tipo: 'tramo',
+                                    numero: punto.numero || punto.tramo
+                                };
+                            }
+                        }
+                        
+                        // Enviar estado actualizado al hijo5-casa
                         iframe.contentWindow.postMessage({ 
                             type: 'sincronizarEstado',
                             origen: 'padre',
                             destino: 'hijo5-casa',
                             mensaje: 'Estado sincronizado',
                             timestamp: Date.now(),
-                            estado: {
-                                modo: window.estadoGlobal?.modo || 'aventura',
-                                paradaActual: window.estadoGlobal?.puntoActual?.id || null,
-                                puntoActual: window.estadoGlobal?.puntoActual || null,
-                                ultimaActualizacion: Date.now()
-                            },
+                            estado: estadoActual,
                             datos: {
                                 tipo: 'respuestaSincronizacion',
                                 origen: 'padre',
-                                modo: window.estadoGlobal?.modo || 'aventura',
-                                gpsActivo: window.estadoGlobal?.modo === 'aventura',
-                                puntoActual: window.estadoGlobal?.puntoActual
+                                modo: estadoActual.modo,
+                                gpsActivo: estadoActual.modo === 'aventura',
+                                puntoActual: estadoActual.puntoActual
                             }
                         }, '*');
-                        console.log('✅ PADRE: Estado sincronizado con hijo5-casa');
+                        
+                        console.log('✅ PADRE: Estado sincronizado con hijo5-casa', estadoActual);
                         break;
                         
                     case 'cambioModo':
