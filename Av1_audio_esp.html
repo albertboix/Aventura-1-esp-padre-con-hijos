@@ -1,1377 +1,479 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reproductor de Audio - Aventura 1</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <style>
-        :root {
-            --btn-size: 60px;
-            --icon-size: 1.5em;
-            --progress-thick: 20px;
-            --trapecio-width: 290px;
-            --trapecio-height: 155px;
-            --trapecio-bg: white;
-            --trapecio-shadow: 0 2px 12px rgba(0,0,0,0.13);
-            --trapecio-radius: 15px;
-            --progress-color: #0077cc;
-            --progress-bg: #e0e0e0;
-            --timer-font-size: 1.1em;
-            --timer-color: #333;
-        }
-
-        html, body {
-            height: 100%;
-            margin: 0;
-            padding: 0;
-            background: transparent !important;
-        }
-
-        body {
-            font-family: "Book Antiqua", "Palatino Linotype", "Palatino", Georgia, serif;
-            margin: 0;
-            padding: 0;
-            background: transparent !important;
-            overflow: hidden;
-            display: flex;
-            justify-content: center;
-            align-items: flex-end;
-        }
-
-        .audio-player-controls {
-            width: var(--trapecio-width);
-            max-width: 98vw;
-            min-width: 180px;
-            height: var(--trapecio-height);
-            background: var(--trapecio-bg);
-            clip-path: polygon(8% 0%, 92% 0%, 100% 100%, 0% 100%);
-            border-radius: var(--trapecio-radius);
-            box-shadow: var(--trapecio-shadow);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: space-around;
-            gap: 0.1em;
-            z-index: 1200;
-            padding: 5px 8px 5px 8px;
-            box-sizing: border-box;
-            border: none;
-            margin: 5px 0;
-        }
-
-        .player-buttons-row {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            width: 100%;
-            margin-bottom: 2px;
-        }
-
-        /* Estilo para el botón de play/pausa */
-        #playPauseBtn {
-            width: var(--btn-size);
-            height: var(--btn-size);
-            border-radius: 50%;
-            border: none;
-            background: linear-gradient(135deg, #dc3545, #c82333);
-            color: white;
-            font-size: var(--icon-size);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.10);
-            padding: 0;
-        }
-
-        #playPauseBtn .icon-play {
-            color: white;
-            font-weight: bold;
-            filter: drop-shadow(0 1px 2px rgba(0,0,0,0.1));
-        }
-
-        #playPauseBtn:active:not(:disabled) { transform: scale(0.95); }
-        #playPauseBtn.active {
-            background: linear-gradient(135deg, #28a745, #1e7e34);
-        }
-        #playPauseBtn:disabled { 
-            background: linear-gradient(135deg, #dc3545, #c82333);
-            opacity: 1;
-            cursor: not-allowed; 
-            opacity: 0.6;
-        }
-
-        /* Estilo para el botón de retos */
-        #retosBtn {
-            width: var(--btn-size);
-            height: var(--btn-size);
-            border-radius: 50%;
-            border: none;
-            background: linear-gradient(135deg, #dc3545, #c82333);
-            color: white;
-            font-size: var(--icon-size);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.10);
-            padding: 0;
-        }
-
-        #retosBtn .icon-puzzle {
-            background: linear-gradient(135deg, #007bff 0%, #0056d3 50%, #00c6ff 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            font-weight: bold;
-            filter: drop-shadow(0 1px 2px rgba(0,0,0,0.1));
-        }
-
-        #retosBtn:disabled { 
-            background: linear-gradient(135deg, #dc3545, #c82333);
-            cursor: not-allowed; 
-            opacity: 0.6;
-        }
-
-        #retosBtn:disabled .icon-puzzle {
-            opacity: 0.6;
-        }
-
-        #retosBtn:active:not(:disabled) { transform: scale(0.95); }
-        #retosBtn.active {
-            background: linear-gradient(135deg, #28a745, #1e7e34);
-        }
-
-        .progress-row {
-            display: flex;
-            align-items: center;
-            width: 90%;
-            margin: 0 0 5px 0;
-            padding: 0;
-            justify-content: center;
-        }
-
-        .progress-container {
-            flex: 1;
-            width: 100%;
-            height: var(--progress-thick);
-            background-color: #d0d0d0;
-            border-radius: calc(var(--progress-thick) / 2);
-            cursor: pointer;
-            position: relative;
-            margin: 0;
-            min-width: 0;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            border: 1px solid #bbb;
-        }
-
-        #progressBar {
-            height: 100%;
-            width: 0%;
-            background: linear-gradient(90deg, #007bff, #00c6ff);
-            border-radius: calc(var(--progress-thick) / 2);
-            transition: width 0.1s linear;
-        }
-
-        .time-display {
-            width: 90%;
-            font-size: var(--timer-font-size);
-            color: var(--timer-color);
-            text-align: left;
-            user-select: none;
-            margin: 2px 0;
-            white-space: nowrap;
-            font-family: inherit;
-            display: flex;
-            justify-content: space-between;
-        }
-
-        /* Efectos hover */
-        #playPauseBtn:hover:not(:disabled),
-        #retosBtn:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-        }
-
-        #playPauseBtn:disabled:hover,
-        #retosBtn:disabled:hover {
-            transform: none;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.10);
-        }
-
-        #playPauseBtn:disabled .icon-play {
-            opacity: 0.6;
-        }
-
-        @media (max-width: 500px) {
-            :root {
-                --btn-size: 60px;
-                --icon-size: 1.5em;
-                --trapecio-width: 98vw;
-                --trapecio-height: 155px;
-                --progress-thick: 20px;
-                --timer-font-size: 1.1em;
-            }
-            
-            .audio-player-controls {
-                width: 98vw;
-                min-width: unset;
-            }
-            
-            .progress-row { 
-                margin: 0 0 3px 0; 
-            }
-            
-            .progress-container {
-                width: 100%;
-                flex-basis: 100%;
-            }
-            
-            .time-display { 
-                margin: 0 0 3px 0; 
-            }
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GPS Casa ON/OFF</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <style>
+    /* Contenedor principal */
+    #zona-boton-casa {
+      position: relative;
+      width: 100%;
+      height: 60px;
+    }
+    
+    /* Botón GPS: medidas y estilos del primer código */
+    #gps-casa-btn {
+      position: absolute;
+      top: 5px;
+      left: 5px;
+      width: 50px;
+      height: 50px;
+      min-width: 50px;
+      min-height: 50px;
+      border-radius: 4px;
+      border: 1px solid #fff;
+      background-color: #f44336;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+      transition: all 0.3s ease;
+      padding: 0;
+      margin: 0 0 0 10px;
+      position: relative;
+      z-index: 10002;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    #gps-casa-btn.on {
+      background-color: #4CAF50 !important;
+      border: 1px solid #45a049 !important;
+    }
+    #gps-casa-btn.off {
+      background-color: #f44336 !important;
+      border: 1px solid #d32f2f !important;
+    }
+    #gps-casa-btn:hover {
+      opacity: 0.9;
+      transform: scale(1.05);
+    }
+    #gps-casa-btn:active {
+      transform: scale(0.95);
+    }
+    .button-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+      line-height: 1;
+    }
+    .satellite-emoji {
+      font-size: 35px;
+      line-height: 1;
+      margin-bottom: 2px;
+      display: block;
+    }
+    .gps-label {
+      font-size: 20px;
+      font-weight: bold;
+      line-height: 1;
+      margin: 0;
+      padding: 0;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    /* Ventana de paradas: estética y medidas del segundo código */
+    #paradas-window {
+      position: absolute;
+      top: 0; /* Reducido de 5px a 0 */
+      left: 75px; 
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 20px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+      display: none;
+      flex-direction: column;
+      padding: 2px;
+      border: 1px solid #e0e0e0;
+      max-width: 300px;
+      min-width: 250px;
+      z-index: 10003;
+      height: 50px;
+      overflow: hidden;
+    }
+    #paradas-list {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      padding: 4px; /* Reducido de 8px */
+      overflow-x: auto;
+      overflow-y: hidden;
+      flex: 1;
+      gap: 4px; /* Reducido de 8px */
+      align-items: center;
+      white-space: nowrap;
+      -webkit-overflow-scrolling: touch;
+    }
+    .parada-tramo-btn {
+      background: white;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 4px 8px;
+      margin: 0 3px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+      flex: 0 0 auto;
+      font-size: 12px;
+      display: flex;
+      flex-direction: row;
+      align-items: flex-start;
+      justify-content: flex-start;
+      min-height: 40px;
+      height: auto;
+      min-width: 140px;
+      position: relative;
+      overflow: hidden;
+      gap: 4px;
+    }
+    .parada-btn {
+      background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+      color: white;
+      border: none !important;
+    }
+    .tramo-btn {
+      background: linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%);
+      color: white;
+      border: none !important;
+    }
+    .inicio-btn {
+      background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%);
+      color: white;
+      border: none !important;
+    }
+    .parada-tramo-btn.actual {
+      border: 2px solid #ffd700 !important;
+      box-shadow: 0 0 0 2px #ffd700, 0 0 15px rgba(255, 215, 0, 0.7) !important;
+      transform: scale(1.05);
+      font-weight: bold;
+      z-index: 2;
+      position: relative;
+    }
+    .btn-icon {
+      font-size: 1.5em;
+      flex-shrink: 0;
+    }
+    .btn-title {
+      font-weight: 600;
+      white-space: nowrap;
+      font-size: 0.95em;
+      margin-bottom: 2px;
+    }
+    .btn-desc {
+      font-size: 0.85em;
+      opacity: 0.9;
+      white-space: normal;
+      overflow: visible;
+      text-overflow: clip;
+      max-width: 130px;
+      font-weight: 500;
+      line-height: 1.2;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      text-align: left;
+    }
+  </style>
 </head>
 <body>
-    <div class="audio-player-controls" id="audioPlayerControls">
-        <audio id="audioPlayer"></audio>
-        <div class="player-buttons-row">
-            <button id="playPauseBtn" class="player-button" title="Reproducir/Pausar" disabled>
-                <span class="icon-play"><i class="fas fa-play"></i></span>
-            </button>
-            <button id="retosBtn" title="Retos" class="player-button">
-                <span class="icon-puzzle">🧩</span>
-            </button>
-        </div>
-        <div class="progress-row">
-            <div class="progress-container" id="progressContainer">
-                <div id="progressBar"></div>
-            </div>
-        </div>
-        <div class="time-display">
-            <span id="currentTime">00:00</span>
-            <span id="duration">00:00</span>
-        </div>
+  <div id="zona-boton-casa">
+    <button id="gps-casa-btn" class="on" title="Activar GPS">
+      <div class="button-content">
+        <span class="satellite-emoji">📡</span>
+        <span class="gps-label">ON</span>
+      </div>
+    </button>
+    <div id="paradas-window">
+      <div id="paradas-list"></div>
     </div>
+  </div>
+  <script>
+    // Estado y arrays
+    let gpsOn = true;
+    let modoCasa = !gpsOn;
+    let paradaActual = -1;
+    let tramoActual = -1;
+    let watchId = null;
 
-    <script>
-        // ================== VARIABLES GLOBALES ==================
-        const playPauseBtn = document.getElementById('playPauseBtn');
-        const retosBtn = document.getElementById('retosBtn');
-        const progressBar = document.getElementById('progressBar');
-        const progressContainer = document.getElementById('progressContainer');
-        const currentTimeSpan = document.getElementById('currentTime');
-        const durationSpan = document.getElementById('duration');
-        const audioPlayer = document.getElementById('audioPlayer');
+    // Array completo de paradas y tramos
+    const puntosRuta = [
+      { tipo: "inicio", parada: 0, nombre: "Torres de Serranos (start)" },
+      { tipo: "tramo", tramo: 1, nombre: "Torres de Serranos → Plaza de la crida (Puente de Serranos)" },
+      { tipo: "parada", parada: 1, nombre: "Plaza de la crida (Puente de Serranos)" },
+      { tipo: "tramo", tramo: 2, nombre: "Plaza de la crida → Calle Muro de Santa Ana" },
+      { tipo: "parada", parada: 2, nombre: "Calle Muro de Santa Ana" },
+      { tipo: "tramo", tramo: 3, nombre: "Calle Muro de Santa Ana → Palacio de los Borgia" },
+      { tipo: "parada", parada: 3, nombre: "Iglesia de San Lorenzo" },
+      { tipo: "tramo", tramo: 4, nombre: "Iglesia de San Lorenzo → Plaza de la Virgen" },
+      { tipo: "parada", parada: 4, nombre: "Plaza de la Virgen Reto 6" },
+      { tipo: "parada", parada: 5, nombre: "Plaza de la Virgen Reto 7" },
+      { tipo: "tramo", tramo: 5, nombre: "Plaza de la Virgen → Plaza de la Almoína" },
+      { tipo: "parada", parada: 6, nombre: "Panel cerámico muro Catedral" },
+      { tipo: "parada", parada: 7, nombre: "Capilla exterior catedral Reto 10" },
+      { tipo: "parada", parada: 8, nombre: "Capilla exterior catedral Reto 11" },
+      { tipo: "parada", parada: 9, nombre: "Arco Novo Catedral y Puerta Negra Basílica" },
+      { tipo: "parada", parada: 10, nombre: "Casa del Punt de Gantxo" },
+      { tipo: "tramo", tramo: 6, nombre: "Plaza de la Almoína → Plaza Decimo Junio Bruto (Museo Arqueológico de la Almoína)" },
+      { tipo: "parada", parada: 11, nombre: "Museo arqueológico La Almoína" },
+      { tipo: "parada", parada: 12, nombre: "Museo arqueológico La Almoína" },
+      { tipo: "parada", parada: 13, nombre: "Vista de la Catedral, Cimborrio" },
+      { tipo: "tramo", tramo: 7, nombre: "Museo arqueológico La Almoína → Palacio Arzobispal" },
+      { tipo: "parada", parada: 14, nombre: "Palacio Arzobispal y Puerta Románica de la Catedral" },
+      { tipo: "parada", parada: 15, nombre: "Puerta Románica de la Catedral" },
+      { tipo: "tramo", tramo: 8, nombre: "Puerta Románica de la Catedral → Plaza del Ayuntamiento" },
+      { tipo: "parada", parada: 16, nombre: "Plaza del Ayuntamiento" },
+      { tipo: "tramo", tramo: 9, nombre: "Plaza del Ayuntamiento → Edificio del Ayuntamiento de València" },
+      { tipo: "parada", parada: 17, nombre: "Edificio del Ayuntamiento" },
+      { tipo: "parada", parada: 18, nombre: "Edificio del Ayuntamiento" },
+      { tipo: "tramo", tramo: 10, nombre: "Edificio del Ayuntamiento → Estación del Norte" },
+      { tipo: "parada", parada: 19, nombre: "Estación del Norte" },
+      { tipo: "tramo", tramo: 11, nombre: "Estación del Norte → Plaza de Toros de València" },
+      { tipo: "tramo", tramo: 12, nombre: "Plaza de Toros → Casa estilo Árabe" },
+      { tipo: "parada", parada: 20, nombre: "Casa estilo Árabe" },
+      { tipo: "parada", parada: 21, nombre: "Casa estilo Árabe, mitad Aventura" },
+      { tipo: "tramo", tramo: 13, nombre: "Casa estilo Árabe → Palacio de Comunicaciones (Correos)" },
+      { tipo: "parada", parada: 22, nombre: "Palacio de Comunicaciones: Correos" },
+      { tipo: "parada", parada: 23, nombre: "Edificio Suay" },
+      { tipo: "tramo", tramo: 14, nombre: "Palacio de Comunicaciones → Banco de València" },
+      { tipo: "parada", parada: 24, nombre: "Banco de Valencia" },
+      { tipo: "tramo", tramo: 15, nombre: "Banco de València → Palacio del Marqués de Dos Aguas (Museo Nacional de Cerámica)" },
+      { tipo: "parada", parada: 25, nombre: "Palacio del Marqués de Dos Aguas (Museo Nacional de Cerámica)" },
+      { tipo: "tramo", tramo: 16, nombre: "Palacio del Marqués → Mercado Central" },
+      { tipo: "parada", parada: 26, nombre: "Mercado central" },
+      { tipo: "tramo", tramo: 17, nombre: "Mercado Central → Lonja de la Seda" },
+      { tipo: "parada", parada: 27, nombre: "Lonja de la Seda" },
+      { tipo: "tramo", tramo: 18, nombre: "Lonja de la Seda → Plaza Redonda" },
+      { tipo: "parada", parada: 28, nombre: "Plaza Redonda" },
+      { tipo: "tramo", tramo: 19, nombre: "Plaza Redonda → Iglesia de los Santos Juanes" },
+      { tipo: "parada", parada: 29, nombre: "Iglesia de los Santos Juanes" },
+      { tipo: "tramo", tramo: 20, nombre: "Iglesia de los Santos Juanes → Mercado Central" },
+      { tipo: "tramo", tramo: 21, nombre: "Mercado Central → Palacio de la Generalitat" },
+      { tipo: "parada", parada: 30, nombre: "Palau de la Generalitat" },
+      { tipo: "tramo", tramo: 22, nombre: "Palacio de la Generalitat → Torres de Serranos (Final)" },
+      { tipo: "parada", parada: 31, nombre: "Torres de Serranos (Final)" }
+    ];
 
-        let currentMediaIndex = 0;
-        let isPlaying = false;
-        let controlsDisabled = true; // Inicialmente deshabilitado (modo aventura)
-        let progressUpdateInterval = null; // Referencia al intervalo de actualización de progreso
-
-        // Array de audios correspondientes a las paradas y tramos del recorrido
-        // Usando P- para paradas y TR- para tramos, coincidiendo con los IDs del hijo 2
-        const audioFiles = [
-            // Parada 0 - Inicio
-            { 
-                id: "P-0", 
-                title: "Torres de Serranos (inicio)", 
-                file: "Av1_audio_esp/02 Intro ESPAÑOL 2.mp3"
+    // Renderizado de paradas y tramos con mensajes avanzados
+    function renderParadasYTramos() {
+      const lista = document.getElementById('paradas-list');
+      lista.innerHTML = '';
+      puntosRuta.forEach((punto) => {
+        const btn = document.createElement('button');
+        btn.className = 'parada-tramo-btn';
+        const esParada = punto.tipo === 'parada' || punto.tipo === 'inicio';
+        const esInicio = punto.tipo === 'inicio';
+        const esActual = (esParada && punto.parada === paradaActual) || (!esParada && punto.tramo === tramoActual);
+        if (esActual) btn.classList.add('actual');
+        if (esParada) btn.classList.add('parada-btn');
+        if (esInicio) btn.classList.add('inicio-btn');
+        if (!esParada) btn.classList.add('tramo-btn');
+        const numero = esParada ? punto.parada : punto.tramo;
+        const icono = esParada ? (esInicio ? '🏁' : '📍') : '🛣️';
+        const titulo = esParada ? (esInicio ? 'Inicio' : `Parada ${numero}`) : `Tramo ${numero}`;
+        btn.innerHTML = `
+          <span class="btn-icon">${icono}</span>
+          <span class="btn-title">${titulo}</span>
+          <span class="btn-desc">${punto.nombre}</span>
+        `;
+        btn.onclick = () => {
+          if (esParada) {
+            paradaActual = punto.parada;
+            tramoActual = -1;
+          } else {
+            tramoActual = punto.tramo;
+            paradaActual = -1;
+          }
+          renderParadasYTramos();
+          // Mensaje al padre y a los hijos
+          window.parent.postMessage({
+            type: 'actualizarPuntoActual',
+            origen: 'hijo5-casa',
+            puntoActual: {
+              tipo: esParada ? 'parada' : 'tramo',
+              id: esParada ? `P-${punto.parada}` : `TR-${punto.tramo}`,
+              numero: esParada ? punto.parada : punto.tramo,
+              nombre: punto.nombre
             },
-            
-            // Tramo 1: Torres de Serranos → Plaza de la crida (Puente de Serranos)
-            { 
-                id: "TR-1", 
-                title: "Tramo 1: Torres de Serranos → Plaza de la crida", 
-                file: "Av1_audio_esp/03 Av1 Pista 3 ESPAÑOL.mp3"
-            },
-            
-            // Parada 1: Plaza de la crida (Puente de Serranos)
-            { 
-                id: "P-1", 
-                title: "Parada 1: Plaza de la crida (Puente de Serranos - Reto 3)", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Tramo 2: Plaza de la crida → Calle Muro de Santa Ana
-            { 
-                id: "TR-2", 
-                title: "Tramo 2: Plaza de la crida → Calle Muro de Santa Ana", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 2: Calle Muro de Santa Ana
-            { 
-                id: "P-2", 
-                title: "Parada 2: Calle Muro de Santa Ana (Reto 4)", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Tramo 3: Calle Muro de Santa Ana → Palacio de los Borgia
-            { 
-                id: "TR-3", 
-                title: "Tramo 3: Calle Muro de Santa Ana → Palacio de los Borgia", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 3: Iglesia de San Lorenzo
-            { 
-                id: "P-3", 
-                title: "Parada 3: Iglesia de San Lorenzo (Reto 5)", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Tramo 4: Iglesia de San Lorenzo → Plaza de la Virgen
-            { 
-                id: "TR-4", 
-                title: "Tramo 4: Iglesia de San Lorenzo → Plaza de la Virgen", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 4: Plaza de la Virgen (Reto 6)
-            { 
-                id: "P-4", 
-                title: "Parada 4: Plaza de la Virgen (Reto 6)", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 5: Plaza de la Virgen (Reto 7, 8 Puzzle plaza de la virgen)
-            { 
-                id: "P-5", 
-                title: "Parada 5: Plaza de la Virgen (Reto 7, 8 Puzzle)", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Tramo 5: Plaza de la Virgen → Plaza de la Almoína
-            { 
-                id: "TR-5", 
-                title: "Tramo 5: Plaza de la Virgen → Plaza de la Almoína", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 6: Panel cerámico muro Catedral
-            { 
-                id: "P-6", 
-                title: "Parada 6: Panel cerámico muro Catedral", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 7: Capilla exterior catedral Reto 10
-            { 
-                id: "P-7", 
-                title: "Parada 7: Capilla exterior catedral (Reto 10)", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 8: Capilla exterior catedral Reto 11
-            { 
-                id: "P-8", 
-                title: "Parada 8: Capilla exterior catedral (Reto 11)", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 9: Arco Novo Catedral y Puerta Negra Basílica
-            { 
-                id: "P-9", 
-                title: "Parada 9: Arco Novo Catedral y Puerta Negra Basílica", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 10: Casa del Punt de Gantxo
-            { 
-                id: "P-10", 
-                title: "Parada 10: Casa del Punt de Gantxo", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Tramo 6: Plaza de la Almoína → Museo Arqueológico
-            { 
-                id: "TR-6", 
-                title: "Tramo 6: Plaza de la Almoína → Museo Arqueológico", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 11: Museo arqueológico La Almoína
-            { 
-                id: "P-11", 
-                title: "Parada 11: Museo arqueológico La Almoína", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 12: Museo arqueológico La Almoína (segunda parte)
-            { 
-                id: "P-12", 
-                title: "Parada 12: Museo arqueológico La Almoína (continuación)", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 13: Vista de la Catedral, Cimborrio
-            { 
-                id: "P-13", 
-                title: "Parada 13: Vista de la Catedral, Cimborrio", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Tramo 7: Museo arqueológico La Almoína → Palacio Arzobispal
-            { 
-                id: "TR-7", 
-                title: "Tramo 7: Museo arqueológico → Palacio Arzobispal", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 14: Palacio Arzobispal y Puerta Románica de la Catedral
-            { 
-                id: "P-14", 
-                title: "Parada 14: Palacio Arzobispal y Puerta Románica", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 15: Puerta Románica de la Catedral
-            { 
-                id: "P-15", 
-                title: "Parada 15: Puerta Románica de la Catedral", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Tramo 8: Puerta Románica de la Catedral → Plaza del Ayuntamiento
-            { 
-                id: "TR-8", 
-                title: "Tramo 8: Puerta Románica → Plaza del Ayuntamiento", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 16: Plaza del Ayuntamiento
-            { 
-                id: "P-16", 
-                title: "Parada 16: Plaza del Ayuntamiento", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Tramo 9: Plaza del Ayuntamiento → Edificio del Ayuntamiento de València
-            { 
-                id: "TR-9", 
-                title: "Tramo 9: Plaza del Ayuntamiento → Edificio del Ayuntamiento", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 17: Edificio del Ayuntamiento
-            { 
-                id: "P-17", 
-                title: "Parada 17: Edificio del Ayuntamiento", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 18: Edificio del Ayuntamiento (segunda parte)
-            { 
-                id: "P-18", 
-                title: "Parada 18: Edificio del Ayuntamiento (continuación)", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Tramo 10: Edificio del Ayuntamiento → Estación del Norte
-            { 
-                id: "TR-10", 
-                title: "Tramo 10: Ayuntamiento → Estación del Norte", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 19: Estación del Norte
-            { 
-                id: "P-19", 
-                title: "Parada 19: Estación del Norte", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Tramo 11: Estación del Norte → Plaza de Toros de València
-            { 
-                id: "TR-11", 
-                title: "Tramo 11: Estación del Norte → Plaza de Toros", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Tramo 12: Plaza de Toros → Casa estilo Árabe
-            { 
-                id: "TR-12", 
-                title: "Tramo 12: Plaza de Toros → Casa estilo Árabe", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 20: Casa estilo Árabe
-            { 
-                id: "P-20", 
-                title: "Parada 20: Casa estilo Árabe", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 21: Casa estilo Árabe, mitad Aventura
-            { 
-                id: "P-21", 
-                title: "Parada 21: Casa estilo Árabe (mitad Aventura)", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Tramo 13: Casa estilo Árabe → Palacio de Comunicaciones (Correos)
-            { 
-                id: "TR-13", 
-                title: "Tramo 13: Casa estilo Árabe → Palacio de Comunicaciones", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 22: Palacio de Comunicaciones: Correos
-            { 
-                id: "P-22", 
-                title: "Parada 22: Palacio de Comunicaciones (Correos)", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 23: Edificio Suay
-            { 
-                id: "P-23", 
-                title: "Parada 23: Edificio Suay", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Tramo 14: Palacio de Comunicaciones → Banco de València
-            { 
-                id: "TR-14", 
-                title: "Tramo 14: Palacio de Comunicaciones → Banco de València", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 24: Banco de Valencia
-            { 
-                id: "P-24", 
-                title: "Parada 24: Banco de Valencia", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Tramo 15: Banco de València → Palacio del Marqués de Dos Aguas
-            { 
-                id: "TR-15", 
-                title: "Tramo 15: Banco de València → Palacio del Marqués de Dos Aguas", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 25: Palacio del Marqués de Dos Aguas (Museo Nacional de Cerámica)
-            { 
-                id: "P-25", 
-                title: "Parada 25: Palacio del Marqués de Dos Aguas (Museo de Cerámica)", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Tramo 16: Palacio del Marqués → Mercado Central
-            { 
-                id: "TR-16", 
-                title: "Tramo 16: Palacio del Marqués → Mercado Central", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 26: Mercado central
-            { 
-                id: "P-26", 
-                title: "Parada 26: Mercado central", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Tramo 17: Mercado Central → Iglesia de los Santos Juanes
-            { 
-                id: "TR-17", 
-                title: "Tramo 17: Mercado Central → Iglesia de los Santos Juanes", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 27: Iglesia de los Santos Juanes reto 24
-            { 
-                id: "P-27", 
-                title: "Parada 27: Iglesia de los Santos Juanes (Reto 24)", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 28: Iglesia de los Santos Juanes reto 25
-            { 
-                id: "P-28", 
-                title: "Parada 28: Iglesia de los Santos Juanes (Reto 25)", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Tramo 18: Iglesia Santos Juanes → Lonja de València (Mercado de la Seda)
-            { 
-                id: "TR-18", 
-                title: "Tramo 18: Iglesia Santos Juanes → Lonja de València", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 29: Lonja Puerta de Los Pecados barquero
-            { 
-                id: "P-29", 
-                title: "Parada 29: Lonja - Puerta de Los Pecados (barquero)", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 30: Lonja Puerta de Los Pecados árbol muerto
-            { 
-                id: "P-30", 
-                title: "Parada 30: Lonja - Puerta de Los Pecados (árbol muerto)", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Tramo 19: Lonja Gárgolas
-            { 
-                id: "TR-19", 
-                title: "Tramo 19: Lonja - Gárgolas", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 31: Lonja Gárgolas ángel vasija
-            { 
-                id: "P-31", 
-                title: "Parada 31: Lonja - Gárgola del ángel con vasija", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 32: Lonja Gárgolas barbudo y león
-            { 
-                id: "P-32", 
-                title: "Parada 32: Lonja - Gárgola del barbudo con león", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 33: Lonja Gárgolas fornicador ventana
-            { 
-                id: "P-33", 
-                title: "Parada 33: Lonja - Gárgola del fornicador en ventana", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Tramo 20: Lonja → Plaza del Doctor Collado
-            { 
-                id: "TR-20", 
-                title: "Tramo 20: Lonja → Plaza del Doctor Collado", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Tramo 21: Plaza del Doctor Collado → Plaza del Negrito (Fuente del Negrito)
-            { 
-                id: "TR-21", 
-                title: "Tramo 21: Plaza del Doctor Collado → Fuente del Negrito", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 34: Fuente del Negrito
-            { 
-                id: "P-34", 
-                title: "Parada 34: Fuente del Negrito", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Tramo 22: Plaza del Negrito → Calle Caballeros
-            { 
-                id: "TR-22", 
-                title: "Tramo 22: Fuente del Negrito → Calle Caballeros", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 35: Palau de la Generalitat
-            { 
-                id: "P-35", 
-                title: "Parada 35: Palau de la Generalitat", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Tramo 23: Palacio de la Generalitat → Calle de los Serranos (FINAL)
-            { 
-                id: "TR-23", 
-                title: "Tramo 23: Palacio de la Generalitat → Calle de los Serranos", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
-            },
-            
-            // Parada 36 - FINAL: Torres de Serranos Final
-            { 
-                id: "P-36", 
-                title: "Parada 36: Torres de Serranos (Final del recorrido)", 
-                file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
+            modo: modoCasa ? 'casa' : 'aventura',
+            gpsActivo: gpsOn
+          }, '*');
+          window.parent.postMessage({
+            type: 'mensaje-para-hijo2',
+            origen: 'hijo5-casa',
+            mensaje: {
+              type: 'simularUbicacion',
+              punto: punto,
+              modoCasa: modoCasa
             }
-        ];
-
-        // ================== FUNCIONES DE CONTROL DE ACCESO ==================
-        
-        function enableControls() {
-            console.log('🔓 HIJO 3: Habilitando controles de audio');
-            controlsDisabled = false;
-            playPauseBtn.disabled = false;
-            progressContainer.style.pointerEvents = 'auto';
-            document.body.classList.remove('disabled');
-            
-            // Iniciar el intervalo de actualización de progreso si no existe
-            if (!progressUpdateInterval) {
-                progressUpdateInterval = setInterval(updateProgress, 250);
-                console.log('⏱️ HIJO 3: Iniciado intervalo de actualización de progreso');
+          }, '*');
+          window.parent.postMessage({
+            type: 'mensaje-para-hijo3',
+            origen: 'hijo5-casa',
+            mensaje: {
+              type: esParada ? 'cargarAudio' : 'cargarVideo',
+              punto: punto,
+              modoCasa: modoCasa
             }
-            
-            // Habilitar y activar visualmente el botón play/pausa (rojo → verde)
-            playPauseBtn.disabled = false;
-            playPauseBtn.classList.add('active'); // Fondo verde
-            playPauseBtn.style.background = 'linear-gradient(135deg, #28a745, #1e7e34)';
-            
-            // Habilitar y activar visualmente el botón retos (rojo → verde)
-            retosBtn.disabled = false;
-            retosBtn.classList.add('active'); // Fondo verde
-            retosBtn.style.background = 'linear-gradient(135deg, #28a745, #1e7e34)';
-            retosBtn.style.opacity = '1';
-            retosBtn.style.pointerEvents = 'auto';
-            
-            // Habilitar barra de progreso
-            progressContainer.style.pointerEvents = 'auto';
-            progressContainer.style.opacity = '1';
-            
-            console.log('✅ HIJO 3: Controles de audio habilitados y activados visualmente (verde)');
-        }
-        
-        function disableControls() {
-            console.log('🔒 HIJO 3: Deshabilitando controles de audio');
-            controlsDisabled = true;
-            playPauseBtn.disabled = true;
-            progressContainer.style.pointerEvents = 'none';
-            document.body.classList.add('disabled');
-            
-            // Pausar la reproducción al deshabilitar controles
-            if (isPlaying) {
-                console.log('⏸️ HIJO 3: Pausando audio al deshabilitar controles');
-                pauseAudio();
+          }, '*');
+          window.parent.postMessage({
+            type: 'mensaje-para-hijo4',
+            origen: 'hijo5-casa',
+            mensaje: {
+              type: 'mostrarReto',
+              punto: punto,
+              modoCasa: modoCasa
             }
-            
-            // Limpiar el intervalo de actualización de progreso
-            if (progressUpdateInterval) {
-                clearInterval(progressUpdateInterval);
-                progressUpdateInterval = null;
-                console.log('⏱️ HIJO 3: Detenido intervalo de actualización de progreso');
-            }
-            
-            // Deshabilitar y desactivar visualmente el botón play/pausa (verde → rojo)
-            playPauseBtn.disabled = true;
-            playPauseBtn.classList.remove('active');
-            playPauseBtn.style.background = 'linear-gradient(135deg, #dc3545, #c82333)';
-            
-            // Deshabilitar y desactivar visualmente el botón retos (verde → rojo)
-            retosBtn.disabled = true;
-            retosBtn.classList.remove('active');
-            retosBtn.style.background = 'linear-gradient(135deg, #dc3545, #c82333)';
-            retosBtn.style.opacity = '0.6';
-            retosBtn.style.pointerEvents = 'none';
-            
-            // Deshabilitar barra de progreso
-            progressContainer.style.pointerEvents = 'none';
-            progressContainer.style.opacity = '0.6';
-            
-            console.log('🚫 HIJO 3: Controles de audio deshabilitados y desactivados visualmente (rojo)');
-        }
-
-        // ================== FUNCIONES DEL REPRODUCTOR ==================
-
-        function formatTime(seconds) {
-            const minutes = Math.floor(seconds / 60);
-            const remainingSeconds = Math.floor(seconds % 60);
-            return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
-        }
-
-        function updateProgress() {
-            if (audioPlayer.duration) {
-                const progress = (audioPlayer.currentTime / audioPlayer.duration) * 100;
-                progressBar.style.width = `${progress}%`;
-                currentTimeSpan.textContent = formatTime(audioPlayer.currentTime);
-                durationSpan.textContent = formatTime(audioPlayer.duration);
-            }
-        }
-
-        function loadAudio(index) {
-            if (index >= 0 && index < audioFiles.length) {
-                currentMediaIndex = index;
-                audioPlayer.src = audioFiles[index].file;
-                console.log(`🎵 HIJO 3: Cargando audio - ${audioFiles[index].title}`);
-                
-                // Notificar al padre sobre el cambio de medio
-                window.parent.postMessage({ 
-                    type: 'audioLoaded', 
-                    index: currentMediaIndex, 
-                    title: audioFiles[currentMediaIndex].title 
-                }, '*');
-            }
-        }
-
-        function playAudio() {
-            if (controlsDisabled) {
-                console.log('🚫 HIJO 3: No se puede reproducir - controles deshabilitados');
-                return;
-            }
-            
-            audioPlayer.play().then(() => {
-                isPlaying = true;
-                playPauseBtn.innerHTML = '<span class="icon-play"><i class="fas fa-pause"></i></span>';
-                playPauseBtn.classList.add('active');
-                console.log(`▶️ HIJO 3: Reproduciendo audio - ${audioFiles[currentMediaIndex].title}`);
-                
-                // Actualizar progreso mientras se reproduce
-                updateProgress();
-                
-                window.parent.postMessage({ 
-                    type: 'audioPlaying', 
-                    index: currentMediaIndex 
-                }, '*');
-            }).catch(error => {
-                console.error('❌ Error al reproducir audio:', error);
-            });
-        }
-
-        function pauseAudio() {
-            audioPlayer.pause();
-            isPlaying = false;
-            playPauseBtn.innerHTML = '<span class="icon-play"><i class="fas fa-play"></i></span>';
-            playPauseBtn.classList.remove('active');
-            console.log(`⏸️ HIJO 3: Audio pausado - ${audioFiles[currentMediaIndex].title}`);
-            
-            window.parent.postMessage({ 
-                type: 'audioPaused', 
-                index: currentMediaIndex 
-            }, '*');
-        }
-
-        function togglePlayPause() {
-            if (isPlaying) {
-                pauseAudio();
-            } else {
-                playAudio();
-            }
-        }
-
-        function seekTo(e) {
-            if (controlsDisabled || !audioPlayer.duration) return;
-
-            const rect = progressContainer.getBoundingClientRect();
-            let clickX = e.clientX - rect.left;
-
-            if (e.touches && e.touches.length > 0) {
-                clickX = e.touches[0].clientX - rect.left;
-            }
-
-            const newTime = (clickX / rect.width) * audioPlayer.duration;
-            const clampedTime = Math.max(0, Math.min(newTime, audioPlayer.duration));
-            audioPlayer.currentTime = clampedTime;
-            
-            // Actualizar inmediatamente la visualización
-            updateProgress();
-            
-            // Notificar al padre sobre el cambio de posición
-            const progressPercent = (clampedTime / audioPlayer.duration) * 100;
-            window.parent.postMessage({ 
-                type: 'audioSeeked', 
-                index: currentMediaIndex,
-                currentTime: clampedTime,
-                duration: audioPlayer.duration,
-                progress: progressPercent
-            }, '*');
-        }
-
-        // ================== EVENT LISTENERS ==================
-
-        // Botón play/pausa
-        playPauseBtn.addEventListener('click', () => {
-            if (controlsDisabled) return;
-            
-            if (isPlaying) {
-                pauseAudio();
-            } else {
-                playAudio();
-            }
-        });
-
-        // Botón retos
-        retosBtn.addEventListener('click', () => {
-            if (controlsDisabled) return;
-            
-            console.log('🧩 HIJO 3: Botón retos presionado');
-            window.parent.postMessage({ 
-                type: 'mostrarRetos', 
-                index: currentMediaIndex 
-            }, '*');
-        });
-
-        // Eventos de audio
-        audioPlayer.addEventListener('timeupdate', () => {
-            updateProgress();
-            
-            // Enviar actualización de progreso al padre
-            if (audioPlayer.duration) {
-                const progressPercent = (audioPlayer.currentTime / audioPlayer.duration) * 100;
-                window.parent.postMessage({ 
-                    type: 'audioProgress', 
-                    index: currentMediaIndex,
-                    currentTime: audioPlayer.currentTime,
-                    duration: audioPlayer.duration,
-                    progress: progressPercent
-                }, '*');
-            }
-        });
-        
-        audioPlayer.addEventListener('loadedmetadata', () => {
-            updateProgress();
-            
-            // Notificar duración al padre cuando se carga el metadata
-            window.parent.postMessage({ 
-                type: 'audioMetadataLoaded', 
-                index: currentMediaIndex,
-                duration: audioPlayer.duration
-            }, '*');
-        });
-        
-        audioPlayer.addEventListener('ended', () => {
-            isPlaying = false;
-            playPauseBtn.innerHTML = '<span class="icon-play"><i class="fas fa-play"></i></span>';
-            playPauseBtn.classList.remove('active');
-            
-            window.parent.postMessage({ 
-                type: 'audioEnded', 
-                index: currentMediaIndex 
-            }, '*');
-        });
-
-        // Eventos de la barra de progreso
-        progressContainer.addEventListener('mousedown', (e) => {
-            if (controlsDisabled) return;
-            isDraggingProgress = true;
-            seekTo(e);
-        });
-
-        progressContainer.addEventListener('mousemove', (e) => {
-            if (isDraggingProgress && !controlsDisabled) {
-                seekTo(e);
-            }
-        });
-
-        progressContainer.addEventListener('mouseup', () => {
-            isDraggingProgress = false;
-        });
-
-        // Eventos táctiles
-        progressContainer.addEventListener('touchstart', (e) => {
-            if (controlsDisabled) return;
-            isDraggingProgress = true;
-            seekTo(e);
-        });
-
-        progressContainer.addEventListener('touchmove', (e) => {
-            if (isDraggingProgress && !controlsDisabled) {
-                seekTo(e);
-            }
-        });
-
-        progressContainer.addEventListener('touchend', () => {
-            isDraggingProgress = false;
-        });
-
-        // ================== FUNCIONES DE SINCRONIZACIÓN ==================
-        
-        // Función para manejar la sincronización de estado con el padre
-        function manejarSincronizacionEstado(estado) {
-            console.log('[Hijo3] Sincronizando estado con el padre:', estado);
-            
-            // Actualizar modo (casa/aventura)
-            if (estado.modo && (estado.modo === 'casa' || estado.modo === 'aventura')) {
-                const nuevoModo = estado.modo === 'casa';
-                if (nuevoModo) {
-                    console.log('🔓 HIJO 3: Activando modo casa - controles habilitados');
-                    enableControls();
-                } else {
-                    console.log('🔒 HIJO 3: Activando modo aventura - controles deshabilitados');
-                    disableControls();
-                }
-            }
-            
-            // Actualizar audio según el punto actual
-            if (estado.puntoActual) {
-                if (estado.puntoActual.tipo === 'parada' && estado.puntoActual.id !== undefined) {
-                    const audioIndex = estado.puntoActual.id - 1; // Asumiendo que los índices de audio empiezan en 0
-                    console.log(`🎵 HIJO 3: Cargando audio para parada ${estado.puntoActual.id}`);
-                    if (audioIndex >= 0 && audioIndex < audioFiles.length) {
-                        loadAudio(audioIndex);
-                        // Reproducir automáticamente si estamos en modo casa
-                        if (estado.modo === 'casa') {
-                            playAudio();
-                        }
-                    }
-                }
-            }
-            
-            // Actualizar datos compartidos
-            if (estado.datosCompartidos) {
-                // Aquí podrías actualizar otros estados compartidos si es necesario
-                console.log('[Hijo3] Datos compartidos actualizados:', estado.datosCompartidos);
-            }
-        }
-        
-        // ================== COMUNICACIÓN CON EL PADRE ==================
-        
-        // Función para validar la estructura de los mensajes
-        const validarMensaje = (mensaje, esquema) => {
-            if (!mensaje || typeof mensaje !== 'object') {
-                console.error('❌ HIJO 3: El mensaje no es un objeto válido', mensaje);
-                return false;
-            }
-            
-            for (const campo of esquema.camposRequeridos) {
-                if (!(campo in mensaje)) {
-                    console.error(`❌ HIJO 3: El mensaje no tiene el campo requerido '${campo}'`, mensaje);
-                    return false;
-                }
-            }
-            
-            if (esquema.validarTipo) {
-                return esquema.validarTipo(mensaje);
-            }
-            
-            return true;
+          }, '*');
         };
-        
-        // Esquemas de validación para diferentes tipos de mensajes
-        const esquemasMensajes = {
-            mensajeEstructurado: {
-                camposRequeridos: ['tipo', 'mensaje'],
-                descripcion: 'Mensaje estructurado para el hijo3',
-                validarTipo: (mensaje) => {
-                    if (typeof mensaje.mensaje !== 'object') {
-                        console.error('❌ HIJO 3: El campo mensaje debe ser un objeto', mensaje);
-                        return false;
-                    }
-                    return true;
-                }
-            },
-            sincronizacionEstado: {
-                camposRequeridos: ['type', 'estado'],
-                descripcion: 'Mensaje de sincronización de estado',
-                validarTipo: (mensaje) => {
-                    if (!mensaje.estado || typeof mensaje.estado !== 'object') {
-                        console.error('❌ HIJO 3: El estado debe ser un objeto', mensaje);
-                        return false;
-                    }
-                    return true;
-                }
-            },
-            comandoAudio: {
-                camposRequeridos: ['type'],
-                descripcion: 'Comando de control de audio',
-                validarTipo: (mensaje) => {
-                    const comandosValidos = ['enableControls', 'disableControls', 'playAudio', 'pauseAudio', 'stopAudio'];
-                    if (!comandosValidos.includes(mensaje.type)) {
-                        console.error(`❌ HIJO 3: Tipo de comando no reconocido: ${mensaje.type}`);
-                        return false;
-                    }
-                    return true;
-                }
-            },
-            mensajeParaHijo3: {
-                camposRequeridos: ['type', 'datos'],
-                descripcion: 'Mensaje específico para el hijo3',
-                validarTipo: (mensaje) => {
-                    if (typeof mensaje.datos !== 'object') {
-                        console.error('❌ HIJO 3: El campo datos debe ser un objeto', mensaje);
-                        return false;
-                    }
-                    return true;
-                }
-            }
-        };
-        
-        // Función para manejar mensajes específicos del hijo5-casa
-        const manejarMensajeEspecifico = (tipo, datos = {}) => {
-            console.log(`🎵 HIJO 3: Procesando mensaje específico '${tipo}':`, datos);
-            
-            // Validar que los datos sean un objeto
-            if (!datos || typeof datos !== 'object') {
-                console.error('❌ HIJO 3: Los datos del mensaje no son válidos', datos);
-                return;
-            }
-            
-            try {
-                switch(tipo) {
-                    case 'cambioModo':
-                    case 'cambiarModo': // Mantener compatibilidad con mensajes antiguos
-                        console.log(`🎵 HIJO 3: Cambiando a modo '${datos.modo}'`);
-                        if (datos.modo === 'casa') {
-                            enableControls();
-                            // Si hay un audio cargado, reproducirlo automáticamente en modo casa
-                            if (audioElement && audioElement.src && !audioElement.paused) {
-                                playAudio();
-                            }
-                        } else if (datos.modo === 'aventura') {
-                            disableControls();
-                        } else {
-                            console.warn(`⚠️ HIJO 3: Modo no reconocido: ${datos.modo}`);
-                        }
-                        break;
-                        
-                    case 'cambiarParada':
-                    case 'cambioParada': // Mantener compatibilidad con mensajes antiguos
-                        console.log(`🎵 HIJO 3: Solicitado cambio a parada`, datos);
-                        const paradaId = datos.paradaId || datos.parada || (datos.parada !== undefined ? datos.parada : null);
-                        const audioIndex = typeof paradaId === 'string' && paradaId.startsWith('P-') 
-                            ? parseInt(paradaId.substring(2), 10) 
-                            : paradaId;
-                            
-                        console.log(`🎵 HIJO 3: Parada procesada: ${paradaId} -> índice: ${audioIndex}`);
-                        
-                        if (audioIndex !== undefined && !isNaN(audioIndex) && audioIndex >= 0 && audioIndex < audioFiles.length) {
-                            loadAudio(audioIndex);
-                            // Reproducir automáticamente si estamos en modo casa
-                            if (!controlsDisabled) {
-                                playAudio();
-                            }
-                        } else {
-                            console.error(`❌ HIJO 3: Índice de audio inválido: ${audioIndex}`, datos);
-                        }
-                        break;
-                        
-                    case 'reproducir':
-                        console.log('🎵 HIJO 3: Reproduciendo audio actual');
-                        if (!controlsDisabled) playAudio();
-                        break;
-                        
-                    case 'pausar':
-                        console.log('🎵 HIJO 3: Pausando reproducción');
-                        if (!controlsDisabled) pauseAudio();
-                        break;
-                        
-                    case 'detener':
-                        console.log('🎵 HIJO 3: Deteniendo reproducción');
-                        if (!controlsDisabled) {
-                            audioPlayer.pause();
-                            audioPlayer.currentTime = 0;
-                            isPlaying = false;
-                            playPauseBtn.innerHTML = '<span class="icon-play"><i class="fas fa-play"></i></span>';
-                            playPauseBtn.classList.remove('active');
-                            updateProgress();
-                        }
-                        break;
-                        
-                    default:
-                        console.warn(`⚠️ HIJO 3: Tipo de mensaje no manejado: '${tipo}'`, datos);
-                }
-            } catch (error) {
-                console.error('❌ HIJO 3: Error al procesar mensaje específico:', error, { tipo, datos });
-            }
-        };
-        
-        // Función para manejar mensajes antiguos (legacy)
-        const manejarMensajeLegacy = (tipo, datos = {}) => {
-            console.warn(`⚠️ HIJO 3: Uso de mensaje legacy '${tipo}'. Se recomienda actualizar al nuevo formato estructurado.`);
-            
-            try {
-                switch(tipo) {
-                    case 'enableControls':
-                        console.log('🔓 HIJO 3: Habilitando controles (legacy)');
-                        enableControls();
-                        break;
-                        
-                    case 'disableControls':
-                        console.log('🔒 HIJO 3: Deshabilitando controles (legacy)');
-                        disableControls();
-                        break;
-                        
-                    case 'playAudio':
-                        console.log('⏯️ HIJO 3: Reproduciendo audio (legacy)');
-                        if (!controlsDisabled) playAudio();
-                        break;
-                        
-                    case 'pauseAudio':
-                        console.log('⏸️ HIJO 3: Pausando audio (legacy)');
-                        if (!controlsDisabled) pauseAudio();
-                        break;
-                        
-                    case 'stopAudio':
-                        console.log('⏹️ HIJO 3: Deteniendo audio (legacy)');
-                        if (!controlsDisabled) {
-                            audioPlayer.pause();
-                            audioPlayer.currentTime = 0;
-                            isPlaying = false;
-                            playPauseBtn.innerHTML = '<span class="icon-play"><i class="fas fa-play"></i></span>';
-                            playPauseBtn.classList.remove('active');
-                            updateProgress();
-                        }
-                        break;
-                        
-                    default:
-                        console.warn(`⚠️ HIJO 3: Tipo de mensaje legacy no reconocido: '${tipo}'`, datos);
-                }
-            } catch (error) {
-                console.error('❌ HIJO 3: Error al procesar mensaje legacy:', error, { tipo, datos });
-            }
-        };
-        
-        // Manejador principal de mensajes
-        window.addEventListener('message', function(event) {
-            const mensaje = event.data;
-            if (!mensaje || typeof mensaje !== 'object') {
-                console.warn('⚠️ HIJO 3: Mensaje no válido o vacío recibido', mensaje);
-                return;
-            }
-            
-            console.log('🎵 HIJO 3: Mensaje recibido:', mensaje);
-            
-            try {
-                // 1. Manejar mensajes de sincronización de estado
-                if (mensaje.type === 'sincronizarEstado' && mensaje.estado) {
-                    console.log('🔄 HIJO 3: Procesando sincronización de estado');
-                    if (validarMensaje(mensaje, esquemasMensajes.sincronizacionEstado)) {
-                        manejarSincronizacionEstado(mensaje.estado);
-                    } else {
-                        console.error('❌ HIJO 3: Error en la sincronización de estado', mensaje);
-                    }
-                    return;
-                }
-                
-                // 2. Manejar mensajes específicos para este hijo (nuevo formato)
-                if (mensaje.type === 'mensaje-para-hijo3') {
-                    console.log('📨 HIJO 3: Mensaje específico para este hijo:', mensaje);
-                    
-                    // Si el mensaje tiene un campo 'datos', es el nuevo formato
-                    if (mensaje.datos) {
-                        manejarMensajeEspecifico(mensaje.datos.type || 'desconocido', mensaje.datos);
-                    } 
-                    // Si no, es posible que sea un mensaje directo
-                    else if (mensaje.mensaje) {
-                        manejarMensajeEspecifico(mensaje.mensaje.type || 'desconocido', mensaje.mensaje);
-                    }
-                    return;
-                }
-                
-                // 3. Manejar mensajes legacy
-                if (mensaje.type && typeof mensaje.type === 'string') {
-                    console.warn('⚠️ HIJO 3: Procesando mensaje legacy');
-                    if (validarMensaje(mensaje, esquemasMensajes.comandoAudio)) {
-                        manejarMensajeLegacy(mensaje.type, mensaje);
-                    } else {
-                        console.error('❌ HIJO 3: Comando de audio no válido', mensaje);
-                    }
-                    return;
-                }
-                
-                // 4. Manejar mensajes de audio específicos
-                if (mensaje.type === 'setAudioParada') {
-                    const audioIndex = mensaje.index;
-                    console.log(`🎯 HIJO 3: Estableciendo audio de parada ${audioIndex} (mensaje legacy)`);
-                    if (audioIndex !== undefined && audioIndex >= 0 && audioIndex < audioFiles.length) {
-                        loadAudio(audioIndex);
-                        // Reproducir automáticamente si los controles están habilitados
-                        if (!controlsDisabled) {
-                            playAudio();
-                        }
-                    }
-                    return;
-                }
-                
-                // 5. Manejar comandos de control de reproducción
-                if (mensaje.type === 'playAudio') {
-                    if (!controlsDisabled) {
-                        playAudio();
-                    }
-                    return;
-                }
-                
-                if (mensaje.type === 'pauseAudio') {
-                    if (!controlsDisabled) {
-                        pauseAudio();
-                    }
-                    return;
-                }
-                
-                if (mensaje.type === 'stopAudio') {
-                    if (!controlsDisabled) {
-                        audioPlayer.pause();
-                        audioPlayer.currentTime = 0;
-                        isPlaying = false;
-                        playPauseBtn.innerHTML = '<span class="icon-play"><i class="fas fa-play"></i></span>';
-                        playPauseBtn.classList.remove('active');
-                        updateProgress();
-                    }
-                    return;
-                }
-                
-                console.warn('⚠️ HIJO 3: Mensaje no reconocido', mensaje);
-                
-            } catch (error) {
-                console.error('❌ HIJO 3: Error al procesar mensaje:', error, mensaje);
-                
-                // Mostrar mensaje de error en la interfaz si está disponible
-                if (statusElement) {
-                    statusElement.textContent = 'Error al procesar mensaje';
-                    statusElement.style.color = '#d32f2f';
-                    statusElement.style.fontWeight = 'bold';
-                    
-                    // Ocultar el mensaje después de 3 segundos
-                    setTimeout(() => {
-                        statusElement.textContent = '';
-                        statusElement.style.color = '';
-                        statusElement.style.fontWeight = '';
-                    }, 3000);
-                }
-            }
-        });    
-        
+        lista.appendChild(btn);
+      });
+    }
 
-        // ================== INICIALIZACIÓN ==================
-        
-        // Inicializar controles deshabilitados por defecto
-        document.addEventListener('DOMContentLoaded', () => {
-            console.log('🎵 HIJO 3: Inicializando reproductor de audio');
-            // Cargar el primer audio
-            loadAudio(0);
-            
-            // Notificar al padre que el reproductor está listo
-            window.parent.postMessage({ 
-                type: 'audioPlayerReady',
-                status: 'ready',
-                timestamp: Date.now()
-            }, '*');
-            
-            // Configurar limpieza al descargar la página
-            window.addEventListener('beforeunload', () => {
-                console.log('🧹 HIJO 3: Limpiando recursos del reproductor');
-                if (progressUpdateInterval) {
-                    clearInterval(progressUpdateInterval);
-                }
-                if (isPlaying) {
-                    audioPlayer.pause();
-                }
-            });
-        });    
-        
-        // Inicialmente deshabilitado
-        disableControls();
-        // Función para actualizar el icono de play/pausa
-        function updatePlayPauseIcon() {
-            const icon = playPauseBtn.querySelector('i');
-            if (icon) {
-                icon.className = isPlaying ? 'fas fa-pause' : 'fas fa-play';
-            }
+    // Botón GPS con lógica avanzada
+    function actualizarBotonGPS() {
+      const gpsBtn = document.getElementById('gps-casa-btn');
+      const label = gpsBtn.querySelector('.gps-label');
+      gpsBtn.classList.toggle('on', gpsOn);
+      gpsBtn.classList.toggle('off', !gpsOn);
+      gpsBtn.style.backgroundColor = gpsOn ? '#4CAF50' : '#f44336';
+      gpsBtn.style.borderColor = gpsOn ? '#45a049' : '#d32f2f';
+      label.textContent = gpsOn ? 'ON' : 'OFF';
+      gpsBtn.title = gpsOn ? 'Desactivar GPS (Modo Aventura)' : 'Activar GPS (Modo Casa)';
+      document.getElementById('paradas-window').style.display = gpsOn ? 'none' : 'flex';
+
+      // Mensajes de cambio de modo a padre e hijos
+      window.parent.postMessage({
+        type: 'GPS_STATE_CHANGE',
+        gpsOn: gpsOn,
+        origen: 'hijo5-casa',
+        modo: gpsOn ? 'aventura' : 'casa',
+        timestamp: Date.now()
+      }, '*');
+  
+      // Mensaje específico para hijo2
+      window.parent.postMessage({
+        type: 'mensaje-para-hijo2',
+        origen: 'hijo5-casa',
+        mensaje: {
+          type: 'GPS_STATE_CHANGE',
+          gpsOn: gpsOn,
+          modo: gpsOn ? 'aventura' : 'casa'
         }
-        
-        // Función para formatear el tiempo
-        function formatTime(seconds) {
-            if (isNaN(seconds)) return '0:00';
-            const minutes = Math.floor(seconds / 60);
-            const secs = Math.floor(seconds % 60);
-            return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
+      }, '*');
+      window.parent.postMessage({
+        type: 'mensaje-para-hijo3',
+        origen: 'hijo5-casa',
+        mensaje: {
+          type: 'cambioModo',
+          modo: gpsOn ? 'aventura' : 'casa'
         }
-        
-        // Función para enviar mensajes al padre
-        function enviarAlPadre(mensaje) {
-            window.parent.postMessage(mensaje, '*');
+      }, '*');
+      window.parent.postMessage({
+        type: 'mensaje-para-hijo4',
+        origen: 'hijo5-casa',
+        mensaje: {
+          type: 'cambioModo',
+          modo: gpsOn ? 'aventura' : 'casa'
         }
-    </script>
+      }, '*');
+
+      // Persistencia en localStorage
+      try {
+        localStorage.setItem('gpsState', JSON.stringify(gpsOn));
+      } catch (e) {}
+      // GPS real
+      if (gpsOn) {
+        if (watchId !== null) {
+          navigator.geolocation.clearWatch(watchId);
+          watchId = null;
+        }
+        if ('geolocation' in navigator) {
+          watchId = navigator.geolocation.watchPosition(
+            (position) => {
+              window.parent.postMessage({
+                type: 'GPS_POSITION',
+                coords: position.coords,
+                timestamp: position.timestamp,
+                origen: 'hijo5-casa'
+              }, '*');
+            },
+            (error) => {},
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+          );
+        }
+      } else {
+        if (watchId !== null) {
+          navigator.geolocation.clearWatch(watchId);
+          watchId = null;
+        }
+      }
+    }
+
+    document.getElementById('gps-casa-btn').onclick = function() {
+      gpsOn = !gpsOn;
+      modoCasa = !gpsOn;
+      actualizarBotonGPS();
+      if (!gpsOn) renderParadasYTramos();
+    };
+
+    // Mensajes entrantes
+    window.addEventListener('message', function(event) {
+      const data = event.data;
+      if (!data) return;
+
+      // Si el mensaje viene del padre y es para este hijo, puede venir anidado en .mensaje
+      let tipo = data.type;
+      let payload = data;
+
+      // Si viene como mensaje-para-hijo2, extraer el mensaje real
+      if (tipo === 'mensaje-para-hijo2' && data.mensaje) {
+          tipo = data.mensaje.type;
+          payload = data.mensaje;
+      }
+
+      // Si el mensaje viene como mensaje-para-hijo3, extraer el mensaje real
+      if (tipo === 'mensaje-para-hijo3' && data.mensaje) {
+          tipo = data.mensaje.type;
+          payload = data.mensaje;
+      }
+
+      // Procesar los tipos relevantes
+      switch (tipo) {
+          case 'simularUbicacion':
+              // ...tu lógica para simular ubicación usando payload.punto y payload.modoCasa...
+              break;
+          case 'GPS_STATE_CHANGE':
+              // ...tu lógica para activar/desactivar GPS usando payload.gpsOn y payload.modo...
+              break;
+          // ...otros casos existentes...
+          default:
+              // ...existing code...
+      }
+    });
+
+    // Inicialización avanzada
+    (function init() {
+      try {
+        const savedState = localStorage.getItem('gpsState');
+        if (savedState !== null) {
+          gpsOn = JSON.parse(savedState);
+          modoCasa = !gpsOn;
+        }
+      } catch (e) {}
+      actualizarBotonGPS();
+      if (!gpsOn) renderParadasYTramos();
+      window.parent.postMessage({
+        type: 'HIJO5_LISTO',
+        origen: 'hijo5-casa',
+        gpsActivo: gpsOn,
+        timestamp: Date.now()
+      }, '*');
+    })();
+  </script>
 </body>
 </html>
