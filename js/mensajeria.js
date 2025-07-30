@@ -36,10 +36,36 @@ const TIPOS_MENSAJE = {
         DETENER: 'navegacion:detener',
         ACTUALIZAR_UBICACION: 'navegacion:actualizar_ubicacion',
         LLEGADA_PARADA: 'navegacion:llegada_parada',
-        SIGUIENTE_PUNTO: 'navegacion:siguiente_punto'
+        SIGUIENTE_PUNTO: 'navegacion:siguiente_punto',
+        CAMBIAR_PUNTO: 'navegacion:cambiar_punto',
+        SIMULAR_UBICACION: 'navegacion:simular_ubicacion',
+        CAMBIO_MODO: 'navegacion:cambio_modo'
     },
     
-    // Audio
+    // Estado
+    ESTADO: {
+        ACTUALIZAR: 'estado:actualizar',
+        SOLICITAR: 'estado:solicitar',
+        RESPONDER: 'estado:responder'
+    },
+    
+    // Multimedia
+    MULTIMEDIA: {
+        CARGAR_AUDIO: 'multimedia:cargar_audio',
+        CARGAR_VIDEO: 'multimedia:cargar_video',
+        REPRODUCIR: 'multimedia:reproducir',
+        PAUSAR: 'multimedia:pausar',
+        DETENER: 'multimedia:detener'
+    },
+    
+    // Retos
+    RETOS: {
+        MOSTRAR_RETO: 'retos:mostrar_reto',
+        RETO_COMPLETADO: 'retos:reto_completado',
+        ACTUALIZAR_PROGRESO: 'retos:actualizar_progreso'
+    },
+    
+    // Audio (mantenido por compatibilidad)
     AUDIO: {
         REPRODUCIR: 'audio:reproducir',
         PAUSAR: 'audio:pausar',
