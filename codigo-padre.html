@@ -1806,7 +1806,7 @@ function avanzarSiguientePunto() {
         }
 
         // Función para manejar los mensajes del hijo5-casa
-        function manejarMensajeHijo5(event) {
+        async function manejarMensajeHijo5(event) {
             // Verificar si el mensaje es del hijo5-casa
             const iframeHijo5 = document.getElementById('hijo5-casa');
             
@@ -1838,8 +1838,8 @@ function avanzarSiguientePunto() {
             const origen = event.origin || 'unknown-origin';
             const data = event.data || {};
             
-            // Normalizar el tipo de mensaje (aceptar tanto 'type' como 'tipo')
-            const tipoMensaje = data.type || data.tipo;
+            // Usar el tipo de mensaje directamente del sistema de mensajería
+            const tipoMensaje = data.type;
             
             console.group(`📨 PADRE [${timestamp}] - Mensaje de hijo5-casa (${origen})`);
             console.log('📦 Datos recibidos:', data);
@@ -1890,18 +1890,20 @@ function avanzarSiguientePunto() {
             };
             
             // Manejar mensajes de cambio de estado del GPS
-            if (tipoMensaje === 'GPS_STATE_CHANGE') {
-                console.log(`🔄 PADRE: Cambio de estado del GPS recibido: ${data.gpsOn ? 'ENCENDIDO' : 'APAGADO'}`);
-                const modo = data.gpsOn ? 'aventura' : 'casa';
+            if (tipoMensaje === TIPOS_MENSAJE.ESTADO.ACTUALIZAR) {
+                const gpsActivo = data.gpsOn !== undefined ? data.gpsOn : (data.modo === 'aventura');
+                const modo = data.modo || (gpsActivo ? 'aventura' : 'casa');
+                
+                console.log(`🔄 PADRE: Cambio de estado del GPS recibido: ${gpsActivo ? 'ENCENDIDO' : 'APAGADO'}, Modo: ${modo}`);
                 
                 // Actualizar estado global
-                window.actualizarEstadoGlobal({
+                await window.actualizarEstadoGlobal({
                     modo: modo,
-                    gpsActivo: data.gpsOn,
+                    gpsActivo: gpsActivo,
                     ultimaActualizacion: Date.now()
-                });
+                }, true); // Forzar sincronización
                 
-                // Actualizar estado de los iframes hijos
+                // Actualizar el estado de los iframes hijos
                 actualizarEstadoIframesHijos(modo);
                 
                 // Si el GPS se apaga, forzar la actualización de la ventana de selección
