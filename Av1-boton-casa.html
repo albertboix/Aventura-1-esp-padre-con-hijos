@@ -214,10 +214,10 @@
       debug: true
     });
 
-    // Función para enviar mensajes al padre
+    // Función para enviar mensajes al padre usando el sistema de mensajería
     function enviarMensajeAlPadre(tipo, datos = {}) {
       const mensaje = crearMensaje(tipo, datos, 'padre');
-      window.parent.postMessage(mensaje, '*');
+      mensajeria.enviarMensaje('padre', tipo, datos);
     }
     let watchId = null;
 
@@ -418,9 +418,23 @@
         if ('geolocation' in navigator) {
           watchId = navigator.geolocation.watchPosition(
             (position) => {
+              // Extraer solo las propiedades necesarias del objeto coords
+              const { latitude, longitude, accuracy, altitude, altitudeAccuracy, heading, speed } = position.coords;
+              
+              // Crear un objeto plano con solo los datos necesarios
+              const coordsData = {
+                latitude,
+                longitude,
+                accuracy,
+                altitude: altitude || null,
+                altitudeAccuracy: altitudeAccuracy || null,
+                heading: heading || null,
+                speed: speed || null
+              };
+              
               window.parent.postMessage({
                 type: 'GPS_POSITION',
-                coords: position.coords,
+                coords: coordsData,
                 timestamp: position.timestamp,
                 origen: 'hijo5-casa'
               }, '*');
@@ -438,16 +452,28 @@
     }
 
     // Manejar clic en el botón GPS
-    document.getElementById('gps-casa-btn').onclick = function() {
+    document.getElementById('gps-casa-btn').addEventListener('click', () => {
       gpsOn = !gpsOn;
       modoCasa = !gpsOn;
       actualizarBotonGPS();
       
-      // Notificar al padre del cambio de estado
-      enviarMensajeAlPadre('cambioEstadoGPS', { gpsActivo: gpsOn });
+      // Enviar mensaje al padre usando el sistema de mensajería
+      enviarMensajeAlPadre(TIPOS_MENSAJE.ESTADO.ACTUALIZAR, { 
+        gpsOn,
+        modo: gpsOn ? 'aventura' : 'casa'
+      });
       
-      if (!gpsOn) renderParadasYTramos();
-    };
+      // Guardar estado en localStorage
+      localStorage.setItem('gpsState', gpsOn);
+      
+      // Mostrar/ocultar ventana de paradas
+      const paradasWindow = document.getElementById('paradas-window');
+      if (gpsOn) {
+        paradasWindow.style.display = 'none';
+      } else {
+        paradasWindow.style.display = 'flex';
+      }
+    });
 
     // Manejador de mensajes entrantes
     window.addEventListener('message', function(event) {
