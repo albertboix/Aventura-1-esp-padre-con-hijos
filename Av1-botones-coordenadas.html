@@ -2813,7 +2813,109 @@
         // ID del iframe para verificación
         const IFRAME_ID = 'hijo2';
         
+        // Función para actualizar el estado de los botones según el modo
+        function actualizarEstadoBotonesModo(modo) {
+            const esModoAventura = modo === 'aventura';
+            const btnPunto = document.getElementById('btn-punto');
+            const btnImagen = document.getElementById('btn-imagen');
+            const btnVideo = document.getElementById('btn-video');
+            
+            // Actualizar estado de los botones según el modo
+            if (esModoAventura) {
+                btnPunto?.classList.remove('disabled');
+                btnPunto?.removeAttribute('disabled');
+                btnPunto?.setAttribute('title', 'Activar/desactivar seguimiento de ubicación');
+                
+                // Si el GPS no está activo, deshabilitar botones de imagen y video
+                if (!ubicacionActual) {
+                    btnImagen?.classList.add('disabled');
+                    btnImagen?.setAttribute('disabled', 'true');
+                    btnVideo?.classList.add('disabled');
+                    btnVideo?.setAttribute('disabled', 'true');
+                }
+            } else {
+                // Modo casa - deshabilitar botón de punto
+                btnPunto?.classList.add('disabled');
+                btnPunto?.setAttribute('disabled', 'true');
+                btnPunto?.setAttribute('title', 'Seguimiento de ubicación desactivado en modo casa');
+                
+                // Habilitar botones de imagen y video si hay una parada actual
+                if (paradaActual > 0) {
+                    btnImagen?.classList.remove('disabled');
+                    btnImagen?.removeAttribute('disabled');
+                    btnVideo?.classList.remove('disabled');
+                    btnVideo?.removeAttribute('disabled');
+                }
+            }
+            
+            console.log(`🔄 Botones actualizados para modo: ${modo} (GPS: ${ubicacionActual ? 'activo' : 'inactivo'})`);
+        }
+        
         // ================== MANEJADORES DE MENSAJES ==================
+        
+        // Manejar mensaje de cambio de modo (casa/aventura)
+        Mensajes.registrarManejador('cambioModo', (mensaje) => {
+            const { modo, gpsActivo } = mensaje.datos || {};
+            console.log(`🔄 Recibido cambio de modo: ${modo}, GPS activo: ${gpsActivo}`);
+            
+            // Actualizar estado interno
+            modoCasa = modo === 'casa';
+            
+            // Actualizar botones según el modo
+            actualizarEstadoBotonesModo(modo);
+            
+            // Si es modo aventura y el GPS está activo, asegurarse de que el botón de ubicación esté activo
+            if (modo === 'aventura' && gpsActivo) {
+                const btnPunto = document.getElementById('btn-punto');
+                if (btnPunto) {
+                    btnPunto.classList.remove('disabled');
+                    btnPunto.removeAttribute('disabled');
+                    btnPunto.setAttribute('title', 'Seguimiento de ubicación activo');
+                }
+            }
+        });
+        
+        // Manejar mensaje de bloqueo/desbloqueo de controles
+        Mensajes.registrarManejador('bloquearControles', (mensaje) => {
+            const { bloquear } = mensaje.datos || {};
+            console.log(`🔒 ${bloquear ? 'Bloqueando' : 'Desbloqueando'} controles`);
+            
+            const controles = [
+                'btn-punto', 'btn-imagen', 'btn-video', 'btn-ruta', 'btn-brujula'
+            ];
+            
+            controles.forEach(id => {
+                const control = document.getElementById(id);
+                if (control) {
+                    if (bloquear) {
+                        control.classList.add('disabled');
+                        control.setAttribute('disabled', 'true');
+                    } else {
+                        control.classList.remove('disabled');
+                        control.removeAttribute('disabled');
+                    }
+                }
+            });
+        });
+        
+        // Manejar actualización de estado del botón de ubicación
+        Mensajes.registrarManejador('actualizarEstadoBotonUbicacion', (mensaje) => {
+            const { activo } = mensaje.datos || {};
+            const btnPunto = document.getElementById('btn-punto');
+            
+            if (btnPunto) {
+                if (activo) {
+                    btnPunto.classList.remove('disabled');
+                    btnPunto.removeAttribute('disabled');
+                    btnPunto.setAttribute('title', 'Seguimiento de ubicación activo');
+                } else {
+                    btnPunto.classList.add('disabled');
+                    btnPunto.setAttribute('disabled', 'true');
+                    btnPunto.setAttribute('title', 'Seguimiento de ubicación desactivado');
+                }
+                console.log(`📍 Botón de ubicación ${activo ? 'activado' : 'desactivado'}`);
+            }
+        });
         Mensajes.registrarManejador(Mensajes.TIPOS.ACTUALIZACION_ESTADO, (mensaje) => {
             // Verificar que el mensaje sea para este iframe
             if (mensaje.para && mensaje.para !== IFRAME_ID && mensaje.para !== 'todos') {
