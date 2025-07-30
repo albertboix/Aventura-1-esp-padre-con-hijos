@@ -176,6 +176,11 @@
 </style>
 </head>
 <body>
+    <!-- Script para importar el módulo de mensajería -->
+    <script type="module">
+        import { inicializarMensajeria, TIPOS_MENSAJE, LOG_LEVELS } from './js/mensajeria.js';
+    </script>
+    
     <!-- Overlay para estado deshabilitado -->
     <div class="disabled-overlay">
         <div>
@@ -428,7 +433,7 @@ const retosAventura1Es = [
     reto: 24,
     id: "R-24",
     tipo: "opcion-multiple",
-    pregunta: "24. ¿Qué sostiene la virgen en su mano?",
+    pregunta: "24. ¿Qué sostiene la virgen en sus manos?",
     opciones: ["Un Rosario", "Un niño", "Una corona"],
     correctas: ["Un Rosario", "Un niño"],
     multiple: true
@@ -640,8 +645,7 @@ function renderizarReto(retoIndex) {
         retoContenidoDiv.appendChild(inputTexto);
         setTimeout(() => inputTexto.focus(), 200);
     }
-    // Notificar al padre que el reto ha sido renderizado
-    enviarAlPadre({ type: "reto-renderizado", index: currentRetoIndex });
+    // No notificamos al padre aún, esperamos a que el usuario haga clic en Continuar
     console.log(`🧩 HIJO 4: Reto ${retoIndex + 1} renderizado`);
 }
 
@@ -703,8 +707,12 @@ btnMostrarRespuesta.addEventListener("click", () => {
         divRespuestaCorrecta.textContent = "Puede continuar con la aventura.";
     }
     divRespuestaCorrecta.style.display = "block";
-    enviarAlPadre({ type: "reto-respuesta-mostrada", index: currentRetoIndex });
     btnEnviar.disabled = true;
+    
+    // Mostrar el botón de continuar si no está visible
+    if (btnContinueReto.style.display === "none") {
+        btnContinueReto.style.display = "inline-block";
+    }
 });
 
 // --- BOTÓN CONTINÚE SU RETO ---
@@ -712,8 +720,15 @@ btnContinueReto.addEventListener("click", () => {
     if (retosDisabled) return;
     
     btnContinueReto.style.display = "none";
-    enviarAlPadre({ type: "reto-interactivo-completado", index: currentRetoIndex });
-    // Oculta el iframe automáticamente (el padre debe recibir el mensaje y avanzar)
+    
+    // Notificar al padre que el reto se ha completado
+    enviarAlPadre({ 
+        type: "retoCompletado",
+        retoId: retosAventura1Es[currentRetoIndex].id || `R-${currentRetoIndex + 1}`,
+        index: currentRetoIndex
+    });
+    
+    // Opcional: Ocultar el iframe (el padre también puede manejarlo)
     window.setTimeout(() => {
         if (window.frameElement) window.frameElement.style.display = 'none';
     }, 100);
@@ -751,6 +766,22 @@ window.addEventListener("message", (event) => {
             renderizarReto(event.data.index);
         }
         
+        // Mostrar puzzle específico
+        if (event.data.type === 'mostrarPuzzle' && event.data.puzzleId) {
+            console.log(`🧩 HIJO 4: Recibido mensaje para mostrar puzzle ${event.data.puzzleId} del reto ${event.data.retoId}`);
+            
+            // Aquí iría la lógica para cargar y mostrar el puzzle específico
+            // Por ahora, simulamos que se muestra el puzzle
+            console.log(`🔍 HIJO 4: Mostrando puzzle ${event.data.puzzleId}...`);
+            
+            // Notificar al padre que el puzzle se ha mostrado
+            enviarAlPadre({
+                type: 'puzzleMostrado',
+                puzzleId: event.data.puzzleId,
+                retoId: event.data.retoId
+            });
+        }
+        
         // Puedes añadir aquí otros tipos de mensajes si el padre los necesita
     }
 });
@@ -762,13 +793,9 @@ window.addEventListener("DOMContentLoaded", () => {
     // Empezar con retos deshabilitados (modo aventura)
     disableRetos();
     
+    // Solo enviamos un mensaje de que el hijo está listo
     enviarAlPadre({ type: "reto-hijo-listo" });
     console.log('🧩 HIJO 4: Retos inicializados - deshabilitados por defecto (modo aventura)');
-    
-    // Notificar al padre que el hijo 4 está listo
-    enviarAlPadre({ 
-        type: 'hijo4Ready' 
-    });
 });
 </script>
 </body>
