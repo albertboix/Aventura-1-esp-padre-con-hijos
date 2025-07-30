@@ -2819,35 +2819,78 @@
         function actualizarEstadoBotonesModo(modo) {
             const esModoAventura = modo === 'aventura';
             const btnPunto = document.getElementById('btn-punto');
+            const btnRuta = document.getElementById('btn-ruta');
+            const btnBrujula = document.getElementById('btn-brujula');
+            const btnGps = document.getElementById('btn-gps');
             const btnImagen = document.getElementById('btn-imagen');
             const btnVideo = document.getElementById('btn-video');
             
-            // Actualizar estado de los botones según el modo
             if (esModoAventura) {
-                btnPunto?.classList.remove('disabled');
-                btnPunto?.removeAttribute('disabled');
-                btnPunto?.setAttribute('title', 'Activar/desactivar seguimiento de ubicación');
-                
-                // Si el GPS no está activo, deshabilitar botones de imagen y video
-                if (!ubicacionActual) {
-                    btnImagen?.classList.add('disabled');
-                    btnImagen?.setAttribute('disabled', 'true');
-                    btnVideo?.classList.add('disabled');
-                    btnVideo?.setAttribute('disabled', 'true');
+                // Modo Aventura (GPS ON)
+                // Botón Punto: Verde y activo
+                if (btnPunto) {
+                    btnPunto.classList.remove('disabled');
+                    btnPunto.classList.add('active');
+                    btnPunto.style.backgroundColor = '#4CAF50'; // Verde
+                    btnPunto.removeAttribute('disabled');
+                    btnPunto.title = 'Punto de interés (activo)';
                 }
+                
+                // Botones de navegación: Siempre activos
+                [btnRuta, btnBrujula].forEach(btn => {
+                    if (btn) {
+                        btn.classList.remove('disabled');
+                        btn.removeAttribute('disabled');
+                    }
+                });
+                
+                // Botón GPS: Rojo y activo
+                if (btnGps) {
+                    btnGps.classList.remove('disabled');
+                    btnGps.classList.add('active');
+                    btnGps.style.backgroundColor = '#f44336'; // Rojo
+                    btnGps.removeAttribute('disabled');
+                }
+                
+                // Botones de imagen y video: Dependen del estado del GPS
+                [btnImagen, btnVideo].forEach(btn => {
+                    if (btn) {
+                        if (ubicacionActual) {
+                            btn.classList.remove('disabled');
+                            btn.removeAttribute('disabled');
+                        } else {
+                            btn.classList.add('disabled');
+                            btn.setAttribute('disabled', 'true');
+                        }
+                    }
+                });
             } else {
-                // Modo casa - deshabilitar botón de punto
-                btnPunto?.classList.add('disabled');
-                btnPunto?.setAttribute('disabled', 'true');
-                btnPunto?.setAttribute('title', 'Seguimiento de ubicación desactivado en modo casa');
-                
-                // Habilitar botones de imagen y video si hay una parada actual
-                if (paradaActual > 0) {
-                    btnImagen?.classList.remove('disabled');
-                    btnImagen?.removeAttribute('disabled');
-                    btnVideo?.classList.remove('disabled');
-                    btnVideo?.removeAttribute('disabled');
+                // Modo Casa (GPS OFF)
+                // Botón Punto: Rojo y bloqueado
+                if (btnPunto) {
+                    btnPunto.classList.add('disabled');
+                    btnPunto.style.backgroundColor = '#f44336'; // Rojo
+                    btnPunto.setAttribute('disabled', 'true');
+                    btnPunto.title = 'Punto de interés (bloqueado en modo casa)';
                 }
+                
+                // Botones de navegación: Siempre activos
+                [btnRuta, btnBrujula].forEach(btn => {
+                    if (btn) {
+                        btn.classList.remove('disabled');
+                        btn.removeAttribute('disabled');
+                    }
+                });
+                
+                // Botones GPS/Imagen/Video: Verdes y desbloqueados
+                [btnGps, btnImagen, btnVideo].forEach(btn => {
+                    if (btn) {
+                        btn.classList.remove('disabled');
+                        btn.classList.add('active');
+                        btn.style.backgroundColor = '#4CAF50'; // Verde
+                        btn.removeAttribute('disabled');
+                    }
+                });
             }
             
             console.log(`🔄 Botones actualizados para modo: ${modo} (GPS: ${ubicacionActual ? 'activo' : 'inactivo'})`);
@@ -2855,228 +2898,320 @@
         
         // ================== MANEJADORES DE MENSAJES ==================
         
-        // Manejar mensaje de cambio de modo (casa/aventura)
-        Mensajes.registrarManejador('cambioModo', (mensaje) => {
-            const { modo, gpsActivo } = mensaje.datos || {};
-            console.log(`🔄 Recibido cambio de modo: ${modo}, GPS activo: ${gpsActivo}`);
-            
-            // Actualizar estado interno
-            modoCasa = modo === 'casa';
-            
-            // Actualizar botones según el modo
-            actualizarEstadoBotonesModo(modo);
-            
-            // Si es modo aventura y el GPS está activo, asegurarse de que el botón de ubicación esté activo
-            if (modo === 'aventura' && gpsActivo) {
-                const btnPunto = document.getElementById('btn-punto');
-                if (btnPunto) {
-                    btnPunto.classList.remove('disabled');
-                    btnPunto.removeAttribute('disabled');
-                    btnPunto.setAttribute('title', 'Seguimiento de ubicación activo');
-                }
-            }
-        });
+        // Inicializar el sistema de mensajería
+        let mensajeria;
         
-        // Manejar mensaje de bloqueo/desbloqueo de controles
-        Mensajes.registrarManejador('bloquearControles', (mensaje) => {
-            const { bloquear } = mensaje.datos || {};
-            console.log(`🔒 ${bloquear ? 'Bloqueando' : 'Desbloqueando'} controles`);
-            
-            const controles = [
-                'btn-punto', 'btn-imagen', 'btn-video', 'btn-ruta', 'btn-brujula'
-            ];
-            
-            controles.forEach(id => {
-                const control = document.getElementById(id);
-                if (control) {
-                    if (bloquear) {
-                        control.classList.add('disabled');
-                        control.setAttribute('disabled', 'true');
+        // Configurar manejadores de mensajes cuando el módulo esté listo
+        async function configurarMensajeria() {
+            try {
+                // Inicializar mensajería
+                mensajeria = await import('./mensajeria.js');
+                mensajeria.inicializarMensajeria({
+                    iframeId: 'hijo2',
+                    logLevel: mensajeria.LOG_LEVELS.DEBUG,
+                    debug: true
+                });
+                
+                // Manejar mensaje de cambio de modo (casa/aventura)
+                mensajeria.registrarManejador(mensajeria.TIPOS_MENSAJE.NAVEGACION.CAMBIO_MODO, (mensaje) => {
+                    const { modo, gpsActivo } = mensaje.datos || {};
+                    console.log(`🔄 [mensajeria] Recibido cambio de modo: ${modo}, GPS activo: ${gpsActivo}`);
+                    
+                    // Actualizar estado interno
+                    modoCasa = modo === 'casa';
+                    
+                    // Actualizar botones según el modo
+                    actualizarEstadoBotonesModo(modo);
+                    
+                    // Si es modo aventura y el GPS está activo, asegurarse de que el botón de ubicación esté activo
+                    if (modo === 'aventura' && gpsActivo) {
+                        const btnPunto = document.getElementById('btn-punto');
+                        if (btnPunto) {
+                            btnPunto.classList.remove('disabled');
+                            btnPunto.removeAttribute('disabled');
+                            btnPunto.setAttribute('title', 'Seguimiento de ubicación activo');
+                        }
+                    }
+                });
+                
+                // Manejar mensaje de bloqueo/desbloqueo de controles
+                mensajeria.registrarManejador(mensajeria.TIPOS_MENSAJE.SISTEMA.BLOQUEAR_CONTROLES, (mensaje) => {
+                    const { bloquear } = mensaje.datos || {};
+                    console.log(`🔒 [mensajeria] ${bloquear ? 'Bloqueando' : 'Desbloqueando'} controles`);
+                    
+                    const controles = [
+                        'btn-punto', 'btn-imagen', 'btn-video', 'btn-ruta', 'btn-brujula'
+                    ];
+                    
+                    controles.forEach(id => {
+                        const control = document.getElementById(id);
+                        if (control) {
+                            if (bloquear) {
+                                control.classList.add('disabled');
+                                control.setAttribute('disabled', 'true');
+                            } else {
+                                control.classList.remove('disabled');
+                                control.removeAttribute('disabled');
+                            }
+                        }
+                    });
+                });
+                
+                // Manejar actualización de estado del botón de ubicación
+                mensajeria.registrarManejador(mensajeria.TIPOS_MENSAJE.NAVEGACION.ACTUALIZAR_UBICACION, (mensaje) => {
+                    const { activo } = mensaje.datos || {};
+                    const btnPunto = document.getElementById('btn-punto');
+                    
+                    if (btnPunto) {
+                        if (activo) {
+                            btnPunto.classList.remove('disabled');
+                            btnPunto.removeAttribute('disabled');
+                            btnPunto.setAttribute('title', 'Seguimiento de ubicación activo');
+                        } else {
+                            btnPunto.classList.add('disabled');
+                            btnPunto.setAttribute('disabled', 'true');
+                            btnPunto.setAttribute('title', 'Seguimiento de ubicación desactivado');
+                        }
+                        console.log(`📍 [mensajeria] Botón de ubicación ${activo ? 'activado' : 'desactivado'}`);
+                    }
+                });
+                
+                // Manejador para actualizaciones de estado
+                mensajeria.registrarManejador(mensajeria.TIPOS_MENSAJE.ESTADO.ACTUALIZAR, (mensaje) => {
+                    // Verificar que el mensaje sea para este iframe
+                    if (mensaje.para && mensaje.para !== 'hijo2' && mensaje.para !== 'todos') {
+                        return; // No es para este iframe
+                    }
+                    // Manejar actualizaciones de estado del padre
+                    if (mensaje.datos.estado) {
+                        manejarSincronizacionEstado(mensaje.datos.estado);
+                    }
+                });
+
+                // Manejador para sincronización de brújula
+                mensajeria.registrarManejador(mensajeria.TIPOS_MENSAJE.NAVEGACION.ACTUALIZAR_BRUJULA, (mensaje) => {
+                    if (typeof mensaje.datos.activada === 'boolean') {
+                        sincronizarEstadoBrujula(mensaje.datos.activada);
+                    }
+                });
+
+                // Manejador para el estado del GPS
+                mensajeria.registrarManejador(mensajeria.TIPOS_MENSAJE.NAVEGACION.ACTUALIZAR_UBICACION, (mensaje) => {
+                    if (mensaje.datos.gpsOn !== undefined) {
+                        console.log('[mensajeria] Estado del GPS recibido:', mensaje.datos.gpsOn ? 'ACTIVADO' : 'DESACTIVADO');
+                        
+                        // Obtener referencias a los botones
+                        const btnGps = document.getElementById('btn-gps');
+                        const btnImagen = document.getElementById('btn-imagen');
+                        const btnVideo = document.getElementById('btn-video');
+                        const btnPunto = document.getElementById('btn-punto');
+                        
+                        // Verificar que los botones existan
+                        if (!btnGps || !btnImagen || !btnVideo || !btnPunto) {
+                            console.error('[mensajeria] No se encontraron todos los botones necesarios');
+                            return;
+                        }
+                        
+                        // Actualizar el estado de los botones según el estado del GPS
+                        if (mensaje.datos.gpsOn) {
+                            // GPS ACTIVADO: Deshabilitar botones de GPS, Imagen y Video; habilitar Punto
+                            btnGps.classList.add('disabled');
+                            btnImagen.classList.add('disabled');
+                            btnVideo.classList.add('disabled');
+                            btnPunto.classList.remove('disabled');
+                            console.log('[mensajeria] Botones actualizados: GPS ON - Punto habilitado, otros deshabilitados');
+                        } else {
+                            // GPS DESACTIVADO: Habilitar botones de GPS, Imagen y Video; deshabilitar Punto
+                            btnGps.classList.remove('disabled');
+                            btnImagen.classList.remove('disabled');
+                            btnVideo.classList.remove('disabled');
+                            btnPunto.classList.add('disabled');
+                            console.log('[mensajeria] Botones actualizados: GPS OFF - Punto deshabilitado, otros habilitados');
+                        }
+                        
+                        // Actualizar el estado local
+                        modoCasa = !mensaje.datos.gpsOn; // modoCasa es true cuando el GPS está apagado
+                    }
+                });
+
+                // Manejador para mensajes específicos de hijo5-casa
+                mensajeria.registrarManejador('mensaje-para-hijo2', (mensaje) => {
+                    console.log('📨 [mensajeria] Mensaje específico para este hijo:', mensaje);
+                    
+                    // Si el mensaje tiene un campo 'datos', es el nuevo formato
+                    if (mensaje.datos) {
+                        manejarMensajeEspecifico(mensaje.datos.tipo, mensaje.datos);
                     } else {
-                        control.classList.remove('disabled');
-                        control.removeAttribute('disabled');
+                        // Formato antiguo (legacy)
+                        manejarMensajeLegacy(mensaje.tipo, mensaje);
                     }
-                }
-            });
-        });
-        
-        // Manejar actualización de estado del botón de ubicación
-        Mensajes.registrarManejador('actualizarEstadoBotonUbicacion', (mensaje) => {
-            const { activo } = mensaje.datos || {};
-            const btnPunto = document.getElementById('btn-punto');
-            
-            if (btnPunto) {
-                if (activo) {
-                    btnPunto.classList.remove('disabled');
-                    btnPunto.removeAttribute('disabled');
-                    btnPunto.setAttribute('title', 'Seguimiento de ubicación activo');
-                } else {
-                    btnPunto.classList.add('disabled');
-                    btnPunto.setAttribute('disabled', 'true');
-                    btnPunto.setAttribute('title', 'Seguimiento de ubicación desactivado');
-                }
-                console.log(`📍 Botón de ubicación ${activo ? 'activado' : 'desactivado'}`);
-            }
-        });
-        Mensajes.registrarManejador(Mensajes.TIPOS.ACTUALIZACION_ESTADO, (mensaje) => {
-            // Verificar que el mensaje sea para este iframe
-            if (mensaje.para && mensaje.para !== IFRAME_ID && mensaje.para !== 'todos') {
-                return; // No es para este iframe
-            }
-            // Manejar actualizaciones de estado del padre
-            if (mensaje.datos.estado) {
-                manejarSincronizacionEstado(mensaje.datos.estado);
-            }
-        });
-
-        // Manejador para mensajes de sincronización de estado (compatibilidad)
-        Mensajes.registrarManejador(Mensajes.TIPOS.SINCRONIZAR_ESTADO, (mensaje) => {
-            if (mensaje.estado) {
-                manejarSincronizacionEstado(mensaje.estado);
-            }
-        });
-
-        // Manejador para sincronización de brújula
-        Mensajes.registrarManejador(Mensajes.TIPOS.SINCRONIZAR_BRUJULA, (mensaje) => {
-            if (typeof mensaje.activada === 'boolean') {
-                sincronizarEstadoBrujula(mensaje.activada);
-            }
-        });
-
-        // Manejador para el estado del GPS
-        Mensajes.registrarManejador('GPS_STATE_CHANGE', (mensaje) => {
-            console.log('Estado del GPS recibido en hijo2:', mensaje.gpsOn ? 'ACTIVADO' : 'DESACTIVADO');
-            
-            // Obtener referencias a los botones
-            const btnGps = document.getElementById('btn-gps');
-            const btnImagen = document.getElementById('btn-imagen');
-            const btnVideo = document.getElementById('btn-video');
-            const btnPunto = document.getElementById('btn-punto');
-            
-            // Verificar que los botones existan
-            if (!btnGps || !btnImagen || !btnVideo || !btnPunto) {
-                console.error('No se encontraron todos los botones necesarios');
-                return;
-            }
-            
-            // Actualizar el estado de los botones según el estado del GPS
-            if (mensaje.gpsOn) {
-                // GPS ACTIVADO: Deshabilitar botones de GPS, Imagen y Video; habilitar Punto
-                btnGps.classList.add('disabled');
-                btnImagen.classList.add('disabled');
-                btnVideo.classList.add('disabled');
-                btnPunto.classList.remove('disabled');
-                console.log('Botones actualizados: GPS ON - Punto habilitado, otros deshabilitados');
-            } else {
-                // GPS DESACTIVADO: Habilitar botones de GPS, Imagen y Video; deshabilitar Punto
-                btnGps.classList.remove('disabled');
-                btnImagen.classList.remove('disabled');
-                btnVideo.classList.remove('disabled');
-                btnPunto.classList.add('disabled');
-                console.log('Botones actualizados: GPS OFF - Punto deshabilitado, otros habilitados');
-            }
-            
-            // Actualizar el estado local
-            modoCasa = !mensaje.gpsOn; // modoCasa es true cuando el GPS está apagado
-        });
-
-        // Manejador para mensajes específicos de hijo5-casa
-        Mensajes.registrarManejador('mensaje-para-hijo2', (mensaje) => {
-            console.log('📨 HIJO 2: Mensaje específico para este hijo:', mensaje);
-            
-            // Si el mensaje tiene un campo 'datos', es el nuevo formato
-            if (mensaje.datos) {
-                manejarMensajeEspecifico(mensaje.datos.tipo, mensaje.datos);
-            } else {
-                // Formato antiguo (legacy)
-                manejarMensajeLegacy(mensaje.tipo, mensaje);
-            }
-        });
-        
-        // Manejador para acciones del padre
-        Mensajes.registrarManejador(Mensajes.TIPOS.ACCION, (mensaje) => {
-            const { accion, datos } = mensaje.datos || {};
-            
-            switch(accion) {
-                case 'iniciar-estado-inicial':
-                    iniciarEstadoInicial();
-                    break;
+                });
+                
+                // Manejador para acciones del padre
+                mensajeria.registrarManejador(mensajeria.TIPOS_MENSAJE.NAVEGACION.ACCION, (mensaje) => {
+                    const { accion, datos } = mensaje.datos || {};
                     
-                case 'iniciar-navegacion':
-                    iniciarNavegacionAProximaParada();
-                    break;
-                    
-                case 'cambiar-modo':
-                    if (datos?.modo === 'casa') {
-                        activarModoCasa();
-                    } else if (datos?.modo === 'aventura') {
-                        activarModoAventura();
+                    switch(accion) {
+                        case 'iniciar-estado-inicial':
+                            iniciarEstadoInicial();
+                            break;
+                            
+                        case 'iniciar-navegacion':
+                            iniciarNavegacionAProximaParada();
+                            break;
+                            
+                        case 'cambiar-modo':
+                            if (datos?.modo === 'casa') {
+                                activarModoCasa();
+                            } else if (datos?.modo === 'aventura') {
+                                activarModoAventura();
+                            }
+                            break;
+                            
+                        case 'actualizar-parada-destino':
+                            if (datos?.parada) {
+                                paradaDestino = datos.parada;
+                                estadoNavegacion.actualizar({ paradaActual: paradaDestino });
+                                actualizarStatus(`🎯 Nuevo destino: Parada ${paradaDestino}`);
+                                
+                                // Notificar al padre del cambio de destino
+                                mensajeria.enviarMensaje(mensajeria.TIPOS_MENSAJE.ESTADO.ACTUALIZAR, {
+                                    estado: 'destino_actualizado',
+                                    paradaActual: paradaDestino
+                                });
+                            }
+                            break;
+                            
+                        case 'forzar-llegada':
+                            if (datos?.parada) {
+                                paradaActual = datos.parada;
+                                estadoNavegacion.actualizar({ 
+                                    paradaActual,
+                                    estado: 'en_parada' 
+                                });
+                                procesarLlegadaAParada();
+                                
+                                // Notificar al padre de la llegada forzada
+                                mensajeria.enviarMensaje(mensajeria.TIPOS_MENSAJE.ESTADO.ACTUALIZAR, {
+                                    estado: 'llegada_forzada',
+                                    paradaActual
+                                });
+                            }
+                            break;
+                            
+                        case 'mostrar-video-con-zoom-secuencial':
+                            if (datos?.coordenadasZoom && datos?.videoSrc) {
+                                simularZoomYVideo(
+                                    datos.coordenadasZoom,
+                                    datos.videoSrc,
+                                    datos.secuencia?.paso1?.duracion || 1000
+                                );
+                            }
+                            break;
+                            
+                        case 'mostrar-ruta-navegacion':
+                            simularZoomNavegacion(datos || {});
+                            break;
+                            
+                        default:
+                            console.warn('[mensajeria] Acción no reconocida:', accion, datos);
+                            mensajeria.enviarMensaje(mensajeria.TIPOS_MENSAJE.SISTEMA.ERROR, {
+                                codigo: 'ACCION_NO_RECONOCIDA',
+                                mensaje: `Acción no reconocida: ${accion}`,
+                                idMensajeOriginal: mensaje.id
+                            });
                     }
-                    break;
                     
-                case 'actualizar-parada-destino':
-                    if (datos?.parada) {
-                        paradaDestino = datos.parada;
-                        estadoNavegacion.actualizar({ paradaActual: paradaDestino });
-                        actualizarStatus(`🎯 Nuevo destino: Parada ${paradaDestino}`);
-                        
-                        // Notificar al padre del cambio de destino
-                        Mensajes.enviarEstado({
-                            estado: 'destino_actualizado',
-                            paradaActual: paradaDestino
-                        });
-                    }
-                    break;
-                    
-                case 'forzar-llegada':
-                    if (datos?.parada) {
-                        paradaActual = datos.parada;
-                        estadoNavegacion.actualizar({ 
-                            paradaActual,
-                            estado: 'en_parada' 
-                        });
-                        procesarLlegadaAParada();
-                        
-                        // Notificar al padre de la llegada forzada
-                        Mensajes.enviarEstado({
-                            estado: 'llegada_forzada',
-                            paradaActual
-                        });
-                    }
-                    break;
-                    
-                case 'mostrar-video-con-zoom-secuencial':
-                    if (datos?.coordenadasZoom && datos?.videoSrc) {
-                        simularZoomYVideo(
-                            datos.coordenadasZoom,
-                            datos.videoSrc,
-                            datos.secuencia?.paso1?.duracion || 1000
-                        );
-                    }
-                    break;
-                    
-                case 'mostrar-ruta-navegacion':
-                    simularZoomNavegacion(datos || {});
-                    break;
-                    
-                default:
-                    console.warn('Acción no reconocida:', accion, datos);
-                    Mensajes.enviarError('ACCION_NO_RECONOCIDA', `Acción no reconocida: ${accion}`);
+                    // Enviar confirmación de recepción
+                    mensajeria.enviarMensaje(mensajeria.TIPOS_MENSAJE.SISTEMA.CONFIRMACION, {
+                        idMensajeOriginal: mensaje.id,
+                        accion: accion
+                    });
+                });
+                
+                console.log('[mensajeria] Manejadores configurados correctamente');
+            } catch (error) {
+                console.error('[mensajeria] Error al configurar los manejadores:', error);
             }
-            
-            // Enviar confirmación de recepción
-            Mensajes.enviarConfirmacion(mensaje.id, { accion });
-        });
+        }
 
         // Inicialización
         document.addEventListener('DOMContentLoaded', () => {
-            // Iniciar en estado inicial por defecto
-            iniciarEstadoInicial();
-            
-            totalTimeSpan.textContent = formatTime(totalTripTime);
-            resetTripProgress();
+            // Configurar la mensajería
+            configurarMensajeria().then(() => {
+                // Iniciar en estado inicial por defecto
+                iniciarEstadoInicial();
+                
+                // Inicializar la barra de progreso
+                totalTimeSpan.textContent = formatTime(totalTripTime);
+                resetTripProgress();
+                
+                console.log('[mensajeria] Aplicación inicializada correctamente');
+            }).catch(error => {
+                console.error('[mensajeria] Error al inicializar la aplicación:', error);
+            });
         });
-
     </script>
 </body>
+</html>
+                                        paradaActual
+                                    });
+                                }
+                                break;
+                        
+                            case 'mostrar-video-con-zoom-secuencial':
+                                if (datos?.coordenadasZoom && datos?.videoSrc) {
+                                    simularZoomYVideo(
+                                        datos.coordenadasZoom,
+                                        datos.videoSrc,
+                                        datos.secuencia?.paso1?.duracion || 1000
+                                    );
+                                }
+                                break;
+                                
+                            case 'mostrar-ruta-navegacion':
+                                simularZoomNavegacion(datos || {});
+                                break;
+                                
+                            default:
+                                console.warn('[mensajeria] Acción no reconocida:', accion, datos);
+                                mensajeria.enviarMensaje(mensajeria.TIPOS_MENSAJE.SISTEMA.ERROR, {
+                                    codigo: 'ACCION_NO_RECONOCIDA',
+                                    mensaje: `Acción no reconocida: ${accion}`,
+                                    idMensajeOriginal: mensaje.id
+                                });
+                        }
+                        
+                        // Enviar confirmación de recepción
+                        mensajeria.enviarMensaje(mensajeria.TIPOS_MENSAJE.SISTEMA.CONFIRMACION, {
+                            idMensajeOriginal: mensaje.id,
+                            accion: accion
+                        });
+                    });
+                    
+                    console.log('[mensajeria] Manejadores configurados correctamente');
+                } catch (error) {
+                    console.error('[mensajeria] Error al configurar los manejadores:', error);
+                }
+            }
+
+            // Inicialización
+            document.addEventListener('DOMContentLoaded', () => {
+                // Configurar la mensajería
+                configurarMensajeria().then(() => {
+                    // Iniciar en estado inicial por defecto
+                    iniciarEstadoInicial();
+                    
+                    // Inicializar la barra de progreso
+                    totalTimeSpan.textContent = formatTime(totalTripTime);
+                    resetTripProgress();
+                    
+                    console.log('[mensajeria] Aplicación inicializada correctamente');
+                }).catch(error => {
+                    console.error('[mensajeria] Error al inicializar la aplicación:', error);
+                });
+            });
+
+        </script>
+    </body>
 </html>
