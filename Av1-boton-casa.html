@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>GPS Casa ON/OFF</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <script src="js/mensajeria.js" type="module"></script>
   <style>
     /* Contenedor principal */
     #zona-boton-casa {
@@ -197,12 +198,27 @@
       <div id="paradas-list"></div>
     </div>
   </div>
-  <script>
+  <script type="module">
+    import { TIPOS_MENSAJE, LOG_LEVELS, inicializarMensajeria, crearMensaje } from './js/mensajeria.js';
+
     // Estado y arrays
     let gpsOn = true;
     let modoCasa = !gpsOn;
     let paradaActual = -1;
     let tramoActual = -1;
+    
+    // Inicializar el sistema de mensajería
+    const mensajeria = await inicializarMensajeria({
+      iframeId: 'hijo5-casa',
+      logLevel: LOG_LEVELS.DEBUG,
+      debug: true
+    });
+
+    // Función para enviar mensajes al padre
+    function enviarMensajeAlPadre(tipo, datos = {}) {
+      const mensaje = crearMensaje(tipo, datos, 'padre');
+      window.parent.postMessage(mensaje, '*');
+    }
     let watchId = null;
 
     // Array completo de paradas y tramos
@@ -421,61 +437,82 @@
       }
     }
 
+    // Manejar clic en el botón GPS
     document.getElementById('gps-casa-btn').onclick = function() {
       gpsOn = !gpsOn;
       modoCasa = !gpsOn;
       actualizarBotonGPS();
+      
+      // Notificar al padre del cambio de estado
+      enviarMensajeAlPadre('cambioEstadoGPS', { gpsActivo: gpsOn });
+      
       if (!gpsOn) renderParadasYTramos();
     };
 
-    // Mensajes entrantes
+    // Manejador de mensajes entrantes
     window.addEventListener('message', function(event) {
-      const data = event.data;
-      if (!data) return;
-      if (data.type === 'cambiarParada' && typeof data.parada === 'number') {
-        paradaActual = data.parada;
-        tramoActual = -1;
-        renderParadasYTramos();
-      }
-      if (data.type === 'cambiarTramo' && typeof data.tramo === 'number') {
-        tramoActual = data.tramo;
-        paradaActual = -1;
-        renderParadasYTramos();
-      }
-      if (data.type === 'SET_GPS_STATE') {
-        gpsOn = !!data.gpsOn;
-        modoCasa = !gpsOn;
-        actualizarBotonGPS();
-        if (!gpsOn) renderParadasYTramos();
-      }
-      // Sincronización avanzada
-      if (data.type === 'sincronizarEstado' && data.estado) {
-        gpsOn = data.estado.modo === 'aventura';
-        modoCasa = !gpsOn;
-        paradaActual = data.estado.puntoActual && data.estado.puntoActual.tipo === 'parada' ? data.estado.puntoActual.numero : -1;
-        tramoActual = data.estado.puntoActual && data.estado.puntoActual.tipo === 'tramo' ? data.estado.puntoActual.numero : -1;
-        actualizarBotonGPS();
-        if (!gpsOn) renderParadasYTramos();
+      const { data } = event;
+      if (!data || !data.tipo) return;
+
+      switch(data.tipo) {
+        case 'cambiarParada':
+          if (typeof data.datos.parada === 'number') {
+            paradaActual = data.datos.parada;
+            tramoActual = -1;
+            renderParadasYTramos();
+          }
+          break;
+          
+        case 'cambiarTramo':
+          if (typeof data.datos.tramo === 'number') {
+            tramoActual = data.datos.tramo;
+            paradaActual = -1;
+            renderParadasYTramos();
+          }
+          break;
+          
+        case 'sincronizarEstado':
+          if (data.datos.estado) {
+            gpsOn = data.datos.estado.modo === 'aventura';
+            modoCasa = !gpsOn;
+            paradaActual = data.datos.estado.puntoActual && 
+                         data.datos.estado.puntoActual.tipo === 'parada' ? 
+                         data.datos.estado.puntoActual.numero : -1;
+            tramoActual = data.datos.estado.puntoActual && 
+                         data.datos.estado.puntoActual.tipo === 'tramo' ? 
+                         data.datos.estado.puntoActual.numero : -1;
+            actualizarBotonGPS();
+            if (!gpsOn) renderParadasYTramos();
+          }
+          break;
       }
     });
 
-    // Inicialización avanzada
-    (function init() {
+    // Función para notificar al padre que estamos listos
+    function notificarListo() {
+      enviarMensajeAlPadre('hijo5Listo', { 
+        gpsActivo: gpsOn,
+        timestamp: Date.now()
+      });
+    }
+
+    // Inicialización
+    (async function init() {
       try {
         const savedState = localStorage.getItem('gpsState');
         if (savedState !== null) {
           gpsOn = JSON.parse(savedState);
           modoCasa = !gpsOn;
         }
-      } catch (e) {}
+      } catch (e) {
+        console.error('Error al cargar el estado guardado:', e);
+      }
+      
       actualizarBotonGPS();
       if (!gpsOn) renderParadasYTramos();
-      window.parent.postMessage({
-        type: 'HIJO5_LISTO',
-        origen: 'hijo5-casa',
-        gpsActivo: gpsOn,
-        timestamp: Date.now()
-      }, '*');
+      
+      // Notificar al padre que estamos listos
+      notificarListo();
     })();
   </script>
 </body>
