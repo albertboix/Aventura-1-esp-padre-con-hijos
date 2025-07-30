@@ -1616,31 +1616,55 @@ function avanzarSiguientePunto() {
             
             iframes.forEach(id => {
                 const iframe = document.getElementById(id);
-                if (iframe) {
-                    // Enviar mensaje de cambio de modo a cada iframe
-                    if (iframe.contentWindow) {
+                if (iframe && iframe.contentWindow) {
+                    try {
+                        // Mensaje de cambio de modo
                         iframe.contentWindow.postMessage({
                             type: 'cambioModo',
                             modo: modo,
-                            timestamp: Date.now()
+                            gpsActivo: esModoAventura,
+                            timestamp: Date.now(),
+                            origen: 'padre',
+                            destino: id
                         }, '*');
-                    }
-                    
-                    // Bloquear/desbloquear el iframe visualmente
-                    if (id === 'hijo2') {
-                        // Para el hijo2, controlar específicamente el botón btn-punto
-                        if (iframe.contentWindow) {
+                        
+                        // Mensaje específico para bloquear/desbloquear controles
+                        if (id === 'hijo2') {
                             iframe.contentWindow.postMessage({
                                 type: 'bloquearControles',
-                                bloquear: !esModoAventura, // Invertir lógica: bloquear si NO es modo aventura
+                                bloquear: !esModoAventura,
+                                timestamp: Date.now(),
+                                origen: 'padre',
+                                destino: id
+                            }, '*');
+                            
+                            // Asegurar que el botón de ubicación se actualice
+                            iframe.contentWindow.postMessage({
+                                type: 'actualizarEstadoBotonUbicacion',
+                                activo: esModoAventura,
                                 timestamp: Date.now()
                             }, '*');
                         }
+                        
+                        console.log(`✅ PADRE: Mensajes de ${modo} enviados a ${id}`);
+                    } catch (error) {
+                        console.error(`❌ PADRE: Error al actualizar estado de ${id}:`, error);
                     }
                 }
             });
             
-            console.log(`🔄 PADRE: Iframes hijos ${esModoAventura ? 'desbloqueados' : 'bloqueados'} (Modo: ${modo})`);
+            // Notificar al hijo5-casa sobre el cambio de modo
+            const hijo5 = document.getElementById('hijo5-casa');
+            if (hijo5 && hijo5.contentWindow) {
+                hijo5.contentWindow.postMessage({
+                    type: 'actualizarEstadoGPS',
+                    gpsActivo: esModoAventura,
+                    modo: modo,
+                    timestamp: Date.now()
+                }, '*');
+            }
+            
+            console.log(`🔄 PADRE: Estado de iframes actualizado a modo '${modo}'`);
         }
 
         // Función para manejar los mensajes del hijo5-casa
