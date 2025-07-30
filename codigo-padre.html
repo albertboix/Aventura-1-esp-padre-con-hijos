@@ -6,14 +6,31 @@
     <title>Aventura 1 - Padre</title>
     
     <!-- Hojas de estilo -->
-    <!-- Hojas de estilo de Leaflet -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Hojas de estilo de Leaflet (sin integridad forzada) -->
+    <link rel="stylesheet" 
+          href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+          crossorigin="" 
+          referrerpolicy="no-referrer" />
     
-    <!-- Scripts de Leaflet -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Scripts de Leaflet (sin integridad forzada) -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            crossorigin=""
+            referrerpolicy="no-referrer">
+    </script>
             
     <!-- Módulo de mensajería estandarizada -->
-    <script src="js/mensajeria.js" type="module"></script>
+    <script type="module">
+        // Importar TIPOS_MENSAJE desde el módulo de mensajería
+        import { TIPOS_MENSAJE } from './js/mensajeria.js';
+        
+        // Hacerlo disponible globalmente
+        window.TIPOS_MENSAJE = TIPOS_MENSAJE;
+        
+        // Cargar el resto del script
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('✅ Módulo de mensajería cargado correctamente');
+        });
+    </script>
     <style>
         /* Estilos base */
         html, body { 
@@ -374,26 +391,74 @@
 
         // ================== FUNCIONES DE SINCRONIZACIÓN ==================
         
+        // Asegurarse de que el estado global exista
+        if (!window.estadoGlobal) {
+            window.estadoGlobal = {
+                modo: 'aventura',
+                puntoActual: null,
+                datosCompartidos: {},
+                ultimaActualizacion: Date.now()
+            };
+        }
+        
+        /**
+         * Actualiza el estado global y sincroniza con los hijos
+         * @param {Object} actualizacion - Objeto con las propiedades a actualizar
+         * @param {boolean} [sincronizar=true] - Indica si se debe sincronizar con los hijos
+         * @returns {Promise<void>}
+         */
+        function actualizarEstadoGlobal(actualizacion, sincronizar = true) {
+            return new Promise((resolve) => {
+                try {
+                    // Actualizar el estado global
+                    Object.assign(window.estadoGlobal, actualizacion, {
+                        ultimaActualizacion: Date.now()
+                    });
+
+                    console.log('🔄 PADRE: Estado global actualizado:', window.estadoGlobal);
+
+                    // Si se debe sincronizar con los hijos
+                    if (sincronizar) {
+                        const resultado = sincronizarEstadoConHijos();
+                        console.log('📡 PADRE: Estado sincronizado con los hijos:', resultado);
+                    }
+
+                    resolve();
+                } catch (error) {
+                    console.error('❌ Error en actualizarEstadoGlobal:', error);
+                    resolve(); // Resolvemos igualmente para no romper la cadena de promesas
+                }
+            });
+        }
+        
+        // Hacer la función disponible globalmente
+        window.actualizarEstadoGlobal = actualizarEstadoGlobal;
+        
         /**
          * Sincroniza el estado global con todos los iframes hijos
          * @returns {Object} Resultado de la sincronización
          */
         function sincronizarEstadoConHijos() {
+            if (!window.estadoGlobal) {
+                console.error('❌ No se puede sincronizar: estadoGlobal no está definido');
+                return { total: 0, exitosos: 0, errores: 0, iframesConError: [] };
+            }
+            
             const timestamp = Date.now();
             const mensaje = {
                 type: 'sincronizarEstado',
                 timestamp: timestamp,
                 origen: 'padre',
                 estado: {
-                    modo: estadoGlobal.modo,
-                    puntoActual: estadoGlobal.puntoActual,
-                    datosCompartidos: estadoGlobal.datosCompartidos
+                    modo: window.estadoGlobal.modo,
+                    puntoActual: window.estadoGlobal.puntoActual,
+                    datosCompartidos: window.estadoGlobal.datosCompartidos
                 }
             };
 
             console.log(`🔄 PADRE [${new Date(timestamp).toISOString()}]: Enviando sincronización a todos los hijos`, {
-                modo: estadoGlobal.modo,
-                puntoActual: estadoGlobal.puntoActual?.id || 'ninguno',
+                modo: window.estadoGlobal.modo,
+                puntoActual: window.estadoGlobal.puntoActual?.id || 'ninguno',
                 origen: 'padre'
             });
 
