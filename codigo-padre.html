@@ -1106,41 +1106,69 @@ function enviarMensaje(destino, tipo, datos = {}) {
         let mensajeria;
         
         // Inicializar el sistema de mensajería
-        function inicializarMensajeria() {
+        async function inicializarMensajeria() {
             try {
                 // Importar el módulo de mensajería
-                import('./js/mensajeria.js')
-                    .then(module => {
-                        mensajeria = module;
-                        mensajeria.inicializarMensajeria({
-                            iframeId: 'padre',
-                            logLevel: mensajeria.LOG_LEVELS.DEBUG,
-                            debug: true
-                        });
-                        
-                        console.log('✅ Sistema de mensajería inicializado');
-                        configurarMensajeria();
-                    })
-                    .catch(error => {
-                        console.error('❌ Error al cargar el módulo de mensajería:', error);
-                        // Configurar un sistema de mensajería básico como respaldo
-                        configurarMensajeriaBasica();
-                    });
+                const module = await import('./js/mensajeria.js');
+                mensajeria = module;
+                
+                // Inicializar mensajería
+                await mensajeria.inicializarMensajeria({
+                    iframeId: 'padre',
+                    logLevel: mensajeria.LOG_LEVELS.INFO,
+                    debug: true
+                });
+                
+                console.log('✅ Sistema de mensajería inicializado');
+                configurarMensajeria();
+                iniciarMigracionSistemaMensajeria();
+                
+                return mensajeria;
             } catch (error) {
-                console.error('❌ Error al inicializar el sistema de mensajería:', error);
-                configurarMensajeriaBasica();
+                console.error('❌ Error crítico al inicializar el sistema de mensajería:', error);
+                throw error; // Propagar el error para que el llamador lo maneje
             }
+        }
+        
+        // Iniciar migración al nuevo sistema de mensajería
+        function iniciarMigracionSistemaMensajeria() {
+            console.log('🔄 Iniciando migración al sistema de mensajería unificado...');
+            
+            // Notificar a todos los iframes que deben usar mensajeria.js
+            ['hijo2', 'hijo3', 'hijo4', 'hijo5-casa'].forEach(id => {
+                const iframe = document.getElementById(id);
+                if (iframe?.contentWindow) {
+                    console.log(`📤 Enviando solicitud de migración a ${id}`);
+                    iframe.contentWindow.postMessage({
+                        tipo: 'SISTEMA.MIGRACION',
+                        requiereActualizacion: true,
+                        timestamp: Date.now()
+                    }, '*');
+                }
+            });
+            
+            // Después de 5 segundos, asumimos que los iframes se han actualizado
+            setTimeout(() => {
+                console.log('✅ Migración a mensajeria.js completada');
+            }, 5000);
         }
         
         // Configurar manejadores de mensajes con el sistema de mensajería
         function configurarMensajeria() {
             // Configurar manejador de mensajes principal
             window.addEventListener('message', function(event) {
+                // Solo procesar mensajes de orígenes conocidos
+                const origen = determinarOrigenMensaje(event.source);
+                if (!origen) {
+                    console.debug('Mensaje de origen desconocido, ignorando...');
+                    return;
+                }
+                
+                const mensaje = event.data;
+                
                 try {
-                    const mensaje = event.data;
-                    
                     // Verificar si es un mensaje del sistema de mensajería
-                    if (mensajeria && mensajeria.validarMensaje) {
+                    if (mensajeria?.validarMensaje) {
                         const validacion = mensajeria.validarMensaje(mensaje);
                         
                         if (!validacion.valido) {
@@ -1148,61 +1176,50 @@ function enviarMensaje(destino, tipo, datos = {}) {
                             return;
                         }
                         
-                        // Determinar el origen del mensaje
-                        const origen = 
-                            event.source === window.frames['hijo2']?.contentWindow ? 'hijo2' :
-                            event.source === window.frames['hijo3']?.contentWindow ? 'hijo3' :
-                            event.source === window.frames['hijo4']?.contentWindow ? 'hijo4' : 'desconocido';
-                        
                         // Registrar el mensaje recibido
-                        mensajeria.logger.log(`Mensaje recibido de ${origen} (${mensaje.tipo})`, mensaje);
+                        mensajeria.logger.log(`📥 PADRE: Mensaje de ${origen} (${mensaje.tipo})`, mensaje);
                         
                         // Delegar al manejador correspondiente
                         switch(origen) {
-                            case 'hijo2': manejarMensajeHijo2(mensaje.tipo, mensaje.datos); break;
-                            case 'hijo3': manejarMensajeHijo3(mensaje.tipo, mensaje.datos); break;
-                            case 'hijo4': manejarMensajeHijo4(mensaje.tipo, mensaje.datos); break;
+                            case 'hijo2': 
+                                manejarMensajeHijo2(mensaje.tipo, mensaje.datos); 
+                                break;
+                            case 'hijo3': 
+                                manejarMensajeHijo3(mensaje.tipo, mensaje.datos); 
+                                break;
+                            case 'hijo4': 
+                                manejarMensajeHijo4(mensaje.tipo, mensaje.datos); 
+                                break;
+                            case 'hijo5-casa':
+                                manejarMensajeHijo5(mensaje.tipo, mensaje.datos);
+                                break;
                             default:
                                 console.warn('Origen de mensaje no reconocido:', origen);
                         }
-                    } else {
-                        // Manejar mensajes del sistema antiguo
-                        const iframe = 
-                            event.source === window.frames['hijo2']?.contentWindow ? 'hijo2' :
-                            event.source === window.frames['hijo3']?.contentWindow ? 'hijo3' :
-                            event.source === window.frames['hijo4']?.contentWindow ? 'hijo4' : null;
-                        
-                        if (iframe) {
-                            console.log(`📥 PADRE: Mensaje de ${iframe.toUpperCase()} (sistema antiguo):`, mensaje);
-                            switch(iframe) {
-                                case 'hijo2': manejarMensajeHijo2(mensaje.type, mensaje); break;
-                                case 'hijo3': manejarMensajeHijo3(mensaje.type, mensaje); break;
-                                case 'hijo4': manejarMensajeHijo4(mensaje.type, mensaje); break;
-                            }
-                        }
                     }
                 } catch (error) {
-                    console.error('❌ Error al procesar mensaje:', error, event.data);
+                    console.error(`❌ Error al procesar mensaje de ${origen}:`, error, mensaje);
                 }
-            });
+            }, { capture: true });
             
             console.log('✅ Manejadores de mensajes configurados');
         }
         
-        // Sistema de mensajería básico como respaldo
-        function configurarMensajeriaBasica() {
-            console.warn('Usando sistema de mensajería básico');
-            
-            window.enviarMensaje = function(destino, tipo, datos = {}) {
-                const iframe = document.getElementById(destino);
-                if (iframe?.contentWindow) {
-                    const mensaje = { type: tipo, ...datos, timestamp: Date.now() };
-                    console.log(`📤 PADRE → ${destino.toUpperCase()}:`, tipo, datos);
-                    iframe.contentWindow.postMessage(mensaje, '*');
-                } else {
-                    console.error(`❌ PADRE: No se pudo enviar mensaje a ${destino}: iframe no disponible`);
-                }
-            };
+        // Determinar el origen de un mensaje
+        function determinarOrigenMensaje(source) {
+            if (source === window.frames['hijo2']?.contentWindow) return 'hijo2';
+            if (source === window.frames['hijo3']?.contentWindow) return 'hijo3';
+            if (source === window.frames['hijo4']?.contentWindow) return 'hijo4';
+            if (source === window.frames['hijo5-casa']?.contentWindow) return 'hijo5-casa';
+            return null;
+        }
+        
+        // Función para enviar mensajes a través de mensajeria.js
+        async function enviarMensaje(destino, tipo, datos = {}) {
+            if (!mensajeria?.enviarMensaje) {
+                throw new Error('Sistema de mensajería no inicializado');
+            }
+            return mensajeria.enviarMensaje(destino, tipo, datos);
         }
         
         // Inicializar el sistema de mensajería al cargar la página
@@ -1210,67 +1227,1162 @@ function enviarMensaje(destino, tipo, datos = {}) {
 
 // ================== MANEJADORES POR HIJO ==================
 
-function manejarMensajeHijo2(type, data) {
-    switch (type) {
-        case 'llegada-parada':
-            console.log('📍 PADRE: Llegada a parada detectada:', data.parada);
-            // El hijo2 ya maneja la lógica de navegación
-            break;
-            
-        case 'inicio-navegacion':
-            console.log('🚀 PADRE: Inicio de navegación a parada:', data.parada);
-            // Pausar audio al iniciar navegación
-            enviarMensaje('hijo3', 'pausarAudio', { motivo: 'inicio_navegacion' });
-            break;
-            
-        case 'fin-navegacion':
-            console.log('🏁 PADRE: Navegación finalizada');
-            break;
+/**
+ * Maneja los mensajes recibidos del iframe hijo2 (coordenadas)
+ * @param {string} type - Tipo de mensaje recibido
+ * @param {Object} data - Datos del mensaje
+ * @param {Object} [event=null] - Evento original (opcional)
+ * @returns {Promise<void>}
+ */
+async function manejarMensajeHijo2(type, data, event = null) {
+    const timestamp = new Date().toISOString();
+    const logPrefix = `[${timestamp}] 📡 PADRE -> Hijo2 (${type}):`;
+    
+    try {
+        // Validar datos de entrada
+        if (!type || typeof type !== 'string') {
+            console.error(`${logPrefix} Tipo de mensaje inválido:`, type);
+            return;
+        }
+
+        // Registrar recepción del mensaje
+        console.groupCollapsed(`${logPrefix} Mensaje recibido`);
+        console.log(`📋 Datos recibidos:`, data);
+        if (event) console.log(`📎 Metadata del evento:`, event);
+        console.groupEnd();
+
+        // Procesar el mensaje según su tipo
+        switch (type) {
+            case 'llegada-parada':
+                await manejarLlegadaAParada(data);
+                break;
+                
+            case 'inicio-navegacion':
+                await manejarInicioNavegacion(data);
+                break;
+                
+            case 'fin-navegacion':
+                await manejarFinNavegacion(data);
+                break;
+                
+            case 'cambioModo':
+                await manejarCambioModoHijo2(data);
+                break;
+                
+            case 'sincronizarEstado':
+                await manejarSincronizacionEstadoHijo2(data);
+                break;
+                
+            case 'error':
+                await manejarErrorHijo2(data);
+                break;
+                
+            default:
+                console.warn(`${logPrefix} Tipo de mensaje no reconocido:`, type);
+                break;
+        }
+        
+        // Confirmar recepción del mensaje
+        if (event?.data?.id) {
+            await enviarMensaje('hijo2', 'confirmacionRecepcion', {
+                idMensajeOriginal: event.data.id,
+                timestamp: Date.now(),
+                estado: 'procesado'
+            });
+        }
+    } catch (error) {
+        console.error(`${logPrefix} Error al procesar mensaje:`, error);
+        
+        // Notificar al hijo2 sobre el error
+        try {
+            await enviarMensaje('hijo2', 'error', {
+                codigo: 'ERROR_PROCESAMIENTO',
+                mensaje: error.message || 'Error al procesar el mensaje',
+                stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+                timestamp: Date.now()
+            });
+        } catch (e) {
+            console.error(`${logPrefix} Error al notificar error al hijo2:`, e);
+        }
     }
 }
 
-function manejarMensajeHijo3(type, data) {
-    switch (type) {
-        case 'audioIniciado':
-            console.log('▶️ PADRE: Audio iniciado:', data.audioId);
-            break;
-            
-        case 'audioTerminado':
-            console.log('⏹️ PADRE: Audio terminado:', data.audioId);
-            // Si es un audio de parada con retos, mostrarlos
-            const puntoActual = estadoGlobal.puntoActual;
-            if (puntoActual?.retos?.length > 0) {
-                const primerReto = puntoActual.retos[0];
-                enviarMensaje('hijo4', 'mostrarReto', { 
-                    reto: primerReto,
-                    esPrimero: true,
-                    esUltimo: puntoActual.retos.length === 1
-                });
-            } else {
-                avanzarSiguientePunto();
-            }
-            break;
+/**
+ * Maneja el evento de llegada a una parada
+ * @param {Object} data - Datos de la parada
+ * @returns {Promise<void>}
+ */
+async function manejarLlegadaAParada(data) {
+    const logPrefix = '📍 PADRE: Llegada a parada:';
+    
+    // Validar datos de la parada
+    if (!data?.parada) {
+        console.warn(`${logPrefix} Datos de parada incompletos:`, data);
+        return;
+    }
+    
+    console.log(`${logPrefix} ${data.parada.nombre || data.parada.id || 'Desconocida'}`);
+    console.debug('Detalles de la parada:', data.parada);
+    
+    // El hijo2 ya maneja la lógica de navegación
+    // Aquí podemos realizar acciones adicionales si es necesario
+    
+    // Notificar a otros componentes si es necesario
+    await actualizarEstadoGlobal({
+        ultimaAccion: 'llegada_parada',
+        paradaActual: data.parada.id,
+        timestamp: Date.now()
+    });
+}
+
+/**
+ * Maneja el inicio de la navegación
+ * @param {Object} data - Datos de la navegación
+ * @returns {Promise<void>}
+ */
+async function manejarInicioNavegacion(data) {
+    const logPrefix = '🚀 PADRE: Inicio de navegación:';
+    
+    // Validar datos de navegación
+    if (!data?.parada) {
+        console.warn(`${logPrefix} Datos de navegación incompletos:`, data);
+        return;
+    }
+    
+    console.log(`${logPrefix} hacia ${data.parada.nombre || data.parada.id || 'destino desconocido'}`);
+    
+    try {
+        // Pausar audio al iniciar navegación
+        await enviarMensaje('hijo3', 'pausarAudio', { 
+            motivo: 'inicio_navegacion',
+            destino: data.parada.id,
+            timestamp: Date.now()
+        });
+        
+        // Actualizar estado global
+        await actualizarEstadoGlobal({
+            navegando: true,
+            destino: data.parada.id,
+            ultimaAccion: 'inicio_navegacion',
+            timestamp: Date.now()
+        });
+    } catch (error) {
+        console.error(`${logPrefix} Error al pausar audio:`, error);
+        throw error;
     }
 }
+
+/**
+ * Maneja el fin de la navegación
+ * @param {Object} data - Datos de finalización
+ * @returns {Promise<void>}
+ */
+async function manejarFinNavegacion(data) {
+    const logPrefix = '🏁 PADRE: Navegación finalizada:';
+    console.log(logPrefix, data?.motivo || 'sin motivo especificado');
+    
+    // Actualizar estado global
+    await actualizarEstadoGlobal({
+        navegando: false,
+        ultimaAccion: 'fin_navegacion',
+        timestamp: Date.now()
+    });
+}
+
+/**
+ * Maneja el cambio de modo desde el hijo2
+ * @param {Object} data - Datos del cambio de modo
+ * @returns {Promise<void>}
+ */
+async function manejarCambioModoHijo2(data) {
+    const logPrefix = '🔄 PADRE: Cambio de modo desde hijo2:';
+    
+    if (!data?.modo) {
+        console.warn(`${logPrefix} Modo no especificado:`, data);
+        return;
+    }
+    
+    console.log(`${logPrefix} ${data.modo}`);
+    
+    // Delegar al manejador principal de cambio de modo
+    await manejarCambioModo(data.modo, data.habilitar);
+}
+
+/**
+ * Maneja la sincronización de estado con el hijo2
+ * @param {Object} data - Datos de sincronización
+ * @returns {Promise<void>}
+ */
+async function manejarSincronizacionEstadoHijo2(data) {
+    const logPrefix = '🔄 PADRE: Sincronizando estado con hijo2:';
+    console.log(logPrefix, data?.mensaje || 'solicitado por el hijo2');
+    
+    // Obtener estado actual
+    const estadoActual = {
+        modo: window.estadoGlobal?.modo || 'aventura',
+        navegando: window.estadoGlobal?.navegando || false,
+        paradaActual: window.estadoGlobal?.paradaActual,
+        timestamp: Date.now()
+    };
+    
+    // Enviar estado actual al hijo2
+    await enviarMensaje('hijo2', 'estadoSincronizado', estadoActual);
+}
+
+/**
+ * Maneja los errores reportados por el hijo2
+ * @param {Object} data - Datos del error
+ * @returns {Promise<void>}
+ */
+async function manejarErrorHijo2(data) {
+    const logPrefix = '❌ PADRE: Error en hijo2:';
+    
+    if (!data) {
+        console.error(`${logPrefix} Sin datos de error`);
+        return;
+    }
+    
+    const { codigo, mensaje, stack, timestamp } = data;
+    const errorMsg = `[${codigo || 'DESCONOCIDO'}] ${mensaje || 'Error sin mensaje'}`;
+    
+    console.groupCollapsed(`${logPrefix} ${errorMsg}`);
+    console.error('Detalles del error:', data);
+    if (stack) console.error('Stack trace:', stack);
+    console.groupEnd();
+    
+    // Mostrar notificación al usuario si es un error crítico
+    if (window.mostrarMensajeInfoParada) {
+        window.mostrarMensajeInfoParada(`Error en navegación: ${mensaje || 'Error desconocido'}`, true);
+    }
+    
+    // Actualizar estado global con el error
+    await actualizarEstadoGlobal({
+        error: {
+            codigo,
+            mensaje,
+            origen: 'hijo2',
+            timestamp: timestamp || Date.now()
+        },
+        ultimaAccion: 'error',
+        timestamp: Date.now()
+    });
+}
+
+/**
+ * Maneja los mensajes recibidos del iframe hijo3 (reproductor de audio)
+ * @param {string} type - Tipo de mensaje recibido
+ * @param {Object} data - Datos del mensaje
+ * @param {Object} [event=null] - Evento original (opcional)
+ * @returns {Promise<void>}
+ */
+async function manejarMensajeHijo3(type, data, event = null) {
+    const timestamp = new Date().toISOString();
+    const logPrefix = `[${timestamp}] 🔊 PADRE -> Hijo3 (${type}):`;
+    
+    try {
+        // Validación básica del mensaje
+        if (!type) {
+            console.warn(`${logPrefix} Mensaje sin tipo recibido:`, data);
+            return;
+        }
+
+        // Registrar recepción del mensaje
+        console.groupCollapsed(`${logPrefix} Mensaje recibido`);
+        console.log('📋 Datos recibidos:', data);
+        if (event) console.log('📎 Metadata del evento:', event);
+        console.groupEnd();
+
+        // Procesar el mensaje según su tipo
+        switch (type) {
+            case 'audioIniciado':
+                await manejarAudioIniciado(data);
+                break;
+                
+            case 'audioTerminado':
+                await manejarAudioTerminado(data);
+                break;
+                
+            case 'cambioVolumen':
+                await manejarCambioVolumen(data);
+                break;
+                
+            case 'solicitarEstado':
+                await manejarSolicitudEstado(data);
+                break;
+                
+            case 'cambiarTiempo':
+                await manejarCambioTiempo(data);
+                break;
+                
+            case 'cambioModo':
+                await manejarCambioModoHijo3(data);
+                break;
+                
+            case 'sincronizarEstado':
+                await manejarSincronizacionEstadoHijo3(data);
+                break;
+                
+            case 'error':
+                await manejarErrorHijo3(data);
+                break;
+                
+            case 'estadoReproduccion':
+                await manejarEstadoReproduccion(data);
+                break;
+                
+            default:
+                console.warn(`${logPrefix} Tipo de mensaje no reconocido:`, type);
+                break;
+        }
+        
+        // Confirmar recepción del mensaje si tiene un ID
+        if (event?.data?.id) {
+            await enviarMensaje('hijo3', 'confirmacionRecepcion', {
+                idMensajeOriginal: event.data.id,
+                timestamp: Date.now(),
+                estado: 'procesado',
+                tipo: type
+            });
+        }
+    } catch (error) {
+        console.error(`${logPrefix} Error al procesar mensaje:`, error);
+        
+        // Notificar al hijo3 sobre el error
+        try {
+            await enviarMensaje('hijo3', 'error', {
+                codigo: 'ERROR_PROCESAMIENTO',
+                mensaje: error.message || 'Error al procesar el mensaje',
+                stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+                timestamp: Date.now(),
+                tipoMensajeOriginal: type
+            });
+        } catch (e) {
+            console.error(`${logPrefix} Error al notificar error al hijo3:`, e);
+        }
+    }
+}
+
+/**
+ * Maneja el evento de inicio de reproducción de audio
+ * @param {Object} data - Datos del audio
+ * @returns {Promise<void>}
+ */
+async function manejarAudioIniciado(data) {
+    const logPrefix = '🔊 PADRE: Audio iniciado:';
+    
+    if (!data?.audioId) {
+        console.warn(`${logPrefix} Datos de audio incompletos:`, data);
+        return;
+    }
+    
+    console.log(`${logPrefix} ${data.audioId}`);
+    
+    // Actualizar el estado global
+    await actualizarEstadoGlobal({
+        ultimaAccion: 'audio_iniciado',
+        audioActual: data.audioId,
+        estadoReproduccion: 'reproduciendo',
+        timestamp: Date.now()
+    });
+    
+    // Notificar a otros componentes si es necesario
+    if (data.paradaId) {
+        await actualizarEstadoGlobal({
+            paradaActual: data.paradaId
+        });
+    }
+}
+
+/**
+ * Maneja el evento de finalización de audio
+ * @param {Object} data - Datos del audio
+ * @returns {Promise<void>}
+ */
+async function manejarAudioTerminado(data) {
+    const logPrefix = '🔊 PADRE: Audio terminado:';
+    
+    if (!data?.audioId) {
+        console.warn(`${logPrefix} Datos de audio incompletos:`, data);
+        return;
+    }
+    
+    console.log(`${logPrefix} ${data.audioId}`);
+    
+    // Actualizar el estado global
+    await actualizarEstadoGlobal({
+        ultimaAccion: 'audio_terminado',
+        audioAnterior: data.audioId,
+        estadoReproduccion: 'detenido',
+        timestamp: Date.now()
+    });
+    
+    // Si es un audio de parada con retos, mostrarlos
+    const puntoActual = estadoGlobal.puntoActual;
+    if (puntoActual?.retos?.length > 0) {
+        const primerReto = puntoActual.retos[0];
+        await enviarMensaje('hijo4', 'mostrarReto', { 
+            reto: primerReto,
+            esPrimero: true,
+            esUltimo: puntoActual.retos.length === 1
+        });
+    } else {
+        avanzarSiguientePunto();
+    }
+}
+
+/**
+ * Maneja el cambio de volumen del reproductor de audio
+ * @param {Object} data - Datos del cambio de volumen
+ * @returns {Promise<void>}
+ */
+async function manejarCambioVolumen(data) {
+    const logPrefix = '🔊 PADRE: Cambio de volumen:';
+    
+    if (typeof data?.volumen !== 'number') {
+        console.warn(`${logPrefix} Volumen no especificado o inválido:`, data);
+        return;
+    }
+    
+    console.log(`${logPrefix} ${data.volumen * 100}%`);
+    
+    // Actualizar el estado global
+    await actualizarEstadoGlobal({
+        volumen: data.volumen,
+        timestamp: Date.now()
+    });
+}
+
+/**
+ * Maneja la solicitud de estado del reproductor
+ * @param {Object} data - Datos de la solicitud
+ * @returns {Promise<void>}
+ */
+async function manejarSolicitudEstado(data) {
+    const logPrefix = '🔊 PADRE: Solicitud de estado recibida:';
+    console.log(logPrefix, data);
+    
+    // Enviar el estado actual al hijo3
+    await enviarMensaje('hijo3', 'estadoActual', {
+        volumen: estadoGlobal.volumen || 0.7,
+        modo: estadoGlobal.modo || 'aventura',
+        audioActual: estadoGlobal.audioActual || null,
+        estadoReproduccion: estadoGlobal.estadoReproduccion || 'detenido',
+        timestamp: Date.now()
+    });
+}
+
+/**
+ * Maneja el cambio de tiempo de reproducción
+ * @param {Object} data - Datos del cambio de tiempo
+ * @returns {Promise<void>}
+ */
+async function manejarCambioTiempo(data) {
+    const logPrefix = '🔊 PADRE: Cambio de tiempo:';
+    
+    if (typeof data?.tiempo !== 'number') {
+        console.warn(`${logPrefix} Tiempo no especificado o inválido:`, data);
+        return;
+    }
+    
+    console.log(`${logPrefix} ${data.tiempo} segundos`);
+    
+    // Actualizar el estado global si es necesario
+    await actualizarEstadoGlobal({
+        tiempoReproduccion: data.tiempo,
+        timestamp: Date.now()
+    });
+}
+
+/**
+ * Maneja el cambio de modo desde el hijo3
+ * @param {Object} data - Datos del cambio de modo
+ * @returns {Promise<void>}
+ */
+async function manejarCambioModoHijo3(data) {
+    const logPrefix = '🔊 PADRE: Cambio de modo desde hijo3:';
+    
+    if (!data?.modo) {
+        console.warn(`${logPrefix} Modo no especificado:`, data);
+        return;
+    }
+    
+    console.log(`${logPrefix} ${data.modo}`);
+    
+    // Actualizar el estado global
+    await actualizarEstadoGlobal({
+        modo: data.modo,
+        timestamp: Date.now()
+    });
+    
+    // Asegurarse de que los iframes estén en el estado correcto
+    await actualizarEstadoIframesHijos(data.modo);
+}
+
+/**
+ * Maneja la sincronización de estado con el hijo3
+ * @param {Object} data - Datos de sincronización
+ * @returns {Promise<void>}
+ */
+async function manejarSincronizacionEstadoHijo3(data) {
+    const logPrefix = '🔊 PADRE: Sincronización de estado con hijo3:';
+    console.log(logPrefix, data);
+    
+    // Enviar el estado actual al hijo3
+    await enviarMensaje('hijo3', 'estadoSincronizado', {
+        ...estadoGlobal,
+        timestamp: Date.now()
+    });
+}
+
+/**
+ * Maneja los errores reportados por el hijo3
+ * @param {Object} data - Datos del error
+ * @returns {Promise<void>}
+ */
+async function manejarErrorHijo3(data) {
+    const logPrefix = '🔊 PADRE: Error reportado por hijo3:';
+    
+    if (!data?.mensaje) {
+        console.error(`${logPrefix} Error sin mensaje:`, data);
+        return;
+    }
+    
+    console.error(`${logPrefix} ${data.codigo || 'ERROR_DESCONOCIDO'}: ${data.mensaje}`);
+    
+    if (data.stack) {
+        console.error('Stack trace:', data.stack);
+    }
+    
+    // Mostrar notificación al usuario si es necesario
+    if (data.mostrarAlUsuario) {
+        mostrarMensajeInfoParada(`Error de audio: ${data.mensaje}`, true);
+    }
+    
+    // Actualizar el estado global
+    await actualizarEstadoGlobal({
+        ultimoError: {
+            origen: 'hijo3',
+            codigo: data.codigo || 'ERROR_DESCONOCIDO',
+            mensaje: data.mensaje,
+            timestamp: Date.now()
+        },
+        estadoReproduccion: 'error'
+    });
+}
+
+/**
+ * Maneja las actualizaciones de estado de reproducción
+ * @param {Object} data - Datos del estado de reproducción
+ * @returns {Promise<void>}
+ */
+async function manejarEstadoReproduccion(data) {
+    const logPrefix = '🔊 PADRE: Estado de reproducción actualizado:';
+    
+    if (!data?.estado) {
+        console.warn(`${logPrefix} Estado no especificado:`, data);
+        return;
+    }
+    
+    console.log(`${logPrefix} ${data.estado}`, data);
+    
+    // Actualizar el estado global
+    await actualizarEstadoGlobal({
+        estadoReproduccion: data.estado,
+        tiempoActual: data.tiempoActual || 0,
+        duracion: data.duracion || 0,
+        timestamp: Date.now()
+    });
+}
+
+/**
+ * Maneja los mensajes recibidos del iframe hijo4 (retos y preguntas)
+ * @param {string} type - Tipo de mensaje recibido
+ * @param {Object} data - Datos del mensaje
+ * @param {Object} [event=null] - Evento original (opcional)
+ * @returns {Promise<void>}
+ */
+async function manejarMensajeHijo4(type, data, event = null) {
+    const timestamp = new Date().toISOString();
+    const logPrefix = `[${timestamp}] 🎮 PADRE -> Hijo4 (${type}):`;
+    
+    try {
+        // Validación básica del mensaje
+        if (!type) {
+            console.warn(`${logPrefix} Mensaje sin tipo recibido:`, data);
+            return;
+        }
+
+        // Registrar recepción del mensaje
+        console.groupCollapsed(`${logPrefix} Mensaje recibido`);
+        console.log('📋 Datos recibidos:', data);
+        if (event) console.log('📎 Metadata del evento:', event);
+        console.groupEnd();
+
+        // Procesar el mensaje según su tipo
+        switch (type) {
+            case 'retoIniciado':
+                await manejarRetoIniciado(data);
+                break;
+                
+            case 'retoCompletado':
+                await manejarRetoCompletado(data);
+                break;
+                
+            case 'retoFallido':
+                await manejarRetoFallido(data);
+                break;
+                
+            case 'retoExpirado':
+                await manejarRetoExpirado(data);
+                break;
+                
+            case 'solicitarPista':
+                await manejarSolicitudPista(data);
+                break;
+                
+            case 'puzzleCompletado':
+                await manejarPuzzleCompletado(data);
+                break;
+                
+            case 'cambioModo':
+                await manejarCambioModoHijo4(data);
+                break;
+                
+            case 'sincronizarEstado':
+                await manejarSincronizacionEstadoHijo4(data);
+                break;
+                
+            case 'error':
+                await manejarErrorHijo4(data);
+                break;
+                
+            default:
+                console.warn(`${logPrefix} Tipo de mensaje no reconocido:`, type);
+                break;
+        }
+        
+        // Confirmar recepción del mensaje si tiene un ID
+        if (event?.data?.id) {
+            await enviarMensaje('hijo4', 'confirmacionRecepcion', {
+                idMensajeOriginal: event.data.id,
+                timestamp: Date.now(),
+                estado: 'procesado',
+                tipo: type
+            });
+        }
+    } catch (error) {
+        console.error(`${logPrefix} Error al procesar mensaje:`, error);
+        
+        // Notificar al hijo4 sobre el error
+        try {
+            await enviarMensaje('hijo4', 'error', {
+                codigo: 'ERROR_PROCESAMIENTO',
+                mensaje: error.message || 'Error al procesar el mensaje',
+                stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+                timestamp: Date.now(),
+                tipoMensajeOriginal: type
+            });
+        } catch (e) {
+            console.error(`${logPrefix} Error al notificar error al hijo4:`, e);
+        }
+    }
+}
+
+/**
+ * Maneja el inicio de un reto
+ * @param {Object} data - Datos del reto
+ * @returns {Promise<void>}
+ */
+async function manejarRetoIniciado(data) {
+    const logPrefix = '🎮 PADRE: Reto iniciado:';
+    
+    if (!data?.retoId) {
+        console.warn(`${logPrefix} Datos de reto incompletos:`, data);
+        return;
+    }
+    
+    console.log(`${logPrefix} ${data.retoId}`);
+    
+    // Pausar audio al iniciar reto
+    await enviarMensaje('hijo3', 'pausarAudio', { 
+        motivo: 'reto_iniciado',
+        retoId: data.retoId
+    });
+    
+    // Actualizar el estado global
+    await actualizarEstadoGlobal({
+        ultimaAccion: 'reto_iniciado',
+        retoActual: {
+            id: data.retoId,
+            estado: 'en_progreso',
+            inicio: Date.now(),
+            tiempoLimite: data.tiempoLimite || null,
+            pistasUsadas: 0,
+            intentos: 0
+        },
+        timestamp: Date.now()
+    });
+}
+
+/**
+ * Maneja la finalización exitosa de un reto
+ * @param {Object} data - Datos del reto completado
+ * @returns {Promise<void>}
+ */
+async function manejarRetoCompletado(data) {
+    const logPrefix = '🏆 PADRE: Reto completado:';
+    
+    if (!data?.retoId) {
+        console.warn(`${logPrefix} Datos de reto incompletos:`, data);
+        return;
+    }
+    
+    console.log(`${logPrefix} ${data.retoId}`);
+    
+    // Actualizar el estado global
+    await actualizarEstadoGlobal({
+        ultimaAccion: 'reto_completado',
+        retoActual: {
+            ...(estadoGlobal.retoActual || { id: data.retoId }),
+            estado: 'completado',
+            fin: Date.now(),
+            exito: true
+        },
+        timestamp: Date.now()
+    });
+    
+    // Manejar la lógica de finalización del reto
+    manejarRetoCompletado(data.retoId);
+}
+
+/**
+ * Maneja el fallo en un reto
+ * @param {Object} data - Datos del reto fallido
+ * @returns {Promise<void>}
+ */
+async function manejarRetoFallido(data) {
+    const logPrefix = '❌ PADRE: Reto fallido:';
+    
+    if (!data?.retoId) {
+        console.warn(`${logPrefix} Datos de reto incompletos:`, data);
+        return;
+    }
+    
+    console.log(`${logPrefix} ${data.retoId}`, data.mensaje || '');
+    
+    // Actualizar el estado global
+    await actualizarEstadoGlobal({
+        ultimaAccion: 'reto_fallido',
+        retoActual: {
+            ...(estadoGlobal.retoActual || { id: data.retoId }),
+            estado: 'fallido',
+            fin: Date.now(),
+            exito: false,
+            motivo: data.motivo || 'desconocido',
+            intentos: (estadoGlobal.retoActual?.intentos || 0) + 1
+        },
+        timestamp: Date.now()
+    });
+    
+    // Notificar al usuario
+    mostrarMensajeInfoParada(`Reto fallido: ${data.mensaje || 'Inténtalo de nuevo'}`, true);
+}
+
+/**
+ * Maneja la expiración del tiempo de un reto
+ * @param {Object} data - Datos del reto expirado
+ * @returns {Promise<void>}
+ */
+async function manejarRetoExpirado(data) {
+    const logPrefix = '⏰ PADRE: Tiempo de reto agotado:';
+    
+    if (!data?.retoId) {
+        console.warn(`${logPrefix} Datos de reto incompletos:`, data);
+        return;
+    }
+    
+    console.log(`${logPrefix} ${data.retoId}`);
+    
+    // Actualizar el estado global
+    await actualizarEstadoGlobal({
+        ultimaAccion: 'reto_expirado',
+        retoActual: {
+            ...(estadoGlobal.retoActual || { id: data.retoId }),
+            estado: 'expirado',
+            fin: Date.now(),
+            exito: false,
+            motivo: 'tiempo_agotado'
+        },
+        timestamp: Date.now()
+    });
+    
+    // Notificar al usuario
+    mostrarMensajeInfoParada('¡Tiempo agotado! El reto ha expirado.', true);
+}
+
+/**
+ * Maneja la solicitud de una pista para el reto actual
+ * @param {Object} data - Datos de la solicitud de pista
+ * @returns {Promise<void>}
+ */
+async function manejarSolicitudPista(data) {
+    const logPrefix = '💡 PADRE: Solicitud de pista:';
+    
+    if (!data?.retoId) {
+        console.warn(`${logPrefix} Datos de reto incompletos:`, data);
+        return;
+    }
+    
+    console.log(`${logPrefix} ${data.retoId}`);
+    
+    // Incrementar contador de pistas usadas
+    const pistasUsadas = (estadoGlobal.retoActual?.pistasUsadas || 0) + 1;
+    
+    // Actualizar el estado global
+    await actualizarEstadoGlobal({
+        retoActual: {
+            ...(estadoGlobal.retoActual || { id: data.retoId }),
+            pistasUsadas,
+            ultimaPista: Date.now()
+        },
+        timestamp: Date.now()
+    });
+    
+    // Obtener y enviar la pista correspondiente
+    const pista = await obtenerPistaParaReto(data.retoId, pistasUsadas);
+    if (pista) {
+        await enviarMensaje('hijo4', 'nuevaPista', {
+            retoId: data.retoId,
+            pista,
+            numero: pistasUsadas,
+            totalPistas: data.totalPistas || 3 // Valor por defecto
+        });
+    }
+}
+
+/**
+ * Maneja la finalización exitosa de un puzzle
+ * @param {Object} data - Datos del puzzle completado
+ * @returns {Promise<void>}
+ */
+async function manejarPuzzleCompletado(data) {
+    const logPrefix = '🧩 PADRE: Puzzle completado:';
+    
+    if (!data?.puzzleId) {
+        console.warn(`${logPrefix} Datos de puzzle incompletos:`, data);
+        return;
+    }
+    
+    console.log(`${logPrefix} ${data.puzzleId}`);
+    
+    // Actualizar el estado global
+    await actualizarEstadoGlobal({
+        ultimaAccion: 'puzzle_completado',
+        puzzleActual: {
+            id: data.puzzleId,
+            estado: 'completado',
+            fin: Date.now(),
+            exito: true
+        },
+        timestamp: Date.now()
+    });
+    
+    // Continuar con el siguiente punto
+    avanzarSiguientePunto();
+}
+
+/**
+ * Maneja el cambio de modo desde el hijo4
+ * @param {Object} data - Datos del cambio de modo
+ * @returns {Promise<void>}
+ */
+async function manejarCambioModoHijo4(data) {
+    const logPrefix = '🔄 PADRE: Cambio de modo desde hijo4:';
+    
+    if (!data?.modo) {
+        console.warn(`${logPrefix} Modo no especificado:`, data);
+        return;
+    }
+    
+    console.log(`${logPrefix} ${data.modo}`);
+    
+    // Actualizar el estado global
+    await actualizarEstadoGlobal({
+        modo: data.modo,
+        timestamp: Date.now()
+    });
+    
+    // Asegurarse de que los iframes estén en el estado correcto
+    await actualizarEstadoIframesHijos(data.modo);
+}
+
+/**
+ * Maneja la sincronización de estado con el hijo4
+ * @param {Object} data - Datos de sincronización
+ * @returns {Promise<void>}
+ */
+async function manejarSincronizacionEstadoHijo4(data) {
+    const logPrefix = '🔄 PADRE: Sincronización de estado con hijo4:';
+    console.log(logPrefix, data);
+    
+    // Enviar el estado actual al hijo4
+    await enviarMensaje('hijo4', 'estadoSincronizado', {
+        ...estadoGlobal,
+        timestamp: Date.now()
+    });
+}
+
+/**
+ * Maneja los errores reportados por el hijo4
+ * @param {Object} data - Datos del error
+ * @returns {Promise<void>}
+ */
+async function manejarErrorHijo4(data) {
+    const logPrefix = '❌ PADRE: Error reportado por hijo4:';
+    
+    if (!data?.mensaje) {
+        console.error(`${logPrefix} Error sin mensaje:`, data);
+        return;
+    }
+    
+    console.error(`${logPrefix} ${data.codigo || 'ERROR_DESCONOCIDO'}: ${data.mensaje}`);
+    
+    if (data.stack) {
+        console.error('Stack trace:', data.stack);
+    }
+    
+    // Mostrar notificación al usuario si es necesario
+    if (data.mostrarAlUsuario) {
+        mostrarMensajeInfoParada(`Error en el reto: ${data.mensaje}`, true);
+    }
+    
+    // Actualizar el estado global
+    await actualizarEstadoGlobal({
+        ultimoError: {
+            origen: 'hijo4',
+            codigo: data.codigo || 'ERROR_DESCONOCIDO',
+            mensaje: data.mensaje,
+            timestamp: Date.now()
+        },
+        timestamp: Date.now()
+    });
+}
+
+/**
+ * Obtiene una pista para un reto específico
+ * @param {string} retoId - ID del reto
+ * @param {number} numeroPista - Número de pista solicitada (1-based)
+ * @returns {Promise<string>} - Texto de la pista
+ */
+async function obtenerPistaParaReto(retoId, numeroPista) {
+    // Implementación de ejemplo - deberías reemplazarla con tu lógica real
+    const pistas = {
+        'R-1': [
+            'Pista 1: Observa los detalles de la fachada',
+            'Pista 2: Busca elementos decorativos en la parte superior',
+            'Pista 3: El número está en un escudo'
+        ],
+        // Agrega más retos según sea necesario
+    };
+    
+    const pistasReto = pistas[retoId] || [];
+    return pistasReto[Math.min(numeroPista - 1, pistasReto.length - 1)] || 
+           `Pista ${numeroPista}: Sigue intentándolo, estás cerca.`;
+}
+
+// ================== FUNCIONES DE CONTROL ==================
+
+/**
+ * Habilita los controles según el modo especificado
+ * @param {string} modo - Modo de operación ('casa' o 'aventura')
+ */
+function enableControls(modo = 'casa') {
+    console.log(`🔓 PADRE: Habilitando controles en modo ${modo}`);
+    
+    // Actualizar estado global
+    window.estadoGlobal = window.estadoGlobal || {};
+    window.estadoGlobal.controlesHabilitados = true;
+    window.estadoGlobal.modo = modo;
+    
+    // Notificar a los hijos sobre el cambio de modo
+    actualizarEstadoIframesHijos(modo);
+    
+    // Actualizar la interfaz de usuario según el modo
+    actualizarInterfazModo(modo);
+}
+
+/**
+ * Deshabilita los controles con un motivo específico
+ * @param {string} motivo - Razón de la deshabilitación
+ */
+function disableControls(motivo = 'desconocido') {
+    console.log(`🔒 PADRE: Deshabilitando controles - Motivo: ${motivo}`);
+    
+    // Actualizar estado global
+    window.estadoGlobal = window.estadoGlobal || {};
+    window.estadoGlobal.controlesHabilitados = false;
+    window.estadoGlobal.motivoDeshabilitacion = motivo;
+    
+    // Notificar a los hijos sobre la deshabilitación
+    const iframes = ['hijo2', 'hijo3', 'hijo4'];
+    iframes.forEach(id => {
+        const iframe = document.getElementById(id);
+        if (iframe?.contentWindow) {
+            iframe.contentWindow.postMessage({
+                type: 'SISTEMA.CONTROL',
+                datos: {
+                    tipo: 'deshabilitar_controles',
+                    motivo: motivo,
+                    timestamp: Date.now()
+                }
+            }, '*');
+        }
+    });
+}
+
+/**
+ * Maneja el cambio de modo de la aplicación
+ * @param {string} modo - Nuevo modo ('casa' o 'aventura')
+ * @param {boolean} habilitar - Si es true, habilita los controles
+ */
+function manejarCambioModo(modo, habilitar = false) {
+    console.log(`🔄 PADRE: Cambiando a modo ${modo}, habilitar: ${habilitar}`);
+    
+    // Validar el modo
+    if (modo !== 'casa' && modo !== 'aventura') {
+        console.warn(`⚠️ PADRE: Modo no reconocido: ${modo}. Usando 'casa' por defecto.`);
+        modo = 'casa';
+    }
+    
+    // Actualizar el estado global
+    window.estadoGlobal = window.estadoGlobal || {};
+    window.estadoGlobal.modo = modo;
+    
+    // Habilitar o deshabilitar controles según corresponda
+    if (habilitar) {
+        enableControls(modo);
+    } else {
+        disableControls(`cambio_a_modo_${modo}`);
+    }
+    
+    // Notificar a los hijos sobre el cambio de modo
+    const iframes = ['hijo2', 'hijo3', 'hijo4'];
+    iframes.forEach(id => {
+        const iframe = document.getElementById(id);
+        if (iframe?.contentWindow) {
+            iframe.contentWindow.postMessage({
+                type: 'SISTEMA.CONFIGURACION',
+                datos: {
+                    tipo: 'cambio_modo',
+                    modo: modo,
+                    habilitar: habilitar,
+                    timestamp: Date.now()
+                }
+            }, '*');
+        }
+    });
+    
+    // Actualizar la interfaz de usuario
+    actualizarInterfazModo(modo);
+}
+
+/**
+ * Actualiza la interfaz de usuario según el modo actual
+ * @param {string} modo - Modo actual ('casa' o 'aventura')
+ */
+function actualizarInterfazModo(modo) {
+    // Implementar lógica para actualizar la interfaz según el modo
+    console.log(`🎨 PADRE: Actualizando interfaz para modo ${modo}`);
+    
+    // Ejemplo: Cambiar estilos según el modo
+    const body = document.body;
+    if (modo === 'aventura') {
+        body.classList.add('modo-aventura');
+        body.classList.remove('modo-casa');
+    } else {
+        body.classList.add('modo-casa');
+        body.classList.remove('modo-aventura');
+    }
+    
+    // Aquí puedes añadir más lógica de actualización de la interfaz
+}
+
+// ================== MANEJADOR DE MENSAJES ==================
 
 function manejarMensajeHijo4(type, data) {
+    console.log(`📥 PADRE: Mensaje de HIJO4 - Tipo: ${type}`, data);
+    
     switch (type) {
-        case 'retoIniciado':
-            console.log('🎮 PADRE: Reto iniciado:', data.retoId);
-            // Pausar audio al iniciar reto
-            enviarMensaje('hijo3', 'pausarAudio', { motivo: 'reto_iniciado' });
+        case 'SISTEMA.ESTADO':
+            manejarMensajeSistema(data);
             break;
             
-        case 'retoCompletado':
+        case 'SISTEMA.CONFIGURACION':
+            manejarMensajeConfiguracion(data);
+            break;
+            
+        case 'RETO.COMPLETADO':
             console.log('🏆 PADRE: Reto completado:', data.retoId);
             manejarRetoCompletado(data.retoId);
             break;
             
-        case 'puzzleCompletado':
-            console.log('🧩 PADRE: Puzzle completado:', data.puzzleId);
+        case 'RETO.FINALIZADO':
+            console.log('🏁 PADRE: Reto finalizado:', data.retoId);
+            // Aquí puedes agregar lógica adicional cuando se finaliza un reto
+            break;
+            
+        case 'PUZZLE.MOSTRADO':
+            console.log('🧩 PADRE: Puzzle mostrado:', data.puzzleId);
+            // Aquí puedes agregar lógica cuando se muestra un puzzle
+            break;
+            
+        case 'PUZZLE.FINALIZADO':
+            console.log('✅ PADRE: Puzzle finalizado:', data.puzzleId);
             // Continuar con el siguiente punto
             avanzarSiguientePunto();
             break;
+            
+        default:
+            console.warn('⚠️ PADRE: Tipo de mensaje no reconocido de HIJO4:', type);
+    }
+}
+
+/**
+ * Maneja los mensajes de tipo SISTEMA
+ * @param {Object} data - Datos del mensaje
+ */
+function manejarMensajeSistema(data) {
+    if (data.tipo === 'hijo_listo') {
+        console.log(`✅ PADRE: ${data.id || 'Hijo'} listo en modo ${data.modo || 'desconocido'}`);
+        
+        // Sincronizar el estado con el hijo recién cargado
+        if (window.estadoGlobal) {
+            window.estadoGlobal.ultimaActualizacion = Date.now();
+            
+            // Enviar el estado actual al hijo
+            const iframe = document.getElementById(data.id || 'hijo4');
+            if (iframe?.contentWindow) {
+                iframe.contentWindow.postMessage({
+                    type: 'ESTADO.ACTUALIZAR',
+                    datos: {
+                        estado: window.estadoGlobal,
+                        modo: window.estadoGlobal.modo || 'casa',
+                        controlesHabilitados: window.estadoGlobal.controlesHabilitados !== false
+                    }
+                }, '*');
+            }
+        }
+    }
+}
+
+/**
+ * Maneja los mensajes de configuración del sistema
+ * @param {Object} data - Datos del mensaje
+ */
+function manejarMensajeConfiguracion(data) {
+    if (data.tipo === 'cambio_modo') {
+        console.log(`🔄 PADRE: Solicitado cambio a modo ${data.modo}`);
+        manejarCambioModo(data.modo, data.habilitar);
     }
 }
 
@@ -1690,6 +2802,9 @@ function avanzarSiguientePunto() {
         // Variable para rastrear si ya hemos inicializado el manejador
         let manejadorHijo5Inicializado = false;
         
+        // Referencia al iframe hijo5-casa
+        let iframeHijo5 = null;
+        
         // Función para manejar el cambio de parada
         function manejarCambioParada(data) {
             console.log('🔄 PADRE: Cambio de parada solicitado:', data);
@@ -1864,315 +2979,368 @@ function avanzarSiguientePunto() {
             console.log(`🔄 PADRE: Estado de iframes actualizado a modo '${modo}'`);
         }
 
-        // Función para manejar los mensajes del hijo5-casa
-        async function manejarMensajeHijo5(event) {
-            // Verificar si el mensaje es del hijo5-casa
-            const iframeHijo5 = document.getElementById('hijo5-casa');
-            
-            // Verificación más estricta del origen del mensaje
-            const esDeHijo5 = iframeHijo5 && 
-                             event.source === iframeHijo5.contentWindow && 
-                             event.origin === window.location.origin;
-            
-            if (!esDeHijo5) {
-                // Si no es del hijo5-casa, salir sin hacer nada
-                return;
-            }
-            
-            console.log('🔍 PADRE: Mensaje recibido de hijo5-casa:', event.data);
-            
-            // Prevenir el comportamiento por defecto del evento si es cancelable
-            if (event.cancelable) {
-                event.preventDefault();
-            }
-            
-            // Detener la propagación para evitar que otros manejadores procesen este mensaje
-            event.stopImmediatePropagation();
-            
-            // Marcar que hemos manejado este mensaje
-            event.handledByHijo5 = true;
-            
-            // Log detallado de los mensajes recibidos
+        /**
+         * Maneja los mensajes recibidos del iframe hijo5-casa (botón casa)
+         * @param {string} tipo - Tipo de mensaje recibido
+         * @param {Object} datos - Datos del mensaje
+         * @param {Object} [event=null] - Evento original (opcional)
+         * @returns {Promise<void>}
+         */
+        async function manejarMensajeHijo5(tipo, datos, event = null) {
             const timestamp = new Date().toISOString();
-            const origen = event.origin || 'unknown-origin';
-            const data = event.data || {};
-            
-            // Usar el tipo de mensaje directamente del sistema de mensajería
-            const tipoMensaje = data.type;
-            
-            console.group(`📨 PADRE [${timestamp}] - Mensaje de hijo5-casa (${origen})`);
-            console.log('📦 Datos recibidos:', data);
-            console.log('🔗 Origen del mensaje:', origen);
-            
-            // Función auxiliar mejorada para reenviar mensajes a otros iframes
-            const reenviarAMensaje = (tipoDestino, mensaje) => {
-                // Si el destino es 'todos', enviar a todos los hijos
-                const destinos = tipoDestino === 'todos' 
-                    ? ['hijo2', 'hijo3', 'hijo4'] 
-                    : [tipoDestino];
-                
-                let exitosos = 0;
-                const errores = [];
-                
-                destinos.forEach(dest => {
-                    const destino = document.getElementById(dest);
-                    if (destino && destino.contentWindow) {
-                        try {
-                            // Asegurarse de que el mensaje tenga un timestamp
-                            const mensajeConTimestamp = {
-                                ...mensaje,
-                                timestamp: Date.now(),
-                                origen: 'padre',
-                                destino: dest
-                            };
-                            
-                            console.log(`🔄 PADRE: Reenviando a ${dest}:`, mensajeConTimestamp);
-                            destino.contentWindow.postMessage(mensajeConTimestamp, '*');
-                            exitosos++;
-                        } catch (error) {
-                            console.error(`❌ PADRE: Error al enviar a ${dest}:`, error);
-                            errores.push(dest);
-                        }
-                    } else {
-                        console.warn(`⚠️ PADRE: No se pudo reenviar a ${dest} - Iframe no encontrado`);
-                        errores.push(dest);
-                    }
-                });
-                
-                // Devolver resumen de la operación
-                return {
-                    exitosos,
-                    total: destinos.length,
-                    errores: errores.length,
-                    destinosConError: errores
-                };
-            };
-            
-            // Manejar mensajes de cambio de estado del GPS
-            if (tipoMensaje === TIPOS_MENSAJE.ESTADO.ACTUALIZAR) {
-                const gpsActivo = data.gpsOn !== undefined ? data.gpsOn : (data.modo === 'aventura');
-                const modo = data.modo || (gpsActivo ? 'aventura' : 'casa');
-                
-                console.log(`🔄 PADRE: Cambio de estado del GPS recibido: ${gpsActivo ? 'ENCENDIDO' : 'APAGADO'}, Modo: ${modo}`);
-                
-                // Actualizar estado global
-                await window.actualizarEstadoGlobal({
-                    modo: modo,
-                    gpsActivo: gpsActivo,
-                    ultimaActualizacion: Date.now()
-                }, true); // Forzar sincronización
-                
-                // Actualizar el estado de los iframes hijos
-                actualizarEstadoIframesHijos(modo);
-                
-                // Si el GPS se apaga, forzar la actualización de la ventana de selección
-                if (!data.gpsOn) {
-                    const hijo5 = document.getElementById('hijo5-casa');
-                    if (hijo5 && hijo5.contentWindow) {
-                        hijo5.contentWindow.postMessage({
-                            type: 'forzarActualizacionVentana',
-                            mostrar: true,
-                            timestamp: Date.now()
-                        }, '*');
-                    }
-                }
-                
-                return; // Salir después de manejar el cambio de estado
-            }
-            
-            // Manejar mensajes que pueden venir con o sin tipo
-            if (!tipoMensaje || data.type?.startsWith('mensaje-para-')) {
-                console.log('🔍 PADRE: Procesando mensaje especial de hijo5-casa...');
-                
-                // Caso 1: Mensaje directo a un hijo específico (formato: {type: 'mensaje-para-hijoX', ...})
-                if (tipoMensaje?.startsWith('mensaje-para-')) {
-                    const tipoDestino = tipoMensaje.replace('mensaje-para-', '');
-                    console.log(`🔄 PADRE: Reenviando mensaje directo a ${tipoDestino}`, data);
-                    const resultado = reenviarAMensaje(tipoDestino, data);
-                    console.log(`📊 PADRE: Resultado del reenvío: ${resultado.exitosos}/${resultado.total} exitosos`);
-                    console.groupEnd();
-                    return;
-                } 
-                
-                // Caso 2: Mensaje estructurado (formato: {tipo: 'mensaje-para-hijoX', mensaje: {...}})
-                if (data.tipo && data.mensaje) {
-                    const tipoDestino = data.tipo.replace('mensaje-para-', '');
-                    console.log(`🔄 PADRE: Reenviando mensaje estructurado a ${tipoDestino}`, data.mensaje);
-                    const resultado = reenviarAMensaje(tipoDestino, data.mensaje);
-                    console.log(`📊 PADRE: Resultado del reenvío: ${resultado.exitosos}/${resultado.total} exitosos`);
-                    console.groupEnd();
-                    return;
-                } 
-                
-                // Caso 3: Mensaje con destino explícito (formato: {destino: 'hijoX', datos: {...}})
-                if (data.destino && data.datos) {
-                    console.log(`🔄 PADRE: Reenviando mensaje a ${data.destino}`, data.datos);
-                    const resultado = reenviarAMensaje(data.destino, data.datos);
-                    console.log(`📊 PADRE: Resultado del reenvío: ${resultado.exitosos}/${resultado.total} exitosos`);
-                    console.groupEnd();
-                    return;
-                }
-                
-                // Caso 4: Mensaje para todos los hijos (broadcast)
-                if (data.broadcast === true) {
-                    console.log('📣 PADRE: Enviando mensaje de difusión a todos los hijos', data.datos || data);
-                    const mensajeBroadcast = data.datos || data;
-                    const resultado = reenviarAMensaje('todos', mensajeBroadcast);
-                    console.log(`📊 PADRE: Resultado del broadcast: ${resultado.exitosos}/${resultado.total} exitosos`);
-                    if (resultado.errores > 0) {
-                        console.warn(`⚠️ PADRE: Errores en el envío a: ${resultado.destinosConError.join(', ')}`);
-                    }
-                    console.groupEnd();
-                    return;
-                }
-                
-                // Si no coincide con ningún formato conocido
-                console.warn('⚠️ PADRE: No se pudo determinar el destino del mensaje - Formato no reconocido');
-                console.groupEnd();
-                return;
-            }
-            
-            console.log('📌 Tipo de mensaje:', tipoMensaje);
-            console.groupEnd();
-            
-            // Normalizar el tipo de mensaje
-            data.type = tipoMensaje;
+            const logPrefix = `[${timestamp}] 🏠 PADRE -> Hijo5 (${tipo}):`;
             
             try {
-                switch(data.type) {
-                    case 'hijo5Ready':
-                    case 'casa-hijo-listo':
-                    case 'sincronizarEstado':
-                        console.log('🔄 PADRE: Sincronizando estado con hijo5-casa...');
+                // Validación básica del mensaje
+                if (!tipo) {
+                    console.warn(`${logPrefix} Mensaje sin tipo recibido:`, datos);
+                    return;
+                }
+
+                // Registrar recepción del mensaje
+                console.groupCollapsed(`${logPrefix} Mensaje recibido`);
+                console.log('📋 Datos recibidos:', datos);
+                if (event) console.log('📎 Metadata del evento:', event);
+                console.groupEnd();
+
+                // Procesar el mensaje según su tipo
+                switch (tipo) {
+                    case 'SISTEMA.INICIALIZACION':
+                        await manejarInicializacionHijo5(datos);
+                        break;
                         
-                        // Obtener el estado actual normalizado
-                        const estadoActual = {
-                            modo: window.estadoGlobal?.modo || 'aventura',
-                            puntoActual: null,
-                            ultimaActualizacion: Date.now()
-                        };
+                    case 'ESTADO.ACTUALIZAR':
+                        await manejarActualizacionEstadoHijo5(datos);
+                        break;
                         
-                        // Asegurar que el punto actual tenga un ID consistente
-                        if (window.estadoGlobal?.puntoActual) {
-                            const punto = window.estadoGlobal.puntoActual;
-                            if (punto.tipo === 'parada') {
-                                estadoActual.puntoActual = {
-                                    ...punto,
-                                    id: `P-${punto.numero || punto.parada}`,
-                                    tipo: 'parada',
-                                    numero: punto.numero || punto.parada
-                                };
-                            } else if (punto.tipo === 'tramo') {
-                                estadoActual.puntoActual = {
-                                    ...punto,
-                                    id: `TR-${punto.numero || punto.tramo}`,
-                                    tipo: 'tramo',
-                                    numero: punto.numero || punto.tramo
-                                };
-                            }
-                        }
-                        
-                        // Enviar estado actualizado al hijo5-casa
-                        iframe.contentWindow.postMessage({ 
-                            type: 'sincronizarEstado',
-                            origen: 'padre',
-                            destino: 'hijo5-casa',
-                            mensaje: 'Estado sincronizado',
-                            timestamp: Date.now(),
-                            estado: estadoActual,
-                            datos: {
-                                tipo: 'respuestaSincronizacion',
-                                origen: 'padre',
-                                modo: estadoActual.modo,
-                                gpsActivo: estadoActual.modo === 'aventura',
-                                puntoActual: estadoActual.puntoActual
-                            }
-                        }, '*');
-                        
-                        console.log('✅ PADRE: Estado sincronizado con hijo5-casa', estadoActual);
+                    case 'SISTEMA.CONFIGURACION':
+                        await manejarConfiguracionSistema(datos);
                         break;
                         
                     case 'cambioModo':
-                        console.log(`🔄 PADRE: Cambio de modo solicitado: ${data.modo}`, data);
-                        // Actualizar estado global
-                        if (window.actualizarEstadoGlobal) {
-                            window.actualizarEstadoGlobal({
-                                modo: data.modo, // 'casa' o 'aventura'
-                                origen: 'hijo5-casa',
-                                timestamp: Date.now()
-                            });
-                            
-                            // Notificar a todos los hijos sobre el cambio de modo
-                            const iframes = ['hijo2', 'hijo3', 'hijo4', 'hijo5-casa'];
-                            iframes.forEach(id => {
-                                const targetIframe = document.getElementById(id);
-                                if (targetIframe && targetIframe.contentWindow) {
-                                    try {
-                                        targetIframe.contentWindow.postMessage({
-                                            type: 'cambioModo',
-                                            modo: data.modo,
-                                            origen: 'padre',
-                                            timestamp: Date.now()
-                                        }, '*');
-                                        console.log(`✅ PADRE: Notificado cambio de modo a ${id}`);
-                                    } catch (error) {
-                                        console.error(`❌ PADRE: Error notificando a ${id}:`, error);
-                                    }
-                                }
-                            });
-                            
-                            // Confirmar el cambio al hijo5-casa
-                            iframe.contentWindow.postMessage({
-                                type: 'confirmacionModo',
-                                origen: 'padre',
-                                destino: 'hijo5-casa',
-                                modo: data.modo,
-                                timestamp: Date.now()
-                            }, '*');
-                        }
+                        await manejarCambioModoHijo5(datos);
                         break;
                         
-                    case 'expandirIframe':
-                        console.log(`📏 PADRE: Solicitando expansión del iframe a ${data.width}`, data);
-                        // Ajustar el ancho y alto del iframe hijo5-casa
-                        if (data.width && !isNaN(parseInt(data.width))) {
-                            iframe.style.width = `${data.width}px`;
-                            // Asegurar que el iframe tenga suficiente altura para mostrar el contenido
-                            iframe.style.height = '250px'; // O el valor que necesites
-                            console.log(`✅ PADRE: Iframe hijo5-casa ajustado a ${data.width}px x 250px`);
-                        }
+                    case 'cambioParada':
+                        await manejarCambioParada(datos);
+                        break;
+                        
+                    case 'cambioTramo':
+                        await manejarCambioTramo(datos);
+                        break;
+                        
+                    case 'solicitarEstado':
+                        await enviarEstadoHijo5();
+                        break;
+                        
+                    case 'reiniciarRuta':
+                        await manejarReinicioRuta(datos);
+                        break;
+                        
+                    case 'sincronizarEstado':
+                    case 'hijo5Ready':
+                    case 'casa-hijo-listo':
+                        await enviarEstadoHijo5();
                         break;
                         
                     case 'error':
-                        console.error('❌ PADRE: Error en hijo5-casa:', data.mensaje || 'Error desconocido', data);
-                        if (window.mostrarMensajeInfoParada) {
-                            window.mostrarMensajeInfoParada(`Error en botón casa: ${data.mensaje || 'Error desconocido'}`, true);
-                        }
+                        await manejarErrorHijo5(datos);
                         break;
                         
-                    case 'solicitarSincronizacion':
-                        console.log('🔄 PADRE: Sincronización solicitada por hijo5-casa');
-                        // Enviar estado actual al hijo 5
-                        iframe.contentWindow.postMessage({
-                            type: 'sincronizarEstado',
-                            origen: 'padre',
-                            destino: 'hijo5-casa',
-                            timestamp: Date.now(),
-                            estado: {
-                                modo: window.estadoGlobal?.modo || 'aventura',
-                                paradaActual: window.estadoGlobal?.paradaActual,
-                                ultimaActualizacion: window.estadoGlobal?.ultimaActualizacion || Date.now()
-                            }
-                        }, '*');
+                    case 'expandirIframe':
+                        await manejarExpansionIframe(datos);
                         break;
                         
                     default:
-                        console.log(`ℹ️ PADRE: Mensaje no manejado de hijo5-casa:`, data);
+                        console.warn(`${logPrefix} Tipo de mensaje no reconocido:`, tipo);
+                }
+                
+                // Confirmar recepción del mensaje si tiene un ID
+                if (event?.data?.id) {
+                    await enviarMensaje('hijo5-casa', 'confirmacionRecepcion', {
+                        idMensajeOriginal: event.data.id,
+                        timestamp: Date.now(),
+                        estado: 'procesado',
+                        tipo: tipo
+                    });
                 }
             } catch (error) {
-                console.error('❌ PADRE: Error al procesar mensaje de hijo5-casa:', error, '\nMensaje:', data);
+                console.error(`${logPrefix} Error al procesar mensaje:`, error);
+                
+                // Notificar al hijo5 sobre el error
+                try {
+                    await enviarMensaje('hijo5-casa', 'error', {
+                        codigo: 'ERROR_PROCESAMIENTO',
+                        mensaje: error.message || 'Error al procesar el mensaje',
+                        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+                        timestamp: Date.now(),
+                        tipoMensajeOriginal: tipo
+                    });
+                } catch (e) {
+                    console.error(`${logPrefix} Error al notificar error al hijo5-casa:`, e);
+                }
             }
-        };
+        }
+
+        /**
+         * Maneja la inicialización del hijo5-casa
+         * @param {Object} datos - Datos de inicialización
+         * @returns {Promise<void>}
+         */
+        async function manejarInicializacionHijo5(datos) {
+            console.log('🏠 PADRE: Hijo5-casa inicializado:', datos);
+            
+            // Actualizar estado global con la información de inicialización
+            await actualizarEstadoGlobal({
+                controlesHabilitados: datos.controlesHabilitados !== false, // Por defecto true si no se especifica
+                modo: datos.modo || 'aventura',
+                ultimaAccion: 'inicializacion_hijo5',
+                timestamp: Date.now()
+            });
+            
+            // Enviar estado actual al hijo5
+            await enviarEstadoHijo5();
+        }
+
+        /**
+         * Maneja la actualización de estado desde el hijo5-casa
+         * @param {Object} datos - Datos de estado actualizados
+         * @returns {Promise<void>}
+         */
+        async function manejarActualizacionEstadoHijo5(datos) {
+            const logPrefix = '🏠 PADRE: Actualización de estado desde hijo5-casa:';
+            console.log(logPrefix, datos);
+            
+            // Actualizar estado según el tipo de actualización
+            const actualizaciones = {
+                ultimaActualizacion: Date.now(),
+                origen: 'hijo5-casa'
+            };
+            
+            if (datos.tipo === 'estado_gps') {
+                actualizaciones.gpsOn = datos.gpsOn !== false; // Por defecto true si no se especifica
+                actualizaciones.modo = datos.modo || 'aventura';
+                
+                // Actualizar la interfaz según el modo
+                actualizarInterfazModo(actualizaciones.modo);
+                
+                // Si se desactiva el GPS, mostrar la ventana de paradas
+                if (!actualizaciones.gpsOn) {
+                    const iframeHijo5 = document.getElementById('hijo5-casa');
+                    const paradasWindow = iframeHijo5?.contentWindow?.document?.getElementById('paradas-window');
+                    if (paradasWindow) {
+                        paradasWindow.style.display = 'flex';
+                    }
+                }
+            } else if (datos.paradaActual !== undefined) {
+                actualizaciones.paradaActual = datos.paradaActual;
+            } else if (datos.tramoActual !== undefined) {
+                actualizaciones.tramoActual = datos.tramoActual;
+            }
+            
+            // Aplicar actualizaciones al estado global
+            await actualizarEstadoGlobal(actualizaciones);
+        }
+
+        /**
+         * Maneja la configuración del sistema
+         * @param {Object} datos - Datos de configuración
+         * @returns {Promise<void>}
+         */
+        async function manejarConfiguracionSistema(datos) {
+            if (datos.tipo === 'cambio_modo') {
+                console.log('🏠 PADRE: Solicitud de cambio de modo desde hijo5-casa:', datos);
+                await manejarCambioModo(datos.modo, datos.habilitar);
+            } else if (datos.tipo === 'actualizar_paradas') {
+                console.log('🏠 PADRE: Actualizando lista de paradas desde hijo5-casa');
+                // Aquí puedes implementar la lógica para actualizar la lista de paradas
+                // Por ejemplo, recargar los datos de la ruta o sincronizar con el servidor
+            }
+        }
+
+        /**
+         * Maneja el cambio de modo desde el hijo5-casa
+         * @param {Object} datos - Datos del cambio de modo
+         * @returns {Promise<void>}
+         */
+        async function manejarCambioModoHijo5(datos) {
+            console.log(`🏠 PADRE: Cambio de modo solicitado: ${datos.modo}`, datos);
+            
+            // Validar el modo
+            const modoValido = ['casa', 'aventura'].includes(datos.modo);
+            if (!modoValido) {
+                throw new Error(`Modo no válido: ${datos.modo}`);
+            }
+            
+            // Actualizar estado global
+            await actualizarEstadoGlobal({
+                modo: datos.modo,
+                origen: 'hijo5-casa',
+                ultimaAccion: 'cambio_modo',
+                timestamp: Date.now()
+            });
+            
+            // Notificar a todos los iframes sobre el cambio de modo
+            const iframes = ['hijo2', 'hijo3', 'hijo4', 'hijo5-casa'];
+            const notificaciones = iframes.map(async (id) => {
+                const targetIframe = document.getElementById(id);
+                if (targetIframe?.contentWindow) {
+                    try {
+                        await enviarMensaje(id, 'cambioModo', {
+                            modo: datos.modo,
+                            origen: 'padre',
+                            timestamp: Date.now()
+                        });
+                        console.log(`✅ PADRE: Notificado cambio de modo a ${id}`);
+                        return true;
+                    } catch (error) {
+                        console.error(`❌ PADRE: Error notificando a ${id}:`, error);
+                        return false;
+                    }
+                }
+                return false;
+            });
+            
+            // Esperar a que se completen todas las notificaciones
+            await Promise.all(notificaciones);
+        }
+
+        /**
+         * Maneja el reinicio de la ruta
+         * @param {Object} datos - Datos del reinicio
+         * @returns {Promise<void>}
+         */
+        async function manejarReinicioRuta(datos = {}) {
+            console.log('🔄 PADRE: Reiniciando ruta...', datos);
+            
+            // Actualizar estado global
+            await actualizarEstadoGlobal({
+                paradaActual: 0,
+                tramoActual: 0,
+                ultimaAccion: 'reinicio_ruta',
+                timestamp: Date.now(),
+                origen: 'hijo5-casa',
+                ...datos // Permitir sobrescribir propiedades específicas
+            });
+            
+            // Notificar a los iframes relevantes sobre el reinicio
+            await Promise.all([
+                enviarMensaje('hijo2', 'reiniciarRuta', { motivo: 'reinicio_solicitado' }),
+                enviarMensaje('hijo3', 'detenerAudio', { motivo: 'reinicio_ruta' })
+            ]);
+            
+            console.log('✅ PADRE: Ruta reiniciada correctamente');
+        }
+
+        /**
+         * Maneja los errores reportados por el hijo5-casa
+         * @param {Object} datos - Datos del error
+         * @returns {Promise<void>}
+         */
+        async function manejarErrorHijo5(datos) {
+            const logPrefix = '❌ PADRE: Error en hijo5-casa:';
+            const mensajeError = datos.mensaje || 'Error desconocido';
+            const codigoError = datos.codigo || 'ERROR_DESCONOCIDO';
+            
+            console.error(`${logPrefix} ${codigoError}: ${mensajeError}`, datos);
+            
+            // Mostrar notificación al usuario si es necesario
+            if (window.mostrarMensajeInfoParada) {
+                window.mostrarMensajeInfoParada(`Error en botón casa: ${mensajeError}`, true);
+            }
+            
+            // Registrar el error en el estado global
+            await actualizarEstadoGlobal({
+                ultimoError: {
+                    origen: 'hijo5-casa',
+                    codigo: codigoError,
+                    mensaje: mensajeError,
+                    timestamp: Date.now(),
+                    detalles: datos.detalles
+                },
+                timestamp: Date.now()
+            });
+            
+            // Intentar recuperación automática para ciertos errores
+            if (codigoError === 'GPS_NO_DISPONIBLE') {
+                console.log('⚠️  Intentando recuperación automática para error de GPS...');
+                // Aquí podrías implementar lógica de recuperación, como reintentar la operación
+            }
+        }
+
+        /**
+         * Maneja la expansión del iframe hijo5-casa
+         * @param {Object} datos - Datos de la expansión
+         * @returns {Promise<void>}
+         */
+        async function manejarExpansionIframe(datos) {
+            console.log(`📏 PADRE: Solicitando expansión del iframe a ${datos.width}`, datos);
+            
+            const iframe = document.getElementById('hijo5-casa');
+            if (!iframe) {
+                throw new Error('No se encontró el iframe hijo5-casa');
+            }
+            
+            // Validar dimensiones
+            const ancho = parseInt(datos.width, 10);
+            const alto = parseInt(datos.height || '250', 10);
+            
+            if (isNaN(ancho) || ancho <= 0) {
+                throw new Error(`Ancho no válido: ${datos.width}`);
+            }
+            
+            // Aplicar dimensiones
+            iframe.style.width = `${ancho}px`;
+            iframe.style.height = `${alto}px`;
+            
+            console.log(`✅ PADRE: Iframe hijo5-casa ajustado a ${ancho}px x ${alto}px`);
+            
+            // Notificar al hijo5 que la expansión se ha completado
+            await enviarMensaje('hijo5-casa', 'expansionCompletada', {
+                ancho,
+                alto,
+                timestamp: Date.now()
+            });
+        }
+
+        /**
+         * Envía el estado actual al hijo5-casa
+         * @returns {Promise<void>}
+         */
+        async function enviarEstadoHijo5() {
+            console.log('🔄 PADRE: Sincronizando estado con hijo5-casa...');
+            
+            const iframeHijo5 = document.getElementById('hijo5-casa');
+            if (!iframeHijo5?.contentWindow) {
+                console.warn('No se puede sincronizar estado: iframe hijo5-casa no está disponible');
+                return;
+            }
+            
+            // Preparar estado actual
+            const estadoActual = {
+                modo: window.estadoGlobal?.modo || 'aventura',
+                paradaActual: window.estadoGlobal?.paradaActual,
+                tramoActual: window.estadoGlobal?.tramoActual,
+                gpsOn: window.estadoGlobal?.gpsOn !== false, // Por defecto true
+                controlesHabilitados: window.estadoGlobal?.controlesHabilitados !== false, // Por defecto true
+                ultimaActualizacion: Date.now(),
+                // Incluir cualquier otro estado relevante que necesite el hijo5
+                ...(window.estadoGlobal?.rutaActual && { rutaActual: window.estadoGlobal.rutaActual }),
+                ...(window.estadoGlobal?.paradas && { paradas: window.estadoGlobal.paradas }),
+                ...(window.estadoGlobal?.tramos && { tramos: window.estadoGlobal.tramos })
+            };
+            
+            // Enviar estado al hijo5
+            await enviarMensaje('hijo5-casa', 'sincronizarEstado', {
+                origen: 'padre',
+                destino: 'hijo5-casa',
+                mensaje: 'Estado sincronizado',
+                timestamp: Date.now(),
+                estado: estadoActual
+            });
+            
+            console.log('✅ PADRE: Estado sincronizado con hijo5-casa');
+        }
         
         // Función para inicializar el manejador de mensajes del hijo5-casa
         function inicializarManejadorHijo5() {
@@ -2201,6 +3369,8 @@ function avanzarSiguientePunto() {
         
         // Inicializar el iframe hijo5-casa
         function inicializarIframeHijo5() {
+            iframeHijo5 = document.getElementById('hijo5-casa');
+            if (!iframeHijo5) return;
             const iframeHijo5 = document.getElementById('hijo5-casa');
             if (!iframeHijo5) {
                 console.error('❌ No se encontró el iframe hijo5-casa');
@@ -2223,19 +3393,58 @@ function avanzarSiguientePunto() {
             iframeHijo5.setAttribute('allow', 'geolocation');
         }
         
+        // Inicializar mensajería de forma asíncrona
+        async function inicializarMensajeriaHijo5() {
+            try {
+                mensajeria = await inicializarMensajeria({
+                    iframeId: 'padre',
+                    logLevel: LOG_LEVELS.DEBUG,
+                    debug: true
+                });
+                
+                // Configurar manejadores de mensajes
+                configurarManejadorMensajes();
+                return true;
+            } catch (error) {
+                console.error('Error al inicializar mensajería:', error);
+                return false;
+            }
+        }
+        
         // Inicializar todo cuando el DOM esté listo
         function inicializarAplicacionHijo5() {
+            // Función para inicializar la aplicación
+            const initApp = () => {
+                // Inicializar manejador de eventos
+                inicializarManejadorHijo5();
+                
+                // Inicializar iframe
+                inicializarIframeHijo5();
+                
+                // Inicializar mensajería en segundo plano
+                if (!mensajeria) {
+                    inicializarMensajeriaHijo5().then(success => {
+                        if (success) {
+                            console.log('Mensajería inicializada correctamente');
+                            
+                            // Notificar a los hijos que la aplicación está lista
+                            enviarMensajeATodosLosHijos(TIPOS_MENSAJE.SISTEMA.INICIALIZACION, {
+                                estado: 'listo',
+                                modo: window.estadoGlobal?.modo || 'aventura'
+                            });
+                        }
+                    }).catch(error => {
+                        console.error('Error al inicializar mensajería:', error);
+                    });
+                }
+            };
+            
+            // Iniciar la aplicación cuando el DOM esté listo
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', function() {
-                    inicializarManejadorHijo5();
-                    inicializarIframeHijo5();
-                });
+                document.addEventListener('DOMContentLoaded', initApp);
             } else {
-                // Si el DOM ya está listo, inicializar inmediatamente
-                setTimeout(() => {
-                    inicializarManejadorHijo5();
-                    inicializarIframeHijo5();
-                }, 0);
+                // Usar setTimeout para asegurar que el DOM esté completamente cargado
+                setTimeout(initApp, 0);
             }
         }
         
@@ -2243,6 +3452,9 @@ function avanzarSiguientePunto() {
         inicializarAplicacionHijo5();
 
         // Hacer que las funciones estén disponibles globalmente
+        window.enableControls = enableControls;
+        window.disableControls = disableControls;
+        window.manejarCambioModo = manejarCambioModo;
         window.actualizarEstadoGlobal = actualizarEstadoGlobal;
         window.enviarMensaje = enviarMensaje;
         window.manejarMensajeHijo2 = manejarMensajeHijo2;
