@@ -3554,6 +3554,122 @@
         
         // ================== MANEJADORES DE MENSAJES ==================
         
+        // ================== CONTROL DE MODO ==================
+        let modoActual = 'aventura'; // 'aventura' o 'casa'
+        let controlesHabilitados = false; // Estado actual de los controles
+        
+        /**
+         * Habilita los controles según el modo especificado
+         * @param {string} modo - 'casa' o 'aventura'
+         */
+        function enableControls(modo = 'casa') {
+            console.log(`🔓 HIJO 2: Habilitando controles en modo ${modo}`);
+            modoActual = modo;
+            controlesHabilitados = true;
+            actualizarInterfazSegunModo();
+            
+            // Notificar al padre
+            if (window.Mensajes && typeof Mensajes.enviar === 'function') {
+                Mensajes.enviar('SISTEMA.CONTROL', {
+                    accion: 'controlesHabilitados',
+                    modo: modo,
+                    timestamp: Date.now()
+                });
+            }
+        }
+        
+        /**
+         * Deshabilita los controles con un motivo específico
+         * @param {string} motivo - Razón de la deshabilitación
+         */
+        function disableControls(motivo = 'desconocido') {
+            console.log(`🔒 HIJO 2: Deshabilitando controles (${motivo})`);
+            controlesHabilitados = false;
+            actualizarInterfazSegunModo();
+            
+            // Notificar al padre
+            if (window.Mensajes && typeof Mensajes.enviar === 'function') {
+                Mensajes.enviar('SISTEMA.CONTROL', {
+                    accion: 'controlesDeshabilitados',
+                    motivo: motivo,
+                    timestamp: Date.now()
+                });
+            }
+        }
+        
+        /**
+         * Actualiza la interfaz según el modo actual
+         */
+        function actualizarInterfazSegunModo() {
+            const botones = document.querySelectorAll('.nav-button, .boton-accion');
+            const esModoCasa = modoActual === 'casa';
+            
+            botones.forEach(boton => {
+                // Los botones de ruta y brújula siempre están habilitados
+                if (boton.id === 'btn-ruta' || boton.id === 'btn-brujula') {
+                    boton.disabled = false;
+                    boton.classList.add('enabled');
+                    boton.style.opacity = '1';
+                    boton.style.pointerEvents = 'auto';
+                    boton.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
+                    return;
+                }
+                
+                if (controlesHabilitados && esModoCasa) {
+                    // Modo casa: controles habilitados (verde)
+                    boton.disabled = false;
+                    boton.classList.add('enabled');
+                    boton.style.opacity = '1';
+                    boton.style.pointerEvents = 'auto';
+                    boton.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
+                } else {
+                    // Modo aventura o controles deshabilitados (rojo)
+                    boton.disabled = true;
+                    boton.classList.remove('enabled');
+                    boton.style.opacity = '0.6';
+                    boton.style.pointerEvents = 'none';
+                    boton.style.background = 'linear-gradient(135deg, #dc3545, #c82333)';
+                }
+            });
+            
+            console.log(`🔄 HIJO 2: Interfaz actualizada para modo ${modoActual} - Controles ${controlesHabilitados ? 'habilitados' : 'deshabilitados'}`);
+        }
+        
+        /**
+         * Maneja el cambio de modo (casa/aventura)
+         * @param {string} modo - 'casa' o 'aventura'
+         * @param {boolean} habilitar - Si es true, habilita los controles
+         */
+        function manejarCambioModo(modo, habilitar = false) {
+            console.log(`🔄 HIJO 2: Cambiando a modo ${modo} - Habilitar: ${habilitar}`);
+            
+            // Validar el modo
+            if (modo !== 'casa' && modo !== 'aventura') {
+                console.error(`❌ HIJO 2: Modo no válido: ${modo}`);
+                return;
+            }
+            
+            // Actualizar el modo
+            modoActual = modo;
+            
+            // Actualizar controles según corresponda
+            if (habilitar) {
+                enableControls(modo);
+            } else {
+                disableControls(`Modo ${modo} sin habilitación explícita`);
+            }
+            
+            // Notificar al padre
+            if (window.Mensajes && typeof Mensajes.enviar === 'function') {
+                Mensajes.enviar('SISTEMA.CONFIGURACION', {
+                    estado: 'modoCambiado',
+                    modo: modo,
+                    habilitado: habilitar,
+                    timestamp: Date.now()
+                });
+            }
+        }
+        
         // Inicializar el sistema de mensajería
         let mensajeria;
         
@@ -3570,10 +3686,13 @@
                 
                 // Manejar mensaje de cambio de modo (casa/aventura)
                 mensajeria.registrarManejador(mensajeria.TIPOS_MENSAJE.NAVEGACION.CAMBIO_MODO, (mensaje) => {
-                    const { modo, gpsActivo } = mensaje.datos || {};
-                    console.log(`🔄 [mensajeria] Recibido cambio de modo: ${modo}, GPS activo: ${gpsActivo}`);
+                    const { modo, gpsActivo, habilitarControles } = mensaje.datos || {};
+                    console.log(`🔄 [mensajeria] Recibido cambio de modo: ${modo}, GPS activo: ${gpsActivo}, Habilitar controles: ${habilitarControles}`);
                     
-                    // Actualizar estado interno
+                    // Manejar el cambio de modo con el nuevo sistema
+                    manejarCambioModo(modo, habilitarControles);
+                    
+                    // Mantener compatibilidad con el sistema antiguo
                     modoCasa = modo === 'casa';
                     
                     // Actualizar botones según el modo
@@ -3732,10 +3851,17 @@
                             break;
                             
                         case 'cambiar-modo':
-                            if (datos?.modo === 'casa') {
-                                activarModoCasa();
-                            } else if (datos?.modo === 'aventura') {
-                                activarModoAventura();
+                            if (datos?.modo) {
+                                // Usar el nuevo sistema de manejo de modos
+                                const habilitar = datos.habilitarControles || false;
+                                manejarCambioModo(datos.modo, habilitar);
+                                
+                                // Mantener compatibilidad con el sistema antiguo
+                                if (datos.modo === 'casa') {
+                                    activarModoCasa();
+                                } else if (datos.modo === 'aventura') {
+                                    activarModoAventura();
+                                }
                             }
                             break;
                             
