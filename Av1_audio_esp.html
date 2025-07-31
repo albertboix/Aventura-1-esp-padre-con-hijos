@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reproductor de Audio - Aventura 1</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script type="module" src="./js/mensajeria.js"></script>
     <style>
         :root {
             --btn-size: 60px;
@@ -159,24 +160,64 @@
             flex: 1;
             width: 100%;
             height: var(--progress-thick);
-            background-color: #d0d0d0;
+            background-color: #f8d7da; /* Rojo claro para estado deshabilitado */
             border-radius: calc(var(--progress-thick) / 2);
-            cursor: pointer;
+            cursor: not-allowed;
             position: relative;
             margin: 0;
             min-width: 0;
-            overflow: hidden;
+            overflow: visible;
             display: flex;
             align-items: center;
-            border: 1px solid #bbb;
+            border: 1px solid #f5c6cb;
+            transition: all 0.3s ease;
+        }
+
+        .progress-container.enabled {
+            background-color: #d1e7dd; /* Verde claro para estado habilitado */
+            border-color: #badbcc;
+            cursor: pointer;
         }
 
         #progressBar {
             height: 100%;
             width: 0%;
-            background: linear-gradient(90deg, #007bff, #00c6ff);
+            background: linear-gradient(90deg, #dc3545, #c82333); /* Rojo para estado deshabilitado */
             border-radius: calc(var(--progress-thick) / 2);
-            transition: width 0.1s linear;
+            transition: width 0.1s linear, background 0.3s ease;
+            position: relative;
+        }
+
+        .progress-container.enabled #progressBar {
+            background: linear-gradient(90deg, #28a745, #1e7e34); /* Verde para estado habilitado */
+        }
+
+        /* Estilo para el botón deslizante */
+        #progressBar::after {
+            content: '';
+            position: absolute;
+            right: -10px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 20px;
+            height: 20px;
+            background-color: white;
+            border-radius: 50%;
+            border: 2px solid #28a745;
+            box-shadow: 0 0 5px rgba(0,0,0,0.3);
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            cursor: ew-resize;
+        }
+
+        .progress-container.enabled #progressBar::after {
+            opacity: 1;
+        }
+
+        /* Efecto de hover para el botón deslizante */
+        .progress-container.enabled:hover #progressBar::after {
+            transform: translateY(-50%) scale(1.1);
+            box-shadow: 0 0 8px rgba(0,0,0,0.4);
         }
 
         .time-display {
@@ -705,12 +746,20 @@
 
         // ================== FUNCIONES DE CONTROL DE ACCESO ==================
         
-        function enableControls() {
-            console.log('🔓 HIJO 3: Habilitando controles de audio');
+        // Variable para controlar el modo actual
+        let modoActual = 'aventura'; // Por defecto en modo aventura (controles deshabilitados)
+        
+        /**
+         * Habilita los controles del reproductor según el modo actual
+         * @param {string} modo - 'casa' o 'aventura'
+         */
+        function enableControls(modo = 'casa') {
+            console.log(`🔓 HIJO 3: Habilitando controles de audio en modo ${modo}`);
+            modoActual = modo;
             controlsDisabled = false;
-            playPauseBtn.disabled = false;
-            progressContainer.style.pointerEvents = 'auto';
-            document.body.classList.remove('disabled');
+            
+            // Actualizar la interfaz según el modo
+            actualizarInterfazSegunModo();
             
             // Iniciar el intervalo de actualización de progreso si no existe
             if (!progressUpdateInterval) {
@@ -718,31 +767,65 @@
                 console.log('⏱️ HIJO 3: Iniciado intervalo de actualización de progreso');
             }
             
-            // Habilitar y activar visualmente el botón play/pausa (rojo → verde)
-            playPauseBtn.disabled = false;
-            playPauseBtn.classList.add('active'); // Fondo verde
-            playPauseBtn.style.background = 'linear-gradient(135deg, #28a745, #1e7e34)';
-            
-            // Habilitar y activar visualmente el botón retos (rojo → verde)
-            retosBtn.disabled = false;
-            retosBtn.classList.add('active'); // Fondo verde
-            retosBtn.style.background = 'linear-gradient(135deg, #28a745, #1e7e34)';
-            retosBtn.style.opacity = '1';
-            retosBtn.style.pointerEvents = 'auto';
-            
-            // Habilitar barra de progreso
-            progressContainer.style.pointerEvents = 'auto';
-            progressContainer.style.opacity = '1';
-            
-            console.log('✅ HIJO 3: Controles de audio habilitados y activados visualmente (verde)');
+            console.log(`✅ HIJO 3: Controles configurados para modo ${modo}`);
         }
         
-        function disableControls() {
-            console.log('🔒 HIJO 3: Deshabilitando controles de audio');
+        /**
+         * Actualiza la interfaz según el modo actual (casa o aventura)
+         */
+        function actualizarInterfazSegunModo() {
+            const progressContainer = document.getElementById('progressContainer');
+            
+            if (modoActual === 'casa') {
+                // En modo casa, los botones están habilitados y en verde
+                playPauseBtn.disabled = false;
+                playPauseBtn.classList.add('active');
+                playPauseBtn.style.background = 'linear-gradient(135deg, #28a745, #1e7e34)';
+                
+                retosBtn.disabled = false;
+                retosBtn.classList.add('active');
+                retosBtn.style.background = 'linear-gradient(135deg, #28a745, #1e7e34)';
+                retosBtn.style.opacity = '1';
+                retosBtn.style.pointerEvents = 'auto';
+                
+                // Habilitar barra de progreso
+                progressContainer.classList.add('enabled');
+                progressContainer.style.pointerEvents = 'auto';
+                progressContainer.style.opacity = '1';
+                progressContainer.title = 'Arrastra para avanzar o retroceder';
+                
+                document.body.classList.remove('disabled');
+                console.log('🏠 Modo CASA: Controles habilitados (verde)');
+            } else {
+                // En modo aventura, los botones están deshabilitados y en rojo
+                playPauseBtn.disabled = true;
+                playPauseBtn.classList.remove('active');
+                playPauseBtn.style.background = 'linear-gradient(135deg, #dc3545, #c82333)';
+                
+                retosBtn.disabled = true;
+                retosBtn.classList.remove('active');
+                retosBtn.style.background = 'linear-gradient(135deg, #dc3545, #c82333)';
+                retosBtn.style.opacity = '0.6';
+                retosBtn.style.pointerEvents = 'none';
+                
+                // Deshabilitar barra de progreso
+                progressContainer.classList.remove('enabled');
+                progressContainer.style.pointerEvents = 'none';
+                progressContainer.style.opacity = '0.6';
+                progressContainer.title = '';
+                
+                document.body.classList.add('disabled');
+                console.log('🌍 Modo AVENTURA: Controles deshabilitados (rojo)');
+            }
+        }
+        
+        /**
+         * Deshabilita todos los controles del reproductor
+         * @param {string} motivo - Razón por la que se deshabilitan los controles (para logging)
+         */
+        function disableControls(motivo = 'desconocido') {
+            console.log(`🔒 HIJO 3: Deshabilitando controles de audio (motivo: ${motivo})`);
             controlsDisabled = true;
-            playPauseBtn.disabled = true;
-            progressContainer.style.pointerEvents = 'none';
-            document.body.classList.add('disabled');
             
             // Pausar la reproducción al deshabilitar controles
             if (isPlaying) {
@@ -757,23 +840,10 @@
                 console.log('⏱️ HIJO 3: Detenido intervalo de actualización de progreso');
             }
             
-            // Deshabilitar y desactivar visualmente el botón play/pausa (verde → rojo)
-            playPauseBtn.disabled = true;
-            playPauseBtn.classList.remove('active');
-            playPauseBtn.style.background = 'linear-gradient(135deg, #dc3545, #c82333)';
+            // Actualizar la interfaz según el modo actual
+            actualizarInterfazSegunModo();
             
-            // Deshabilitar y desactivar visualmente el botón retos (verde → rojo)
-            retosBtn.disabled = true;
-            retosBtn.classList.remove('active');
-            retosBtn.style.background = 'linear-gradient(135deg, #dc3545, #c82333)';
-            retosBtn.style.opacity = '0.6';
-            retosBtn.style.pointerEvents = 'none';
-            
-            // Deshabilitar barra de progreso
-            progressContainer.style.pointerEvents = 'none';
-            progressContainer.style.opacity = '0.6';
-            
-            console.log('🚫 HIJO 3: Controles de audio deshabilitados y desactivados visualmente (rojo)');
+            console.log('🚫 HIJO 3: Controles de audio deshabilitados');
         }
 
         // ================== FUNCIONES DEL REPRODUCTOR ==================
@@ -1218,104 +1288,120 @@
         // ID del iframe para verificación
         const IFRAME_ID = 'hijo3';
         
+        // Manejador para el mensaje de cambio de modo
+        function manejarCambioModo(modo) {
+            console.log(`🔄 HIJO 3: Cambiando a modo ${modo}`);
+            if (modo === 'casa' || modo === 'aventura') {
+                enableControls(modo);
+                
+                // Notificar al padre que el cambio de modo se ha aplicado
+                enviarAlPadre(TIPOS_MENSAJE.SISTEMA.CONFIGURACION, {
+                    estado: 'modoCambiado',
+                    modo: modo,
+                    timestamp: Date.now()
+                });
+            } else {
+                console.error('❌ HIJO 3: Modo no válido:', modo);
+            }
+        }
+        
         // Manejador principal de mensajes
-        window.addEventListener('message', function(event) {
-            // Verificar que el mensaje sea para este iframe
-            if (event.data && event.data.para && event.data.para !== IFRAME_ID && event.data.para !== 'todos') {
-                return; // No es para este iframe
+        window.addEventListener('message', async function(event) {
+            // Importar el módulo de mensajería si no está disponible
+            if (!window.crearMensaje) {
+                const mod = await import('./js/mensajeria.js');
+                window.TIPOS_MENSAJE = mod.TIPOS_MENSAJE;
+                window.crearMensaje = mod.crearMensaje;
+                window.validarMensaje = mod.validarMensaje;
+                window.logger = mod.logger;
             }
             
             const mensaje = event.data;
-            if (!mensaje || typeof mensaje !== 'object') {
-                console.warn('⚠️ HIJO 3: Mensaje no válido o vacío recibido', mensaje);
+            
+            // Validar el mensaje
+            const { valido, error } = validarMensaje(mensaje);
+            
+            // Si el mensaje no es válido, ignorarlo
+            if (!valido) {
+                logger.warn('Mensaje no válido recibido:', error, mensaje);
                 return;
             }
             
-            console.log('🎵 HIJO 3: Mensaje recibido:', mensaje);
+            // Verificar que el mensaje sea para este iframe
+            if (mensaje.destino && mensaje.destino !== IFRAME_ID && mensaje.destino !== 'todos') {
+                return; // No es para este iframe
+            }
+            
+            logger.debug('Mensaje recibido:', mensaje);
             
             try {
-                // 1. Manejar mensajes de sincronización de estado
-                if (mensaje.type === 'sincronizarEstado' && mensaje.estado) {
-                    console.log('🔄 HIJO 3: Procesando sincronización de estado');
-                    if (validarMensaje(mensaje, esquemasMensajes.sincronizacionEstado)) {
-                        manejarSincronizacionEstado(mensaje.estado);
-                    } else {
-                        console.error('❌ HIJO 3: Error en la sincronización de estado', mensaje);
-                    }
-                    return;
-                }
-                
-                // 2. Manejar mensajes específicos para este hijo (nuevo formato)
-                if (mensaje.type === 'mensaje-para-hijo3') {
-                    console.log('📨 HIJO 3: Mensaje específico para este hijo:', mensaje);
-                    
-                    // Si el mensaje tiene un campo 'datos', es el nuevo formato
-                    if (mensaje.datos) {
-                        manejarMensajeEspecifico(mensaje.datos.type || 'desconocido', mensaje.datos);
-                    } 
-                    // Si no, es posible que sea un mensaje directo
-                    else if (mensaje.mensaje) {
-                        manejarMensajeEspecifico(mensaje.mensaje.type || 'desconocido', mensaje.mensaje);
-                    }
-                    return;
-                }
-                
-                // 3. Manejar mensajes legacy
-                if (mensaje.type && typeof mensaje.type === 'string') {
-                    console.warn('⚠️ HIJO 3: Procesando mensaje legacy');
-                    if (validarMensaje(mensaje, esquemasMensajes.comandoAudio)) {
-                        manejarMensajeLegacy(mensaje.type, mensaje);
-                    } else {
-                        console.error('❌ HIJO 3: Comando de audio no válido', mensaje);
-                    }
-                    return;
-                }
-                
-                // 4. Manejar mensajes de audio específicos
-                if (mensaje.type === 'setAudioParada') {
-                    const audioIndex = mensaje.index;
-                    console.log(`🎯 HIJO 3: Estableciendo audio de parada ${audioIndex} (mensaje legacy)`);
-                    if (audioIndex !== undefined && audioIndex >= 0 && audioIndex < audioFiles.length) {
-                        loadAudio(audioIndex);
-                        // Reproducir automáticamente si los controles están habilitados
+                // Manejar según el tipo de mensaje
+                switch(mensaje.tipo) {
+                    // Comandos de audio
+                    case TIPOS_MENSAJE.AUDIO.REPRODUCIR:
+                        if (!controlsDisabled) playAudio();
+                        break;
+                        
+                    case TIPOS_MENSAJE.AUDIO.PAUSAR:
+                        if (!controlsDisabled) pauseAudio();
+                        break;
+                        
+                    case TIPOS_MENSAJE.AUDIO.DETENER:
                         if (!controlsDisabled) {
-                            playAudio();
+                            audioPlayer.pause();
+                            audioPlayer.currentTime = 0;
+                            isPlaying = false;
+                            updatePlayPauseIcon();
+                            updateProgress();
                         }
-                    }
-                    return;
+                        break;
+                        
+                    // Sincronización de estado
+                    case TIPOS_MENSAJE.ESTADO.ACTUALIZAR:
+                        logger.debug('Actualizando estado del reproductor:', mensaje.datos);
+                        if (mensaje.datos.estado) {
+                            manejarSincronizacionEstado(mensaje.datos.estado);
+                        }
+                        // Verificar si hay un cambio de modo
+                        if (mensaje.datos.modo && (mensaje.datos.modo === 'casa' || mensaje.datos.modo === 'aventura')) {
+                            manejarCambioModo(mensaje.datos.modo);
+                        }
+                        break;
+                        
+                    // Mensaje específico para cambiar de modo
+                    case TIPOS_MENSAJE.SISTEMA.CONFIGURACION:
+                        if (mensaje.datos && mensaje.datos.modo) {
+                            manejarCambioModo(mensaje.datos.modo);
+                        }
+                        break;
+                        
+                    // Cambio de parada/punto de interés
+                    case TIPOS_MENSAJE.NAVEGACION.LLEGADA_PARADA:
+                        const paradaId = mensaje.datos.paradaId;
+                        logger.debug(`Llegada a parada: ${paradaId}`);
+                        if (paradaId) {
+                            const audioIndex = parseInt(paradaId.replace('P-', ''), 10) - 1;
+                            if (!isNaN(audioIndex) && audioIndex >= 0 && audioIndex < audioFiles.length) {
+                                loadAudio(audioIndex);
+                                if (!controlsDisabled) {
+                                    playAudio();
+                                }
+                            }
+                        }
+                        break;
+                        
+                    // Comandos del sistema
+                    case TIPOS_MENSAJE.SISTEMA.CONFIGURACION:
+                        logger.debug('Configuración recibida:', mensaje.datos);
+                        // Aplicar configuración si es necesario
+                        break;
+                        
+                    default:
+                        logger.warn('Tipo de mensaje no manejado:', mensaje.tipo);
                 }
-                
-                // 5. Manejar comandos de control de reproducción
-                if (mensaje.type === 'playAudio') {
-                    if (!controlsDisabled) {
-                        playAudio();
-                    }
-                    return;
-                }
-                
-                if (mensaje.type === 'pauseAudio') {
-                    if (!controlsDisabled) {
-                        pauseAudio();
-                    }
-                    return;
-                }
-                
-                if (mensaje.type === 'stopAudio') {
-                    if (!controlsDisabled) {
-                        audioPlayer.pause();
-                        audioPlayer.currentTime = 0;
-                        isPlaying = false;
-                        playPauseBtn.innerHTML = '<span class="icon-play"><i class="fas fa-play"></i></span>';
-                        playPauseBtn.classList.remove('active');
-                        updateProgress();
-                    }
-                    return;
-                }
-                
-                console.warn('⚠️ HIJO 3: Mensaje no reconocido', mensaje);
                 
             } catch (error) {
-                console.error('❌ HIJO 3: Error al procesar mensaje:', error, mensaje);
+                logger.error('Error al procesar mensaje:', error, mensaje);
                 
                 // Mostrar mensaje de error en la interfaz si está disponible
                 if (statusElement) {
@@ -1336,22 +1422,109 @@
 
         // ================== INICIALIZACIÓN ==================
         
-        // Inicializar controles deshabilitados por defecto
-        document.addEventListener('DOMContentLoaded', () => {
-            console.log('🎵 HIJO 3: Inicializando reproductor de audio');
-            // Cargar el primer audio
+        // Función para manejar el arrastre de la barra de progreso
+        function setupProgressBarDrag() {
+            const progressContainer = document.getElementById('progressContainer');
+            const progressBar = document.getElementById('progressBar');
+            let isDragging = false;
+            
+            // Función para actualizar la posición del progreso
+            const updateProgressPosition = (clientX) => {
+                if (!isDragging) return;
+                
+                const containerRect = progressContainer.getBoundingClientRect();
+                let position = (clientX - containerRect.left) / containerRect.width;
+                position = Math.max(0, Math.min(1, position)); // Asegurar que esté entre 0 y 1
+                
+                // Actualizar la barra visualmente
+                const percent = position * 100;
+                progressBar.style.width = `${percent}%`;
+                
+                // Actualizar el tiempo del audio
+                if (audioPlayer.duration) {
+                    audioPlayer.currentTime = position * audioPlayer.duration;
+                    updateProgress();
+                }
+            };
+            
+            // Evento de inicio de arrastre
+            progressContainer.addEventListener('mousedown', (e) => {
+                if (modoActual !== 'casa') return;
+                isDragging = true;
+                updateProgressPosition(e.clientX);
+                document.addEventListener('mousemove', handleMouseMove);
+                document.addEventListener('mouseup', handleMouseUp);
+            });
+            
+            // Evento de movimiento del ratón
+            const handleMouseMove = (e) => {
+                updateProgressPosition(e.clientX);
+            };
+            
+            // Evento de fin de arrastre
+            const handleMouseUp = () => {
+                isDragging = false;
+                document.removeEventListener('mousemove', handleMouseMove);
+                document.removeEventListener('mouseup', handleMouseUp);
+            };
+            
+            // Permitir clics en la barra para saltar a una posición
+            progressContainer.addEventListener('click', (e) => {
+                if (modoActual !== 'casa') return;
+                updateProgressPosition(e.clientX);
+            });
+        }
+
+        // Inicializar controles deshabilitados por defecto (modo aventura)
+        document.addEventListener('DOMContentLoaded', async () => {
+            console.log('🎵 HIJO 3: Inicializando reproductor de audio en modo AVENTURA (controles deshabilitados)');
+            
+            // Configurar la barra de progreso arrastrable
+            setupProgressBarDrag();
+            
+            // Importar el módulo de mensajería
+            const { 
+                TIPOS_MENSAJE, 
+                LOG_LEVELS, 
+                logger, 
+                crearMensaje, 
+                validarMensaje, 
+                inicializarMensajeria 
+            } = await import('./js/mensajeria.js');
+            
+            // Inicializar el sistema de mensajería
+            inicializarMensajeria({
+                iframeId: 'hijo3',
+                logLevel: LOG_LEVELS.DEBUG,
+                debug: true
+            });
+            
+            // Hacer que las variables estén disponibles globalmente
+            window.TIPOS_MENSAJE = TIPOS_MENSAJE;
+            window.crearMensaje = crearMensaje;
+            window.validarMensaje = validarMensaje;
+            
+            // Cargar el primer audio (pero no reproducir automáticamente)
             loadAudio(0);
             
+            // Inicializar en modo aventura (controles deshabilitados)
+            disableControls('inicialización');
+            
             // Notificar al padre que el reproductor está listo
-            window.parent.postMessage({ 
-                type: 'audioPlayerReady',
-                status: 'ready',
-                timestamp: Date.now()
-            }, '*');
+            const mensajeListo = crearMensaje(
+                TIPOS_MENSAJE.SISTEMA.INICIALIZACION,
+                { 
+                    status: 'ready',
+                    componente: 'reproductor-audio',
+                    version: '1.0.0'
+                },
+                'padre'
+            );
+            window.parent.postMessage(mensajeListo, '*');
             
             // Configurar limpieza al descargar la página
             window.addEventListener('beforeunload', () => {
-                console.log('🧹 HIJO 3: Limpiando recursos del reproductor');
+                logger.info('🧹 HIJO 3: Limpiando recursos del reproductor');
                 if (progressUpdateInterval) {
                     clearInterval(progressUpdateInterval);
                 }
@@ -1368,6 +1541,14 @@
             const icon = playPauseBtn.querySelector('i');
             if (icon) {
                 icon.className = isPlaying ? 'fas fa-pause' : 'fas fa-play';
+                
+                // Notificar al padre sobre el cambio de estado
+                enviarAlPadre(TIPOS_MENSAJE.AUDIO.ACTUALIZAR_PROGRESO, {
+                    reproduciendo: isPlaying,
+                    tiempoActual: audioPlayer.currentTime,
+                    duracion: audioPlayer.duration,
+                    pistaActual: currentMediaIndex
+                });
             }
         }
         
@@ -1380,8 +1561,35 @@
         }
         
         // Función para enviar mensajes al padre
-        function enviarAlPadre(mensaje) {
+        async function enviarAlPadre(tipo, datos = {}) {
+            // Asegurarse de que el módulo de mensajería esté cargado
+            if (!window.crearMensaje) {
+                const mod = await import('./js/mensajeria.js');
+                window.TIPOS_MENSAJE = mod.TIPOS_MENSAJE;
+                window.crearMensaje = mod.crearMensaje;
+            }
+            
+            // Crear el mensaje
+            const mensaje = crearMensaje(
+                tipo,
+                datos,
+                'padre',  // Destinatario
+                'hijo3'   // Origen
+            );
+            
+            // Enviar el mensaje
             window.parent.postMessage(mensaje, '*');
+            logger.debug('Mensaje enviado al padre:', mensaje);
+        }
+        
+        // Función para notificar cambios en el estado de reproducción
+        function notificarEstadoReproduccion(estado) {
+            enviarAlPadre(TIPOS_MENSAJE.AUDIO.ACTUALIZAR_PROGRESO, {
+                estado: estado,
+                tiempoActual: audioPlayer.currentTime,
+                duracion: audioPlayer.duration,
+                pistaActual: currentMediaIndex
+            });
         }
     </script>
 </body>
