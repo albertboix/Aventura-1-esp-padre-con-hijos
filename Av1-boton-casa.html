@@ -5,31 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>GPS Casa ON/OFF</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-  <script type="module">
-    import { 
-      TIPOS_MENSAJE, 
-      LOG_LEVELS, 
-      inicializarMensajeria, 
-      enviarMensaje,
-      crearMensaje,
-      validarMensaje,
-      logger
-    } from './mensajeria.js';
-    
-    // Inicializar el sistema de mensajería
-    inicializarMensajeria({
-      iframeId: 'hijo5-casa',
-      logLevel: LOG_LEVELS.DEBUG,
-      debug: true
-    });
-    
-    // Hacer las variables globales disponibles para depuración
-    window.mensajeria = {
-      TIPOS_MENSAJE,
-      enviarMensaje,
-      logger
-    };
-  </script>
+  <script src="./js/mensajeria.js"></script>
   <style>
     /* Contenedor principal */
     #zona-boton-casa {
@@ -193,20 +169,15 @@
       font-size: 0.85em;
       opacity: 0.9;
       white-space: normal;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      overflow: visible;
+      text-overflow: clip;
       max-width: 130px;
       font-weight: 500;
       line-height: 1.2;
       display: -webkit-box;
       -webkit-line-clamp: 2;
-      -ms-line-clamp: 2;
-      line-clamp: 2;
       -webkit-box-orient: vertical;
-      -ms-box-orient: vertical;
       text-align: left;
-      margin: 0;
-      padding: 0;
     }
   </style>
 </head>
@@ -222,35 +193,15 @@
       <div id="paradas-list"></div>
     </div>
   </div>
-  <script type="module">
-    import { 
-      TIPOS_MENSAJE, 
-      LOG_LEVELS, 
-      inicializarMensajeria, 
-      crearMensaje,
-      logger 
-    } from './mensajeria.js';
-
-    // Estado de la aplicación
-    const state = {
-      gpsOn: true,
-      modoCasa: false,
-      paradaActual: -1,
-      tramoActual: -1,
-      watchId: null,
-      mensajeria: null
-    };
-
-    // Función para enviar mensajes
-    async function enviarMensaje(tipo, datos = {}) {
-      try {
-        const mensaje = crearMensaje(tipo, datos, 'padre');
-        window.parent.postMessage(mensaje, '*');
-        logger.debug('Mensaje enviado:', mensaje);
-      } catch (error) {
-        logger.error('Error al enviar mensaje:', error);
-      }
-    }
+  <script>
+    // Estado y arrays
+    let gpsOn = true;
+    let modoCasa = !gpsOn;
+    let paradaActual = -1;
+    let controlesHabilitados = true;
+    let motivoDeshabilitado = '';
+    let tramoActual = -1;
+    let watchId = null;
 
     // Array completo de paradas y tramos
     const puntosRuta = [
@@ -293,7 +244,7 @@
       { tipo: "parada", parada: 23, nombre: "Edificio Suay" },
       { tipo: "tramo", tramo: 14, nombre: "Palacio de Comunicaciones → Banco de València" },
       { tipo: "parada", parada: 24, nombre: "Banco de Valencia" },
-      { type: "tramo", tramo: 15, nombre: "Banco de València → Palacio del Marqués de Dos Aguas (Museo Nacional de Cerámica)" },
+      { tipo: "tramo", tramo: 15, nombre: "Banco de València → Palacio del Marqués de Dos Aguas (Museo Nacional de Cerámica)" },
       { tipo: "parada", parada: 25, nombre: "Palacio del Marqués de Dos Aguas (Museo Nacional de Cerámica)" },
       { tipo: "tramo", tramo: 16, nombre: "Palacio del Marqués → Mercado Central" },
       { tipo: "parada", parada: 26, nombre: "Mercado central" },
@@ -313,291 +264,459 @@
     // Renderizado de paradas y tramos con mensajes avanzados
     function renderParadasYTramos() {
       const lista = document.getElementById('paradas-list');
-      if (!lista) return;
-      
       lista.innerHTML = '';
       puntosRuta.forEach((punto) => {
         const btn = document.createElement('button');
         btn.className = 'parada-tramo-btn';
         const esParada = punto.tipo === 'parada' || punto.tipo === 'inicio';
         const esInicio = punto.tipo === 'inicio';
-        const esActual = (esParada && punto.parada === state.paradaActual) || 
-                       (!esParada && punto.tramo === state.tramoActual);
-        
+        const esActual = (esParada && punto.parada === paradaActual) || (!esParada && punto.tramo === tramoActual);
         if (esActual) btn.classList.add('actual');
         if (esParada) btn.classList.add('parada-btn');
         if (esInicio) btn.classList.add('inicio-btn');
         if (!esParada) btn.classList.add('tramo-btn');
-        
         const numero = esParada ? punto.parada : punto.tramo;
         const icono = esParada ? (esInicio ? '🏁' : '📍') : '🛣️';
         const titulo = esParada ? (esInicio ? 'Inicio' : `Parada ${numero}`) : `Tramo ${numero}`;
-        
         btn.innerHTML = `
           <span class="btn-icon">${icono}</span>
-          <div class="btn-content">
-            <div class="btn-title">${titulo}</div>
-            <div class="btn-desc">${punto.nombre}</div>
-          </div>
+          <span class="btn-title">${titulo}</span>
+          <span class="btn-desc">${punto.nombre}</span>
         `;
-        
-        btn.onclick = async () => {
+        btn.onclick = () => {
           if (esParada) {
-            state.paradaActual = punto.parada;
-            state.tramoActual = -1;
+            paradaActual = punto.parada;
+            tramoActual = -1;
           } else {
-            state.tramoActual = punto.tramo;
-            state.paradaActual = -1;
+            tramoActual = punto.tramo;
+            paradaActual = -1;
           }
-          
           renderParadasYTramos();
-          
-          // Notificar al padre del cambio de punto
-          await enviarMensaje(TIPOS_MENSAJE.NAVEGACION.CAMBIAR_PUNTO, {
+          // Mensaje al padre y a los hijos
+          window.parent.postMessage({
+            type: 'actualizarPuntoActual',
+            origen: 'hijo5-casa',
             puntoActual: {
               tipo: esParada ? 'parada' : 'tramo',
               id: esParada ? `P-${punto.parada}` : `TR-${punto.tramo}`,
               numero: esParada ? punto.parada : punto.tramo,
               nombre: punto.nombre
             },
-            modo: state.modoCasa ? 'casa' : 'aventura',
-            gpsActivo: state.gpsOn
-          });
-          // Notificar a los otros componentes
-          await Promise.all([
-            // Para el componente de mapa (hijo2)
-            enviarMensaje(TIPOS_MENSAJE.NAVEGACION.SIMULAR_UBICACION, {
+            modo: modoCasa ? 'casa' : 'aventura',
+            gpsActivo: gpsOn
+          }, '*');
+          window.parent.postMessage({
+            type: 'mensaje-para-hijo2',
+            origen: 'hijo5-casa',
+            mensaje: {
+              type: 'simularUbicacion',
               punto: punto,
-              modoCasa: state.modoCasa
-            }, 'hijo2'),
-            
-            // Para el componente de multimedia (hijo3)
-            enviarMensaje(
-              esParada ? TIPOS_MENSAJE.MULTIMEDIA.CARGAR_AUDIO : TIPOS_MENSAJE.MULTIMEDIA.CARGAR_VIDEO, 
-              {
-                punto: punto,
-                modoCasa: state.modoCasa
-              },
-              'hijo3'
-            ),
-            
-            // Para el componente de retos (hijo4)
-            enviarMensaje(TIPOS_MENSAJE.RETOS.MOSTRAR_RETO, {
+              modoCasa: modoCasa
+            }
+          }, '*');
+          window.parent.postMessage({
+            type: 'mensaje-para-hijo3',
+            origen: 'hijo5-casa',
+            mensaje: {
+              type: esParada ? 'cargarAudio' : 'cargarVideo',
               punto: punto,
-              modoCasa: state.modoCasa
-            }, 'hijo4')
-          ]);
+              modoCasa: modoCasa
+            }
+          }, '*');
+          window.parent.postMessage({
+            type: 'mensaje-para-hijo4',
+            origen: 'hijo5-casa',
+            mensaje: {
+              type: 'mostrarReto',
+              punto: punto,
+              modoCasa: modoCasa
+            }
+          }, '*');
         };
         lista.appendChild(btn);
       });
     }
 
-    // Función para actualizar el estado del GPS
-    async function actualizarEstadoGPS(nuevoEstado) {
-      state.gpsOn = nuevoEstado;
-      state.modoCasa = !nuevoEstado;
+    // Botón GPS con lógica que solo actúa en modo OFF
+    function actualizarBotonGPS() {
+      const gpsBtn = document.getElementById('gps-casa-btn');
+      const label = gpsBtn.querySelector('.gps-label');
       
-      // Actualizar UI
-      actualizarUI();
+      // Actualizar siempre la apariencia del botón
+      gpsBtn.classList.toggle('on', gpsOn === true);
+gpsBtn.classList.toggle('off', gpsOn === false);
+      label.textContent = gpsOn ? 'ON' : 'OFF';
       
-      // Guardar estado
-      guardarEstado();
-      
-      // Gestionar GPS
-      if (state.gpsOn) {
-        iniciarGPS();
-      } else {
-        detenerGPS();
-        renderParadasYTramos();
+      // Actualizar estado en localStorage
+      try {
+        localStorage.setItem('gpsState', JSON.stringify(gpsOn));
+      } catch (e) {
+        console.error('Error al guardar en localStorage:', e);
       }
       
-      // Notificar cambio de estado
-      await enviarMensaje(TIPOS_MENSAJE.ESTADO.ACTUALIZAR, {
-        gpsOn: state.gpsOn,
-        modo: state.gpsOn ? 'aventura' : 'casa'
+      // Solo actuar si el GPS está en modo OFF
+      if (!gpsOn) {
+        // Mostrar ventana de paradas
+        const paradasWindow = document.getElementById('paradas-window');
+        paradasWindow.style.display = 'block';
+        
+        // Detener cualquier seguimiento GPS activo
+        detenerSeguimientoGPS();
+        
+        // Renderizar las paradas disponibles
+        renderParadasYTramos();
+        
+        // Notificar el cambio de estado
+        if (window.Mensajeria) {
+          Mensajeria.enviarMensajeConReintenos(
+            'padre',
+            'sistema:gps_estado',
+            { activo: false, modo: 'casa' }
+          ).catch(console.error);
+          
+          Mensajeria.broadcast('sistema:gps_estado', { 
+            activo: false,
+            origen: 'hijo5-casa'
+          }).catch(console.error);
+        } else if (window.parent) {
+          window.parent.postMessage({
+            type: 'GPS_STATE_CHANGE',
+            activo: false,
+            origen: 'hijo5-casa',
+            timestamp: Date.now()
+          }, '*');
+          
+          [2, 3, 4].forEach(hijo => {
+            window.parent.postMessage({
+              type: `mensaje-para-hijo${hijo}`,
+              mensaje: 'ACTUALIZAR_GPS',
+              activo: false,
+              origen: 'hijo5-casa',
+              timestamp: Date.now()
+            }, '*');
+          });
+        }
+      } else {
+        // Si el GPS está en ON, simplemente ocultar la ventana de paradas
+        const paradasWindow = document.getElementById('paradas-window');
+        paradasWindow.style.display = 'none';
+      }
+    }
+    
+    // Iniciar seguimiento GPS
+    function iniciarSeguimientoGPS() {
+      return new Promise((resolve, reject) => {
+        try {
+          // Limpiar cualquier seguimiento previo
+          if (watchId !== null) {
+            navigator.geolocation.clearWatch(watchId);
+            watchId = null;
+          }
+
+          // Verificar si el navegador soporta geolocalización
+          if ('geolocation' in navigator) {
+            const opciones = { 
+              enableHighAccuracy: true, 
+              timeout: 10000, 
+              maximumAge: 0 
+            };
+
+            // Función de éxito
+            const exito = (position) => {
+              if (window.Mensajeria) {
+                Mensajeria.enviarMensajeConReintenos(
+                  'padre',
+                  'navegacion:actualizar_ubicacion',
+                  {
+                    coords: position.coords,
+                    timestamp: position.timestamp,
+                    precision: position.coords.accuracy
+                  }
+                ).catch(console.error);
+              } else if (window.parent) {
+                // Fallback a postMessage
+                window.parent.postMessage({
+                  type: 'GPS_POSITION',
+                  coords: position.coords,
+                  timestamp: position.timestamp,
+                  origen: 'hijo5-casa'
+                }, '*');
+              }
+              resolve(position);
+            };
+
+            // Función de error
+            const error = (err) => {
+              console.error('Error de geolocalización:', err);
+              reject(err);
+            };
+
+            // Iniciar el seguimiento
+            watchId = navigator.geolocation.watchPosition(exito, error, opciones);
+          } else {
+            reject(new Error('Geolocalización no soportada por el navegador'));
+          }
+        } catch (error) {
+          console.error('Error en iniciarSeguimientoGPS:', error);
+          reject(error);
+        }
       });
     }
     
-    // Función para iniciar el seguimiento GPS
-    function iniciarGPS() {
-      if (state.watchId !== null) return;
-      
-      if ('geolocation' in navigator) {
-        state.watchId = navigator.geolocation.watchPosition(
-          async (position) => {
-            const { latitude, longitude, accuracy, altitude, altitudeAccuracy, heading, speed } = position.coords;
-            
-            await enviarMensaje(TIPOS_MENSAJE.NAVEGACION.ACTUALIZAR_UBICACION, {
-              coords: {
-                latitude,
-                longitude,
-                accuracy,
-                altitude: altitude || null,
-                altitudeAccuracy: altitudeAccuracy || null,
-                heading: heading || null,
-                speed: speed || null
-              },
-              timestamp: position.timestamp
-            });
-          },
-          (error) => {
-            logger.error('Error de geolocalización:', error);
-          },
-          { 
-            enableHighAccuracy: true, 
-            timeout: 10000, 
-            maximumAge: 0 
-          }
-        );
-      }
-    }
-    
-    // Función para detener el seguimiento GPS
-    function detenerGPS() {
-      if (state.watchId !== null) {
-        navigator.geolocation.clearWatch(state.watchId);
-        state.watchId = null;
-      }
-    }
-    
-    // Función para actualizar la UI
-    function actualizarUI() {
-      const gpsBtn = document.getElementById('gps-casa-btn');
-      if (!gpsBtn) return;
-      
-      const label = gpsBtn.querySelector('.gps-label');
-      const paradasWindow = document.getElementById('paradas-window');
-      
-      // Actualizar botón
-      gpsBtn.classList.toggle('on', state.gpsOn);
-      gpsBtn.classList.toggle('off', !state.gpsOn);
-      gpsBtn.style.backgroundColor = state.gpsOn ? '#4CAF50' : '#f44336';
-      gpsBtn.style.borderColor = state.gpsOn ? '#45a049' : '#d32f2f';
-      if (label) label.textContent = state.gpsOn ? 'ON' : 'OFF';
-      gpsBtn.title = state.gpsOn ? 'Desactivar GPS (Modo Aventura)' : 'Activar GPS (Modo Casa)';
-      
-      // Mostrar/ocultar ventana de paradas
-      if (paradasWindow) {
-        paradasWindow.style.display = state.gpsOn ? 'none' : 'flex';
-      }
-    }
-    
-    // Función para guardar el estado
-    function guardarEstado() {
-      try {
-        localStorage.setItem('gpsState', JSON.stringify(state.gpsOn));
-      } catch (e) {
-        logger.error('Error al guardar el estado:', e);
+    // Detener seguimiento GPS
+    function detenerSeguimientoGPS() {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
       }
     }
 
-    // Manejar clic en el botón GPS
-    document.getElementById('gps-casa-btn')?.addEventListener('click', () => {
-      actualizarEstadoGPS(!state.gpsOn);
-    });
+    document.getElementById('gps-casa-btn').onclick = function() {
+      gpsOn = !gpsOn;
+      modoCasa = !gpsOn;
+      actualizarBotonGPS();
+      if (!gpsOn) renderParadasYTramos();
+    };
 
-    // Manejador de mensajes entrantes
-    window.addEventListener('message', async function(event) {
-      const { data } = event;
-      if (!data || !data.tipo) return;
+    // Funciones de control
+    function enableControls(modo = 'casa', { motivo = 'sin_especificar', forzar = false } = {}) {
+      if (modo !== 'casa' && modo !== 'aventura') {
+        console.error(`Modo no válido: ${modo}`);
+        return false;
+      }
 
-      try {
+      if (controlesHabilitados && !forzar) {
+        console.log(`Los controles ya están habilitados en modo ${modo}.`, { motivo });
+        return false;
+      }
+
+      console.log(`Habilitando controles en modo ${modo}. Motivo: ${motivo}`);
+      controlesHabilitados = true;
+      motivoDeshabilitado = '';
+      modoCasa = (modo === 'casa');
+      gpsOn = !modoCasa;
+      
+      // Actualizar la interfaz
+      actualizarBotonGPS();
+      
+      // Notificar el cambio de modo
+      if (window.Mensajeria) {
+        Mensajeria.enviarMensajeConReintenos(
+          'padre',
+          'sistema:configuracion',
+          { modo, habilitado: true, motivo }
+        ).catch(console.error);
+      }
+      
+      return true;
+    }
+    
+    function disableControls(motivo = 'sin_especificar') {
+      if (!controlesHabilitados) {
+        console.log('Los controles ya están deshabilitados.', { motivo: motivoDeshabilitado });
+        return false;
+      }
+      
+      console.log(`Deshabilitando controles. Motivo: ${motivo}`);
+      controlesHabilitados = false;
+      motivoDeshabilitado = motivo;
+      
+      // Detener el seguimiento GPS si está activo
+      if (gpsOn) {
+        gpsOn = false;
+        detenerSeguimientoGPS();
+        actualizarBotonGPS();
+      }
+      
+      return true;
+    }
+    
+    function manejarCambioModo(modo, habilitar = true, { motivo = 'cambio_modo', forzar = false } = {}) {
+      if (modo !== 'casa' && modo !== 'aventura') {
+        console.error(`Modo no válido: ${modo}`);
+        return false;
+      }
+      
+      console.log(`Cambiando a modo ${modo}. Habilitar: ${habilitar}, Motivo: ${motivo}`, { forzar });
+      
+      // Actualizar el estado local
+      modoCasa = (modo === 'casa');
+      
+      // Si se debe habilitar/deshabilitar los controles
+      if (habilitar) {
+        enableControls(modo, { motivo, forzar });
+      } else {
+        disableControls(motivo);
+      }
+      
+      // Actualizar el estado del GPS según el modo
+      if (gpsOn === modoCasa) {
+        gpsOn = !modoCasa;
+        actualizarBotonGPS();
+      }
+      
+      // Notificar el cambio
+      if (window.Mensajeria) {
+        Mensajeria.enviarMensajeConReintenos(
+          'padre',
+          'sistema:configuracion',
+          { modo, habilitado: habilitar, motivo }
+        ).catch(console.error);
+      }
+      
+      return true;
+    }
+    
+    // Manejar mensajes entrantes
+    function manejarMensaje(data, origen) {
+      if (!data) return;
+      
+      // Manejar mensajes del sistema de mensajería
+      if (data.tipo) {
         switch(data.tipo) {
-          case 'cambiarParada':
-            if (typeof data.datos?.parada === 'number') {
-              state.paradaActual = data.datos.parada;
-              state.tramoActual = -1;
+          case 'sistema:configuracion':
+            // Manejar cambios de configuración del sistema
+            if (data.datos?.modo) {
+              manejarCambioModo(
+                data.datos.modo, 
+                data.datos.habilitado !== false, 
+                { motivo: data.datos.motivo || 'configuracion_sistema' }
+              );
+            }
+            break;
+            
+          case 'sistema:gps_estado':
+            if (typeof data.datos?.activo !== 'undefined') {
+              gpsOn = data.datos.activo;
+              modoCasa = !gpsOn;
+              actualizarBotonGPS();
+              if (!gpsOn) renderParadasYTramos();
+              else document.getElementById('paradas-window').style.display = 'none';
+            }
+            break;
+            
+          case 'navegacion:cambio_parada':
+            if (typeof data.datos?.parada !== 'undefined') {
+              paradaActual = data.datos.parada;
+              tramoActual = -1;
               renderParadasYTramos();
             }
             break;
             
-          case 'cambiarTramo':
-            if (typeof data.datos?.tramo === 'number') {
-              state.tramoActual = data.datos.tramo;
-              state.paradaActual = -1;
+          case 'navegacion:cambio_tramo':
+            if (typeof data.datos?.tramo !== 'undefined') {
+              tramoActual = data.datos.tramo;
+              paradaActual = -1;
               renderParadasYTramos();
             }
             break;
             
-          case 'sincronizarEstado':
+          case 'sistema:configuracion':
             if (data.datos?.estado) {
-              const nuevoModo = data.datos.estado.modo;
-              const nuevoGpsOn = nuevoModo === 'aventura';
-              
-              if (nuevoGpsOn !== state.gpsOn) {
-                await actualizarEstadoGPS(nuevoGpsOn);
-              } else {
-                // Actualizar solo el estado sin cambiar el GPS
-                state.gpsOn = nuevoGpsOn;
-                state.modoCasa = !nuevoGpsOn;
-                actualizarUI();
-              }
-              
-              // Actualizar punto actual si existe
+              gpsOn = data.datos.estado.modo === 'aventura';
+              modoCasa = !gpsOn;
               if (data.datos.estado.puntoActual) {
-                const punto = data.datos.estado.puntoActual;
-                if (punto.tipo === 'parada') {
-                  state.paradaActual = punto.numero;
-                  state.tramoActual = -1;
-                } else if (punto.tipo === 'tramo') {
-                  state.tramoActual = punto.numero;
-                  state.paradaActual = -1;
+                if (data.datos.estado.puntoActual.tipo === 'parada') {
+                  paradaActual = data.datos.estado.puntoActual.numero;
+                  tramoActual = -1;
+                } else if (data.datos.estado.puntoActual.tipo === 'tramo') {
+                  tramoActual = data.datos.estado.puntoActual.numero;
+                  paradaActual = -1;
                 }
-                if (!state.gpsOn) renderParadasYTramos();
               }
+              actualizarBotonGPS();
+              if (!gpsOn) renderParadasYTramos();
             }
             break;
         }
-      } catch (error) {
-        logger.error('Error al procesar mensaje:', error);
+      } 
+      // Manejar mensajes antiguos para compatibilidad
+      else if (data.type) {
+        if (data.type === 'cambiarParada' && typeof data.parada === 'number') {
+          paradaActual = data.parada;
+          tramoActual = -1;
+          renderParadasYTramos();
+        } else if (data.type === 'cambiarTramo' && typeof data.tramo === 'number') {
+          tramoActual = data.tramo;
+          paradaActual = -1;
+          renderParadasYTramos();
+        } else if (data.type === 'SET_GPS_STATE') {
+          gpsOn = !!data.gpsOn;
+          modoCasa = !gpsOn;
+          actualizarBotonGPS();
+          if (!gpsOn) renderParadasYTramos();
+        } else if (data.type === 'sincronizarEstado' && data.estado) {
+          gpsOn = data.estado.modo === 'aventura';
+          modoCasa = !gpsOn;
+          if (data.estado.puntoActual) {
+            if (data.estado.puntoActual.tipo === 'parada') {
+              paradaActual = data.estado.puntoActual.numero;
+              tramoActual = -1;
+            } else if (data.estado.puntoActual.tipo === 'tramo') {
+              tramoActual = data.estado.puntoActual.numero;
+              paradaActual = -1;
+            }
+          }
+          actualizarBotonGPS();
+          if (!gpsOn) renderParadasYTramos();
+        }
       }
-    });
+    }
+    
+    // Registrar manejador de mensajes si mensajería está disponible
+    if (window.Mensajeria) {
+      Mensajeria.registrarControlador('mensaje', manejarMensaje);
+    } else if (window.addEventListener) {
+      // Fallback a postMessage directo
+      window.addEventListener('message', function(event) {
+        manejarMensaje(event.data, event.origin);
+      });
+    }
 
-    // Función para cargar el estado guardado
-    function cargarEstadoGuardado() {
+    // Inicialización avanzada
+    (function init() {
       try {
+        // Inicializar mensajería
+        if (window.Mensajeria) {
+          Mensajeria.inicializarMensajeria({
+            iframeId: 'hijo5-casa',
+            logLevel: 1, // INFO
+            debug: true
+          });
+        }
+
         const savedState = localStorage.getItem('gpsState');
         if (savedState !== null) {
-          state.gpsOn = JSON.parse(savedState);
-          state.modoCasa = !state.gpsOn;
+          gpsOn = JSON.parse(savedState);
+          modoCasa = !gpsOn;
         }
       } catch (e) {
-        logger.error('Error al cargar el estado guardado:', e);
+        console.error('Error en inicialización:', e);
       }
-    }
-
-    // Función para notificar al padre que estamos listos
-    async function notificarListo() {
-      await enviarMensaje(TIPOS_MENSAJE.SISTEMA.INICIALIZACION, { 
-        gpsActivo: state.gpsOn,
-        modo: state.gpsOn ? 'aventura' : 'casa',
-        timestamp: Date.now()
-      });
-    }
-
-    // Inicialización
-    (async function init() {
-      try {
-        // Cargar estado guardado
-        cargarEstadoGuardado();
-        
-        // Inicializar UI
-        actualizarUI();
-        
-        // Iniciar GPS si está activado
-        if (state.gpsOn) {
-          iniciarGPS();
-        } else {
-          renderParadasYTramos();
-        }
-        
-        // Notificar al padre que estamos listos
-        await notificarListo();
-      } catch (error) {
-        logger.error('Error en la inicialización:', error);
+      
+      actualizarBotonGPS();
+      if (!gpsOn) renderParadasYTramos();
+      
+      // Notificar al padre usando mensajería
+      if (window.Mensajeria) {
+        Mensajeria.enviarMensajeConReintenos(
+          'padre', 
+          'sistema:inicializacion', 
+          { 
+            gpsActivo: gpsOn,
+            modo: gpsOn ? 'aventura' : 'casa'
+          }
+        ).catch(console.error);
+      } else if (window.parent) {
+        // Fallback a postMessage si mensajería no está disponible
+        window.parent.postMessage({
+          type: 'HIJO5_LISTO',
+          origen: 'hijo5-casa',
+          gpsActivo: gpsOn,
+          timestamp: Date.now()
+        }, '*');
       }
     })();
   </script>
-  <script type="module" src="js/mensajeria.js"></script>
 </body>
 </html>
