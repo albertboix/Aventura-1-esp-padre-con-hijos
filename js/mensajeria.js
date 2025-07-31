@@ -246,22 +246,232 @@ class Logger {
 const logger = new Logger();
 
 // Estado global de la aplicación
-const estadoGlobal = {
-    // Estado de la aplicación
-    modo: 'aventura', // 'casa' o 'aventura'
+const estadoAplicacion = {
+    modo: 'normal', // Modos: 'normal', 'soloLectura', 'mantenimiento', 'pruebas'
     controlesHabilitados: true,
-    motivoDeshabilitado: null,
-    
-    // Estado del GPS
+    motivoDeshabilitacion: null,
+    ultimaAccion: null,
+    configuracion: {},
+    modosDisponibles: {
+        normal: { permiteInteraccion: true, descripcion: 'Modo normal' },
+        soloLectura: { permiteInteraccion: false, descripcion: 'Modo solo lectura' },
+        mantenimiento: { permiteInteraccion: false, descripcion: 'Modo mantenimiento' },
+        pruebas: { permiteInteraccion: true, descripcion: 'Modo pruebas' }
+    },
+    listenersModo: []
+};
+
+// Estado global del GPS
+const estadoGPS = {
     gpsActivo: true,
     ultimaUbicacion: null,
     precisionUbicacion: null,
-    
-    // Metadatos
     ultimaAccion: null,
     timestamp: Date.now(),
     version: '1.0.0'
 };
+
+/**
+ * Habilita o configura los controles de la aplicación
+ * @param {string} [modo='normal'] - Modo de operación ('normal', 'soloLectura', 'mantenimiento', 'pruebas')
+ * @param {Object} [opciones={}] - Opciones adicionales de configuración
+ * @returns {Object} Estado actual de los controles
+ */
+function enableControls(modo = 'normal', opciones = {}) {
+    const modoAnterior = estadoAplicacion.modo;
+    const modoValido = estadoAplicacion.modosDisponibles[modo];
+    
+    if (!modoValido) {
+        logger.warn(`Intento de habilitar controles con modo inválido: ${modo}`, { modoAnterior });
+        throw new ErrorMensajeria(
+            `Modo '${modo}' no es un modo válido`,
+            'MODO_INVALIDO',
+            { modo, modosDisponibles: Object.keys(estadoAplicacion.modosDisponibles) }
+        );
+    }
+    
+    // Actualizar el estado
+    estadoAplicacion.modo = modo;
+    estadoAplicacion.controlesHabilitados = modoValido.permiteInteraccion;
+    estadoAplicacion.motivoDeshabilitacion = null;
+    
+    // Aplicar configuración adicional si se proporciona
+    if (opciones.configuracion) {
+        estadoAplicacion.configuracion = { ...estadoAplicacion.configuracion, ...opciones.configuracion };
+    }
+    
+    // Notificar a los oyentes del cambio de modo
+    manejarCambioModo(modo, modoAnterior, opciones);
+    
+    logger.info(`Controles habilitados en modo: ${modo}`, {
+        modoAnterior,
+        modoNuevo: modo,
+        opciones
+    });
+    
+    return {
+        modo: estadoAplicacion.modo,
+        controlesHabilitados: estadoAplicacion.controlesHabilitados,
+        configuracion: { ...estadoAplicacion.configuracion }
+    };
+}
+
+/**
+ * Deshabilita los controles de la aplicación
+ * @param {string} motivo - Razón por la que se deshabilitan los controles
+ * @param {Object} [opciones={}] - Opciones adicionales
+ * @param {boolean} [opciones.forzar=false] - Si es true, fuerza la deshabilitación incluso en modo de pruebas
+ * @returns {Object} Estado actual de los controles
+ */
+function disableControls(motivo, opciones = {}) {
+    if (estadoAplicacion.modo === 'pruebas' && !opciones.forzar) {
+        logger.debug('No se deshabilitan controles en modo pruebas', { motivo });
+        return {
+            modo: estadoAplicacion.modo,
+            controlesHabilitados: true,
+            motivo: 'Controles activos en modo pruebas'
+        };
+    }
+    
+    const estadoAnterior = {
+        modo: estadoAplicacion.modo,
+        controlesHabilitados: estadoAplicacion.controlesHabilitados,
+        motivo: estadoAplicacion.motivoDeshabilitacion
+    };
+    
+    // Actualizar estado
+    estadoAplicacion.controlesHabilitados = false;
+    estadoAplicacion.motivoDeshabilitacion = motivo || 'Motivo no especificado';
+    
+    // Notificar a los oyentes del cambio de estado
+    const evento = new CustomEvent('controles:deshabilitados', {
+        detail: {
+            motivo,
+            opciones,
+            estadoAnterior,
+            estadoNuevo: {
+                modo: estadoAplicacion.modo,
+                controlesHabilitados: false,
+                motivo: estadoAplicacion.motivoDeshabilitacion
+            }
+        }
+    });
+    
+    window.dispatchEvent(evento);
+    
+    logger.info('Controles deshabilitados', {
+        motivo,
+        opciones,
+        estadoAnterior,
+        estadoNuevo: {
+            modo: estadoAplicacion.modo,
+            controlesHabilitados: false,
+            motivo: estadoAplicacion.motivoDeshabilitacion
+        }
+    });
+    
+    return {
+        modo: estadoAplicacion.modo,
+        controlesHabilitados: false,
+        motivo: estadoAplicacion.motivoDeshabilitacion
+    };
+}
+
+/**
+ * Maneja los cambios de modo en la aplicación
+ * @param {string} modoNuevo - Nuevo modo de operación
+ * @param {string} modoAnterior - Modo de operación anterior
+ * @param {Object} [opciones={}] - Opciones adicionales
+ */
+function manejarCambioModo(modoNuevo, modoAnterior, opciones = {}) {
+    // Verificar si hay un cambio real de modo
+    if (modoNuevo === modoAnterior) {
+        return;
+    }
+    
+    const modoInfo = estadoAplicacion.modosDisponibles[modoNuevo] || {};
+    
+    // Crear el evento de cambio de modo
+    const evento = new CustomEvent('aplicacion:cambioModo', {
+        cancelable: true,
+        detail: {
+            modo: modoNuevo,
+            modoAnterior,
+            permiteInteraccion: modoInfo.permiteInteraccion || false,
+            descripcion: modoInfo.descripcion || 'Modo sin descripción',
+            opciones,
+            timestamp: Date.now()
+        }
+    });
+    
+    // Disparar el evento y verificar si fue cancelado
+    const continuar = window.dispatchEvent(evento);
+    
+    if (!continuar) {
+        // Revertir el cambio si el evento fue cancelado
+        logger.warn('Cambio de modo cancelado por un oyente', {
+            modoNuevo,
+            modoAnterior,
+            opciones
+        });
+        
+        // Revertir al modo anterior
+        estadoAplicacion.modo = modoAnterior;
+        const modoAnteriorInfo = estadoAplicacion.modosDisponibles[modoAnterior] || {};
+        estadoAplicacion.controlesHabilitados = modoAnteriorInfo.permiteInteraccion || false;
+        
+        return false;
+    }
+    
+    // Notificar a los oyentes registrados
+    estadoAplicacion.listenersModo.forEach(listener => {
+        try {
+            listener(modoNuevo, modoAnterior, opciones);
+        } catch (error) {
+            logger.error('Error en listener de cambio de modo', {
+                error: error.message,
+                listener: listener.toString().substring(0, 100) + '...',
+                modoNuevo,
+                modoAnterior
+            });
+        }
+    });
+    
+    // Registrar el cambio de modo
+    logger.info('Cambio de modo completado', {
+        modoAnterior,
+        modoNuevo,
+        permiteInteraccion: modoInfo.permiteInteraccion || false,
+        opciones
+    });
+    
+    return true;
+}
+
+/**
+ * Registra un listener para cambios de modo
+ * @param {Function} callback - Función a ejecutar cuando cambia el modo
+ * @returns {Function} Función para eliminar el listener
+ */
+function onCambioModo(callback) {
+    if (typeof callback !== 'function') {
+        throw new ErrorMensajeria(
+            'Se requiere una función como callback',
+            'TIPO_INVALIDO',
+            { tipo: typeof callback }
+        );
+    }
+    
+    estadoAplicacion.listenersModo.push(callback);
+    
+    // Retornar función para eliminar el listener
+    return () => {
+        const index = estadoAplicacion.listenersModo.indexOf(callback);
+        if (index !== -1) {
+            estadoAplicacion.listenersModo.splice(index, 1);
+        }
+    };
+}
 
 /**
  * Actualiza el estado del GPS en la aplicación
@@ -411,8 +621,42 @@ function obtenerManejadorMensaje(categoria) {
  * @param {string} accion - Acción a realizar (ej: 'ping', 'pong', 'inicializacion', etc.)
  * @param {Object} datos - Datos del mensaje
  * @param {Object} contexto - Contexto del mensaje (origen, destino, mensajeId, etc.)
+ * @returns {Promise<Object>} Resultado de la operación
  */
-function manejarMensajeSistema(accion, datos = {}, contexto = {}) {
+async function manejarMensajeSistema(accion, datos = {}, contexto = {}) {
+    // Manejar mensajes de configuración de modo
+    if (accion === 'configuracion' && datos.modo) {
+        try {
+            const resultado = enableControls(datos.modo, datos);
+            return {
+                exito: true,
+                modo: resultado.modo,
+                controlesHabilitados: resultado.controlesHabilitados,
+                timestamp: Date.now()
+            };
+        } catch (error) {
+            logger.error('Error al configurar modo', {
+                error: error.message,
+                datos,
+                ...contexto
+            });
+            
+            throw new ErrorMensajeria(
+                `Error al configurar modo: ${error.message}`,
+                error.codigo || 'ERROR_CONFIGURACION',
+                { ...error.detalles, modo: datos.modo }
+            );
+        }
+    }
+    
+    // Manejar mensajes de habilitación/deshabilitación de controles
+    if (accion === 'habilitar_controles') {
+        return enableControls(datos.modo || 'normal', datos);
+    }
+    
+    if (accion === 'deshabilitar_controles') {
+        return disableControls(datos.motivo || 'Deshabilitado por solicitud', datos);
+    }
     const contextoCompleto = {
         ...contexto,
         accion,
@@ -1177,234 +1421,143 @@ function manejarMensajeUI(accion, datos = {}, contexto = {}) {
 }
 
 /**
+ * Maneja la lógica de actualización de estado
+ * @param {Object} datos - Datos del mensaje
+ * @param {Object} contexto - Contexto del mensaje
+ * @returns {Promise<Object>} Resultado de la operación
+ */
+async function manejarActualizacionEstado(datos = {}, contexto = {}) {
+    const contextoCompleto = {
+        ...contexto,
+        accion: 'actualizar',
+        timestamp: Date.now()
+    };
+
+    // Validar datos requeridos
+    if (!datos.entidad || !datos.cambios) {
+        throw new ErrorMensajeria(
+            'Se requiere especificar una entidad y los cambios a aplicar',
+            ERRORES.VALIDACION_FALLIDA
+        );
+    }
+
+    logger.debug('Actualizando estado', {
+        ...contextoCompleto,
+        entidad: datos.entidad,
+        cambios: Object.keys(datos.cambios)
+    });
+    
+    // Aplicar cambios al estado global
+    if (!estadoAplicacion[datos.entidad]) {
+        estadoAplicacion[datos.entidad] = {};
+    }
+    
+    // Guardar el estado anterior para notificaciones
+    const estadoAnterior = { ...estadoAplicacion[datos.entidad] };
+    
+    // Actualizar el estado con los nuevos cambios
+    Object.assign(estadoAplicacion[datos.entidad], datos.cambios);
+    
+    // Notificar a los oyentes del cambio de estado
+    const evento = new CustomEvent('estado:actualizado', {
+        detail: {
+            entidad: datos.entidad,
+            cambios: datos.cambios,
+            estadoAnterior,
+            estadoNuevo: estadoAplicacion[datos.entidad],
+            timestamp: Date.now()
+        }
+    });
+    window.dispatchEvent(evento);
+    
+    return {
+        exito: true,
+        mensaje: 'Estado actualizado correctamente',
+        entidad: datos.entidad,
+        cambios: datos.cambios,
+        mensajeId: contexto.mensajeId,
+        timestamp: Date.now()
+    };
+}
+
+/**
  * Maneja los mensajes relacionados con el estado de la aplicación
  * @param {string} accion - Acción de estado (ej: 'actualizar', 'sincronizar', 'restaurar')
  * @param {Object} datos - Datos del mensaje
  * @param {Object} contexto - Contexto del mensaje (origen, destino, mensajeId, etc.)
+ * @returns {Promise<Object>} Resultado de la operación
  */
-function manejarMensajeEstado(accion, datos = {}, contexto = {}) {
+async function manejarMensajeEstado(accion, datos = {}, contexto = {}) {
     const contextoCompleto = {
         ...contexto,
         accion,
         timestamp: Date.now()
     };
 
+    // Manejar actualizaciones de estado que incluyan cambios de modo
+    if (accion === 'actualizar' && datos.modo && datos.modo !== estadoAplicacion.modo) {
+        try {
+            const resultado = enableControls(datos.modo, datos);
+            
+            // Continuar con el procesamiento normal del estado
+            const resultadoEstado = await manejarActualizacionEstado(datos, contexto);
+            
+            return {
+                ...resultadoEstado,
+                modo: resultado.modo,
+                controlesHabilitados: resultado.controlesHabilitados
+            };
+        } catch (error) {
+            logger.error('Error al actualizar estado con cambio de modo', {
+                error: error.message,
+                datos,
+                ...contexto
+            });
+            
+            // Revertir al modo anterior en caso de error
+            if (estadoAplicacion.modo !== 'normal') {
+                enableControls('normal');
+            }
+            
+            throw error;
+        }
+    }
+    
+    // Procesar acciones de estado
     try {
         switch (accion) {
             case 'actualizar':
-                // Validar datos requeridos
-                if (!datos.entidad || !datos.cambios) {
-                    throw new ErrorMensajeria(
-                        'Se requiere especificar una entidad y los cambios a aplicar',
-                        ERRORES.VALIDACION_FALLIDA
-                    );
-                }
-
-                logger.debug('Actualizando estado', {
-                    ...contextoCompleto,
-                    entidad: datos.entidad,
-                    cambios: Object.keys(datos.cambios)
-                });
-
-                // Aquí iría la lógica para actualizar el estado
-                // const estadoActualizado = Estado.actualizar(datos.entidad, datos.cambios);
+                return await manejarActualizacionEstado(datos, contexto);
                 
-                // Notificar a otros componentes sobre el cambio de estado
-                broadcast('estado:actualizado', {
-                    entidad: datos.entidad,
-                    cambios: datos.cambios,
-                    origen: config.iframeId,
-                    timestamp: Date.now()
-                }).catch(error => {
-                    logger.error('Error al notificar actualización de estado', {
-                        ...contextoCompleto,
-                        error: error.message
-                    });
-                });
-                break;
-
-            case 'solicitar_estado':
-                // Validar datos requeridos
-                if (!datos.entidad) {
-                    throw new ErrorMensajeria(
-                        'Se requiere especificar la entidad de estado a solicitar',
-                        ERRORES.VALIDACION_FALLIDA
-                    );
-                }
-
-                logger.debug('Solicitando estado', {
-                    ...contextoCompleto,
-                    entidad: datos.entidad,
-                    propiedades: datos.propiedades
-                });
-
-                // Aquí iría la lógica para obtener el estado solicitado
-                // const estado = Estado.obtener(datos.entidad, datos.propiedades);
-                const estado = {}; // Estado de ejemplo
+            case 'obtener':
+                return await manejarObtenerEstado(datos, contexto);
                 
-                // Enviar estado de vuelta al solicitante
-                enviarMensajeConReintenos(
-                    contexto.origen || 'padre',
-                    'estado:respuesta_solicitud',
-                    {
-                        solicitudId: datos.solicitudId,
-                        entidad: datos.entidad,
-                        estado,
-                        timestamp: Date.now()
-                    },
-                    { maxRetries: 3 }
-                ).catch(error => {
-                    logger.error('Error al enviar estado solicitado', {
-                        ...contextoCompleto,
-                        error: error.message
-                    });
-                });
-                break;
-
             case 'sincronizar':
-                logger.info('Sincronizando estado con otros componentes', {
-                    ...contextoCompleto,
-                    entidad: datos.entidad,
-                    origen: datos.origen
-                });
+                return await manejarSincronizarEstado(datos, contexto);
                 
-                // Aquí iría la lógica para sincronizar el estado
-                // Estado.sincronizar(datos.entidad, datos.estado);
+            case 'reiniciar':
+                return await manejarReiniciarEstado(datos, contexto);
                 
-                // Reenviar el estado a otros componentes si es necesario
-                if (datos.retransmitir) {
-                    broadcast('estado:sincronizado', {
-                        entidad: datos.entidad,
-                        estado: datos.estado,
-                        origen: config.iframeId,
-                        timestamp: Date.now()
-                    }, { exclude: [contexto.origen] }).catch(error => {
-                        logger.error('Error al retransmitir estado sincronizado', {
-                            ...contextoCompleto,
-                            error: error.message
-                        });
-                    });
-                }
-                break;
-
-            case 'restaurar':
-                logger.info('Restaurando estado de la aplicación', {
-                    ...contextoCompleto,
-                    puntoRestauracion: datos.puntoRestauracion || 'ultimo_guardado'
-                });
-                
-                try {
-                    // Aquí iría la lógica para restaurar el estado
-                    // const estadoRestaurado = Estado.restaurar(datos.puntoRestauracion);
-                    const estadoRestaurado = {}; // Estado restaurado de ejemplo
-                    
-                    // Notificar a otros componentes sobre la restauración
-                    broadcast('estado:restaurado', {
-                        puntoRestauracion: datos.puntoRestauracion,
-                        estado: estadoRestaurado,
-                        timestamp: Date.now()
-                    }).catch(error => {
-                        logger.error('Error al notificar restauración de estado', {
-                            ...contextoCompleto,
-                            error: error.message
-                        });
-                    });
-                } catch (error) {
-                    logger.error('Error al restaurar el estado', {
-                        ...contextoCompleto,
-                        error: error.message
-                    });
-                    
-                    // Notificar el error al solicitante si es posible
-                    if (contexto.origen && contexto.mensajeId) {
-                        enviarMensajeConReintenos(
-                            contexto.origen,
-                            'sistema:error',
-                            {
-                                mensaje: 'Error al restaurar el estado',
-                                detalle: error.message,
-                                mensajeId: contexto.mensajeId,
-                                tipo: 'estado',
-                                accion: 'restaurar',
-                                stack: config.debug ? error.stack : undefined
-                            },
-                            { maxRetries: 2 }
-                        ).catch(err => {
-                            logger.error('No se pudo notificar el error al remitente', {
-                                ...contextoCompleto,
-                                error: err.message
-                            });
-                        });
-                    }
-                }
-                break;
-
-            case 'resetear':
-                logger.warn('Restableciendo estado de la aplicación', {
-                    ...contextoCompleto,
-                    ambito: datos.ambito || 'completo',
-                    confirmado: datos.confirmado || false
-                });
-                
-                // Validar confirmación para evitar restablecimientos accidentales
-                if (!datos.confirmado) {
-                    throw new ErrorMensajeria(
-                        'Se requiere confirmación para restablecer el estado',
-                        ERRORES.CONFIRMACION_REQUERIDA
-                    );
-                }
-                
-                // Aquí iría la lógica para restablecer el estado
-                // Estado.resetear(datos.ambito);
-                
-                // Notificar a otros componentes sobre el restablecimiento
-                broadcast('estado:restablecido', {
-                    ambito: datos.ambito,
-                    timestamp: Date.now()
-                }).catch(error => {
-                    logger.error('Error al notificar restablecimiento de estado', {
-                        ...contextoCompleto,
-                        error: error.message
-                    });
-                });
-                break;
-
             default:
-                logger.warn('Acción de estado no reconocida', {
-                    ...contextoCompleto,
-                    accion
-                });
+                throw new ErrorMensajeria(
+                    `Acción de estado no soportada: ${accion}`,
+                    ERRORES.ACCION_NO_SOPORTADA,
+                    { 
+                        accion, 
+                        accionesSoportadas: ['actualizar', 'obtener', 'sincronizar', 'reiniciar'],
+                        mensajeId: contexto.mensajeId
+                    }
+                );
         }
     } catch (error) {
         logger.error('Error al procesar mensaje de estado', {
             ...contextoCompleto,
-            error: error instanceof ErrorMensajeria ? error.toJSON() : {
-                mensaje: error.message,
-                stack: config.debug ? error.stack : undefined
-            }
+            error: error.message,
+            stack: error.stack
         });
-
-        // Notificar el error al remitente si es posible
-        if (contexto.origen && contexto.mensajeId) {
-            enviarMensajeConReintenos(
-                contexto.origen,
-                'sistema:error',
-                {
-                    mensaje: 'Error al procesar mensaje de estado',
-                    detalle: error.message,
-                    mensajeId: contexto.mensajeId,
-                    tipo: 'estado',
-                    accion,
-                    stack: config.debug ? error.stack : undefined
-                },
-                { maxRetries: 2 }
-            ).catch(err => {
-                logger.error('No se pudo notificar el error al remitente', {
-                    ...contextoCompleto,
-                    error: err.message
-                });
-            });
-        }
+        
+        // Reenviar el error para que sea manejado por el sistema de mensajería
+        throw error;
     }
 }
 
