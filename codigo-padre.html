@@ -2799,6 +2799,11 @@ function avanzarSiguientePunto() {
         }
 
         // ================== MANEJADOR DE MENSAJES DEL HIJO 5 (BOTÓN CASA) ==================
+        // Variables de estado global
+        window.paradaActual = -1;
+        window.tramoActual = -1;
+        window.modoActual = 'aventura';
+        
         // Variable para rastrear si ya hemos inicializado el manejador
         let manejadorHijo5Inicializado = false;
         
@@ -3023,10 +3028,73 @@ function avanzarSiguientePunto() {
                         
                     case 'cambioParada':
                         await manejarCambioParada(datos);
+                        // Forward to other children
+                        if (datos.parada) {
+                            await enviarMensaje('hijo2', 'cambioPunto', {
+                                tipo: 'parada',
+                                id: datos.parada.id,
+                                numero: datos.parada.numero,
+                                nombre: datos.parada.nombre,
+                                origen: 'hijo5-casa',
+                                timestamp: datos.timestamp || Date.now()
+                            });
+                            
+                            await enviarMensaje('hijo3', 'cargarAudio', {
+                                tipo: 'parada',
+                                id: datos.parada.id,
+                                numero: datos.parada.numero,
+                                nombre: datos.parada.nombre,
+                                origen: 'hijo5-casa',
+                                timestamp: datos.timestamp || Date.now()
+                            });
+                            
+                            await enviarMensaje('hijo4', 'mostrarReto', {
+                                tipo: 'parada',
+                                id: datos.parada.id,
+                                numero: datos.parada.numero,
+                                nombre: datos.parada.nombre,
+                                origen: 'hijo5-casa',
+                                timestamp: datos.timestamp || Date.now()
+                            });
+                        }
                         break;
                         
                     case 'cambioTramo':
                         await manejarCambioTramo(datos);
+                        // Forward to other children
+                        if (datos.tramo) {
+                            await enviarMensaje('hijo2', 'cambioPunto', {
+                                tipo: 'tramo',
+                                id: datos.tramo.id,
+                                numero: datos.tramo.numero,
+                                nombre: datos.tramo.nombre,
+                                origen: 'hijo5-casa',
+                                timestamp: datos.timestamp || Date.now()
+                            });
+                            
+                            await enviarMensaje('hijo3', 'cargarVideo', {
+                                tipo: 'tramo',
+                                id: datos.tramo.id,
+                                numero: datos.tramo.numero,
+                                nombre: datos.tramo.nombre,
+                                origen: 'hijo5-casa',
+                                timestamp: datos.timestamp || Date.now()
+                            });
+                            
+                            await enviarMensaje('hijo4', 'ocultarReto', {
+                                origen: 'hijo5-casa',
+                                timestamp: datos.timestamp || Date.now()
+                            });
+                        }
+                        break;
+                        
+                    case 'actualizarPuntoActual':
+                        // Handle the update point message
+                        if (datos.puntoActual) {
+                            const { tipo, id, numero, nombre } = datos.puntoActual;
+                            await actualizarEstadoPuntoActual(tipo, id, numero, nombre);
+                            await sincronizarEstadoConHijos();
+                        }
                         break;
                         
                     case 'solicitarEstado':
@@ -3083,6 +3151,67 @@ function avanzarSiguientePunto() {
         }
 
         /**
+         * Actualiza el estado del punto actual
+         * @param {string} tipo - Tipo de punto ('parada' o 'tramo')
+         * @param {string} id - ID del punto (ej: 'P-1', 'TR-1')
+         * @param {number} numero - Número del punto
+         * @param {string} nombre - Nombre del punto
+         * @returns {Promise<void>}
+         */
+        async function actualizarEstadoPuntoActual(tipo, id, numero, nombre) {
+            if (tipo === 'parada') {
+                window.paradaActual = numero;
+                window.tramoActual = -1;
+            } else if (tipo === 'tramo') {
+                window.tramoActual = numero;
+                window.paradaActual = -1;
+            }
+            
+            console.log(`🔄 Punto actual actualizado: ${tipo} ${numero} - ${nombre}`);
+            
+            // Actualizar la interfaz si es necesario
+            // ... (agregar lógica de actualización de UI si es necesario)
+        }
+        
+        /**
+         * Sincroniza el estado con todos los hijos
+         * @returns {Promise<void>}
+         */
+        async function sincronizarEstadoConHijos() {
+            // Get current state
+            const puntoActual = window.paradaActual !== -1 
+                ? { 
+                    tipo: 'parada', 
+                    id: `P-${window.paradaActual}`, 
+                    numero: window.paradaActual,
+                    nombre: `Parada ${window.paradaActual}` // Ajustar según tu estructura de datos
+                }
+                : { 
+                    tipo: 'tramo', 
+                    id: `TR-${window.tramoActual}`, 
+                    numero: window.tramoActual,
+                    nombre: `Tramo ${window.tramoActual}` // Ajustar según tu estructura de datos
+                };
+            
+            // Send to all children
+            const timestamp = Date.now();
+            const estado = {
+                puntoActual,
+                modo: window.modoActual || 'aventura',
+                timestamp
+            };
+            
+            await Promise.all([
+                enviarMensaje('hijo2', 'sincronizarEstado', estado),
+                enviarMensaje('hijo3', 'sincronizarEstado', estado),
+                enviarMensaje('hijo4', 'sincronizarEstado', estado),
+                enviarMensaje('hijo5-casa', 'sincronizarEstado', estado)
+            ]);
+            
+            console.log('🔄 Estado sincronizado con todos los hijos:', estado);
+        }
+        
+        /**
          * Maneja la inicialización del hijo5-casa
          * @param {Object} datos - Datos de inicialización
          * @returns {Promise<void>}
@@ -3091,9 +3220,12 @@ function avanzarSiguientePunto() {
             console.log('🏠 PADRE: Hijo5-casa inicializado:', datos);
             
             // Actualizar estado global con la información de inicialización
+            const modo = datos.modo || 'aventura';
+            window.modoActual = modo;
+            
             await actualizarEstadoGlobal({
                 controlesHabilitados: datos.controlesHabilitados !== false, // Por defecto true si no se especifica
-                modo: datos.modo || 'aventura',
+                modo: modo,
                 ultimaAccion: 'inicializacion_hijo5',
                 timestamp: Date.now()
             });
