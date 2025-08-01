@@ -2418,6 +2418,23 @@ function generarIdUnico() {
 }
 
 // Exportar la API pública del módulo
+export {
+    inicializarMensajeria as inicializar,
+    TIPOS_MENSAJE,
+    LOG_LEVELS,
+    enableControls,
+    disableControls,
+    manejarMensajeEntrante,
+    manejarMensajeAudio,
+    manejarMensajeNavegacion,
+    manejarMensajeRetos,
+    manejarMensajeUI,
+    manejarMensajeEstado,
+    enviarMensajeConReintenos,
+    broadcast
+};
+
+// Mantener compatibilidad con el código existente
 const mensajeria = {
     inicializar: inicializarMensajeria,
     
