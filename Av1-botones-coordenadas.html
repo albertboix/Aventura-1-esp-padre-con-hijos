@@ -1,29 +1,29 @@
 <!DOCTYPE html>
 <html lang="es">
-<!-- Script para importar el módulo de mensajería -->
-<script type="module">
-    // Importar las funciones necesarias del módulo de mensajería
-    import { 
-        inicializar as inicializarMensajeria, 
-        TIPOS_MENSAJE, 
-        LOG_LEVELS,
-        enableControls,
-        disableControls,
-        manejarMensajeEntrante
-    } from './js/mensajeria.js';
-    
-    // Hacer las funciones disponibles globalmente para compatibilidad
-    window.inicializarMensajeria = inicializarMensajeria;
-    window.TIPOS_MENSAJE = TIPOS_MENSAJE;
-    window.LOG_LEVELS = LOG_LEVELS;
-    window.enableControls = enableControls;
-    window.disableControls = disableControls;
-    window.manejarMensajeEntrante = manejarMensajeEntrante;
-</script>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Botones y Coordenadas GPS (hijo2)</title>
+    <!-- Script para importar el módulo de mensajería -->
+    <script type="module">
+        // Importar las funciones necesarias del módulo de mensajería
+        import { 
+            inicializar as inicializarMensajeria, 
+            TIPOS_MENSAJE, 
+            LOG_LEVELS,
+            enableControls,
+            disableControls,
+            manejarMensajeEntrante
+        } from './js/mensajeria.js';
+        
+        // Hacer las funciones disponibles globalmente para compatibilidad
+        window.inicializarMensajeria = inicializarMensajeria;
+        window.TIPOS_MENSAJE = TIPOS_MENSAJE;
+        window.LOG_LEVELS = LOG_LEVELS;
+        window.enableControls = enableControls;
+        window.disableControls = disableControls;
+        window.manejarMensajeEntrante = manejarMensajeEntrante;
+    </script>
     <style>
         :root {
             /* Variables de diseño para botones */
@@ -1573,14 +1573,20 @@
                 if (estadoNavegacion === 'navegando') {
                     actualizarStatus(`🗺️ Navegando hacia parada ${paradaDestino}: ${Math.round(distancia)}m restantes`);
                 } else {
-                    actualizarStatus(`Distancia a parada ${paradaActual}: ${Math.round(distancia)}m`);
                 }
             }
         }
-
-        // NUEVA: Verificar ubicación en tramos
+        
         function verificarUbicacionEnTramo() {
-            if (modoCasa || !ubicacionActual) return;
+            if (modoCasa || !ubicacionActual) {
+                // Si no hay ubicación o estamos en modo casa, limpiar el intervalo de la flecha
+                if (intervaloFlecha) {
+                    clearInterval(intervaloFlecha);
+                    intervaloFlecha = null;
+                    enviarMensajeAlPadre({ tipo: 'ocultar-flecha-navegacion' });
+                }
+                return;
+            }
             
             // Buscar tramos cercanos
             const tramosEncontrados = [];
@@ -1598,7 +1604,8 @@
                             tramosEncontrados.push({
                                 elemento: elemento,
                                 distancia: distanciaInicio,
-                                punto: 'inicio'
+                                punto: 'inicio',
+                                coordenadas: elemento.inicio
                             });
                         }
                     }
@@ -1614,7 +1621,8 @@
                             tramosEncontrados.push({
                                 elemento: elemento,
                                 distancia: distanciaFin,
-                                punto: 'fin'
+                                punto: 'fin',
+                                coordenadas: elemento.fin
                             });
                         }
                     }
@@ -1631,7 +1639,8 @@
                                 tramosEncontrados.push({
                                     elemento: elemento,
                                     distancia: distanciaWaypoint,
-                                    punto: `waypoint_${index}`
+                                    punto: `waypoint_${index}`,
+                                    coordenadas: waypoint
                                 });
                             }
                         });
@@ -1639,7 +1648,7 @@
                 }
             });
             
-            // Si encontramos tramos, mostrar información
+            // Si encontramos tramos y el GPS está activo, manejamos la flecha de navegación
             if (tramosEncontrados.length > 0) {
                 const tramoMasCercano = tramosEncontrados.reduce((prev, current) => 
                     prev.distancia < current.distancia ? prev : current
@@ -1647,25 +1656,72 @@
                 
                 const tramo = tramoMasCercano.elemento;
                 const distancia = Math.round(tramoMasCercano.distancia);
+                const esNuevoTramo = !tramoActual || tramoActual !== tramo.tramo;
                 
                 tramoActual = tramo.tramo;
                 actualizarStatus(`En tramo ${tramo.tramo}: ${tramo.nombre} (${distancia}m)`);
                 
-                // Notificar al padre sobre el tramo
-                enviarMensajeAlPadre({
-                    tipo: 'en-tramo',
-                    tramo: tramo.tramo,
-                    nombre: tramo.nombre,
-                    distancia: distancia,
-                    punto: tramoMasCercano.punto
-                });
-            } else {
+                // Configuramos la polyline para el tramo actual si está disponible
+                if (tramo.polyline && tramo.polyline.length > 0) {
+                    polylineActual = tramo.polyline;
+                    
+                    // Solo actualizamos la flecha si el GPS está activo
+                    if (watchId !== null && !btnGps.classList.contains('disabled')) {
+                        // Si es un nuevo tramo o no hay intervalo, lo configuramos
+                        if (esNuevoTramo || !intervaloFlecha) {
+                            // Limpiar intervalo existente si lo hay
+                            if (intervaloFlecha) {
+                                clearInterval(intervaloFlecha);
+                            }
+                            
+                            // Configurar nuevo intervalo para actualizar la flecha
+                            intervaloFlecha = setInterval(() => {
+                                if (ubicacionActual && polylineActual && estadoNavegacion === 'navegando') {
+                                    actualizarFlechaNavegacion();
+                                }
+                            }, 5000); // Actualizar cada 5 segundos
+                            
+                            // Llamar inmediatamente
+                            actualizarFlechaNavegacion();
+                        }
+                        
+                        // Notificar al padre sobre el tramo actual
+                        enviarMensajeAlPadre({
+                            tipo: 'en-tramo',
+                            tramo: tramo.tramo,
+                            nombre: tramo.nombre,
+                            distancia: distancia,
+                            punto: tramoMasCercano.punto,
+                            coordenadas: tramoMasCrecano.coordenadas,
+                            mostrarFlecha: true
+                        });
+                    } else if (intervaloFlecha) {
+                        // Si el GPS está desactivado pero hay un intervalo activo, lo limpiamos
+                        clearInterval(intervaloFlecha);
+                        intervaloFlecha = null;
+                        
+                        // Notificar al padre para ocultar la flecha
+                        enviarMensajeAlPadre({
+                            tipo: 'ocultar-flecha-navegacion'
+                        });
+                    }
+                }
+            } else if (tramoActual) {
+                // Si hay un tramo actual pero ya no estamos cerca de él
                 tramoActual = null;
+                
+                // Limpiar la flecha de navegación si existe
+                if (intervaloFlecha) {
+                    clearInterval(intervaloFlecha);
+                    intervaloFlecha = null;
+                    
+                    // Notificar al padre para ocultar la flecha
+                    enviarMensajeAlPadre({
+                        tipo: 'ocultar-flecha-navegacion'
+                    });
+                }
             }
-        }
-
-        // MEJORADA: Verificar tanto paradas como tramos
-        function verificarUbicacionCompleta() {
+            
             if (modoCasa || !ubicacionActual) return;
             
             const estado = estadoNavegacion.obtenerEstado();
@@ -1753,8 +1809,22 @@
                         lng: position.coords.longitude
                     };
                     
-                    // Actualizar flecha de navegación si estamos navegando
-                    if (estadoNavegacion === 'navegando') {
+                    // Actualizar el estado de navegación a 'navegando' si no lo está ya
+                    if (estadoNavegacion !== 'navegando') {
+                        estadoNavegacion = 'navegando';
+                    }
+                    
+                    // Si estamos en un tramo, actualizamos la flecha de navegación
+                    if (tramoActual && polylineActual) {
+                        // Si no hay un intervalo activo, lo creamos
+                        if (!intervaloFlecha) {
+                            intervaloFlecha = setInterval(() => {
+                                if (ubicacionActual && polylineActual && estadoNavegacion === 'navegando') {
+                                    actualizarFlechaNavegacion();
+                                }
+                            }, 5000);
+                        }
+                        // Actualizar la flecha inmediatamente
                         actualizarFlechaNavegacion();
                     }
                     
@@ -1769,10 +1839,11 @@
                     // Informar estado GPS al padre
                     informarEstadoGPS('activo', {
                         precision: Math.round(position.coords.accuracy),
-                        coordenadas: ubicacionActual
+                        coordenadas: ubicacionActual,
+                        enTramo: !!tramoActual
                     });
                     
-                    verificarUbicacionCompleta(); // ← MEJORADO: verificar paradas y tramos
+                    verificarUbicacionCompleta(); // ← Verificar paradas y tramos
                 },
                 (error) => {
                     console.error('Error GPS:', error);
@@ -1848,13 +1919,36 @@
                 navigator.geolocation.clearWatch(watchId);
                 watchId = null;
             }
-            ubicacionActual = null;
-            tramoActual = null;
+            
+            // Limpiar el intervalo de actualización de la flecha
+            if (intervaloFlecha) {
+                clearInterval(intervaloFlecha);
+                intervaloFlecha = null;
+                
+                // Notificar al padre para ocultar la flecha
+                enviarMensajeAlPadre({
+                    tipo: 'ocultar-flecha-navegacion'
+                });
+            }
+            
+            // No establecer ubicacionActual como null para mantener la última posición
+            // ubicacionActual = null;
+            
+            // No limpiar tramoActual para mantener la referencia
+            // tramoActual = null;
             
             clearInterval(tripProgressInterval);
             resetTripProgress();
             
-            actualizarStatus('GPS desactivado');
+            // Deshabilitar el botón GPS
+            const btnGps = document.getElementById('btn-gps');
+            if (btnGps) {
+                btnGps.classList.add('disabled');
+                btnGps.setAttribute('disabled', 'true');
+                btnGps.title = 'Esperando confirmación del padre...';
+            }
+            
+            actualizarStatus('GPS en pausa - Esperando confirmación...');
         }
 
         // Funciones de botones y comunicación con transiciones suaves
@@ -1882,16 +1976,77 @@
             }, 150);
         }
 
+        function actualizarEstadoBotonImagen() {
+            const btnImagen = document.getElementById('btn-imagen');
+            if (!btnImagen) return;
+            
+            if (modoCasa) {
+                // En modo casa, el botón siempre está activo
+                btnImagen.classList.remove('disabled');
+                btnImagen.removeAttribute('disabled');
+                btnImagen.title = 'Ver imagen';
+            } else if (paradaActual) {
+                // En modo aventura, activar si hay una parada actual
+                // (ya sea en un tramo o en una parada)
+                btnImagen.classList.remove('disabled');
+                btnImagen.removeAttribute('disabled');
+                btnImagen.title = 'Ver imagen';
+            } else {
+                // Desactivar si no hay parada actual en modo aventura
+                btnImagen.classList.add('disabled');
+                btnImagen.setAttribute('disabled', 'true');
+                btnImagen.title = 'Selecciona un punto para ver su imagen';
+            }
+        }
+        
+        // Actualiza el estado del botón de video según el modo y la parada actual
+        function actualizarEstadoBotonVideo() {
+            if (!btnVideo) return;
+            
+            // En modo casa, el botón siempre está activo
+            if (modoCasa) {
+                btnVideo.classList.remove('disabled');
+                btnVideo.removeAttribute('disabled');
+                btnVideo.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
+                btnVideo.title = 'Ver video de la ubicación';
+                return;
+            }
+            
+            // En modo aventura, solo activo si hay una parada/tramo actual y es un tramo (TR-)
+            if (gpsActivo && paradaActual && paradaActual.id && paradaActual.id.startsWith('TR-')) {
+                btnVideo.classList.remove('disabled');
+                btnVideo.removeAttribute('disabled');
+                btnVideo.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
+                btnVideo.title = `Ver video: ${paradaActual.nombre || 'Tramo actual'}`;
+            } else {
+                btnVideo.classList.add('disabled');
+                btnVideo.setAttribute('disabled', 'true');
+                btnVideo.style.background = 'linear-gradient(135deg, #dc3545, #c82333)';
+                
+                if (!gpsActivo) {
+                    btnVideo.title = 'Activa el GPS para ver el video del tramo';
+                } else if (!paradaActual || !paradaActual.id) {
+                    btnVideo.title = 'No hay un tramo activo para mostrar el video';
+                } else if (!paradaActual.id.startsWith('TR-')) {
+                    btnVideo.title = 'El video solo está disponible para tramos (TR-), no para paradas';
+                } else {
+                    btnVideo.title = 'No hay video disponible para este tramo';
+                }
+            }
+        }
+
         function activarTodosBotones() {
             if (modoCasa) {
+                // En modo casa, activar solo los botones permitidos
                 activarBoton(btnImagen);
                 activarBoton(btnVideo);
-                actualizarStatus('Modo Casa - Botones imagen y video activados');
+                // Actualizar el estado de los botones
+                actualizarEstadoBotonImagen();
+                actualizarEstadoBotonVideo();
             } else {
-                activarBoton(btnGps);
-                activarBoton(btnImagen);
-                activarBoton(btnVideo);
-                actualizarStatus('Todos los botones activados');
+                // En modo aventura, activar todos los botones y actualizar su estado
+                actualizarEstadoBotonesModo();
+                actualizarEstadoBotonVideo();
             }
         }
 
@@ -1967,21 +2122,57 @@
         function activarModoCasa() {
             modoCasa = true;
             detenerGPS();
-            desactivarBoton(btnGps);
+            
+            // Actualizar el botón GPS para mostrarlo en verde degradado y deshabilitado
+            if (btnGps) {
+                btnGps.classList.add('disabled');
+                btnGps.setAttribute('disabled', 'true');
+                btnGps.style.background = 'linear-gradient(135deg, #28a745, #20c997)'; // Verde degradado
+                btnGps.style.opacity = '0.7'; // Hacerlo ligeramente transparente para indicar que está deshabilitado
+                btnGps.title = 'GPS controlado por el modo casa';
+            }
+            
+            // Activar otros botones según sea necesario
             activarBoton(btnImagen);
             activarBoton(btnVideo);
+            
+            // Limpiar intervalos y estados
             clearInterval(tripProgressInterval);
             resetTripProgress();
-            actualizarStatus('Modo Casa activado - GPS desactivado');
+            
+            // Actualizar estado
+            actualizarStatus('Modo Casa activado - GPS controlado por el modo casa');
         }
 
         function activarModoAventura() {
             modoCasa = false;
+            
+            // Actualizar el botón GPS para mostrarlo en rojo degradado y habilitado
+            if (btnGps) {
+                btnGps.classList.remove('disabled');
+                btnGps.removeAttribute('disabled');
+                btnGps.style.background = 'linear-gradient(135deg, #dc3545, #c82333)'; // Rojo degradado
+                btnGps.style.opacity = '1'; // Hacerlo completamente opaco
+                btnGps.title = 'Activar seguimiento GPS';
+            }
+            
+            // Verificar ubicación si está disponible
             if (ubicacionActual) {
                 verificarUbicacionCompleta();
             } else {
-                desactivarTodosBotones();
+                // Si no hay ubicación, desactivar botones excepto GPS
+                desactivarBoton(btnImagen);
+                desactivarBoton(btnVideo);
+                
+                // Asegurarse de que el botón GPS esté activo pero en rojo
+                if (btnGps) {
+                    btnGps.classList.remove('disabled');
+                    btnGps.removeAttribute('disabled');
+                    btnGps.style.background = 'linear-gradient(135deg, #dc3545, #c82333)';
+                    btnGps.title = 'Activar seguimiento GPS';
+                }
             }
+            
             actualizarStatus('Modo Aventura activado - GPS disponible');
         }
 
@@ -2339,13 +2530,13 @@
                     }
 
                     if (siguienteParada) {
-                        // 1. Mostrar marcadores (chincheta roja en ubicación actual, verde en siguiente parada)
+                        // 1. Mostrar marcadores (chincheta verde en ubicación actual, roja en siguiente parada)
                         Mensajes.enviar('mostrarMarcadores', {
                             origen: {
                                 lat: ubicacionActual.lat,
                                 lng: ubicacionActual.lng,
-                                titulo: 'Tu ubicación',
-                                color: 'red',
+                                titulo: '',  // Texto vacío para eliminar 'Tu ubicación'
+                                color: 'green',
                                 id: 'ubicacion_actual',
                                 icono: 'pin'
                             },
@@ -2353,17 +2544,17 @@
                                 lat: siguienteParada.coordenadas.lat,
                                 lng: siguienteParada.coordenadas.lng,
                                 titulo: siguienteParada.nombre,
-                                color: 'green',
+                                color: 'red',
                                 id: siguienteParada.id,
                                 icono: 'flag'
                             },
                             zoom: 16 // Nivel de zoom para mostrar ambos puntos
                         });
 
-                        // 2. Dibujar línea discontinua azul de 6px entre los puntos
+                        // 2. Dibujar línea discontinua verde de 6px entre los puntos
                         Mensajes.enviar('dibujarRuta', {
                             puntos: [ubicacionActual, siguienteParada.coordenadas],
-                            color: '#0000FF',
+                            color: '#00FF00',
                             grosor: 6,
                             discontinua: true,
                             id: 'ruta_actual'
@@ -2542,34 +2733,64 @@
                     break;
                     
                 case 'btn-imagen':
-                    // Mostrar imagen de la parada actual (solo si el GPS está activo)
-                    if (gpsActivo && paradaActual && paradaActual.imagen) {
+                    // Mostrar imagen de la parada/tramo actual
+                    if (paradaActual) {
+                        // Enviar mensaje con información completa de la parada/tramo
                         Mensajes.enviar('mostrarImagen', {
-                            src: paradaActual.imagen,
+                            id: paradaActual.id, // ID único de la parada/tramo
+                            tipo: paradaActual.tipo, // 'parada', 'tramo', etc.
+                            src: paradaActual.imagen || '',
                             titulo: paradaActual.nombre || 'Imagen de la ubicación',
-                            descripcion: paradaActual.descripcion || ''
+                            descripcion: paradaActual.descripcion || '',
+                            modo: modoCasa ? 'casa' : 'aventura'
+                        });
+                        
+                        // Actualizar estado para indicar que se mostró la imagen
+                        actualizarStatus(`Mostrando imagen: ${paradaActual.nombre || 'Ubicación actual'}`);
+                    } else if (modoCasa) {
+                        // En modo casa, incluso si no hay parada actual
+                        Mensajes.enviar('mostrarImagen', {
+                            id: 'modo-casa',
+                            tipo: 'casa',
+                            src: '',
+                            titulo: 'Modo Casa',
+                            descripcion: 'Selecciona un punto para ver su imagen',
+                            modo: 'casa'
                         });
                     }
                     break;
                     
                 case 'btn-video':
-                    // Mostrar video del tramo actual (solo si es un tramo y el GPS está activo)
-                    if (gpsActivo && paradaActual && paradaActual.id && paradaActual.id.startsWith('TR-')) {
-                        // Efecto de zoom antes de reproducir el video
+                    // Verificar si se puede mostrar el reproductor de video
+                    if (modoCasa || (gpsActivo && paradaActual && paradaActual.id && paradaActual.id.startsWith('TR-'))) {
+                        // Efecto de zoom antes de mostrar el reproductor de video
                         Mensajes.enviar('zoomSecuencial', {
                             coordenadas: paradaActual.coordenadas || paradaActual,
-                            zoomInicial: 18, // Zoom máximo (como si fuera desde el aire)
-                            zoomFinal: 15,   // Zoom normal
-                            duracion: 2000,  // 2 segundos de animación
+                            zoomInicial: 16, // Zoom máximo (como si fuera desde el aire)
+                            zoomFinal: 25,   // Zoom normal
+                            duracion: 3000,  // 3 segundos de animación
                             callback: {
-                                tipo: 'reproducirVideo',
+                                tipo: 'mostrarVideo',
                                 datos: {
+                                    id: paradaActual.id, // ID único del video
                                     src: paradaActual.video || '', // Puede estar vacío
-                                    titulo: paradaActual.nombre || 'Video del tramo',
-                                    mostrarControles: true
+                                    modo: modoCasa ? 'casa' : 'aventura',
+                                    // Permitir que el reproductor gestione su propia reproducción
+                                    mostrarControles: true, // Habilitar controles nativos
+                                    autoplay: false, // No reproducir automáticamente
+                                    mensajeSinVideo: !paradaActual.video ? 'No hay un video disponible para esta ubicación.' : undefined
+                                },
+                                onError: {
+                                    tipo: 'error',
+                                    mensaje: 'No se pudo cargar el video. Por favor, inténtalo de nuevo más tarde.'
                                 }
                             }
                         });
+                        
+                        // Actualizar estado
+                        actualizarStatus(paradaActual.video 
+                            ? 'Listo para reproducir el video'
+                            : 'No hay video disponible para esta ubicación');
                     }
                     break;
             }
@@ -2624,27 +2845,8 @@
             }
         });
 
-        btnImagen.addEventListener('click', () => {
-            if (btnImagen.classList.contains('disabled')) return;
-            
-            const paradaInfo = COORDENADAS_PARADAS.find(p => p.parada === paradaActual);
-            
-            // Informar interacción al padre
-            informarInteraccionUsuario('imagen', {
-                paradaInfo: paradaInfo,
-                tieneImagen: !!(paradaInfo && paradaInfo.imagen)
-            });
-            
-            if (paradaInfo && paradaInfo.imagen) {
-                enviarMensajeAlPadre({
-                    tipo: 'mostrar-imagen',
-                    parada: paradaActual,
-                    imagenSrc: paradaInfo.imagen,
-                    paradaNombre: paradaInfo.nombre,
-                    modoCasa: modoCasa
-                });
-            }
-        });
+        // El manejo del botón de imagen ahora se realiza únicamente a través de manejarClicBoton
+        // para evitar conflictos y mantener la lógica centralizada
 
         btnVideo.addEventListener('click', () => {
             if (btnVideo.classList.contains('disabled')) return;
@@ -2868,27 +3070,63 @@
             habilitarControles: {
                 camposRequeridos: [],
                 descripcion: 'Habilitar controles de la interfaz',
-                validar: (datos) => {
-                    // No se requieren datos adicionales
+                validar: function(datos) {
                     return { valido: true };
                 }
             },
             deshabilitarControles: {
                 camposRequeridos: [],
                 descripcion: 'Deshabilitar controles de la interfaz',
-                validar: (datos) => {
-                    // No se requieren datos adicionales
+                validar: function(datos) {
                     return { valido: true };
                 }
             },
             actualizarEstadoNavegacion: {
                 camposRequeridos: ['estado'],
                 descripcion: 'Actualizar el estado de navegación',
-                validar: (datos) => {
-                    if (!datos.estado || typeof datos.estado !== 'object') {
+                validar: function(datos) {
+                    if (!datos.estado) {
                         return { 
                             valido: false, 
-                            error: 'El campo estado es requerido y debe ser un objeto' 
+                            error: 'El campo "estado" es requerido' 
+                        };
+                    }
+                    return { valido: true };
+                }
+            },
+            mostrarVideo: {
+                camposRequeridos: ['url', 'id'],
+                descripcion: 'Mostrar un video en la interfaz',
+                validar: function(datos) {
+                    if (!datos.url) {
+                        return { 
+                            valido: false, 
+                            error: 'El campo "url" es requerido para mostrar un video' 
+                        };
+                    }
+                    if (!datos.id) {
+                        return { 
+                            valido: false, 
+                            error: 'El campo "id" es requerido para identificar el video' 
+                        };
+                    }
+                    return { valido: true };
+                }
+            },
+            mostrarImagen: {
+                camposRequeridos: ['url', 'id'],
+                descripcion: 'Mostrar una imagen en la interfaz',
+                validar: function(datos) {
+                    if (!datos.url) {
+                        return { 
+                            valido: false, 
+                            error: 'El campo "url" es requerido para mostrar una imagen' 
+                        };
+                    }
+                    if (!datos.id) {
+                        return { 
+                            valido: false, 
+                            error: 'El campo "id" es requerido para identificar la imagen' 
                         };
                     }
                     return { valido: true };
@@ -2942,8 +3180,55 @@
             return respuesta;
         }
 
-        // Función para manejar mensajes específicos del hijo5-casa
+        // Función para manejar mensajes específicos del padre
         function manejarMensajeEspecifico(tipo, datos = {}, idMensaje = null) {
+            // Si el mensaje es para reanudar la navegación
+            if (tipo === 'reanudarNavegacion') {
+                const btnGps = document.getElementById('btn-gps');
+                const estado = estadoNavegacion.obtenerEstado();
+                
+                if (btnGps) {
+                    // Habilitar el botón GPS
+                    btnGps.classList.remove('disabled');
+                    btnGps.removeAttribute('disabled');
+                    btnGps.title = 'Activar seguimiento GPS';
+                    btnGps.style.background = 'linear-gradient(135deg, #dc3545, #c82333)';
+                    
+                    // Si hay datos de la siguiente parada, actualizar el estado
+                    if (datos.siguienteParada) {
+                        estadoNavegacion.actualizar({ 
+                            paradaActual: datos.siguienteParada.id,
+                            estado: 'navegando'
+                        });
+                        
+                        // Mostrar la siguiente parada en el mapa
+                        if (estado.ubicacionActual) {
+                            Mensajes.enviar('mostrarMarcadores', {
+                                origen: {
+                                    lat: estado.ubicacionActual.lat,
+                                    lng: estado.ubicacionActual.lng,
+                                    titulo: 'Tu ubicación',
+                                    color: 'red',
+                                    id: 'ubicacion_actual',
+                                    icono: 'pin'
+                                },
+                                destino: {
+                                    lat: datos.siguienteParada.coordenadas.lat,
+                                    lng: datos.siguienteParada.coordenadas.lng,
+                                    titulo: datos.siguienteParada.nombre,
+                                    color: 'green',
+                                    id: datos.siguienteParada.id,
+                                    icono: 'flag'
+                                },
+                                zoom: 16
+                            });
+                        }
+                    }
+                    
+                    actualizarStatus('Listo para continuar la navegación');
+                }
+                return true;
+            }
             console.log(`📨 HIJO 2: Procesando mensaje de tipo '${tipo}'`, { datos, idMensaje });
             
             // Validar el mensaje
@@ -2987,6 +3272,99 @@
                             exito: true, 
                             estadoActual: estadoNavegacion.obtenerEstado() 
                         };
+                        break;
+                        
+                    case 'mostrarVideo':
+                        console.log('🎬 HIJO 2: Mostrando video', { id: datos.id, url: datos.url });
+                        try {
+                            // Mostrar el video utilizando la función existente
+                            mostrarVentanaVideoFlotante(datos.url);
+                            
+                            // Actualizar el estado con el ID del video actual
+                            estadoNavegacion.actualizar({ 
+                                contenidoActual: { 
+                                    tipo: 'video', 
+                                    id: datos.id,
+                                    url: datos.url 
+                                } 
+                            });
+                            
+                            // Confirmar que se mostró el video
+                            resultado = { 
+                                exito: true, 
+                                mensaje: `Video ${datos.id} mostrado correctamente` 
+                            };
+                            
+                            // Notificar al padre que se mostró el video
+                            informarInteraccionUsuario('video', { 
+                                accion: 'mostrado', 
+                                id: datos.id,
+                                url: datos.url 
+                            });
+                        } catch (error) {
+                            console.error('❌ Error al mostrar el video:', error);
+                            throw new Error(`No se pudo mostrar el video: ${error.message}`);
+                        }
+                        break;
+                        
+                    case 'mostrarImagen':
+                        console.log('🖼️ HIJO 2: Mostrando imagen', { id: datos.id, url: datos.url });
+                        try {
+                            // Crear o actualizar el contenedor de imagen
+                            let contenedorImagen = document.getElementById('contenedor-imagen');
+                            if (!contenedorImagen) {
+                                contenedorImagen = document.createElement('div');
+                                contenedorImagen.id = 'contenedor-imagen';
+                                contenedorImagen.style.cssText = `
+                                    position: fixed;
+                                    top: 50%;
+                                    left: 50%;
+                                    transform: translate(-50%, -50%);
+                                    z-index: 1000;
+                                    max-width: 90%;
+                                    max-height: 90%;
+                                    text-align: center;
+                                `;
+                                document.body.appendChild(contenedorImagen);
+                            }
+                            
+                            // Establecer la imagen
+                            contenedorImagen.innerHTML = `
+                                <img 
+                                    src="${datos.url}" 
+                                    alt="Imagen ${datos.id}" 
+                                    style="max-width: 100%; max-height: 80vh; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);"
+                                >
+                                <div style="margin-top: 10px; color: white; background: rgba(0,0,0,0.7); padding: 5px 10px; border-radius: 4px;">
+                                    Imagen: ${datos.id}
+                                </div>
+                            `;
+                            
+                            // Actualizar el estado con el ID de la imagen actual
+                            estadoNavegacion.actualizar({ 
+                                contenidoActual: { 
+                                    tipo: 'imagen', 
+                                    id: datos.id,
+                                    url: datos.url 
+                                } 
+                            });
+                            
+                            // Confirmar que se mostró la imagen
+                            resultado = { 
+                                exito: true, 
+                                mensaje: `Imagen ${datos.id} mostrada correctamente` 
+                            };
+                            
+                            // Notificar al padre que se mostró la imagen
+                            informarInteraccionUsuario('imagen', { 
+                                accion: 'mostrada', 
+                                id: datos.id,
+                                url: datos.url 
+                            });
+                        } catch (error) {
+                            console.error('❌ Error al mostrar la imagen:', error);
+                            throw new Error(`No se pudo mostrar la imagen: ${error.message}`);
+                        }
                         break;
                         
                     default:
@@ -3143,10 +3521,29 @@
             
             console.log('Iniciando navegación GPS...');
             
-            // Iniciar la navegación GPS desde P-0
+            // Verificar si el GPS ya está activo (botón verde)
+            const gpsActivo = btnGps.style.background.includes('#28a745');
+            
+            if (gpsActivo) {
+                // Si el GPS ya está activo, desactivarlo
+                console.log('Desactivando seguimiento GPS...');
+                detenerGPS();
+                
+                // Cambiar a rojo degradado
+                btnGps.style.background = 'linear-gradient(135deg, #dc3545, #c82333)';
+                btnGps.title = 'Activar seguimiento GPS';
+                actualizarStatus('Seguimiento GPS desactivado');
+                return;
+            }
+            
+            // Si el GPS no está activo, activarlo (cambiar a verde)
+            console.log('Activando seguimiento GPS...');
+            btnGps.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
+            btnGps.title = 'Navegación GPS activa';
+            
+            // Iniciar la navegación GPS desde P-0 si no hay parada actual
             const estado = estadoNavegacion.obtenerEstado();
             if (!estado.paradaActual || estado.paradaActual === '') {
-                // Si no hay parada actual, empezar desde P-0
                 const primeraParada = COORDENADAS_PARADAS.find(p => p.id === 'P-0');
                 if (primeraParada) {
                     estadoNavegacion.actualizar({ paradaActual: 'P-0' });
@@ -3230,9 +3627,43 @@
             }, 7000); // Actualizar cada 7 segundos
         }
         
+        // Función para detener el seguimiento GPS
+        function detenerGPS() {
+            // Detener el intervalo de actualización GPS si existe
+            if (intervaloGPS) {
+                clearInterval(intervaloGPS);
+                intervaloGPS = null;
+            }
+            
+            // Actualizar el estado del botón GPS
+            const btnGps = document.getElementById('btn-gps');
+            if (btnGps) {
+                btnGps.style.background = 'linear-gradient(135deg, #dc3545, #c82333)';
+                btnGps.title = 'Activar seguimiento GPS';
+                btnGps.classList.remove('disabled');
+                btnGps.removeAttribute('disabled');
+            }
+            
+            console.log('Seguimiento GPS detenido');
+        }
+        
         // Función para manejar la llegada a una parada
         function manejarLlegadaAParada(parada) {
             console.log(`¡Llegada a ${parada.nombre}!`);
+            
+            // Detener el seguimiento GPS y deshabilitar el botón
+            detenerGPS();
+            
+            // Obtener referencia al botón GPS
+            const btnGps = document.getElementById('btn-gps');
+            
+            // Actualizar el estado visual del botón GPS
+            if (btnGps) {
+                btnGps.style.background = 'linear-gradient(135deg, #6c757d, #5a6268)';
+                btnGps.title = 'Esperando confirmación del padre...';
+                btnGps.classList.add('disabled');
+                btnGps.setAttribute('disabled', 'true');
+            }
             
             // Hacer parpadear la chincheta de destino
             Mensajes.enviar('animarMarcador', {
@@ -3280,40 +3711,29 @@
                     btnVideo.title = 'Ver video del tramo';
                 }
                 
-                // Buscar la siguiente parada
+                // No configuramos la siguiente parada aquí, esperamos la confirmación del padre
+                // El padre debe enviar un mensaje 'reanudarNavegacion' con la siguiente parada
+                
+                // Enviar mensaje al padre con información sobre la parada actual y la siguiente
                 const indiceActual = COORDENADAS_PARADAS.findIndex(p => p.id === parada.id);
                 if (indiceActual < COORDENADAS_PARADAS.length - 1) {
                     const siguienteParada = COORDENADAS_PARADAS[indiceActual + 1];
-                    estadoNavegacion.actualizar({ paradaActual: siguienteParada.id });
                     
-                    // Mostrar la siguiente parada en el mapa
-                    const estado = estadoNavegacion.obtenerEstado();
-                    if (estado.ubicacionActual) {
-                        Mensajes.enviar('mostrarMarcadores', {
-                            origen: {
-                                lat: estado.ubicacionActual.lat,
-                                lng: estado.ubicacionActual.lng,
-                                titulo: 'Tu ubicación',
-                                color: 'red',
-                                id: 'ubicacion_actual',
-                                icono: 'pin'
-                            },
-                            destino: {
-                                lat: siguienteParada.coordenadas.lat,
-                                lng: siguienteParada.coordenadas.lng,
-                                titulo: siguienteParada.nombre,
-                                color: 'green',
-                                id: siguienteParada.id,
-                                icono: 'flag'
-                            },
-                            zoom: 16
-                        });
-                        
-                        // Iniciar seguimiento GPS para la siguiente parada
-                        iniciarSeguimientoGPS();
-                    }
+                    // Informar al padre sobre la llegada y la siguiente parada
+                    Mensajes.enviar('llegadaParadaCompleta', {
+                        paradaActual: parada,
+                        siguienteParada: siguienteParada,
+                        haySiguiente: true
+                    });
                 } else {
-                    // Hemos llegado al final del recorrido
+                    // Última parada del recorrido
+                    Mensajes.enviar('llegadaParadaCompleta', {
+                        paradaActual: parada,
+                        siguienteParada: null,
+                        haySiguiente: false
+                    });
+                    
+                    // Notificar que se ha completado el recorrido
                     console.log('¡Recorrido completado!');
                     Mensajes.enviar('recorridoCompletado');
                 }
@@ -4027,8 +4447,10 @@
                 });
                 
                 console.log('[mensajeria] Manejadores configurados correctamente');
+                return Promise.resolve();
             } catch (error) {
                 console.error('[mensajeria] Error al configurar los manejadores:', error);
+                return Promise.reject(error);
             }
         }
 
@@ -4054,8 +4476,8 @@
         }
 
         // Inicialización mejorada
-        document.addEventListener('DOMContentLoaded', () => {
-            console.log('DOM completamente cargado, iniciando configuración...');
+        function inicializarAplicacion() {
+            console.log('Iniciando configuración de la aplicación...');
             
             // Verificar elementos del DOM
             if (!verificarElementosListos()) {
@@ -4063,7 +4485,7 @@
             }
 
             // Configurar la mensajería
-            configurarMensajeria()
+            return configurarMensajeria()
                 .then(() => {
                     console.log('Mensajería configurada, iniciando estado inicial...');
                     
@@ -4093,6 +4515,8 @@
                             timestamp: new Date().toISOString()
                         }, '*');
                     }
+                    
+                    return Promise.resolve();
                 })
                 .catch(error => {
                     console.error('[ERROR] Error al inicializar la aplicación:', error);
@@ -4106,8 +4530,17 @@
                     } catch (e) {
                         console.error('Error en la recuperación:', e);
                     }
+                    
+                    return Promise.reject(error);
                 });
-        });
+        }
+        
+        // Iniciar la aplicación cuando el DOM esté listo
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', inicializarAplicacion);
+        } else {
+            inicializarAplicacion();
+        }
     </script>
 </body>
 </html>
