@@ -2,7 +2,23 @@
 <html lang="es">
 <!-- Script para importar el módulo de mensajería -->
 <script type="module">
-    import { inicializarMensajeria, TIPOS_MENSAJE, LOG_LEVELS } from './js/mensajeria.js';
+    // Importar las funciones necesarias del módulo de mensajería
+    import { 
+        inicializar as inicializarMensajeria, 
+        TIPOS_MENSAJE, 
+        LOG_LEVELS,
+        enableControls,
+        disableControls,
+        manejarMensajeEntrante
+    } from './js/mensajeria.js';
+    
+    // Hacer las funciones disponibles globalmente para compatibilidad
+    window.inicializarMensajeria = inicializarMensajeria;
+    window.TIPOS_MENSAJE = TIPOS_MENSAJE;
+    window.LOG_LEVELS = LOG_LEVELS;
+    window.enableControls = enableControls;
+    window.disableControls = disableControls;
+    window.manejarMensajeEntrante = manejarMensajeEntrante;
 </script>
 <head>
     <meta charset="UTF-8">
@@ -1217,9 +1233,27 @@
             }
         }
         
-        // Initialize estadoNavegacion only if it doesn't exist
+        // Asegurar que EstadoNavegacion esté definido
+        if (typeof EstadoNavegacion === 'undefined') {
+            console.error('Error: La clase EstadoNavegacion no está definida');
+        }
+
+        // Inicializar estadoNavegacion solo si no existe
         if (!window.estadoNavegacion) {
-            window.estadoNavegacion = new EstadoNavegacion();
+            try {
+                window.estadoNavegacion = new EstadoNavegacion();
+                console.log('estadoNavegacion inicializado correctamente');
+            } catch (error) {
+                console.error('Error al inicializar estadoNavegacion:', error);
+                // Crear un objeto de respaldo con métodos vacíos
+                window.estadoNavegacion = {
+                    actualizar: () => {},
+                    suscribir: () => {},
+                    notificarCambios: () => {},
+                    obtenerEstado: () => ({}),
+                    notificarEstadoAlPadre: () => {}
+                };
+            }
         }
         let orientacionActual = 0; // Heading del dispositivo en grados
         let polylineActual = null; // Coordenadas de la ruta actual
@@ -3691,9 +3725,55 @@
         // Inicializar el sistema de mensajería
         let mensajeria;
         
+        // Asegurar que enableControls esté disponible globalmente
+        if (typeof enableControls === 'undefined') {
+            console.warn('enableControls no está definido, usando implementación de respaldo');
+            window.enableControls = function(modo = 'casa') {
+                console.log(`[RESPALDO] Habilitando controles para modo: ${modo}`);
+                // Implementación básica de respaldo
+                const botones = document.querySelectorAll('.nav-button, .boton');
+                botones.forEach(boton => {
+                    boton.classList.remove('disabled');
+                    boton.disabled = false;
+                });
+                return true;
+            };
+        }
+        
         // Configurar manejadores de mensajes cuando el módulo esté listo
         async function configurarMensajeria() {
             try {
+                // Función segura para manejar mensajes
+                const manejarMensajeSeguro = (event) => {
+                    try {
+                        // Verificar si el mensaje es válido
+                        if (!event || !event.data) {
+                            console.warn('Mensaje recibido sin datos', event);
+                            return;
+                        }
+
+                        // Verificar si el mensaje es del tipo esperado
+                        const mensaje = event.data;
+                        if (typeof mensaje !== 'object' || mensaje === null) {
+                            console.warn('Mensaje no es un objeto:', mensaje);
+                            return;
+                        }
+
+                        // Verificar si hay un manejador para este tipo de mensaje
+                        if (typeof window.manejarMensajeEntrante === 'function') {
+                            window.manejarMensajeEntrante(event);
+                        } else if (Mensajes && typeof Mensajes.procesarMensaje === 'function') {
+                            Mensajes.procesarMensaje(mensaje, event);
+                        } else {
+                            console.warn('No hay manejador de mensajes disponible:', mensaje);
+                        }
+                    } catch (error) {
+                        console.error('Error al procesar mensaje:', error, event);
+                    }
+                };
+
+                // Configurar el manejador de mensajes
+                window.addEventListener('message', manejarMensajeSeguro);
                 // Inicializar mensajería
                 mensajeria = await import('./mensajeria.js');
                 mensajeria.inicializarMensajeria({
@@ -3950,21 +4030,81 @@
             }
         }
 
-        // Inicialización
-        document.addEventListener('DOMContentLoaded', () => {
-            // Configurar la mensajería
-            configurarMensajeria().then(() => {
-                // Iniciar en estado inicial por defecto
-                iniciarEstadoInicial();
-                
-                // Inicializar la barra de progreso
-                totalTimeSpan.textContent = formatTime(totalTripTime);
-                resetTripProgress();
-                
-                console.log('[mensajeria] Aplicación inicializada correctamente');
-            }).catch(error => {
-                console.error('[mensajeria] Error al inicializar la aplicación:', error);
+        // Función para verificar si todos los elementos necesarios están listos
+        function verificarElementosListos() {
+            const elementosNecesarios = [
+                { id: 'btn-punto', nombre: 'Botón Punto' },
+                { id: 'btn-ruta', nombre: 'Botón Ruta' },
+                { id: 'btn-brujula', nombre: 'Botón Brújula' },
+                { id: 'btn-gps', nombre: 'Botón GPS' }
+            ];
+
+            let todosListos = true;
+            elementosNecesarios.forEach(item => {
+                const elemento = document.getElementById(item.id);
+                if (!elemento) {
+                    console.error(`Elemento no encontrado: ${item.nombre} (${item.id})`);
+                    todosListos = false;
+                }
             });
+
+            return todosListos;
+        }
+
+        // Inicialización mejorada
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('DOM completamente cargado, iniciando configuración...');
+            
+            // Verificar elementos del DOM
+            if (!verificarElementosListos()) {
+                console.warn('Algunos elementos no se encontraron, continuando con la inicialización...');
+            }
+
+            // Configurar la mensajería
+            configurarMensajeria()
+                .then(() => {
+                    console.log('Mensajería configurada, iniciando estado inicial...');
+                    
+                    // Iniciar en estado inicial por defecto
+                    if (typeof iniciarEstadoInicial === 'function') {
+                        iniciarEstadoInicial();
+                    } else {
+                        console.error('La función iniciarEstadoInicial no está definida');
+                    }
+                    
+                    // Inicializar la barra de progreso si los elementos existen
+                    if (totalTimeSpan) {
+                        totalTimeSpan.textContent = formatTime(totalTripTime);
+                    }
+                    
+                    if (typeof resetTripProgress === 'function') {
+                        resetTripProgress();
+                    }
+                    
+                    console.log('[APP] Aplicación inicializada correctamente');
+                    
+                    // Notificar al padre que la aplicación está lista
+                    if (window.parent !== window) {
+                        window.parent.postMessage({
+                            tipo: 'app:ready',
+                            origen: 'hijo2',
+                            timestamp: new Date().toISOString()
+                        }, '*');
+                    }
+                })
+                .catch(error => {
+                    console.error('[ERROR] Error al inicializar la aplicación:', error);
+                    
+                    // Intentar una recuperación básica
+                    try {
+                        // Habilitar controles básicos aunque falle la mensajería
+                        if (typeof enableControls === 'function') {
+                            enableControls('aventura');
+                        }
+                    } catch (e) {
+                        console.error('Error en la recuperación:', e);
+                    }
+                });
         });
     </script>
 </body>
