@@ -11,6 +11,99 @@
             logLevel: 1,
             debug: true
           });
+
+          // ================== MANEJADORES DE MENSAJES ==================
+          // 1. Inicialización (confirmación al padre)
+          Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.INICIALIZACION, function(mensaje) {
+            console.log('[HIJO3] Confirmando inicialización al padre');
+            Mensajeria.enviarMensajeConReintenos(
+              'padre',
+              Mensajeria.TIPOS_MENSAJE.INICIALIZACION,
+              { estado: 'listo', timestamp: Date.now() }
+            );
+          });
+
+          // 2. Cambio de modo (desde padre u otro hijo)
+          Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.CAMBIO_MODO, function(mensaje) {
+            console.log('[HIJO3] Cambio de modo recibido:', mensaje.datos);
+            // Actualizar el estado local del modo
+            const nuevoModo = mensaje.datos.modo || 'aventura';
+            console.log(`🔊 HIJO3: Cambiando a modo ${nuevoModo}`);
+            
+            // Actualizar la interfaz según el modo
+            if (nuevoModo === 'casa') {
+              document.body.classList.add('modo-casa');
+              document.body.classList.remove('modo-aventura');
+            } else {
+              document.body.classList.add('modo-aventura');
+              document.body.classList.remove('modo-casa');
+            }
+          });
+
+          // 3. Comandos de audio (desde padre u otro hijo)
+          Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.AUDIO, function(mensaje) {
+            console.log('[HIJO3] Comando de audio recibido:', mensaje.datos);
+            const { accion, parametros } = mensaje.datos;
+            
+            // Procesar el comando de audio
+            if (accion === 'reproducir' && parametros && parametros.archivo) {
+              // Lógica para reproducir el audio
+              console.log(`Reproduciendo audio: ${parametros.archivo}`);
+              // Aquí iría el código para reproducir el audio
+              
+              // Notificar al padre que el audio ha comenzado
+              Mensajeria.enviarMensajeConReintenos(
+                'padre',
+                Mensajeria.TIPOS_MENSAJE.AUDIO,
+                { 
+                  estado: 'reproduciendo',
+                  archivo: parametros.archivo,
+                  timestamp: Date.now()
+                }
+              );
+            } else if (accion === 'pausar') {
+              // Lógica para pausar el audio
+              console.log('Pausando reproducción');
+              // Aquí iría el código para pausar el audio
+              
+              // Notificar al padre que el audio está en pausa
+              Mensajeria.enviarMensajeConReintenos(
+                'padre',
+                Mensajeria.TIPOS_MENSAJE.AUDIO,
+                { 
+                  estado: 'pausado',
+                  timestamp: Date.now()
+                }
+              );
+            } else if (accion === 'detener') {
+              // Lógica para detener el audio
+              console.log('Deteniendo reproducción');
+              // Aquí iría el código para detener el audio
+              
+              // Notificar al padre que el audio se detuvo
+              Mensajeria.enviarMensajeConReintenos(
+                'padre',
+                Mensajeria.TIPOS_MENSAJE.AUDIO,
+                { 
+                  estado: 'detenido',
+                  timestamp: Date.now()
+                }
+              );
+            }
+          });
+
+          // 4. Confirmaciones
+          Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.CONFIRMACION, function(mensaje) {
+            console.log('[HIJO3] Confirmación recibida:', mensaje);
+            // Procesar confirmaciones si es necesario
+          });
+
+          // 5. Notificar al padre que está listo
+          Mensajeria.enviarMensajeConReintenos(
+            'padre',
+            Mensajeria.TIPOS_MENSAJE.INICIALIZACION,
+            { estado: 'listo', timestamp: Date.now() }
+          );
         }
       } catch (e) {
         console.error('No se pudo cargar mensajeria.js', e);
@@ -507,36 +600,15 @@
                         // Actualizar el estado local del modo
                         const nuevoModo = mensaje.datos?.modo || 'aventura';
                         console.log(`🔊 HIJO3: Cambiando a modo ${nuevoModo}`);
-                        
-                        // Actualizar controles según el modo
-                        if (nuevoModo === 'casa') {
-                            // En modo casa, pausar la reproducción si está activa
-                            if (isPlaying) {
-                                audioPlayer.pause();
-                                isPlaying = false;
-                                updatePlayPauseIcon();
-                            }
-                            // Deshabilitar controles
-                            controlsDisabled = true;
-                            console.log('🔊 HIJO3: Controles deshabilitados (modo casa)');
-                        } else {
-                            // En modo aventura, habilitar controles
-                            controlsDisabled = false;
-                            console.log('🔊 HIJO3: Controles habilitados (modo aventura)');
-                        }
-                        
-                        // Actualizar la interfaz de usuario
+                        modoCasa = (nuevoModo === 'casa');
+                        // En ambos modos, controles habilitados
+                        controlsDisabled = false;
+                        console.log(`🔊 HIJO3: Controles habilitados (modo ${nuevoModo})`);
                         updatePlayPauseIcon();
                         break;
                         
                     case 'reproducir_audio':
                         if (mensaje.datos && mensaje.datos.archivo) {
-                            // Solo reproducir si no estamos en modo casa
-                            if (modoCasa) {
-                                console.log('🔊 HIJO3: Reproducción bloqueada en modo casa');
-                                return;
-                            }
-                            
                             console.log(`🔊 HIJO3: Reproduciendo archivo: ${mensaje.datos.archivo}`);
                             audioPlayer.src = mensaje.datos.archivo;
                             audioPlayer.play().then(() => {
@@ -549,21 +621,17 @@
                         break;
                         
                     case 'pausar_audio':
-                        if (!modoCasa) {  // Solo pausar si no estamos en modo casa
-                            audioPlayer.pause();
-                            isPlaying = false;
-                            updatePlayPauseIcon();
-                        }
+                        audioPlayer.pause();
+                        isPlaying = false;
+                        updatePlayPauseIcon();
                         break;
                         
                     case 'reanudar_audio':
-                        if (!modoCasa) {  // Solo reanudar si no estamos en modo casa
-                            audioPlayer.play().catch(error => {
-                                console.error('Error al reanudar el audio:', error);
-                            });
-                            isPlaying = true;
-                            updatePlayPauseIcon();
-                        }
+                        audioPlayer.play().catch(error => {
+                            console.error('Error al reanudar el audio:', error);
+                        });
+                        isPlaying = true;
+                        updatePlayPauseIcon();
                         break;
                         
                     case 'detener_audio':
