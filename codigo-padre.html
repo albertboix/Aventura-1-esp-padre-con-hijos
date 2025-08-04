@@ -13,21 +13,43 @@
           referrerpolicy="no-referrer" />
     
     <style>
-        body, html {
+        /* Reset y estilos base */
+        * {
+            box-sizing: border-box;
             margin: 0;
             padding: 0;
+        }
+        
+        html, body {
             width: 100%;
             height: 100%;
+            margin: 0;
+            padding: 0;
             overflow: hidden;
             font-family: Arial, sans-serif;
         }
         
+        /* Contenedor del mapa */
         #mapa {
             position: absolute;
             top: 0;
+            left: 0;
+            right: 0;
             bottom: 0;
-            width: 100%;
             z-index: 1;
+            background: #f8f9fa; /* Color de fondo temporal */
+        }
+        
+        /* Indicador de carga */
+        #mapa:before {
+            content: 'Cargando mapa...';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+            color: #333;
+            font-size: 18px;
         }
         
         /* Estilos para los iframes hijos */
@@ -720,17 +742,20 @@
             try {
                 console.log('🔍 Iniciando inicialización del mapa...');
                 
+                // Coordenadas de Valencia: 39.44859, -0.37489
+                const valenciaCoords = [39.44859, -0.37489];
+                
                 // Verificar si Leaflet está cargado
                 if (typeof L === 'undefined') {
                     console.error('❌ Error: La biblioteca Leaflet no está cargada');
-                    return null;
+                    throw new Error('Leaflet no está disponible');
                 }
                 
                 // Verificar si el contenedor del mapa existe
                 const mapaContainer = document.getElementById('mapa');
                 if (!mapaContainer) {
                     console.error('❌ Error: No se encontró el contenedor del mapa');
-                    return null;
+                    throw new Error('Contenedor del mapa no encontrado');
                 }
                 
                 console.log('✅ Contenedor del mapa encontrado');
@@ -741,44 +766,59 @@
                     position: 'absolute',
                     top: '0',
                     left: '0',
+                    right: '0',
+                    bottom: '0',
                     width: '100%',
                     height: '100%',
                     margin: '0',
                     padding: '0',
-                    backgroundColor: '#f0f0f0'
+                    backgroundColor: '#f8f9fa',
+                    zIndex: '1'
                 });
                 
-                // Inicializar el mapa con opciones mínimas
+                // Inicializar el mapa con opciones
                 map = L.map('mapa', {
-                    center: [39.4622, -0.37802],
-                    zoom: 14,
-                    zoomControl: true
+                    center: valenciaCoords,
+                    zoom: 16,
+                    zoomControl: false, // Lo añadiremos manualmente después
+                    attributionControl: true,
+                    preferCanvas: true
                 });
                 
-                console.log('✅ Mapa de Leaflet creado');
+                console.log('✅ Mapa de Leaflet creado en:', valenciaCoords);
                 
                 // Añadir capa de OpenStreetMap
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { 
                     maxZoom: 19, 
                     minZoom: 12,
-                    attribution: '© OpenStreetMap contributors'
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                    detectRetina: true
                 }).addTo(map);
                 
                 console.log('✅ Capa de OpenStreetMap añadida');
                 
-                // Añadir un marcador de prueba
-                L.marker([39.4622, -0.37802])
+                // Añadir control de zoom en la esquina inferior derecha
+                L.control.zoom({
+                    position: 'bottomright'
+                }).addTo(map);
+                
+                // Añadir un marcador en las coordenadas de Valencia
+                L.marker(valenciaCoords)
                     .addTo(map)
-                    .bindPopup('Punto de inicio')
+                    .bindPopup('<b>Valencia</b><br>Coordenadas: ' + valenciaCoords.join(', '))
                     .openPopup();
                 
-                console.log('✅ Marcador de prueba añadido');
+                console.log('✅ Marcador añadido en:', valenciaCoords);
                 
-                // Forzar actualización del tamaño
+                // Función para forzar actualización del tamaño del mapa
                 const actualizarTamañoMapa = () => {
                     if (map) {
-                        map.invalidateSize({ pan: false });
-                        console.log('🔄 Tamaño del mapa actualizado');
+                        try {
+                            map.invalidateSize({ pan: false });
+                            console.log('🔄 Tamaño del mapa actualizado');
+                        } catch (e) {
+                            console.warn('⚠️ No se pudo actualizar el tamaño del mapa:', e);
+                        }
                     }
                 };
                 
@@ -788,19 +828,48 @@
                 // Actualizar el tamaño cuando la ventana cambie de tamaño
                 window.addEventListener('resize', actualizarTamañoMapa);
                 
+                // Forzar un segundo intento de actualización
+                setTimeout(actualizarTamañoMapa, 1000);
+                
                 // Marcar como inicializado
                 mapInitialized = true;
-                console.log('✅ Mapa inicializado correctamente');
+                console.log('✅ Mapa inicializado correctamente en:', valenciaCoords);
+                
+                // Hacer el mapa accesible globalmente
+                window.mapa = map;
                 
                 return map;
                 
             } catch (error) {
                 console.error('❌ Error al inicializar el mapa:', error);
-                // Intentar de nuevo después de un breve retraso
+                // Mostrar mensaje de error en la interfaz
+                const errorMsg = document.createElement('div');
+                errorMsg.style.position = 'absolute';
+                errorMsg.style.top = '50%';
+                errorMsg.style.left = '50%';
+                errorMsg.style.transform = 'translate(-50%, -50%)';
+                errorMsg.style.padding = '20px';
+                errorMsg.style.background = '#ffebee';
+                errorMsg.style.border = '1px solid #f44336';
+                errorMsg.style.borderRadius = '4px';
+                errorMsg.style.zIndex = '1000';
+                errorMsg.style.maxWidth = '80%';
+                errorMsg.style.textAlign = 'center';
+                errorMsg.innerHTML = `
+                    <h3 style="color: #d32f2f; margin-top: 0;">Error al cargar el mapa</h3>
+                    <p>${error.message || 'Error desconocido'}</p>
+                    <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 15px; cursor: pointer;">
+                        Recargar página
+                    </button>
+                `;
+                document.body.appendChild(errorMsg);
+                
+                // Intentar de nuevo después de un breve retraso (solo si no se ha inicializado)
                 if (!mapInitialized) {
-                    console.log('🔄 Reintentando inicialización del mapa...');
-                    setTimeout(inicializarMapa, 500);
+                    console.log('🔄 Reintentando inicialización del mapa en 1 segundo...');
+                    setTimeout(inicializarMapa, 1000);
                 }
+                
                 return null;
             }
         }
