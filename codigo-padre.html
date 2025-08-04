@@ -887,12 +887,12 @@
                 // Si aún no está inicializado, intentar de nuevo
                 if (!mapInitialized) {
                     console.log('🔄 Reintentando inicialización del mapa...');
-                    setTimeout(verificarEInicializarMapa, 500);
                 }
             }
         }
         
         // Inicializar el mapa cuando el DOM esté listo
+        console.log('📄 Configurando inicialización del mapa...');
         if (document.readyState === 'loading') {
             console.log('📄 El documento aún se está cargando, esperando a que esté listo...');
             document.addEventListener('DOMContentLoaded', verificarEInicializarMapa);
@@ -934,6 +934,50 @@
         
         // Hacer la función accesible globalmente
         window.closeMediaOverlay = closeMediaOverlay;
+
+        /**
+         * Muestra una imagen en un overlay
+         * @param {string} paradaId - ID de la parada para cargar la imagen correspondiente
+         */
+        function mostrarImagenOverlay(paradaId) {
+            const overlay = document.getElementById('media-overlay');
+            const img = document.getElementById('parada-imagen');
+            const video = document.getElementById('parada-video');
+            if (!overlay || !img) return;
+
+            // Oculta el video si estuviera visible
+            if (video) {
+                video.style.display = 'none';
+                video.pause && video.pause();
+            }
+
+            // Construye la ruta de la imagen (ajusta según tu estructura)
+            let rutaImagen = '';
+            if (paradaId && typeof paradaId === 'string') {
+                rutaImagen = `./fotos_Av1/${paradaId}.jpg`;
+            } else {
+                rutaImagen = './fotos_Av1/default.jpg';
+            }
+
+            img.src = rutaImagen;
+            img.style.display = 'block';
+
+            // Muestra el overlay
+            overlay.style.display = 'flex';
+
+            // Cierra el overlay al pulsar la X
+            const closeBtn = document.getElementById('close-media');
+            if (closeBtn) {
+                closeBtn.onclick = function(e) {
+                    e.stopPropagation();
+                    overlay.style.display = 'none';
+                    img.src = '';
+                };
+            }
+        }
+        
+        // Hacer la función accesible globalmente
+        window.mostrarImagenOverlay = mostrarImagenOverlay;
 
         // Inicialización de la aplicación
         function inicializarAplicacion() {
@@ -1298,6 +1342,60 @@ function enviarMensaje(destino, tipo, datos = {}) {
         // Inicializar el sistema de mensajería al cargar la página
         document.addEventListener('DOMContentLoaded', inicializarMensajeria);
 
+        // ================== MANEJADORES DE MENSAJES CON MENSAJERIA ==================
+        // 1. Inicialización de un hijo
+        Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.INICIALIZACION, function(mensaje) {
+            console.log('[PADRE] Inicialización recibida de', mensaje.origen, mensaje.datos);
+            // Actualizar el estado de conexión de los hijos aquí
+        });
+
+        // 2. Cambio de modo desde hijo5-casa
+        Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.CAMBIO_MODO, function(mensaje) {
+            console.log('[PADRE] Cambio de modo recibido:', mensaje.datos);
+            // Actualiza estado global y reenvía a los demás hijos
+            ['hijo2', 'hijo3', 'hijo4'].forEach(id => {
+                Mensajeria.enviarMensajeConReintenos(
+                    id,
+                    Mensajeria.TIPOS_MENSAJE.CAMBIO_MODO,
+                    mensaje.datos
+                );
+            });
+        });
+
+        // 3. Selección de punto desde hijo5-casa
+        Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.SELECCION_PUNTO, function(mensaje) {
+            console.log('[PADRE] Selección de punto recibida:', mensaje.datos);
+            // Reenviar al hijo2 (navegación)
+            Mensajeria.enviarMensajeConReintenos(
+                'hijo2', 
+                Mensajeria.TIPOS_MENSAJE.SELECCION_PUNTO, 
+                mensaje.datos
+            );
+        });
+
+        // 4. Mensajes de navegación desde hijo2
+        Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.NAVEGACION, function(mensaje) {
+            console.log('[PADRE] Mensaje de navegación recibido:', mensaje.datos);
+            // Procesa navegación o reenvía si es necesario
+        });
+
+        // 5. Mensajes de audio desde hijo3
+        Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.AUDIO, function(mensaje) {
+            console.log('[PADRE] Mensaje de audio recibido:', mensaje.datos);
+            // Procesa audio o reenvía si es necesario
+        });
+
+        // 6. Mensajes de retos desde hijo4
+        Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.RETO, function(mensaje) {
+            console.log('[PADRE] Mensaje de reto recibido:', mensaje.datos);
+            // Procesa retos o reenvía si es necesario
+        });
+
+        // 7. Confirmaciones
+        Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.CONFIRMACION, function(mensaje) {
+            console.log('[PADRE] Confirmación recibida:', mensaje);
+        });
+
 // ================== MANEJADORES POR HIJO ==================
 
 /**
@@ -1348,6 +1446,43 @@ async function manejarMensajeHijo2(type, data, event = null) {
                 
             case 'error':
                 await manejarErrorHijo2(data);
+                break;
+                
+            case 'usuario-fuera-radio':
+                // El usuario se ha alejado más de 70m tras haber llegado
+                console.log('🚨 Usuario fuera del radio de 70m de la parada:', data.parada);
+                await actualizarEstadoGlobal({
+                    ultimaAccion: 'usuario_fuera_radio',
+                    paradaActual: data.parada,
+                    distancia: data.distancia,
+                    timestamp: Date.now()
+                });
+                break;
+                
+            case 'estado-inicial':
+                // Hijo2 notifica su estado inicial al arrancar (por ejemplo, tras leer localStorage)
+                console.log('🔄 Estado inicial recibido del hijo2:', data);
+                await actualizarEstadoGlobal({
+                    paradaActual: data.paradaActual,
+                    ultimaAccion: 'estado_inicial',
+                    timestamp: Date.now()
+                });
+                break;
+                
+            case 'parada-completada':
+                // Hijo2 notifica que ha completado una parada/tramo
+                console.log('✅ Parada completada:', data.parada);
+                await actualizarEstadoGlobal({
+                    paradaActual: data.parada,
+                    ultimaAccion: 'parada_completada',
+                    timestamp: Date.now()
+                });
+                break;
+                
+            case 'ver-imagen':
+                // Mostrar la imagen de la parada en el overlay
+                console.log('🖼️ Mostrando imagen de la parada:', data.parada);
+                mostrarImagenOverlay(data.parada);
                 break;
                 
             default:
