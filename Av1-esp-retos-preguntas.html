@@ -11,6 +11,98 @@
             logLevel: 1,
             debug: true
           });
+
+          // ================== MANEJADORES DE MENSAJES ==================
+          // 1. Inicialización (confirmación al padre)
+          Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.INICIALIZACION, function(mensaje) {
+            console.log('[HIJO4] Confirmando inicialización al padre');
+            Mensajeria.enviarMensajeConReintenos(
+              'padre',
+              Mensajeria.TIPOS_MENSAJE.INICIALIZACION,
+              { estado: 'listo', timestamp: Date.now() }
+            );
+          });
+
+          // 2. Cambio de modo (desde padre u otro hijo)
+          Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.CAMBIO_MODO, function(mensaje) {
+            console.log('[HIJO4] Cambio de modo recibido:', mensaje.datos);
+            const nuevoModo = mensaje.datos.modo || 'aventura';
+            
+            // Actualizar el estado local del modo
+            if (nuevoModo === 'casa') {
+              document.body.classList.add('modo-casa');
+              document.body.classList.remove('modo-aventura');
+              disableControls('modo_casa');
+            } else {
+              document.body.classList.add('modo-aventura');
+              document.body.classList.remove('modo-casa');
+              enableControls('aventura');
+            }
+          });
+
+          // 3. Comandos de retos (desde padre)
+          Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.RETO, function(mensaje) {
+            console.log('[HIJO4] Comando de reto recibido:', mensaje.datos);
+            const { accion, parametros } = mensaje.datos;
+            
+            if (accion === 'mostrar' && parametros && parametros.retoId) {
+              // Mostrar un reto específico
+              const retoIndex = retosAventura1Es.findIndex(r => r.id === parametros.retoId);
+              if (retoIndex !== -1) {
+                renderizarReto(retoIndex);
+                
+                // Notificar al padre que el reto se mostró correctamente
+                Mensajeria.enviarMensajeConReintenos(
+                  'padre',
+                  Mensajeria.TIPOS_MENSAJE.RETO,
+                  { 
+                    estado: 'reto_mostrado',
+                    retoId: parametros.retoId,
+                    timestamp: Date.now()
+                  }
+                );
+              } else {
+                console.error(`[HIJO4] No se encontró el reto con ID: ${parametros.retoId}`);
+                
+                // Notificar al padre del error
+                Mensajeria.enviarMensajeConReintenos(
+                  'padre',
+                  Mensajeria.TIPOS_MENSAJE.ERROR,
+                  { 
+                    codigo: 'RETO_NO_ENCONTRADO',
+                    mensaje: `No se encontró el reto con ID: ${parametros.retoId}`,
+                    timestamp: Date.now()
+                  }
+                );
+              }
+            } else if (accion === 'ocultar') {
+              // Ocultar el reto actual
+              retoContenidoDiv.innerHTML = '';
+              
+              // Notificar al padre que el reto se ocultó
+              Mensajeria.enviarMensajeConReintenos(
+                'padre',
+                Mensajeria.TIPOS_MENSAJE.RETO,
+                { 
+                  estado: 'reto_oculto',
+                  timestamp: Date.now()
+                }
+              );
+            }
+          });
+
+          // 4. Confirmaciones
+          Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.CONFIRMACION, function(mensaje) {
+            console.log('[HIJO4] Confirmación recibida:', mensaje);
+            // Procesar confirmaciones si es necesario
+          });
+
+          // 5. Notificar al padre que está listo
+          Mensajeria.enviarMensajeConReintenos(
+            'padre',
+            Mensajeria.TIPOS_MENSAJE.INICIALIZACION,
+            { estado: 'listo', timestamp: Date.now() }
+          );
         }
       } catch (e) {
         console.error('No se pudo cargar mensajeria.js', e);
@@ -276,13 +368,19 @@ function manejarCambioModo(modo, habilitar = false) {
     console.log(`🔄 HIJO 4: Cambiando a modo ${modo}, habilitar: ${habilitar}`);
     
     // Actualizar el modo actual
+    const modoAnterior = modoActual;
     modoActual = modo;
     
-    // Habilitar o deshabilitar controles según el parámetro
-    if (habilitar) {
+    // Manejar la habilitación/deshabilitación de controles
+    if (modo === 'casa') {
+        // En modo casa, siempre habilitar los controles
+        enableControls('casa');
+    } else if (habilitar) {
+        // Si se solicita habilitar los controles en otro modo
         enableControls(modo);
     } else {
-        disableControls(`cambio_a_modo_${modo}`);
+        // Solo deshabilitar controles si estamos en modo aventura y no se solicita habilitar
+        disableControls('modo_aventura');
     }
     
     // Notificar al padre del cambio de modo
@@ -290,10 +388,16 @@ function manejarCambioModo(modo, habilitar = false) {
         mensajeria.enviarMensaje(mensajeria.TIPOS_MENSAJE.SISTEMA.CONFIGURACION, {
             tipo: 'cambio_modo',
             modo: modo,
-            habilitado: habilitar,
-            origen: 'hijo4-retos'
+            habilitado: habilitar || modo === 'casa', // Siempre true para modo casa
+            origen: 'hijo4-retos',
+            detalles: {
+                modoAnterior: modoAnterior,
+                controlesHabilitados: controlesHabilitados
+            }
         });
     }
+    
+    console.log(`✅ HIJO 4: Modo cambiado a ${modo}, controles ${controlesHabilitados ? 'habilitados' : 'deshabilitados'}`);
 }
 
 // Funciones de compatibilidad con el sistema anterior
