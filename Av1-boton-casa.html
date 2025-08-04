@@ -1,23 +1,25 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script type="module">
+      try {
+        const moduloMensajeria = await import('./js/mensajeria.js');
+        window.Mensajeria = moduloMensajeria.default || moduloMensajeria;
+        if (window.Mensajeria && typeof window.Mensajeria.inicializarMensajeria === 'function') {
+          window.Mensajeria.inicializarMensajeria({
+            iframeId: 'hijo5-casa',
+            logLevel: 1,
+            debug: true
+          });
+        }
+      } catch (e) {
+        console.error('No se pudo cargar mensajeria.js', e);
+      }
+    </script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GPS Casa ON/OFF (hijo5-casa)</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-  <script type="module">
-    try {
-      console.log('Intentando cargar el módulo de mensajería...');
-      
-      // Importar funciones necesarias del módulo de mensajería
-      const moduloMensajeria = await import('/js/mensajeria.js');
-      
-      console.log('Módulo de mensajería cargado correctamente:', moduloMensajeria);
-      
-      // Hacer las funciones disponibles globalmente para compatibilidad
-      window.inicializarMensajeria = moduloMensajeria.inicializar;
-      window.TIPOS_MENSAJE = moduloMensajeria.TIPOS_MENSAJE || {};
       window.LOG_LEVELS = moduloMensajeria.LOG_LEVELS || {};
       window.habilitarControles = moduloMensajeria.enableControls || function() { console.log('Función habilitarControles no disponible'); };
       window.deshabilitarControles = moduloMensajeria.disableControls || function() { console.log('Función deshabilitarControles no disponible'); };
@@ -809,20 +811,22 @@
           console.error('No se encontró el elemento paradas-window');
         }
 
-        // Notificar al padre del cambio de modo
-        if (window.parent) {
-          const modo = gpsOn ? 'aventura' : 'casa';
-          window.parent.postMessage({
-            type: 'cambioModo',
-            origen: 'hijo5-casa',
-            datos: {
+        // Notificar al padre del cambio de modo usando Mensajeria API
+        const modo = gpsOn ? 'aventura' : 'casa';
+        if (window.Mensajeria) {
+          Mensajeria.enviarMensajeConReintenos(
+            'padre',
+            'cambioModo',
+            {
               modo: modo,
               gpsActivo: gpsOn,
-              mensaje: gpsOn ? 'Modo aventura activado' : 'Modo casa activado'
-            },
-            timestamp: Date.now()
-          }, '*');
-          console.log(`🏠 HIJO5: Notificado cambio de modo a ${modo}`);
+              mensaje: gpsOn ? 'Modo aventura activado' : 'Modo casa activado',
+              timestamp: Date.now()
+            }
+          ).catch(error => {
+            console.error('Error al enviar mensaje de cambio de modo:', error);
+          });
+          console.log(`🏠 HIJO5: Notificado cambio de modo a ${modo} usando Mensajeria`);
         }
 
         // Persistencia en localStorage
@@ -1206,14 +1210,10 @@
       }
     }
     
-    // Registrar manejador de mensajes si mensajería está disponible
+    // Registrar manejador de mensajes usando Mensajeria API
     if (window.Mensajeria) {
       Mensajeria.registrarControlador('mensaje', manejarMensaje);
-    } else if (window.addEventListener) {
-      // Fallback a postMessage directo
-      window.addEventListener('message', function(event) {
-        manejarMensaje(event.data, event.origin);
-      });
+      console.log('Manejador de mensajes registrado con Mensajeria API');
     }
 
     // Inicialización avanzada
@@ -1246,17 +1246,14 @@
           'sistema:inicializacion', 
           { 
             gpsActivo: gpsActivo,
-            modo: gpsActivo ? 'aventura' : 'casa'
+            modo: gpsActivo ? 'aventura' : 'casa',
+            timestamp: Date.now()
           }
-        ).catch(console.error);
-      } else if (window.parent) {
-        // Fallback a postMessage si mensajería no está disponible
-        window.parent.postMessage({
-          type: 'HIJO5_LISTO',
-          origen: 'hijo5-casa',
-          gpsActivo: gpsActivo,
-          timestamp: Date.now()
-        }, '*');
+        ).then(() => {
+          console.log('Notificación de inicialización enviada correctamente');
+        }).catch(error => {
+          console.error('Error al enviar notificación de inicialización:', error);
+        });
       }
     })();
   </script>
