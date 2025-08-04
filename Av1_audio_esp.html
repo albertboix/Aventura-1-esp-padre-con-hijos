@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reproductor de Audio - Aventura 1</title>
+    <title>Reproductor de Audio - Aventura 1 (hijo3)</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         :root {
@@ -485,9 +485,44 @@
             if (!mensaje || !mensaje.tipo) return;
             
             try {
+                console.log(`🔊 HIJO3: Mensaje recibido - tipo: ${mensaje.tipo}`, mensaje);
+                
                 switch(mensaje.tipo) {
+                    case 'cambioModo':
+                        // Actualizar el estado local del modo
+                        const nuevoModo = mensaje.datos?.modo || 'aventura';
+                        console.log(`🔊 HIJO3: Cambiando a modo ${nuevoModo}`);
+                        
+                        // Actualizar controles según el modo
+                        if (nuevoModo === 'casa') {
+                            // En modo casa, pausar la reproducción si está activa
+                            if (isPlaying) {
+                                audioPlayer.pause();
+                                isPlaying = false;
+                                updatePlayPauseIcon();
+                            }
+                            // Deshabilitar controles
+                            controlsDisabled = true;
+                            console.log('🔊 HIJO3: Controles deshabilitados (modo casa)');
+                        } else {
+                            // En modo aventura, habilitar controles
+                            controlsDisabled = false;
+                            console.log('🔊 HIJO3: Controles habilitados (modo aventura)');
+                        }
+                        
+                        // Actualizar la interfaz de usuario
+                        updatePlayPauseIcon();
+                        break;
+                        
                     case 'reproducir_audio':
                         if (mensaje.datos && mensaje.datos.archivo) {
+                            // Solo reproducir si no estamos en modo casa
+                            if (modoCasa) {
+                                console.log('🔊 HIJO3: Reproducción bloqueada en modo casa');
+                                return;
+                            }
+                            
+                            console.log(`🔊 HIJO3: Reproduciendo archivo: ${mensaje.datos.archivo}`);
                             audioPlayer.src = mensaje.datos.archivo;
                             audioPlayer.play().then(() => {
                                 isPlaying = true;
@@ -499,17 +534,21 @@
                         break;
                         
                     case 'pausar_audio':
-                        audioPlayer.pause();
-                        isPlaying = false;
-                        updatePlayPauseIcon();
+                        if (!modoCasa) {  // Solo pausar si no estamos en modo casa
+                            audioPlayer.pause();
+                            isPlaying = false;
+                            updatePlayPauseIcon();
+                        }
                         break;
                         
                     case 'reanudar_audio':
-                        audioPlayer.play().catch(error => {
-                            console.error('Error al reanudar el audio:', error);
-                        });
-                        isPlaying = true;
-                        updatePlayPauseIcon();
+                        if (!modoCasa) {  // Solo reanudar si no estamos en modo casa
+                            audioPlayer.play().catch(error => {
+                                console.error('Error al reanudar el audio:', error);
+                            });
+                            isPlaying = true;
+                            updatePlayPauseIcon();
+                        }
                         break;
                         
                     case 'detener_audio':
@@ -527,13 +566,29 @@
                         break;
                         
                     case 'habilitar_controles':
-                        controlsDisabled = !mensaje.datos.habilitado;
+                        // Solo permitir habilitar/deshabilitar controles si no estamos en modo casa
+                        if (!modoCasa) {
+                            controlsDisabled = !mensaje.datos.habilitado;
+                            console.log(`🔊 HIJO3: Controles ${controlsDisabled ? 'deshabilitados' : 'habilitados'}`);
+                        }
                         break;
                         
+                    // Mantener compatibilidad con mensajes antiguos (deprecar en el futuro)
                     case 'cambiar_modo':
-                        modoCasa = mensaje.datos.modo === 'casa';
+                        console.warn('⚠️ HIJO3: El tipo de mensaje "cambiar_modo" está obsoleto. Usa "cambioModo" en su lugar.');
+                        const modoAntiguo = mensaje.datos?.modo || 'aventura';
+                        // Corregido: Usar window.parent.postMessage en lugar de window.postMessage
+                        // y mover los datos al objeto datos para mantener consistencia
+                        window.parent.postMessage({
+                            tipo: 'cambioModo',
+                            origen: 'hijo3-audio',
+                            datos: {
+                                modo: modoAntiguo,
+                                timestamp: Date.now()
+                            }
+                        }, '*');
                         break;
-                }
+                } // Fin del switch
             } catch (error) {
                 console.error('Error al procesar el mensaje:', error, mensaje);
             }
