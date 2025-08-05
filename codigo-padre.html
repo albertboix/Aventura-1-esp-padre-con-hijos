@@ -23,6 +23,9 @@
     <!-- Hojas de estilo -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
+    <!-- Script de Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
     <style>
         /* Reset y estilos base */
         * {
@@ -748,7 +751,7 @@
                 
                 // Añadir capa de OpenStreetMap
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { 
-                    maxZoom: 19, 
+                    maxZoom: 25,  // Aumentado a 25 para permitir mayor zoom
                     minZoom: 12,
                     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
                     detectRetina: true
@@ -756,18 +759,7 @@
                 
                 console.log('✅ Capa de OpenStreetMap añadida');
                 
-                // Añadir control de zoom en la esquina inferior derecha
-                L.control.zoom({
-                    position: 'bottomright'
-                }).addTo(map);
-                
-                // Añadir un marcador en las coordenadas de Valencia
-                L.marker(valenciaCoords)
-                    .addTo(map)
-                    .bindPopup('<b>Valencia</b><br>Coordenadas: ' + valenciaCoords.join(', '))
-                    .openPopup();
-                
-                console.log('✅ Marcador añadido en:', valenciaCoords);
+                // No añadimos controles de zoom ni marcadores por solicitud del usuario
                 
                 // Función para forzar actualización del tamaño del mapa
                 const actualizarTamañoMapa = () => {
@@ -1048,25 +1040,56 @@
         // Inicializar el sistema de mensajería
         async function inicializarMensajeria() {
             try {
+                console.log('📡 Inicializando sistema de mensajería...');
+                
                 // Importar el módulo de mensajería
                 const module = await import('./js/mensajeria.js');
-                mensajeria = module;
                 
-                // Inicializar mensajería
-                await mensajeria.inicializarMensajeria({
+                // Asignar a la variable local y global
+                mensajeria = module.default || module;
+                window.Mensajeria = mensajeria;
+                
+                if (!mensajeria || typeof mensajeria.inicializarMensajeria !== 'function') {
+                    throw new Error('La API de mensajería no es válida');
+                }
+                
+                // Inicializar mensajería con valores por defecto seguros
+                const configuracion = {
                     iframeId: 'padre',
-                    logLevel: mensajeria.LOG_LEVELS.INFO,
                     debug: true
-                });
+                };
                 
-                console.log('✅ Sistema de mensajería inicializado');
-                configurarMensajeria();
-                iniciarMigracionSistemaMensajeria();
+                // Agregar logLevel solo si está disponible
+                if (mensajeria.LOG_LEVELS) {
+                    configuracion.logLevel = mensajeria.LOG_LEVELS.INFO;
+                }
+                
+                await mensajeria.inicializarMensajeria(configuracion);
+                
+                console.log('✅ Sistema de mensajería inicializado correctamente');
+                
+                // Configurar manejadores de mensajes
+                if (typeof configurarMensajeria === 'function') {
+                    configurarMensajeria();
+                }
+                
+                // Iniciar migración si es necesario
+                if (typeof iniciarMigracionSistemaMensajeria === 'function') {
+                    iniciarMigracionSistemaMensajeria();
+                }
                 
                 return mensajeria;
             } catch (error) {
-                console.error('❌ Error crítico al inicializar el sistema de mensajería:', error);
-                throw error; // Propagar el error para que el llamador lo maneje
+                const errorMsg = `❌ Error crítico al inicializar el sistema de mensajería: ${error.message}`;
+                console.error(errorMsg, error);
+                
+                // Notificar al usuario de alguna manera
+                const errorDiv = document.createElement('div');
+                errorDiv.style.cssText = 'position:fixed;top:0;left:0;right:0;background:red;color:white;padding:10px;z-index:9999;text-align:center;';
+                errorDiv.textContent = 'Error al cargar la aplicación. Por favor, recarga la página.';
+                document.body.prepend(errorDiv);
+                
+                throw error; // Propagar el error
             }
         }
         
@@ -1172,8 +1195,87 @@
             return mensajeria.enviarMensaje(destino, tipo, datos);
         }
         
-        // Inicializar el sistema de mensajería al cargar la página
-        document.addEventListener('DOMContentLoaded', inicializarMensajeria);
+        /**
+         * Envía un mensaje a todos los iframes hijos
+         * @param {string} tipo - Tipo de mensaje
+         * @param {Object} [datos={}] - Datos adicionales del mensaje
+         * @param {Array<string>} [excluir=[]] - IDs de iframes a excluir
+         * @returns {Promise<Array>} Promesa que se resuelve cuando se han enviado todos los mensajes
+         */
+        async function enviarMensajeATodosLosHijos(tipo, datos = {}, excluir = []) {
+            if (!window.Mensajeria) {
+                console.warn('No se puede enviar mensaje: Mensajeria no está disponible');
+                return [];
+            }
+            
+            const idsHijos = ['hijo2', 'hijo3', 'hijo4', 'hijo5-casa'];
+            const promesas = [];
+            
+            for (const id of idsHijos) {
+                if (excluir.includes(id)) continue;
+                
+                try {
+                    promesas.push(
+                        window.Mensajeria.enviarMensajeConReintenos(
+                            id,
+                            tipo,
+                            { ...datos, timestamp: Date.now() }
+                        )
+                    );
+                } catch (error) {
+                    console.error(`Error al enviar mensaje a ${id}:`, error);
+                }
+            }
+            
+            return Promise.allSettled(promesas);
+        }
+        
+        // Inicializar el sistema de mensajería y el mapa al cargar la página
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                console.log('🚀 Inicializando aplicación...');
+                
+                // Inicializar el mapa primero
+                console.log('🌍 Inicializando mapa...');
+                await new Promise(resolve => {
+                    if (typeof L !== 'undefined') {
+                        verificarEInicializarMapa();
+                        resolve();
+                    } else {
+                        // Esperar a que se cargue Leaflet
+                        const checkLeaflet = setInterval(() => {
+                            if (typeof L !== 'undefined') {
+                                clearInterval(checkLeaflet);
+                                verificarEInicializarMapa();
+                                resolve();
+                            }
+                        }, 100);
+                    }
+                });
+                
+                // Luego inicializamos la mensajería
+                console.log('📡 Inicializando mensajería...');
+                await inicializarMensajeria();
+                
+                // Finalmente inicializamos la aplicación
+                console.log('🚀 Inicializando aplicación hijo5...');
+                if (typeof inicializarAplicacionHijo5 === 'function') {
+                    await inicializarAplicacionHijo5();
+                    console.log('✅ Aplicación hijo5 inicializada correctamente');
+                } else {
+                    console.warn('⚠️ La función inicializarAplicacionHijo5 no está definida');
+                }
+                
+                console.log('🏁 Aplicación completamente inicializada');
+                
+            } catch (error) {
+                console.error('❌ Error al inicializar la aplicación:', error);
+                const errorDiv = document.createElement('div');
+                errorDiv.style.cssText = 'position:fixed;top:0;left:0;right:0;background:red;color:white;padding:10px;z-index:9999;text-align:center;';
+                errorDiv.textContent = 'Error al cargar la aplicación. Por favor, recarga la página.';
+                document.body.prepend(errorDiv);
+            }
+        });
 
         // ================== MANEJADORES DE MENSAJES CON MENSAJERIA ==================
         // 1. Inicialización de un hijo
@@ -3577,28 +3679,33 @@ function avanzarSiguientePunto() {
         }
         
         // Inicializar la mensajería cuando el DOM esté listo
-        function inicializarAplicacionHijo5() {
-            // Inicializar mensajería
-            if (!mensajeria) {
-                inicializarMensajeriaHijo5().then(success => {
-                    if (success) {
-                        console.log('Mensajería inicializada correctamente');
-                        
-                        // Notificar a los hijos que la aplicación está lista
-                        enviarMensajeATodosLosHijos(TIPOS_MENSAJE.SISTEMA.INICIALIZACION, {
-                            estado: 'listo',
-                            modo: window.estadoGlobal?.modo || 'aventura'
-                        });
-                    }
-                }).catch(error => {
-                    console.error('Error al inicializar mensajería:', error);
-                });
+        async function inicializarAplicacionHijo5() {
+            try {
+                // Inicializar mensajería si no está ya inicializada
+                if (!window.Mensajeria) {
+                    console.log('Inicializando mensajería...');
+                    await inicializarMensajeria();
+                }
+                
+                console.log('✅ Mensajería inicializada correctamente');
+                
+                // Notificar a los hijos que la aplicación está lista
+                if (window.Mensajeria && window.Mensajeria.TIPOS_MENSAJE) {
+                    enviarMensajeATodosLosHijos(window.Mensajeria.TIPOS_MENSAJE.INICIALIZACION, {
+                        estado: 'listo',
+                        modo: window.estadoGlobal?.modo || 'aventura',
+                        timestamp: Date.now()
+                    });
+                } else {
+                    console.warn('Mensajería no está disponible correctamente');
+                }
+            } catch (error) {
+                console.error('❌ Error al inicializar la aplicación:', error);
+                // Intentar notificar al usuario de alguna manera
+                alert('Error al inicializar la aplicación. Por favor, recarga la página.');
             }
         }
         
-        // Iniciar la aplicación
-        inicializarAplicacionHijo5();
-
         // Hacer que las funciones estén disponibles globalmente
         window.enableControls = enableControls;
         window.disableControls = disableControls;
