@@ -11,34 +11,94 @@
             logLevel: 1,
             debug: true
           });
+
+          // ================== MANEJADORES DE MENSAJES ==================
+          // 1. Inicialización (confirmación al padre)
+          Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.INICIALIZACION, function(mensaje) {
+            console.log('[HIJO5] Confirmando inicialización al padre');
+            
+            // Notificar al padre que está listo
+            Mensajeria.enviarMensajeConReintenos(
+              'padre',
+              Mensajeria.TIPOS_MENSAJE.INICIALIZACION,
+              { 
+                estado: 'listo', 
+                timestamp: Date.now(),
+                modo: gpsOn ? 'aventura' : 'casa'
+              }
+            );
+          });
+
+          // 2. Cambio de modo (desde padre u otro hijo)
+          Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.CAMBIO_MODO, function(mensaje) {
+            console.log('[HIJO5] Cambio de modo recibido:', mensaje.datos);
+            const nuevoModo = mensaje.datos.modo || 'aventura';
+            
+            // Actualizar el estado del GPS según el modo
+            if (nuevoModo === 'casa') {
+              gpsOn = false;
+              modoCasa = true;
+              detenerSeguimientoGPS();
+            } else {
+              gpsOn = true;
+              modoCasa = false;
+              iniciarSeguimientoGPS();
+            }
+            
+            // Actualizar la interfaz
+            actualizarBotonGPS();
+            
+            // Notificar al padre del cambio de estado
+            Mensajeria.enviarMensajeConReintenos(
+              'padre',
+              Mensajeria.TIPOS_MENSAJE.CAMBIO_MODO,
+              { 
+                modo: nuevoModo,
+                gpsActivo: gpsOn,
+                timestamp: Date.now()
+              }
+            );
+          });
+
+          // 3. Notificaciones de estado (desde otros hijos)
+          Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.ESTADO, function(mensaje) {
+            console.log('[HIJO5] Notificación de estado recibida:', mensaje.datos);
+            // Procesar notificaciones de estado si es necesario
+          });
+
+          // 4. Confirmaciones
+          Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.CONFIRMACION, function(mensaje) {
+            console.log('[HIJO5] Confirmación recibida:', mensaje);
+            // Procesar confirmaciones si es necesario
+          });
+
+          // 5. Manejar mensajes de error
+          Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.ERROR, function(mensaje) {
+            console.error('[HIJO5] Error recibido:', mensaje.datos);
+            // Mostrar el error en la interfaz si es necesario
+            if (mensaje.datos && mensaje.datos.mensaje) {
+              mostrarError(mensaje.datos.mensaje);
+            }
+          });
+
+          // 6. Notificar al padre que está listo
+          Mensajeria.enviarMensajeConReintenos(
+            'padre',
+            Mensajeria.TIPOS_MENSAJE.INICIALIZACION,
+            { 
+              estado: 'listo', 
+              timestamp: Date.now(),
+              modo: gpsOn ? 'aventura' : 'casa'
+            }
+          );
         }
       } catch (e) {
         console.error('No se pudo cargar mensajeria.js', e);
       }
     </script>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GPS Casa ON/OFF (hijo5-casa)</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-      window.LOG_LEVELS = moduloMensajeria.LOG_LEVELS || {};
-      window.habilitarControles = moduloMensajeria.enableControls || function() { console.log('Función habilitarControles no disponible'); };
-      window.deshabilitarControles = moduloMensajeria.disableControls || function() { console.log('Función deshabilitarControles no disponible'); };
-      window.manejarMensajeEntrante = moduloMensajeria.manejarMensajeEntrante || function() { console.log('Función manejarMensajeEntrante no disponible'); };
-      
-      console.log('Funciones de mensajería configuradas correctamente');
-    } catch (error) {
-      console.error('Error al cargar el módulo de mensajería:', error);
-      
-      // Configurar funciones vacías para evitar errores
-      window.inicializarMensajeria = function() { console.log('Módulo de mensajería no disponible'); };
-      window.TIPOS_MENSAJE = {};
-      window.LOG_LEVELS = {};
-      window.habilitarControles = function() { console.log('Módulo de mensajería no disponible'); };
-      window.deshabilitarControles = function() { console.log('Módulo de mensajería no disponible'); };
-      window.manejarMensajeEntrante = function() { console.log('Módulo de mensajería no disponible'); };
-    }
-  </script>
-  <style>
+  </head>
+  <body>
+    <style>
     /* Contenedor principal */
     #zona-boton-casa {
       position: relative;
