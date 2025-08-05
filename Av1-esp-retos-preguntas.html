@@ -273,12 +273,8 @@
 </style>
 </head>
 <body>
-    <!-- Script para importar el módulo de men"continue su Aventura" el codigo debería informar al padre que ya ha acabado para que el padre continue su labor"sajería -->
-    <script type="module">
-        // Hacer mensajeria disponible globalmente
-        import { inicializarMensajeria, TIPOS_MENSAJE, LOG_LEVELS } from './js/mensajeria.js';
-        window.mensajeria = { inicializarMensajeria, TIPOS_MENSAJE, LOG_LEVELS };
-    </script>
+    <!-- Script para importar el módulo de mensajería -->
+    <script type="module" src="./js/mensajeria.js"></script>
     
     <!-- Overlay para estado deshabilitado -->
     <div class="disabled-overlay">
@@ -320,15 +316,14 @@ function enableControls(modo = 'casa') {
     document.body.classList.remove('disabled');
     
     // Notificar al padre que los controles están habilitados
-    if (window.mensajeria) {
-        mensajeria.enviarMensaje(mensajeria.TIPOS_MENSAJE.SISTEMA.CONTROL, {
-            tipo: 'controles_habilitados',
-            modo: modo,
-            origen: 'hijo4-retos'
-        });
-    }
+    enviarMensajeAlPadre('control', {
+        tipo: 'controles_habilitados',
+        modo: modo
+    }).catch(error => {
+        console.error('Error al notificar controles habilitados:', error);
+    });
     
-    console.log(`✅ HIJO 4: Controles habilitados en modo ${modo}`);
+    console.log(`✅ HIJO 4: Controles habilitados - Modo: ${modo}`);
 }
 
 /**
@@ -343,18 +338,12 @@ function disableControls(motivo = 'desconocido') {
     document.body.classList.add('disabled');
     
     // Notificar al padre que los controles están deshabilitados
-    if (window.mensajeria) {
-        mensajeria.enviarMensaje(mensajeria.TIPOS_MENSAJE.SISTEMA.CONTROL, {
-            tipo: 'controles_deshabilitados',
-            motivo: motivo,
-            origen: 'hijo4-retos'
-        });
-    }
-    
-    // Si hay un reto en progreso, reiniciarlo
-    if (currentRetoIndex !== -1) {
-        resetCurrentReto();
-    }
+    enviarMensajeAlPadre('control', {
+        tipo: 'controles_deshabilitados',
+        motivo: motivo
+    }).catch(error => {
+        console.error('Error al notificar controles deshabilitados:', error);
+    });
     
     console.log(`🚫 HIJO 4: Controles deshabilitados - ${motivo}`);
 }
@@ -977,85 +966,82 @@ btnEnviar.addEventListener("click", verificar);
 // ================== MANEJADORES DE MENSAJES ==================
 
 /**
- * Configura los manejadores de mensajes usando mensajeria.js
+ * Configura los manejadores de mensajes usando Mensajeria.js
  */
 function configurarManejadoresMensajes() {
-    if (!window.mensajeria || !window.mensajeria.registrarManejador) {
-        console.error('❌ No se pueden configurar manejadores: mensajeria.js no está disponible');
+    if (!window.Mensajeria || typeof window.Mensajeria.registrarControlador !== 'function') {
+        console.error('❌ No se pueden configurar manejadores: Mensajeria no está disponible');
         return;
     }
     
     // Manejar cambio de modo
-    window.mensajeria.registrarManejador(
-        window.mensajeria.TIPOS_MENSAJE.SISTEMA.CONFIGURACION, 
+    window.Mensajeria.registrarControlador(
+        window.Mensajeria.TIPOS_MENSAJE.CAMBIO_MODO,
         (mensaje) => {
-            if (mensaje.datos?.tipo === 'cambio_modo') {
-                const { modo, habilitar } = mensaje.datos;
-                console.log(`🔄 HIJO 4: Recibido cambio de modo: ${modo}, habilitar: ${habilitar}`);
-                manejarCambioModo(modo, habilitar);
-            }
+            const { modo, habilitar } = mensaje.datos || {};
+            console.log(`🔄 HIJO 4: Recibido cambio de modo: ${modo}, habilitar: ${habilitar}`);
+            manejarCambioModo(modo || 'aventura', habilitar);
         }
     );
     
     // Manejar controles
-    window.mensajeria.registrarManejador(
-        window.mensajeria.TIPOS_MENSAJE.SISTEMA.CONTROL,
+    window.Mensajeria.registrarControlador(
+        window.Mensajeria.TIPOS_MENSAJE.CONTROL,
         (mensaje) => {
-            if (mensaje.datos?.tipo === 'habilitar_controles') {
+            const { tipo, modo, motivo } = mensaje.datos || {};
+            if (tipo === 'habilitar_controles') {
                 console.log('🔓 HIJO 4: Habilitando controles');
-                enableControls(mensaje.datos.modo || 'casa');
-            } else if (mensaje.datos?.tipo === 'deshabilitar_controles') {
+                enableControls(modo || 'casa');
+            } else if (tipo === 'deshabilitar_controles') {
                 console.log('🔒 HIJO 4: Deshabilitando controles');
-                disableControls(mensaje.datos.motivo || 'desconocido');
+                disableControls(motivo || 'desconocido');
             }
         }
     );
     
     // Manejar solicitud de mostrar reto
-    window.mensajeria.registrarManejador(
-        'RETO.MOSTRAR',
+    window.Mensajeria.registrarControlador(
+        window.Mensajeria.TIPOS_MENSAJE.RETO,
         (mensaje) => {
-            if (typeof mensaje.datos?.index === 'number') {
-                console.log(`🎯 HIJO 4: Mostrando reto ${mensaje.datos.index}`);
+            const { accion, parametros } = mensaje.datos || {};
+            if (accion === 'mostrar' && typeof parametros?.index === 'number') {
+                console.log(`🎯 HIJO 4: Mostrando reto ${parametros.index}`);
                 // Almacenar el ID del reto actual
                 window.retoActual = {
-                    id: retosAventura1Es[mensaje.datos.index].id,
-                    index: mensaje.datos.index
+                    id: retosAventura1Es[parametros.index].id,
+                    index: parametros.index
                 };
-                renderizarReto(mensaje.datos.index);
+                renderizarReto(parametros.index);
             }
         }
     );
     
     // Manejar solicitud de mostrar puzzle
-    window.mensajeria.registrarManejador(
+    window.Mensajeria.registrarControlador(
         'PUZZLE.MOSTRAR',
         (mensaje) => {
-            if (mensaje.datos?.puzzleId) {
-                console.log(`🧩 HIJO 4: Mostrando puzzle ${mensaje.datos.puzzleId} del reto ${mensaje.datos.retoId}`);
+            const { puzzleId, retoId } = mensaje.datos || {};
+            if (puzzleId) {
+                console.log(`🧩 HIJO 4: Mostrando puzzle ${puzzleId} del reto ${retoId}`);
                 // Almacenar el ID del puzzle actual
-                window.puzzleActual = {
-                    id: mensaje.datos.puzzleId,
-                    retoId: mensaje.datos.retoId
-                };
+                window.puzzleActual = { id: puzzleId, retoId };
                 
                 // Notificar que el puzzle se mostró
-                enviarMensajeAlPadre('PUZZLE.MOSTRADO', {
-                    puzzleId: mensaje.datos.puzzleId,
-                    retoId: mensaje.datos.retoId
-                });
+                enviarMensajeAlPadre('puzzle_mostrado', { puzzleId, retoId });
             }
         }
     );
     
     // Manejar notificación de puzzle completado
-    window.mensajeria.registrarManejador(
+    window.Mensajeria.registrarControlador(
         'PUZZLE.COMPLETADO',
         (mensaje) => {
-            console.log(`✅ HIJO 4: Puzzle ${mensaje.datos?.puzzleId} completado`);
+            const { puzzleId } = mensaje.datos || {};
+            console.log(`✅ HIJO 4: Puzzle ${puzzleId} completado`);
+            
             // Notificar al padre que el puzzle se completó
-            enviarMensajeAlPadre('PUZZLE.FINALIZADO', {
-                puzzleId: mensaje.datos?.puzzleId,
+            enviarMensajeAlPadre('puzzle_finalizado', {
+                puzzleId,
                 exito: true,
                 retoId: window.retoActual?.id
             });
@@ -1075,15 +1061,15 @@ window.addEventListener("DOMContentLoaded", async () => {
         window.retoActual = null;
         window.puzzleActual = null;
         
-        // Inicializar mensajería
-        if (!window.mensajeria || !window.mensajeria.inicializarMensajeria) {
+        // Verificar que Mensajeria esté disponible
+        if (!window.Mensajeria || typeof window.Mensajeria.inicializarMensajeria !== 'function') {
             throw new Error('El módulo de mensajería no está disponible');
         }
         
-        // Configurar mensajería
-        await window.mensajeria.inicializarMensajeria({
+        // Inicializar mensajería
+        await window.Mensajeria.inicializarMensajeria({
             iframeId: 'hijo4',
-            logLevel: window.mensajeria.LOG_LEVELS.DEBUG,
+            logLevel: 1, // DEBUG
             debug: true
         });
         
@@ -1096,8 +1082,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         manejarCambioModo('aventura', false);
         
         // Notificar al padre que el hijo está listo
-        enviarMensajeAlPadre(window.mensajeria.TIPOS_MENSAJE.SISTEMA.ESTADO, {
-            tipo: 'hijo_listo',
+        enviarMensajeAlPadre('sistema_estado', {
             modo: modoActual,
             controlesHabilitados: controlesHabilitados
         });
