@@ -950,369 +950,102 @@
 ];
 
         // ================== SISTEMA DE MENSAJERÍA ==================
-        const Mensajes = {
-            // Tipos de mensajes estándar
-            TIPOS: {
-                // Mensajes del hijo al padre
-                ESTADO: 'estado',
-                NAVEGACION: 'navegacion',
-                ERROR: 'error',
-                CONFIRMACION: 'confirmacion',
-                SOLICITUD: 'solicitud',
+        // Ahora usando mensajeria.js para toda la comunicación
+        
+        // Manejador de mensajes del padre
+        function manejarMensajesPadre(tipo, datos, event) {
+            console.log(`[HIJO2] Mensaje recibido del padre (${tipo}):`, datos);
+            
+            // Aquí puedes agregar el manejo específico de mensajes del padre
+            // Por ejemplo:
+            // if (tipo === 'cambiarModo') {
+            //     // Manejar cambio de modo
+            // }
+        }
+        
+        // Inicializar la mensajería cuando el DOM esté listo
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                // Inicializar mensajería
+                await Mensajeria.inicializar();
                 
-                // Mensajes del padre al hijo
-                ACCION: 'accion',
-                ACTUALIZACION_ESTADO: 'actualizacion_estado',
-                RESPUESTA: 'respuesta',
-                
-                // Compatibilidad con sistema existente
-                SINCRONIZAR_ESTADO: 'sincronizarEstado',
-                SINCRONIZAR_BRUJULA: 'sincronizarBrujula'
-            },
-            
-            // Creador de mensajes estandarizado
-            crear(tipo, datos = {}, idMensaje = null) {
-                return {
-                    tipo,
-                    origen: 'hijo2',
-                    destino: 'padre',
-                    id: idMensaje || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-                    timestamp: Date.now(),
-                    datos: { ...datos }
-                };
-            },
-            
-            // Verificar si un mensaje es válido
-            esValido(mensaje) {
-                return mensaje && 
-                       typeof mensaje === 'object' &&
-                       mensaje.tipo &&
-                       mensaje.timestamp &&
-                       mensaje.origen;
-            },
-            
-            // Manejadores de mensajes
-            manejadores: new Map(),
-            
-            // Registrar manejador para un tipo de mensaje
-            registrarManejador(tipo, callback) {
-                if (!this.manejadores.has(tipo)) {
-                    this.manejadores.set(tipo, new Set());
-                }
-                this.manejadores.get(tipo).add(callback);
-                return () => this.manejadores.get(tipo)?.delete(callback);
-            },
-            
-            // Procesar mensaje entrante
-            procesarMensaje(mensaje, event) {
-                if (!this.esValido(mensaje)) {
-                    console.warn('Mensaje recibido no válido:', mensaje);
-                    return;
-                }
-                
-                const manejadores = this.manejadores.get(mensaje.tipo) || [];
-                manejadores.forEach(manejador => {
-                    try {
-                        manejador(mensaje, event);
-                    } catch (error) {
-                        console.error(`Error en manejador para mensaje ${mensaje.tipo}:`, error);
-                        this.enviarError(
-                            'ERROR_MANEJADOR', 
-                            `Error procesando mensaje ${mensaje.tipo}: ${error.message}`,
-                            mensaje.id
-                        );
-                    }
-                });
-            },
-            
-            // Enviar mensaje al padre
-            enviar(tipo, datos = {}) {
-                const mensaje = this.crear(tipo, datos);
-                window.parent.postMessage(mensaje, '*');
-                console.log('Mensaje enviado al padre:', tipo, datos);
-                return mensaje.id;
-            },
-            
-            // Enviar error al padre
-            enviarError(codigo, mensaje, idMensajeOriginal = null) {
-                return this.enviar(this.TIPOS.ERROR, {
-                    codigo,
-                    mensaje,
-                    idMensajeOriginal
-                });
-            },
-            
-            // Enviar confirmación de recepción
-            enviarConfirmacion(idMensajeOriginal, datos = {}) {
-                return this.enviar(this.TIPOS.CONFIRMACION, {
-                    ...datos,
-                    idMensajeOriginal
-                });
-            },
-            
-            // Enviar actualización de estado
-            enviarEstado(estado, datosAdicionales = {}) {
-                return this.enviar(this.TIPOS.ESTADO, {
-                    ...estado,
-                    ...datosAdicionales
-                });
-            },
-            
-            // Enviar solicitud al padre
-            enviarSolicitud(accion, datos = {}) {
-                return this.enviar(this.TIPOS.SOLICITUD, {
-                    accion,
-                    ...datos
-                });
-            },
-            
-            // Inicializar el sistema de mensajería
-            inicializar() {
-                // Configurar manejador de mensajes global
-                window.addEventListener('message', (event) => {
-                    const timestampRecepcion = Date.now();
-                    const mensaje = event.data;
-                    
-                    // Validar que el mensaje sea un objeto
-                    if (!mensaje || typeof mensaje !== 'object') {
-                        console.warn('Mensaje recibido no es un objeto:', mensaje);
-                        return;
-                    }
-                    
-                    // Verificar si el mensaje está destinado a este iframe
-                    if (mensaje.destino && mensaje.destino !== 'hijo2' && mensaje.destino !== 'todos') {
-                        console.log(`Mensaje ignorado (destinado a '${mensaje.destino}')`, mensaje);
-                        return;
-                    }
-                    
-                    // Calcular retraso del mensaje
-                    const retraso = mensaje.timestamp ? timestampRecepcion - mensaje.timestamp : 0;
-                    
-                    // Log de recepción detallado
-                    console.group(`📨 HIJO 2: Mensaje recibido [${mensaje.id || 'sin-id'}]`);
-                    console.log('📋 Información del mensaje:', {
-                        tipo: mensaje.tipo || 'sin-tipo',
-                        origen: mensaje.origen || 'desconocido',
-                        timestamp: mensaje.timestamp || 'no-especificado',
-                        timestampRecepcion,
-                        retraso: `${retraso}ms`,
-                        id: mensaje.id || 'sin-id'
-                    });
-                    console.log('📦 Contenido del mensaje:', mensaje);
-                    
-                    try {
-                        // Procesar el mensaje
-                        this.procesarMensaje(mensaje, event);
-                        
-                        // Enviar confirmación de recepción si el mensaje tiene ID
-                        if (mensaje.id) {
-                            this.enviarConfirmacion(mensaje.id, {
-                                recibido: true,
-                                procesado: true,
-                                timestampProcesado: Date.now()
-                            });
-                        }
-                    } catch (error) {
-                        console.error('❌ Error procesando mensaje:', error);
-                        
-                        // Enviar confirmación de error si el mensaje tiene ID
-                        if (mensaje.id) {
-                            this.enviarError('ERROR_PROCESAMIENTO', 
-                                `Error procesando mensaje: ${error.message}`, 
-                                mensaje.id,
-                                { stack: error.stack }
-                            );
-                        }
-                    } finally {
-                        console.groupEnd();
-                    }
-                });
+                // Registrar manejador de mensajes del padre
+                Mensajeria.registrarControlador('*', manejarMensajesPadre);
                 
                 // Notificar al padre que el componente está listo
-                const mensajeInicio = this.crear('inicio', {
+                await Mensajeria.enviarMensaje('padre', 'inicio', {
                     estado: 'listo',
                     componente: 'hijo2',
                     version: '1.0.0',
-                    capacidades: ['navegacion', 'gps', 'seguimiento_ruta'],
-                    timestamp: Date.now()
+                    capacidades: ['navegacion', 'gps', 'seguimiento_ruta']
                 });
                 
-                // Enviar con reintentos
-                this.enviarConReintentos(mensajeInicio, 3, 1000)
-                    .then(() => console.log('✅ Notificación de inicio enviada correctamente'))
-                    .catch(error => console.error('❌ Error enviando notificación de inicio:', error));
-                
-                console.log('Sistema de mensajería inicializado');
-            },
-            
-            // Función para enviar un mensaje con reintentos
-            async enviarConReintentos(mensaje, maxReintentos = 3, tiempoEspera = 1000) {
-                let ultimoError;
-                
-                for (let intento = 1; intento <= maxReintentos; intento++) {
-                    try {
-                        // Agregar información de intento al mensaje
-                        const mensajeConIntento = {
-                            ...mensaje,
-                            intento,
-                            maxReintentos,
-                            timestampUltimoIntento: Date.now()
-                        };
-                        
-                        console.log(`📤 Intento ${intento}/${maxReintentos} de envío:`, mensajeConIntento);
-                        
-                        // Crear una promesa que se resuelva cuando recibamos confirmación
-                        return await new Promise((resolve, reject) => {
-                            // Configurar temporizador de espera
-                            const timeoutId = setTimeout(() => {
-                                const error = new Error(`Timeout de ${tiempoEspera}ms excedido`);
-                                error.codigo = 'TIMEOUT';
-                                reject(error);
-                            }, tiempoEspera);
-                            
-                            // Manejador temporal para confirmación
-                            const manejarConfirmacion = (event) => {
-                                const respuesta = event.data;
-                                
-                                // Verificar si es una respuesta a nuestro mensaje
-                                if (respuesta && respuesta.idMensajeOriginal === mensaje.id) {
-                                    // Limpiar el manejador
-                                    window.removeEventListener('message', manejarConfirmacion);
-                                    clearTimeout(timeoutId);
-                                    
-                                    if (respuesta.exito !== false) {
-                                        console.log(`✅ Confirmación recibida para mensaje ${mensaje.id}`, respuesta);
-                                        resolve(respuesta);
-                                    } else {
-                                        const error = new Error(respuesta.error || 'Error en la confirmación');
-                                        error.respuesta = respuesta;
-                                        reject(error);
-                                    }
-                                }
-                            };
-                            
-                            // Escuchar la confirmación
-                            window.addEventListener('message', manejarConfirmacion);
-                            
-                            // Enviar el mensaje
-                            window.parent.postMessage(mensajeConIntento, '*');
-                        });
-                        
-                    } catch (error) {
-                        ultimoError = error;
-                        console.warn(`⚠️ Intento ${intento} fallido:`, error.message);
-                        
-                        // Esperar antes de reintentar (excepto en el último intento)
-                        if (intento < maxReintentos) {
-                            await new Promise(resolve => setTimeout(resolve, tiempoEspera * intento));
-                        }
-                    }
-                }
-                
-                // Si llegamos aquí, todos los intentos fallaron
-                throw new Error(`No se pudo enviar el mensaje después de ${maxReintentos} intentos: ${ultimoError?.message}`);
+                console.log('[HIJO2] Mensajería inicializada correctamente');
+            } catch (error) {
+                console.error('[HIJO2] Error al inicializar la mensajería:', error);
             }
-        };
-        
-        // Inicializar el sistema de mensajería cuando el DOM esté listo
-        document.addEventListener('DOMContentLoaded', () => {
-            Mensajes.inicializar();
         });
         
         // ================== MANEJO DE ESTADO ==================
+        // Clase EstadoNavegacion - Definición centralizada
         class EstadoNavegacion {
             constructor() {
-                this.ubicacion = null;
-                this.paradaActual = 0;
-                this.estado = 'inactivo'; // 'inactivo' | 'navegando' | 'en_parada'
-                this.modoCasa = false;
-                this.suscriptores = new Set();
-                this.ultimaActualizacion = Date.now();
+                this.estado = {
+                    modo: 'inactivo', // 'inactivo', 'navegando', 'enParada', 'completo'
+                    paradaActual: null,
+                    paradaAnterior: null,
+                    paradaSiguiente: null,
+                    progreso: 0,
+                    tiempoEstimado: 0,
+                    distancia: 0,
+                    ruta: [],
+                    ultimaUbicacion: null,
+                    ultimaActualizacion: null,
+                    gpsActivo: false,
+                    bruselasActivo: false,
+                    controlesHabilitados: true
+                };
+                this.suscriptores = [];
             }
-            
+
             actualizar(nuevoEstado) {
-                Object.assign(this, {
-                    ...nuevoEstado,
-                    ultimaActualizacion: Date.now()
-                });
+                this.estado = { ...this.estado, ...nuevoEstado };
+                this.estado.ultimaActualizacion = new Date().toISOString();
                 this.notificarCambios();
                 this.notificarEstadoAlPadre();
             }
-            
-            suscribir(callback) {
-                this.suscriptores.add(callback);
-                return () => this.suscriptores.delete(callback);
-            }
-            
-            notificarCambios() {
-                const estadoActual = this.obtenerEstado();
-                this.suscriptores.forEach(cb => cb(estadoActual));
-            }
-            
-            obtenerEstado() {
-                return {
-                    ubicacion: this.ubicacion,
-                    paradaActual: this.paradaActual,
-                    estado: this.estado,
-                    modoCasa: this.modoCasa,
-                    ultimaActualizacion: this.ultimaActualizacion
-                };
-            }
-            
-            notificarEstadoAlPadre() {
-                Mensajes.enviarEstado(this.obtenerEstado());
-            }
-        }
 
-        // Define EstadoNavegacion class at the top
-        class EstadoNavegacion {
-            constructor() {
-                this.estado = 'inactivo';
-                this.suscriptores = [];
-            }
-            
-            actualizar(nuevoEstado) {
-                this.estado = nuevoEstado;
-                this.notificarCambios();
-            }
-            
             suscribir(callback) {
-                this.suscriptores.push(callback);
+                if (typeof callback === 'function') {
+                    this.suscriptores.push(callback);
+                }
+                return () => this.suscriptores = this.suscriptores.filter(cb => cb !== callback);
             }
-            
+
             notificarCambios() {
                 this.suscriptores.forEach(callback => callback(this.estado));
             }
-            
-            obtenerEstado() {
-                return this.estado;
-            }
-            
-            notificarEstadoAlPadre() {
-                this.enviarSolicitud('actualizarEstado', { estado: this.estado });
-            }
-        }
-        
-        // Asegurar que EstadoNavegacion esté definido
-        if (typeof EstadoNavegacion === 'undefined') {
-            console.error('Error: La clase EstadoNavegacion no está definida');
-        }
 
-        // Inicializar estadoNavegacion solo si no existe
-        if (!window.estadoNavegacion) {
-            try {
-                window.estadoNavegacion = new EstadoNavegacion();
-                console.log('estadoNavegacion inicializado correctamente');
-            } catch (error) {
-                console.error('Error al inicializar estadoNavegacion:', error);
-                // Crear un objeto de respaldo con métodos vacíos
-                window.estadoNavegacion = {
-                    actualizar: () => {},
-                    suscribir: () => {},
-                    notificarCambios: () => {},
-                    obtenerEstado: () => ({}),
-                    notificarEstadoAlPadre: () => {}
-                };
+            obtenerEstado() {
+                return { ...this.estado };
+            }
+
+            notificarEstadoAlPadre() {
+                // Usar el sistema de mensajería centralizado si está disponible
+                if (typeof Mensajeria !== 'undefined' && typeof Mensajeria.enviarMensaje === 'function') {
+                    Mensajeria.enviarMensaje('padre', 'estadoNavegacion', this.obtenerEstado())
+                        .catch(error => {
+                            console.error('Error al notificar estado de navegación:', error);
+                        });
+                } else if (window.parent !== window) {
+                    // Fallback al método antiguo solo si es necesario
+                    window.parent.postMessage({
+                        tipo: 'estadoNavegacion',
+                        estado: this.obtenerEstado(),
+                        origen: 'hijo2',
+                        timestamp: new Date().toISOString()
+                    }, '*');
+                }
             }
         }
         let orientacionActual = 0; // Heading del dispositivo en grados
@@ -2136,47 +1869,10 @@
            - 'cambiar-chincheta-color': { parada, colorAnterior, colorNuevo }
            - 'limpiar-polyline-navegacion'
            - 'ocultar-flecha-navegacion'
-           
-        5.1. ZOOM AUTOMÁTICO NAVEGACIÓN:
-           - zoomAutomatico: { tipo: 'bounding-box-polyline', puntos, margen, transicion, duracion, incluirChinchetas }
-           
-        6. CONTENIDO MULTIMEDIA:
-           - 'mostrar-imagen': { parada, imagenSrc, modoCasa }
-           - 'mostrar-video': { parada, videoSrc, autoplay, modoCasa }
-           - 'mostrar-video-con-zoom-secuencial': { parada, videoSrc, coordenadasZoom, secuencia, sincronizarConBarraProgreso }
-           
-        7. COMPATIBILIDAD (LEGACY):
-           - 'ya-estoy-aqui': { parada, estadoNavegacion }
-           - 'actualizarUbicacionMapa': { lat, lng }
-           - 'mostrar-navegacion-gps': { paradaActual, coordenadasDestino, ubicacionUsuario }
         */
         
-        /**
-         * Función de compatibilidad para enviar mensajes al padre
-         * @param {Object} mensaje - El mensaje a enviar
-         * @deprecated Usar Mensajes.enviar() en su lugar
-         */
-        function enviarMensajeAlPadre(mensaje) {
-            try {
-                // Si el mensaje ya está en el nuevo formato, enviarlo directamente
-                if (mensaje.tipo && mensaje.origen === 'hijo2') {
-                    window.parent.postMessage(mensaje, '*');
-                    return;
-                }
-                
-                // Convertir mensajes antiguos al nuevo formato
-                const tipo = mensaje.tipo || mensaje.type || 'desconocido';
-                const datos = { ...mensaje };
-                delete datos.tipo;
-                delete datos.type;
-                
-                // Enviar usando el nuevo sistema
-                Mensajes.enviar(tipo, datos);
-            } catch (error) {
-                console.error('Error enviando mensaje al padre:', error);
-                Mensajes.enviarError('ERROR_ENVIO', `Error enviando mensaje: ${error.message}`);
-            }
-        }
+        // NOTA: La función enviarMensajeAlPadre ha sido eliminada. 
+        // Usar Mensajeria.enviarMensaje('padre', tipo, datos) en su lugar.
 
         function activarModoCasa() {
             modoCasa = true;
@@ -2405,146 +2101,6 @@
             actualizarStatus(`✅ ¡Llegaste a parada ${paradaActual}! El padre coordinará audio y retos`);
         }
 
-        // Función de prueba para demostrar las transiciones suaves
-        function probarTransicionesBotones() {
-            actualizarStatus('🎨 Probando transiciones suaves de botones...');
-            
-            // Secuencia de prueba de transiciones
-            const secuenciaPrueba = [
-                { tiempo: 0, accion: () => {
-                    actualizarStatus('🔴 Desactivando todos los botones...');
-                    desactivarTodosBotones();
-                }},
-                { tiempo: 1000, accion: () => {
-                    actualizarStatus('🟢 Activando botón GPS...');
-                    activarBoton(btnGps);
-                }},
-                { tiempo: 2000, accion: () => {
-                    actualizarStatus('🟢 Activando botón Imagen...');
-                    activarBoton(btnImagen);
-                }},
-                { tiempo: 3000, accion: () => {
-                    actualizarStatus('🟢 Activando botón Video...');
-                    activarBoton(btnVideo);
-                }},
-                { tiempo: 4500, accion: () => {
-                    actualizarStatus('🔴 Desactivando botón GPS...');
-                    desactivarBoton(btnGps);
-                }},
-                { tiempo: 5500, accion: () => {
-                    actualizarStatus('🔴 Desactivando botón Imagen...');
-                    desactivarBoton(btnImagen);
-                }},
-                { tiempo: 6500, accion: () => {
-                    actualizarStatus('🔴 Desactivando botón Video...');
-                    desactivarBoton(btnVideo);
-                }},
-                { tiempo: 8000, accion: () => {
-                    actualizarStatus('🟢 Activando todos los botones...');
-                    activarTodosBotones();
-                }},
-                { tiempo: 10000, accion: () => {
-                    actualizarStatus('✅ Prueba de transiciones completada!');
-                }}
-            ];
-            
-            // Ejecutar secuencia de prueba
-            secuenciaPrueba.forEach(paso => {
-                setTimeout(paso.accion, paso.tiempo);
-            });
-        }
-        
-        // Función de prueba para el flujo de navegación completo
-        function probarFlujoNavegacion() {
-            actualizarStatus('🗺️ Probando flujo completo de navegación...');
-            
-            const secuenciaNavegacion = [
-                { tiempo: 0, accion: () => {
-                    actualizarStatus('🏠 1. Iniciando estado inicial (Parada 0)');
-                    iniciarEstadoInicial();
-                }},
-                { tiempo: 2000, accion: () => {
-                    actualizarStatus('🗺️ 2. Iniciando navegación hacia parada 1 (con zoom automático)');
-                    iniciarNavegacionAProximaParada();
-                }},
-                { tiempo: 4000, accion: () => {
-                    actualizarStatus('📍 3. Simulando llegada a parada 1');
-                    // Simular llegada
-                    estadoNavegacion = 'navegando';
-                    paradaDestino = 1;
-                    paradaActual = 1;
-                    paradaDestino = 2;
-                    procesarLlegadaAParada();
-                }},
-                { tiempo: 6000, accion: () => {
-                    actualizarStatus('🗺️ 4. Navegando hacia parada 2');
-                    iniciarNavegacionAProximaParada();
-                }},
-                { tiempo: 8000, accion: () => {
-                    actualizarStatus('📍 5. Simulando llegada a parada 2');
-                    estadoNavegacion = 'navegando';
-                    paradaDestino = 2;
-                    paradaActual = 2;
-                    paradaDestino = 3;
-                    procesarLlegadaAParada();
-                }},
-                { tiempo: 10000, accion: () => {
-                    actualizarStatus('✅ Prueba de flujo de navegación completada!');
-                    // Resetear al estado inicial
-                    setTimeout(() => {
-                        iniciarEstadoInicial();
-                    }, 2000);
-                }}
-            ];
-            
-            // Ejecutar secuencia de navegación
-            secuenciaNavegacion.forEach(paso => {
-                setTimeout(paso.accion, paso.tiempo);
-            });
-        }
-        
-        // Función de prueba para video con zoom secuencial
-        function probarVideoConZoom() {
-            actualizarStatus('🎬 Probando video con zoom secuencial...');
-            
-            // Simular coordenadas de prueba
-            const coordenadasPrueba = {
-                lat: 39.47773,
-                lng: -0.37671
-            };
-            
-            const videoSrcPrueba = 'videos/parada_0.mp4';
-            
-            // Simular el mensaje que enviaría el botón de video
-            const mensajePrueba = {
-                tipo: 'mostrar-video-con-zoom-secuencial',
-                parada: paradaActual,
-                videoSrc: videoSrcPrueba,
-                coordenadasZoom: coordenadasPrueba,
-                secuencia: {
-                    paso1: { accion: 'zoom', duracion: 1000 },
-                    paso2: { accion: 'mostrar-video', ventana: '70%' }
-                },
-                sincronizarConBarraProgreso: true,
-                modoCasa: modoCasa
-            };
-            
-            // Ejecutar la secuencia
-            actualizarStatus('🔍 Paso 1: Iniciando zoom hacia coordenadas...');
-            
-            setTimeout(() => {
-                // Simular que el padre procesa el mensaje
-                window.dispatchEvent(new MessageEvent('message', {
-                    data: mensajePrueba
-                }));
-            }, 500);
-            
-            // Mostrar instrucciones
-            setTimeout(() => {
-                actualizarStatus('🎬 Prueba completa: Zoom → Video flotante → Control con barra');
-            }, 3000);
-        }
-
         // Manejador para los botones de la interfaz
         function manejarClicBoton(id) {
             // Verificar si el botón está deshabilitado
@@ -2613,10 +2169,11 @@
                         // 2. Dibujar línea discontinua verde de 6px entre los puntos
                         Mensajes.enviar('dibujarRuta', {
                             puntos: [ubicacionActual, siguienteParada.coordenadas],
-                            color: '#00FF00',
-                            grosor: 6,
-                            discontinua: true,
-                            id: 'ruta_actual'
+                            color: '#00FF00', // Azul
+                            grosor: 6, // 6px de ancho
+                            opacidad: 0.8,
+                            lineJoin: 'round',
+                            lineCap: 'round'
                         });
 
                         // 3. Iniciar actualización de flecha de dirección cada 7 segundos
@@ -2938,8 +2495,6 @@
                 });
             }
         });
-
-
 
         // === FUNCIONES DE SIMULACIÓN DE ZOOM Y VIDEO (TEMPORAL) ===
         
@@ -4566,13 +4121,18 @@
                     
                     console.log('[APP] Aplicación inicializada correctamente');
                     
-                    // Notificar al padre que la aplicación está lista
-                    if (window.parent !== window) {
-                        window.parent.postMessage({
-                            tipo: 'app:ready',
+                    // Notificar al padre que la aplicación está lista usando el sistema de mensajería
+                    if (window.parent !== window && typeof Mensajeria !== 'undefined' && typeof Mensajeria.enviarMensaje === 'function') {
+                        Mensajeria.enviarMensaje('padre', 'app:ready', {
                             origen: 'hijo2',
                             timestamp: new Date().toISOString()
-                        }, '*');
+                        }).then(() => {
+                            console.log('✅ Notificación de aplicación lista enviada correctamente');
+                        }).catch(error => {
+                            console.error('❌ Error al notificar que la aplicación está lista:', error);
+                        });
+                    } else if (window.parent !== window) {
+                        console.warn('⚠️ No se pudo notificar al padre: el sistema de mensajería no está disponible');
                     }
                     
                     return Promise.resolve();
