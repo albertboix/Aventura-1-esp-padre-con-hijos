@@ -1025,24 +1025,27 @@
      * @deprecated Esta función ha sido reemplazada por actualizarInterfaz()
      */
     function actualizarBotonGPS() {
-      console.log('actualizarBotonGPS() llamado - Esta función está obsoleta');
+      console.log('actualizarBotonGPS() llamado');
       
-      // Notificar al padre
-      if (window.parent) {
-        window.parent.postMessage({
-          type: 'GPS_STATE_CHANGE',
+      // Notificar al padre usando Mensajeria
+      if (window.Mensajeria && typeof window.Mensajeria.enviarMensajeConReintenos === 'function') {
+        const mensaje = {
           gpsActivo: gpsActivo,
-          modo: gpsActivo ? 'aventura' : 'casa'
-        }, '*');
+          modo: gpsActivo ? 'aventura' : 'casa',
+          timestamp: Date.now()
+        };
         
-        // Notificar a otros iframes
-        if (typeof enviarMensajeATodosLosHijos === 'function') {
-          enviarMensajeATodosLosHijos({
-            type: 'GPS_STATE_CHANGE',
-            gpsActivo: gpsActivo,
-            modo: gpsActivo ? 'aventura' : 'casa'
-          });
-        }
+        // Enviar al padre
+        window.Mensajeria.enviarMensajeConReintenos(
+          'padre',
+          'GPS_STATE_CHANGE',
+          mensaje
+        ).catch(error => {
+          console.error('Error al notificar cambio de estado GPS:', error);
+        });
+        
+        // Notificar a otros iframes (si es necesario)
+        // Esto ahora se manejará a través del padre o mediante eventos personalizados
       }
       
       // Llamar a las funciones de seguimiento GPS si existen
@@ -1178,92 +1181,99 @@
       return true;
     }
     
-    // Manejar mensajes entrantes
-    function manejarMensaje(data, origen) {
+    /**
+     * Maneja los mensajes entrantes a través de Mensajeria.js
+     * @param {Object} mensaje - Objeto de mensaje recibido
+     * @param {string} tipo - Tipo de mensaje
+     * @param {Object} datos - Datos del mensaje
+     * @param {string} origen - Origen del mensaje
+     */
+    function manejarMensaje({ tipo, datos, origen }) {
       try {
-        // Verificar si el mensaje es un objeto y tiene tipo
-        if (data && typeof data === 'object') {
-          // Manejar mensajes del sistema de mensajería
-          if (data.tipo && data.origen) {
-            switch (data.tipo) {
-              case 'sistema:configuracion':
-                if (data.datos?.estado) {
-                  gpsActivo = data.datos.estado.modo === 'aventura';
-                  if (data.datos.estado.puntoActual) {
-                    if (data.datos.estado.puntoActual.tipo === 'parada') {
-                      tramoActual = data.datos.estado.puntoActual.numero;
-                    } else if (data.estado.puntoActual.tipo === 'tramo') {
-                      tramoActual = data.estado.puntoActual.numero;
-                    }
-                  }
-                  actualizarBotonGPS();
-                  if (!gpsActivo) renderParadasYTramos();
-                }
-                break;
-                
-              case 'sistema:gps_estado':
-                if (typeof data.datos?.activo !== 'undefined') {
-                  gpsActivo = data.datos.activo;
-                  actualizarBotonGPS();
-                  if (!gpsActivo) {
-                    renderParadasYTramos();
-                  } else {
-                    const paradasWindow = document.getElementById('paradas-window');
-                    if (paradasWindow) paradasWindow.style.display = 'none';
-                  }
-                }
-                break;
-                
-              case 'navegacion:cambio_parada':
-                if (typeof data.datos?.parada !== 'undefined') {
-                  tramoActual = data.datos.parada;
-                  renderParadasYTramos();
-                }
-                break;
-                
-              case 'navegacion:cambio_tramo':
-                if (typeof data.datos?.tramo !== 'undefined') {
-                  tramoActual = data.datos.tramo;
-                  renderParadasYTramos();
-                }
-                break;
-                
-              default:
-                console.log('Tipo de mensaje no manejado:', data.tipo);
-                break;
-            }
-          } 
-          // Manejar mensajes antiguos para compatibilidad
-          else if (data.type) {
-            if (data.type === 'cambiarModo' && (data.modo === 'casa' || data.modo === 'aventura')) {
-              manejarCambioModo(data.modo);
-            } else if (data.type === 'cambiarParada' && typeof data.parada === 'number') {
-              tramoActual = data.parada;
-              renderParadasYTramos();
-            } else if (data.type === 'cambiarTramo' && typeof data.tramo === 'number') {
-              tramoActual = data.tramo;
-              renderParadasYTramos();
-            } else if (data.type === 'SET_GPS_STATE') {
-              gpsActivo = !!data.gpsActivo;
-              actualizarBotonGPS();
-              if (!gpsActivo) renderParadasYTramos();
-            } else if (data.type === 'sincronizarEstado' && data.estado) {
-              gpsActivo = data.estado.modo === 'aventura';
-              if (data.estado.puntoActual) {
-                if (data.estado.puntoActual.tipo === 'parada') {
-                  tramoActual = data.estado.puntoActual.numero;
-                } else if (data.estado.puntoActual.tipo === 'tramo') {
-                  tramoActual = data.estado.puntoActual.numero;
-                }
+        console.log(`[HIJO5] Mensaje recibido - Tipo: ${tipo}`, datos);
+        
+        switch (tipo) {
+          case 'sistema:configuracion':
+            if (datos?.estado) {
+              gpsActivo = datos.estado.modo === 'aventura';
+              if (datos.estado.puntoActual) {
+                tramoActual = datos.estado.puntoActual.numero;
               }
               actualizarBotonGPS();
               if (!gpsActivo) renderParadasYTramos();
-            } else {
-              console.log('Tipo de mensaje no manejado:', data.type);
             }
-          } else {
-            console.log('Mensaje no reconocido:', data);
-          }
+            break;
+            
+          case 'sistema:gps_estado':
+            if (typeof datos?.activo !== 'undefined') {
+              gpsActivo = datos.activo;
+              actualizarBotonGPS();
+              const paradasWindow = document.getElementById('paradas-window');
+              if (gpsActivo && paradasWindow) {
+                paradasWindow.style.display = 'none';
+              } else if (!gpsActivo) {
+                renderParadasYTramos();
+              }
+            }
+            break;
+            
+          case 'navegacion:cambio_parada':
+            if (typeof datos?.parada !== 'undefined') {
+              tramoActual = datos.parada;
+              renderParadasYTramos();
+            }
+            break;
+            
+          case 'navegacion:cambio_tramo':
+            if (typeof datos?.tramo !== 'undefined') {
+              tramoActual = datos.tramo;
+              renderParadasYTramos();
+            }
+            break;
+            
+          // Manejo de mensajes de cambio de modo para compatibilidad
+          case 'cambiarModo':
+            if (datos?.modo === 'casa' || datos?.modo === 'aventura') {
+              manejarCambioModo(datos.modo);
+            }
+            break;
+            
+          case 'cambiarParada':
+            if (typeof datos?.parada === 'number') {
+              tramoActual = datos.parada;
+              renderParadasYTramos();
+            }
+            break;
+            
+          case 'cambiarTramo':
+            if (typeof datos?.tramo === 'number') {
+              tramoActual = datos.tramo;
+              renderParadasYTramos();
+            }
+            break;
+            
+          case 'SET_GPS_STATE':
+            if (typeof datos?.gpsActivo !== 'undefined') {
+              gpsActivo = !!datos.gpsActivo;
+              actualizarBotonGPS();
+              if (!gpsActivo) renderParadasYTramos();
+            }
+            break;
+            
+          case 'sincronizarEstado':
+            if (datos?.estado) {
+              gpsActivo = datos.estado.modo === 'aventura';
+              if (datos.estado.puntoActual) {
+                tramoActual = datos.estado.puntoActual.numero;
+              }
+              actualizarBotonGPS();
+              if (!gpsActivo) renderParadasYTramos();
+            }
+            break;
+            
+          default:
+            console.log(`[HIJO5] Tipo de mensaje no manejado: ${tipo}`, datos);
+            break;
         }
       } catch (error) {
         console.error('Error en manejarMensaje:', error);
