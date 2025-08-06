@@ -2,99 +2,369 @@
 <html lang="es">
 <head>
     <script type="module">
-      try {
-        const moduloMensajeria = await import('./js/mensajeria.js');
-        window.Mensajeria = moduloMensajeria.default || moduloMensajeria;
-        if (window.Mensajeria && typeof window.Mensajeria.inicializarMensajeria === 'function') {
-          window.Mensajeria.inicializarMensajeria({
-            iframeId: 'hijo5-casa',
-            logLevel: 1,
-            debug: true
-          });
-
-          // ================== MANEJADORES DE MENSAJES ==================
-          // 1. Inicialización (confirmación al padre)
-          Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.INICIALIZACION, function(mensaje) {
-            console.log('[HIJO5] Confirmando inicialización al padre');
-            
-            // Notificar al padre que está listo
-            Mensajeria.enviarMensajeConReintenos(
-              'padre',
-              Mensajeria.TIPOS_MENSAJE.INICIALIZACION,
-              { 
-                estado: 'listo', 
-                timestamp: Date.now(),
-                modo: gpsOn ? 'aventura' : 'casa'
-              }
-            );
-          });
-
-          // 2. Cambio de modo (desde padre u otro hijo)
-          Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.CAMBIO_MODO, function(mensaje) {
-            console.log('[HIJO5] Cambio de modo recibido:', mensaje.datos);
-            const nuevoModo = mensaje.datos.modo || 'aventura';
-            
-            // Actualizar el estado del GPS según el modo
-            if (nuevoModo === 'casa') {
-              gpsOn = false;
-              modoCasa = true;
-              detenerSeguimientoGPS();
-            } else {
-              gpsOn = true;
-              modoCasa = false;
-              iniciarSeguimientoGPS();
-            }
-            
-            // Actualizar la interfaz
-            actualizarBotonGPS();
-            
-            // Notificar al padre del cambio de estado
-            Mensajeria.enviarMensajeConReintenos(
-              'padre',
-              Mensajeria.TIPOS_MENSAJE.CAMBIO_MODO,
-              { 
-                modo: nuevoModo,
-                gpsActivo: gpsOn,
-                timestamp: Date.now()
-              }
-            );
-          });
-
-          // 3. Notificaciones de estado (desde otros hijos)
-          Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.ESTADO, function(mensaje) {
-            console.log('[HIJO5] Notificación de estado recibida:', mensaje.datos);
-            // Procesar notificaciones de estado si es necesario
-          });
-
-          // 4. Confirmaciones
-          Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.CONFIRMACION, function(mensaje) {
-            console.log('[HIJO5] Confirmación recibida:', mensaje);
-            // Procesar confirmaciones si es necesario
-          });
-
-          // 5. Manejar mensajes de error
-          Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.ERROR, function(mensaje) {
-            console.error('[HIJO5] Error recibido:', mensaje.datos);
-            // Mostrar el error en la interfaz si es necesario
-            if (mensaje.datos && mensaje.datos.mensaje) {
-              mostrarError(mensaje.datos.mensaje);
-            }
-          });
-
-          // 6. Notificar al padre que está listo
-          Mensajeria.enviarMensajeConReintenos(
-            'padre',
-            Mensajeria.TIPOS_MENSAJE.INICIALIZACION,
-            { 
-              estado: 'listo', 
-              timestamp: Date.now(),
-              modo: gpsOn ? 'aventura' : 'casa'
-            }
-          );
+      // ================== CONFIGURACIÓN ==================
+      const CONFIG = {
+        IFRAME_ID: 'hijo5-casa',
+        LOG_LEVEL: 2, // 0: debug, 1: info, 2: warn, 3: error, 4: none
+        DEBUG: true,
+        REINTENTOS: {
+          MAXIMOS: 3,
+          TIEMPO_ESPERA: 1000,
+          FACTOR: 2
         }
-      } catch (e) {
-        console.error('No se pudo cargar mensajeria.js', e);
+      };
+
+      // Estado global de la aplicación
+      const estadoApp = {
+        modo: 'casa',
+        controlesHabilitados: true,
+        puntoActual: null,
+        ultimoError: null
+      };
+
+      // Inicialización de la mensajería
+      async function inicializarMensajeria() {
+        try {
+          // Importar e inicializar el módulo de mensajería
+          const moduloMensajeria = await import('./js/mensajeria.js');
+          window.Mensajeria = moduloMensajeria.default || moduloMensajeria;
+          
+          if (!window.Mensajeria || typeof window.Mensajeria.inicializarMensajeria !== 'function') {
+            throw new Error('No se pudo inicializar el módulo de mensajería');
+          }
+          
+          // Configurar la mensajería
+          window.Mensajeria.inicializarMensajeria({
+            iframeId: CONFIG.IFRAME_ID,
+            logLevel: CONFIG.LOG_LEVEL,
+            debug: CONFIG.DEBUG,
+            reintentos: {
+              max: CONFIG.REINTENTOS.MAXIMOS,
+              delay: CONFIG.REINTENTOS.TIEMPO_ESPERA,
+              factor: CONFIG.REINTENTOS.FACTOR
+            }
+          });
+
+          console.log(`[${CONFIG.IFRAME_ID}] Mensajería inicializada`);
+          
+          // Registrar manejadores de mensajes
+          registrarManejadores();
+          
+          // Notificar al padre que estamos listos
+          await notificarEstado('inicializado');
+          
+          return true;
+        } catch (error) {
+          console.error(`[${CONFIG.IFRAME_ID}] Error al inicializar la mensajería:`, error);
+          return false;
+        }
       }
+      
+      // Registrar manejadores de mensajes
+      function registrarManejadores() {
+        if (!window.Mensajeria) return;
+        
+        // 1. Manejador de inicialización
+        window.Mensajeria.registrarControlador(
+          window.Mensajeria.TIPOS_MENSAJE.INICIALIZACION,
+          manejarInicializacion
+        );
+        
+        // 2. Manejador de cambio de modo
+        window.Mensajeria.registrarControlador(
+          window.Mensajeria.TIPOS_MENSAJE.CAMBIO_MODO,
+          manejarCambioModo
+        );
+        
+        // 3. Manejador de solicitudes de estado
+        window.Mensajeria.registrarControlador(
+          'solicitar_estado',
+          manejarSolicitudEstado
+        );
+        
+        // 4. Manejador de confirmaciones
+        window.Mensajeria.registrarControlador(
+          window.Mensajeria.TIPOS_MENSAJE.CONFIRMACION,
+          manejarConfirmacion
+        );
+        
+        console.log(`[${CONFIG.IFRAME_ID}] Manejadores de mensajes registrados`);
+      }
+      
+      // Notificar el estado actual al padre
+      async function notificarEstado(accion, datosAdicionales = {}) {
+        if (!window.Mensajeria) {
+          console.warn('Mensajería no disponible para notificar estado');
+          return false;
+        }
+        
+        try {
+          const mensaje = {
+            accion,
+            origen: CONFIG.IFRAME_ID,
+            timestamp: Date.now(),
+            estado: {
+              modo: estadoApp.modo,
+              controlesHabilitados: estadoApp.controlesHabilitados,
+              puntoActual: estadoApp.puntoActual
+            },
+            ...datosAdicionales
+          };
+          
+          await window.Mensajeria.enviarMensajeConReintenos(
+            'padre',
+            'estado_actualizado',
+            mensaje,
+            CONFIG.REINTENTOS
+          );
+          
+          console.log(`[${CONFIG.IFRAME_ID}] Estado notificado:`, accion);
+          return true;
+        } catch (error) {
+          console.error(`[${CONFIG.IFRAME_ID}] Error al notificar estado:`, error);
+          return false;
+        }
+      }
+      
+      // Manejador de inicialización
+      async function manejarInicializacion(mensaje) {
+        console.log(`[${CONFIG.IFRAME_ID}] Inicialización recibida:`, mensaje);
+        
+        try {
+          // Sincronizar estado inicial
+          if (mensaje.datos?.estado) {
+            await sincronizarEstado(mensaje.datos.estado);
+          }
+          
+          // Confirmar inicialización
+          await notificarEstado('inicializacion_completada');
+          
+        } catch (error) {
+          console.error(`[${CONFIG.IFRAME_ID}] Error en la inicialización:`, error);
+          await notificarError('error_inicializacion', error);
+        }
+      }
+      
+      // Manejador de cambio de modo
+      async function manejarCambioModo(mensaje) {
+        const { modo, motivo = 'desconocido' } = mensaje.datos || {};
+        console.log(`[${CONFIG.IFRAME_ID}] Cambio de modo solicitado:`, { modo, motivo });
+        
+        try {
+          if (!['casa', 'aventura'].includes(modo)) {
+            throw new Error(`Modo no válido: ${modo}`);
+          }
+          
+          // Actualizar estado local
+          estadoApp.modo = modo;
+          
+          // Aplicar cambios según el modo
+          if (modo === 'casa') {
+            document.body.classList.add('modo-casa');
+            document.body.classList.remove('modo-aventura');
+            await deshabilitarControles('modo_casa');
+          } else {
+            document.body.classList.add('modo-aventura');
+            document.body.classList.remove('modo-casa');
+            await habilitarControles('aventura');
+          }
+          
+          // Notificar el cambio
+          await notificarEstado('modo_cambiado', { modo, motivo });
+          
+        } catch (error) {
+          console.error(`[${CONFIG.IFRAME_ID}] Error al cambiar el modo:`, error);
+          await notificarError('error_cambio_modo', error);
+          throw error; // Re-lanzar para manejo adicional si es necesario
+        }
+      }
+      
+      // Manejador de solicitudes de estado
+      async function manejarSolicitudEstado() {
+        console.log(`[${CONFIG.IFRAME_ID}] Solicitado estado actual`);
+        await notificarEstado('estado_actual');
+      }
+      
+      // Manejador de confirmaciones
+      async function manejarConfirmacion(mensaje) {
+        const { tipo, id, exito, datos } = mensaje.datos || {};
+        console.log(`[${CONFIG.IFRAME_ID}] Confirmación recibida:`, { tipo, id, exito });
+        
+        // Aquí puedes manejar diferentes tipos de confirmaciones
+        // según sea necesario para tu aplicación
+      }
+      
+      // Función para notificar errores
+      async function notificarError(tipo, error) {
+        console.error(`[${CONFIG.IFRAME_ID}] Error (${tipo}):`, error);
+        
+        if (window.Mensajeria) {
+          try {
+            await window.Mensajeria.enviarMensajeConReintenos(
+              'padre',
+              'error',
+              {
+                tipo,
+                mensaje: error.message,
+                stack: error.stack,
+                timestamp: Date.now(),
+                origen: CONFIG.IFRAME_ID
+              },
+              CONFIG.REINTENTOS
+            );
+          } catch (e) {
+            console.error(`[${CONFIG.IFRAME_ID}] Error al notificar error:`, e);
+          }
+        }
+      }
+      
+      // Sincronizar estado con el padre
+      async function sincronizarEstado(estado) {
+        if (!estado) return;
+        
+        console.log(`[${CONFIG.IFRAME_ID}] Sincronizando estado:`, estado);
+        
+        // Actualizar estado local
+        if (estado.modo) {
+          estadoApp.modo = estado.modo;
+        }
+        
+        if (typeof estado.controlesHabilitados !== 'undefined') {
+          estadoApp.controlesHabilitados = estado.controlesHabilitados;
+        }
+        
+        if (estado.puntoActual) {
+          estadoApp.puntoActual = estado.puntoActual;
+        }
+        
+        // Aplicar cambios en la interfaz
+        actualizarInterfaz();
+      }
+      
+      // Actualizar la interfaz según el estado actual
+      function actualizarInterfaz() {
+        // Aquí iría la lógica para actualizar la interfaz de usuario
+        // según el estado actual de la aplicación
+        actualizarBotonGPS();
+      }
+      
+      // Inicializar cuando el DOM esté listo
+      document.addEventListener('DOMContentLoaded', async () => {
+        try {
+          // Inicializar la mensajería
+          const exito = await inicializarMensajeria();
+          
+          if (!exito) {
+            throw new Error('No se pudo inicializar el sistema de mensajería');
+          }
+          
+          console.log(`[${CONFIG.IFRAME_ID}] Aplicación inicializada correctamente`);
+          
+        } catch (error) {
+          console.error(`[${CONFIG.IFRAME_ID}] Error en la inicialización de la aplicación:`, error);
+          // Mostrar mensaje de error al usuario
+          mostrarError('Error al inicializar la aplicación. Por favor, recarga la página.');
+        }
+      });
+      
+      // Incluir aquí las funciones existentes como actualizarBotonGPS, etc.
+      // ...
+      
+      // Función para mostrar errores en la interfaz
+      function mostrarError(mensaje) {
+        // Implementar lógica para mostrar errores al usuario
+        console.error(mensaje);
+        
+        // Mostrar mensaje de error en la interfaz si es necesario
+        const errorContainer = document.getElementById('error-container');
+        if (errorContainer) {
+          errorContainer.textContent = mensaje;
+          errorContainer.style.display = 'block';
+          
+          // Ocultar después de 5 segundos
+          setTimeout(() => {
+            errorContainer.style.display = 'none';
+          }, 5000);
+        }
+      }
+      
+      // Función para habilitar controles
+      async function habilitarControles(modo) {
+        console.log(`[${CONFIG.IFRAME_ID}] Habilitando controles para modo: ${modo}`);
+        estadoApp.controlesHabilitados = true;
+        
+        // Aquí iría la lógica para habilitar controles específicos
+        const gpsBtn = document.getElementById('gps-casa-btn');
+        if (gpsBtn) {
+          gpsBtn.disabled = false;
+        }
+        
+        return true;
+      }
+      
+      // Función para deshabilitar controles
+      async function deshabilitarControles(razon) {
+        console.log(`[${CONFIG.IFRAME_ID}] Deshabilitando controles. Razón: ${razon}`);
+        estadoApp.controlesHabilitados = false;
+        
+        // Aquí iría la lógica para deshabilitar controles específicos
+        const gpsBtn = document.getElementById('gps-casa-btn');
+        if (gpsBtn) {
+          gpsBtn.disabled = true;
+        }
+        
+        return true;
+      }
+      
+      // Función para actualizar el botón GPS
+      function actualizarBotonGPS() {
+        const gpsBtn = document.getElementById('gps-casa-btn');
+        if (!gpsBtn) return;
+        
+        if (estadoApp.modo === 'casa') {
+          gpsBtn.classList.add('modo-casa');
+          gpsBtn.classList.remove('modo-aventura');
+        } else {
+          gpsBtn.classList.add('modo-aventura');
+          gpsBtn.classList.remove('modo-casa');
+        }
+      }
+      
+      // Inicializar cuando el DOM esté listo
+      document.addEventListener('DOMContentLoaded', async () => {
+        try {
+          // Inicializar la mensajería
+          const exito = await inicializarMensajeria();
+          
+          if (!exito) {
+            throw new Error('No se pudo inicializar el sistema de mensajería');
+          }
+          
+          console.log(`[${CONFIG.IFRAME_ID}] Aplicación inicializada correctamente`);
+          
+          // Configurar el botón GPS
+          const gpsBtn = document.getElementById('gps-casa-btn');
+          if (gpsBtn) {
+            gpsBtn.addEventListener('click', async (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              
+              // Cambiar el modo
+              const nuevoModo = estadoApp.modo === 'casa' ? 'aventura' : 'casa';
+              await manejarCambioModo({
+                datos: { modo: nuevoModo, motivo: 'click_usuario' }
+              });
+            });
+          }
+          
+          // Asegurarse de que la interfaz esté actualizada
+          actualizarInterfaz();
+          
+        } catch (error) {
+          console.error(`[${CONFIG.IFRAME_ID}] Error en la inicialización:`, error);
+          mostrarError('Error al inicializar la aplicación. Por favor, recarga la página.');
+        }
+      });
     </script>
   </head>
   <body>
