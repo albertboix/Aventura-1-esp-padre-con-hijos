@@ -26,9 +26,8 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
     <script>
-    // Inicialización del mapa y mensajería
+    // Inicialización del sistema de mensajería centralizado
     document.addEventListener('DOMContentLoaded', async function() {
-        // Inicializar el sistema de mensajería
         try {
             // Esperar a que el módulo de mensajería esté disponible
             const esperarMensajeria = setInterval(() => {
@@ -37,42 +36,39 @@
                     
                     const mensajeria = window.Mensajeria;
                     
-                    // Configuración de la mensajería
+                    // Configuración centralizada de la mensajería
                     mensajeria.inicializarMensajeria({
                         iframeId: 'padre',
-                        logLevel: mensajeria.LOG_LEVELS.DEBUG, // Más detallado para depuración
-                        debug: true,
+                        logLevel: mensajeria.LOG_LEVELS.INFO,
+                        debug: false,
                         dominioPermitido: window.location.origin,
                         maxRetries: 3,
                         retryDelay: 1000
                     });
                     
-                    // Registrar manejadores de mensajes con el nuevo sistema
+                    // Registrar manejadores centralizados por tipo de mensaje
+                    mensajeria.registrarControlador(mensajeria.TIPOS_MENSAJE.INICIALIZACION, manejarInicializacionHijo);
+                    mensajeria.registrarControlador(mensajeria.TIPOS_MENSAJE.CONFIRMACION, manejarConfirmacion);
+                    
+                    // Manejadores específicos por flujo
                     mensajeria.registrarControlador(mensajeria.TIPOS_MENSAJE.NAVEGACION, manejarMensajeHijo2);
                     mensajeria.registrarControlador(mensajeria.TIPOS_MENSAJE.AUDIO, manejarMensajeHijo3);
                     mensajeria.registrarControlador(mensajeria.TIPOS_MENSAJE.RETO, manejarMensajeHijo4);
-                    mensajeria.registrarControlador(mensajeria.TIPOS_MENSAJE.CONFIRMACION, manejarConfirmacion);
-                    mensajeria.registrarControlador(mensajeria.TIPOS_MENSAJE.INICIALIZACION, manejarInicializacionHijo);
+                    mensajeria.registrarControlador(mensajeria.TIPOS_MENSAJE.MODO, manejarMensajeHijo5);
                     
-                    // Registrar manejadores específicos para navegación
-                    mensajeria.registrarControlador('inicio-navegacion', manejarInicioNavegacion);
-                    mensajeria.registrarControlador('fin-navegacion', manejarFinNavegacion);
-                    mensajeria.registrarControlador('llegada-parada', manejarLlegadaAParada);
-                    mensajeria.registrarControlador('ocultar-flecha-navegacion', manejarOcultarFlecha);
-                    
-                    console.log('✅ Sistema de mensajería inicializado correctamente', {
-                        version: '1.1.0',
+                    console.log('✅ Sistema de mensajería centralizado inicializado', {
+                        version: '2.0.0',
                         timestamp: new Date().toISOString(),
                         config: {
                             iframeId: 'padre',
-                            logLevel: 'DEBUG',
-                            dominioPermitido: window.location.origin
+                            logLevel: 'INFO',
+                            dominio: window.location.origin
                         }
                     });
                     
-                    // Notificar a la interfaz que la mensajería está lista
+                    // Notificar a la interfaz
                     if (window.mostrarMensajeInfoParada) {
-                        window.mostrarMensajeInfoParada('Sistema de mensajería inicializado correctamente');
+                        window.mostrarMensajeInfoParada('Sistema listo');
                     }
                 }
             }, 100);
@@ -80,38 +76,14 @@
             // Timeout para la inicialización
             setTimeout(() => {
                 if (!window.Mensajeria) {
-                    console.error('❌ Tiempo de espera agotado: No se pudo cargar el módulo de mensajería');
-                    mostrarErrorEnInterfaz('Error al cargar el sistema de mensajería');
+                    console.error('❌ Error: No se pudo cargar el módulo de mensajería');
+                    mostrarErrorEnInterfaz('Error de inicialización');
                 }
             }, 5000);
             
         } catch (error) {
-            console.error('❌ Error crítico al inicializar el sistema de mensajería:', {
-                error: error.message,
-                stack: error.stack,
-                timestamp: new Date().toISOString()
-            });
-            
-            // Mostrar error en la interfaz
-            mostrarErrorEnInterfaz(`Error crítico: ${error.message}`);
-            
-            // Intentar notificar al servidor del error
-            if (window.navigator && window.navigator.sendBeacon) {
-                const errorData = {
-                    tipo: 'error_critico',
-                    mensaje: error.message,
-                    stack: error.stack,
-                    timestamp: new Date().toISOString(),
-                    userAgent: navigator.userAgent,
-                    url: window.location.href
-                };
-                
-                try {
-                    navigator.sendBeacon('/api/errores', JSON.stringify(errorData));
-                } catch (e) {
-                    console.error('No se pudo enviar el informe de error:', e);
-                }
-            }
+            console.error('❌ Error crítico en inicialización:', error);
+            mostrarErrorEnInterfaz(`Error: ${error.message}`);
         }
         // Configuración del mapa con mejoras táctiles
         const valenciaCoords = [39.44859, -0.37489]; // Coordenadas exactas de Valencia
@@ -1557,58 +1529,58 @@
          * @returns {Promise<void>}
          */
         async function manejarInicializacionHijo(mensaje) {
+            if (!mensaje?.origen) {
+                console.error('❌ Mensaje de inicialización inválido');
+                return;
+            }
+            
+            const { origen, version } = mensaje;
+            console.log(`✅ ${origen} inicializado (v${version})`);
+            
             try {
-                console.log(`[PADRE] Inicialización recibida de iframe: ${mensaje.datos.iframeId}`, mensaje);
-                
-                // Verificar si el mensaje tiene la estructura esperada
-                if (!mensaje.datos || !mensaje.datos.iframeId) {
-                    console.warn('[PADRE] Mensaje de inicialización con formato inválido:', mensaje);
-                    return;
-                }
-                
-                const iframeId = mensaje.datos.iframeId;
-                
-                // Registrar el iframe como inicializado
-                if (!window.iframesInicializados) {
-                    window.iframesInicializados = new Set();
-                }
-                window.iframesInicializados.add(iframeId);
-                
-                // Notificar al iframe que su inicialización fue recibida
+                // Confirmar inicialización
                 await Mensajeria.enviarMensajeConReintenos(
-                    iframeId,
-                    Mensajeria.TIPOS_MENSAJE.INICIALIZACION,
-                    { 
-                        estado: 'confirmado',
-                        timestamp: new Date().toISOString(),
-                        modo: window.modoActual || 'casa' // Enviar el modo actual
-                    },
-                    { maxRetries: 3, timeout: 2000 }
+                    origen,
+                    Mensajeria.TIPOS_MENSAJE.CONFIRMACION,
+                    { tipo: 'inicializacion', estado: 'ok', timestamp: Date.now() }
                 );
                 
-                console.log(`[PADRE] Confirmación de inicialización enviada a ${iframeId}`);
+                // Sincronizar estado si es necesario
+                if (origen === 'hijo5-casa') {
+                    await Mensajeria.enviarMensajeConReintenos(
+                        'hijo5-casa',
+                        Mensajeria.TIPOS_MENSAJE.MODO,
+                        { accion: 'obtenerEstado' }
+                    );
+                }
                 
             } catch (error) {
-                console.error('[PADRE] Error al manejar inicialización de iframe:', {
-                    error: error.message,
-                    stack: error.stack,
-                    mensajeOriginal: mensaje
-                });
+                console.error(`❌ Error en inicialización de ${origen}:`, error);
             }
         }
-        
+
         /**
-         * Maneja la confirmación de mensajes
+         * Maneja las confirmaciones de mensajes
          * @param {Object} mensaje - Mensaje de confirmación
          */
         function manejarConfirmacion(mensaje) {
-            // Este manejador se llama cuando recibimos una confirmación de un mensaje
-            // El sistema de mensajería ya maneja las confirmaciones internamente,
-            // pero podemos registrar aquí cualquier lógica adicional necesaria
-            if (mensaje.datos && mensaje.datos.originalId) {
-                console.debug(`[PADRE] Confirmación recibida para mensaje ${mensaje.datos.originalId}`, mensaje);
+            if (!mensaje?.tipo) return;
+            
+            switch (mensaje.tipo) {
+                case 'inicializacion':
+                    console.log(`✅ ${mensaje.origen || 'Hijo'} inicializado`);
+                    break;
+                case 'audio':
+                    console.log('✅ Audio confirmado:', mensaje.estado);
+                    break;
+                case 'navegacion':
+                    console.log('✅ Navegación confirmada');
+                    break;
+                default:
+                    console.log('✅ Confirmación recibida:', mensaje);
             }
         }
+
         
         /**
          * Maneja la solicitud de ocultar la flecha de navegación
@@ -3533,66 +3505,187 @@ function avanzarSiguientePunto() {
             console.groupEnd();
         }
 
-        // ================== MANEJADOR DE MENSAJES DEL HIJO 5 (BOTÓN CASA) ==================
-        let manejadorHijo5Inicializado = false;
-        
-        // Referencia al iframe hijo5-casa
-        const iframeHijo5 = document.getElementById('hijo5-casa');
-        
-        // Función para manejar el cambio de parada
-        function manejarCambioParada(data) {
-            console.log('🔄 PADRE: Cambio de parada solicitado:', data);
+        // ================== MANEJADOR DE MENSAJES DEL HIJO 5 (MODO CASA/AVENTURA) ==================
+        /**
+         * Maneja los mensajes del hijo5-casa (modo casa/aventura)
+         * @param {string} type - Tipo de mensaje
+         * @param {Object} data - Datos del mensaje
+         */
+        async function manejarMensajeHijo5(type, data) {
+            console.log(`[MODO] Mensaje de hijo5 (${type}):`, data);
             
-            // Normalizar el ID de la parada (aceptar tanto 'P-X' como número)
-            const idParada = data.id || `P-${data.parada}`;
-            const numParada = data.parada || parseInt(idParada.replace('P-', ''));
-            
-            // Buscar la parada en el array PARADAS
-            const parada = PARADAS.find(p => 
-                (p.tipo === 'parada' || p.tipo === 'inicio') && 
-                (p.parada === numParada || `P-${p.parada}` === idParada)
-            );
-            
-            if (parada) {
-                // Actualizar estado global
-                window.actualizarEstadoGlobal({
-                    puntoActual: {
-                        tipo: 'parada',
-                        id: `P-${parada.parada}`,
-                        numero: parada.parada,
-                        nombre: parada.nombre,
-                        coordenadas: parada.coordenadas,
-                        audio: parada.audio,
-                        reto: parada.reto
-                    },
-                    origen: 'hijo5-casa',
-                    timestamp: Date.now()
-                });
-                
-                // Notificar a otros iframes
-                const mensaje = {
-                    type: 'cambiarParada',
-                    parada: parada.parada,
-                    id: `P-${parada.parada}`,
-                    nombre: parada.nombre,
-                    coordenadas: parada.coordenadas,
-                    audio: parada.audio,
-                    reto: parada.reto,
-                    origen: 'padre',
-                    timestamp: Date.now()
-                };
-                
-                // Enviar a todos los iframes excepto al que originó el mensaje
-                ['hijo2', 'hijo3', 'hijo4'].forEach(id => {
-                    enviarMensaje(id, mensaje.type, mensaje)
-                        .catch(error => {
-                            console.error(`❌ PADRE: Error al enviar mensaje a ${id}:`, error);
+            try {
+                switch (type) {
+                    case 'inicializacion':
+                        // Confirmar inicialización
+                        await Mensajeria.enviarMensajeConReintenos(
+                            'hijo5-casa',
+                            'inicializacionCompleta',
+                            { 
+                                estado: 'listo',
+                                version: '1.0.0',
+                                timestamp: Date.now(),
+                                modo: window.estadoGlobal.modo || 'aventura',
+                                gpsActivo: window.estadoGlobal.gpsActivo || false
+                            }
+                        );
+                        break;
+                        
+                    case 'cambiarModo':
+                        // Actualizar estado global con el nuevo modo
+                        if (data.modo && ['casa', 'aventura'].includes(data.modo)) {
+                            const nuevoModo = data.modo;
+                            const gpsActivo = nuevoModo === 'aventura';
+                            
+                            await actualizarEstadoGlobal({ 
+                                modo: nuevoModo,
+                                gpsActivo: gpsActivo,
+                                origen: 'hijo5-casa',
+                                timestamp: Date.now()
+                            });
+                            
+                            // Notificar a otros componentes del cambio de modo
+                            await Promise.all([
+                                Mensajeria.enviarMensajeConReintenos(
+                                    'hijo2',
+                                    'cambioModo',
+                                    { 
+                                        modo: nuevoModo,
+                                        gpsActivo: gpsActivo,
+                                        timestamp: Date.now()
+                                    }
+                                ),
+                                Mensajeria.enviarMensajeConReintenos(
+                                    'hijo3',
+                                    'cambioModo',
+                                    { 
+                                        modo: nuevoModo,
+                                        timestamp: Date.now()
+                                    }
+                                ),
+                                Mensajeria.enviarMensajeConReintenos(
+                                    'hijo4',
+                                    'cambioModo',
+                                    { 
+                                        modo: nuevoModo,
+                                        timestamp: Date.now()
+                                    }
+                                )
+                            ]);
+                        }
+                        break;
+                        
+                    case 'seleccionarPunto':
+                        // Manejar selección de punto (parada o tramo)
+                        if (data.punto) {
+                            const { tipo, id } = data.punto;
+                            const esParada = tipo === 'parada';
+                            
+                            // Buscar el punto en los datos
+                            let punto;
+                            if (esParada) {
+                                const numParada = parseInt(id.replace('P-', ''));
+                                punto = PARADAS.find(p => 
+                                    (p.tipo === 'parada' || p.tipo === 'inicio') && 
+                                    p.parada === numParada
+                                );
+                            } else {
+                                const numTramo = parseInt(id.replace('TR-', ''));
+                                punto = PARADAS.find(p => 
+                                    p.tipo === 'tramo' && 
+                                    p.tramo === numTramo
+                                );
+                            }
+                            
+                            if (punto) {
+                                const datosPunto = {
+                                    tipo: esParada ? 'parada' : 'tramo',
+                                    id: id,
+                                    numero: esParada ? punto.parada : punto.tramo,
+                                    nombre: punto.nombre,
+                                    ...(esParada 
+                                        ? { 
+                                            coordenadas: punto.coordenadas,
+                                            audio: punto.audio,
+                                            reto: punto.reto
+                                          }
+                                        : {
+                                            inicio: punto.inicio,
+                                            fin: punto.fin,
+                                            waypoints: punto.waypoints || [],
+                                            audio: punto.audio
+                                          })
+                                };
+                                
+                                // Actualizar estado global
+                                await actualizarEstadoGlobal({
+                                    puntoActual: datosPunto,
+                                    origen: 'hijo5-casa',
+                                    timestamp: Date.now()
+                                });
+                                
+                                // Notificar a otros componentes
+                                const tipoMensaje = esParada ? 'cambiarParada' : 'cambiarTramo';
+                                await Mensajeria.enviarMensajeConReintenos(
+                                    esParada ? 'hijo4' : 'hijo3',
+                                    tipoMensaje,
+                                    {
+                                        ...datosPunto,
+                                        timestamp: Date.now()
+                                    }
+                                );
+                            }
+                        }
+                        break;
+                        
+                    case 'solicitarEstado':
+                        // Enviar estado actual al hijo5-casa
+                        await Mensajeria.enviarMensajeConReintenos(
+                            'hijo5-casa',
+                            'estadoActual',
+                            {
+                                modo: window.estadoGlobal.modo || 'aventura',
+                                gpsActivo: window.estadoGlobal.gpsActivo || false,
+                                puntoActual: window.estadoGlobal.puntoActual || null,
+                                timestamp: Date.now()
+                            }
+                        );
+                        break;
+                        
+                    case 'error':
+                        console.error('[MODO] Error en hijo5-casa:', data);
+                        // Actualizar estado de error
+                        await actualizarEstadoGlobal({
+                            origen: 'hijo5-casa',
+                            error: {
+                                codigo: data.codigo || 'MODO_ERROR',
+                                mensaje: data.mensaje || 'Error en el control de modo',
+                                timestamp: Date.now()
+                            }
                         });
-                });
+                        break;
+                        
+                    default:
+                        console.warn('[MODO] Tipo de mensaje no manejado:', type);
+                }
+            } catch (error) {
+                console.error('[MODO] Error procesando mensaje:', error);
                 
-                console.log(`✅ PADRE: Parada cambiada a P-${parada.parada}: ${parada.nombre}`);
-            } else {
-                console.error(`❌ PADRE: No se encontró la parada con ID ${idParada} (${numParada})`);
+                // Notificar al hijo5-casa del error
+                try {
+                    await Mensajeria.enviarMensajeConReintenos(
+                        'hijo5-casa',
+                        'error',
+                        {
+                            codigo: 'ERROR_PROCESAMIENTO',
+                            mensaje: error.message || 'Error al procesar el mensaje',
+                            tipo: type,
+                            timestamp: Date.now()
+                        }
+                    );
+                } catch (sendError) {
+                    console.error('[MODO] Error al notificar error a hijo5-casa:', sendError);
+                }
             }
         }
         
@@ -3693,95 +3786,6 @@ function avanzarSiguientePunto() {
                 }
             }
             
-            // Notificar al hijo5-casa sobre el cambio de modo
-            const hijo5 = document.getElementById('hijo5-casa');
-            if (hijo5 && hijo5.contentWindow) {
-                hijo5.contentWindow.postMessage({
-                    type: 'actualizarEstadoGPS',
-                    gpsActivo: esModoAventura,
-                    modo: modo,
-                    timestamp: Date.now()
-                }, '*');
-            }
-            
-            console.log(`🔄 PADRE: Estado de iframes actualizado a modo '${modo}'`);
-        }
-
-        /**
-         * Maneja los mensajes recibidos del iframe hijo5-casa (botón casa)
-         * @param {string} tipo - Tipo de mensaje recibido
-         * @param {Object} datos - Datos del mensaje
-         * @param {Object} [event=null] - Evento original (opcional)
-         * @returns {Promise<void>}
-         */
-        async function manejarMensajeHijo5(tipo, datos, event = null) {
-            const timestamp = new Date().toISOString();
-            const logPrefix = `[${timestamp}] 🏠 PADRE -> Hijo5 (${tipo}):`;
-            
-            try {
-                // Validación básica del mensaje
-                if (!tipo) {
-                    console.warn(`${logPrefix} Mensaje sin tipo recibido:`, datos);
-                    return;
-                }
-
-                // Registrar recepción del mensaje
-                console.groupCollapsed(`${logPrefix} Mensaje recibido`);
-                console.log('📋 Datos recibidos:', datos);
-                if (event) console.log('📎 Metadata del evento:', event);
-                console.groupEnd();
-
-                // Procesar el mensaje según su tipo
-                switch (tipo) {
-                    case 'SISTEMA.INICIALIZACION':
-                        await manejarInicializacionHijo5(datos);
-                        break;
-                        
-                    case 'ESTADO.ACTUALIZAR':
-                        await manejarActualizacionEstadoHijo5(datos);
-                        break;
-                        
-                    case 'SISTEMA.CONFIGURACION':
-                        await manejarConfiguracionSistema(datos);
-                        break;
-                        
-                    case 'cambioModo':
-                        await manejarCambioModoHijo5(datos);
-                        break;
-                        
-                    case 'cambioParada':
-                        await manejarCambioParada(datos);
-                        // Forward to other children
-                        if (datos.parada) {
-                            await enviarMensaje('hijo2', 'cambioPunto', {
-                                tipo: 'parada',
-                                id: datos.parada.id,
-                                numero: datos.parada.numero,
-                                nombre: datos.parada.nombre,
-                                origen: 'hijo5-casa',
-                                timestamp: datos.timestamp || Date.now()
-                            });
-                            
-                            await enviarMensaje('hijo3', 'cargarAudio', {
-                                tipo: 'parada',
-                                id: datos.parada.id,
-                                numero: datos.parada.numero,
-                                nombre: datos.parada.nombre,
-                                origen: 'hijo5-casa',
-                                timestamp: datos.timestamp || Date.now()
-                            });
-                            
-                            await enviarMensaje('hijo4', 'mostrarReto', {
-                                tipo: 'parada',
-                                id: datos.parada.id,
-                                numero: datos.parada.numero,
-                                nombre: datos.parada.nombre,
-                                origen: 'hijo5-casa',
-                                timestamp: datos.timestamp || Date.now()
-                            });
-                        }
-                        break;
-                        
                     case 'PUNTO_SELECCIONADO':
                         console.log('📍 PUNTO_SELECCIONADO recibido:', datos);
                         
