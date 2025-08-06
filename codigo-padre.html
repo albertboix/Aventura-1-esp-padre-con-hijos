@@ -30,22 +30,88 @@
     document.addEventListener('DOMContentLoaded', async function() {
         // Inicializar el sistema de mensajería
         try {
-            const mensajeria = window.Mensajeria;
-            mensajeria.inicializarMensajeria({
-                iframeId: 'padre',
-                logLevel: mensajeria.LOG_LEVELS.INFO,
-                debug: true
+            // Esperar a que el módulo de mensajería esté disponible
+            const esperarMensajeria = setInterval(() => {
+                if (window.Mensajeria) {
+                    clearInterval(esperarMensajeria);
+                    
+                    const mensajeria = window.Mensajeria;
+                    
+                    // Configuración de la mensajería
+                    mensajeria.inicializarMensajeria({
+                        iframeId: 'padre',
+                        logLevel: mensajeria.LOG_LEVELS.DEBUG, // Más detallado para depuración
+                        debug: true,
+                        dominioPermitido: window.location.origin,
+                        maxRetries: 3,
+                        retryDelay: 1000
+                    });
+                    
+                    // Registrar manejadores de mensajes con el nuevo sistema
+                    mensajeria.registrarControlador(mensajeria.TIPOS_MENSAJE.NAVEGACION, manejarMensajeHijo2);
+                    mensajeria.registrarControlador(mensajeria.TIPOS_MENSAJE.AUDIO, manejarMensajeHijo3);
+                    mensajeria.registrarControlador(mensajeria.TIPOS_MENSAJE.RETO, manejarMensajeHijo4);
+                    mensajeria.registrarControlador(mensajeria.TIPOS_MENSAJE.CONFIRMACION, manejarConfirmacion);
+                    mensajeria.registrarControlador(mensajeria.TIPOS_MENSAJE.INICIALIZACION, manejarInicializacionHijo);
+                    
+                    // Registrar manejadores específicos para navegación
+                    mensajeria.registrarControlador('inicio-navegacion', manejarInicioNavegacion);
+                    mensajeria.registrarControlador('fin-navegacion', manejarFinNavegacion);
+                    mensajeria.registrarControlador('llegada-parada', manejarLlegadaAParada);
+                    mensajeria.registrarControlador('ocultar-flecha-navegacion', manejarOcultarFlecha);
+                    
+                    console.log('✅ Sistema de mensajería inicializado correctamente', {
+                        version: '1.1.0',
+                        timestamp: new Date().toISOString(),
+                        config: {
+                            iframeId: 'padre',
+                            logLevel: 'DEBUG',
+                            dominioPermitido: window.location.origin
+                        }
+                    });
+                    
+                    // Notificar a la interfaz que la mensajería está lista
+                    if (window.mostrarMensajeInfoParada) {
+                        window.mostrarMensajeInfoParada('Sistema de mensajería inicializado correctamente');
+                    }
+                }
+            }, 100);
+            
+            // Timeout para la inicialización
+            setTimeout(() => {
+                if (!window.Mensajeria) {
+                    console.error('❌ Tiempo de espera agotado: No se pudo cargar el módulo de mensajería');
+                    mostrarErrorEnInterfaz('Error al cargar el sistema de mensajería');
+                }
+            }, 5000);
+            
+        } catch (error) {
+            console.error('❌ Error crítico al inicializar el sistema de mensajería:', {
+                error: error.message,
+                stack: error.stack,
+                timestamp: new Date().toISOString()
             });
             
-            // Registrar manejadores de mensajes
-            mensajeria.registrarControlador('hijo2:navegacion', manejarMensajeNavegacion);
-            mensajeria.registrarControlador('hijo3:audio', manejarMensajeAudio);
-            mensajeria.registrarControlador('hijo4:reto', manejarMensajeReto);
-            mensajeria.registrarControlador('sistema:confirmacion', manejarConfirmacion);
+            // Mostrar error en la interfaz
+            mostrarErrorEnInterfaz(`Error crítico: ${error.message}`);
             
-            console.log('✅ Sistema de mensajería inicializado correctamente');
-        } catch (error) {
-            console.error('❌ Error al inicializar el sistema de mensajería:', error);
+            // Intentar notificar al servidor del error
+            if (window.navigator && window.navigator.sendBeacon) {
+                const errorData = {
+                    tipo: 'error_critico',
+                    mensaje: error.message,
+                    stack: error.stack,
+                    timestamp: new Date().toISOString(),
+                    userAgent: navigator.userAgent,
+                    url: window.location.href
+                };
+                
+                try {
+                    navigator.sendBeacon('/api/errores', JSON.stringify(errorData));
+                } catch (e) {
+                    console.error('No se pudo enviar el informe de error:', e);
+                }
+            }
         }
         // Configuración del mapa con mejoras táctiles
         const valenciaCoords = [39.44859, -0.37489]; // Coordenadas exactas de Valencia
@@ -1483,8 +1549,95 @@
             return flecha;
         }
 
-        // ================== MANEJADOR DE MENSAJES DEL HIJO 2 (COORDENADAS) ==================
-        // (Manejado centralmente a través de mensajeria.js)
+        // ================== MANEJADORES DE MENSAJES ==================
+
+        /**
+         * Maneja la inicialización de un iframe hijo
+         * @param {Object} mensaje - Mensaje de inicialización
+         * @returns {Promise<void>}
+         */
+        async function manejarInicializacionHijo(mensaje) {
+            try {
+                console.log(`[PADRE] Inicialización recibida de iframe: ${mensaje.datos.iframeId}`, mensaje);
+                
+                // Verificar si el mensaje tiene la estructura esperada
+                if (!mensaje.datos || !mensaje.datos.iframeId) {
+                    console.warn('[PADRE] Mensaje de inicialización con formato inválido:', mensaje);
+                    return;
+                }
+                
+                const iframeId = mensaje.datos.iframeId;
+                
+                // Registrar el iframe como inicializado
+                if (!window.iframesInicializados) {
+                    window.iframesInicializados = new Set();
+                }
+                window.iframesInicializados.add(iframeId);
+                
+                // Notificar al iframe que su inicialización fue recibida
+                await Mensajeria.enviarMensajeConReintenos(
+                    iframeId,
+                    Mensajeria.TIPOS_MENSAJE.INICIALIZACION,
+                    { 
+                        estado: 'confirmado',
+                        timestamp: new Date().toISOString(),
+                        modo: window.modoActual || 'casa' // Enviar el modo actual
+                    },
+                    { maxRetries: 3, timeout: 2000 }
+                );
+                
+                console.log(`[PADRE] Confirmación de inicialización enviada a ${iframeId}`);
+                
+            } catch (error) {
+                console.error('[PADRE] Error al manejar inicialización de iframe:', {
+                    error: error.message,
+                    stack: error.stack,
+                    mensajeOriginal: mensaje
+                });
+            }
+        }
+        
+        /**
+         * Maneja la confirmación de mensajes
+         * @param {Object} mensaje - Mensaje de confirmación
+         */
+        function manejarConfirmacion(mensaje) {
+            // Este manejador se llama cuando recibimos una confirmación de un mensaje
+            // El sistema de mensajería ya maneja las confirmaciones internamente,
+            // pero podemos registrar aquí cualquier lógica adicional necesaria
+            if (mensaje.datos && mensaje.datos.originalId) {
+                console.debug(`[PADRE] Confirmación recibida para mensaje ${mensaje.datos.originalId}`, mensaje);
+            }
+        }
+        
+        /**
+         * Maneja la solicitud de ocultar la flecha de navegación
+         * @param {Object} mensaje - Mensaje con los datos de la solicitud
+         */
+        function manejarOcultarFlecha(mensaje) {
+            try {
+                console.log('[PADRE] Ocultando flecha de navegación');
+                // Lógica para ocultar la flecha de navegación
+                const flechaElement = document.getElementById('flecha-navegacion');
+                if (flechaElement) {
+                    flechaElement.style.display = 'none';
+                }
+                
+                // Confirmar que se ha ocultado la flecha
+                if (mensaje.origen) {
+                    Mensajeria.enviarMensajeConReintenos(
+                        mensaje.origen,
+                        'flecha-ocultada',
+                        { 
+                            timestamp: new Date().toISOString(),
+                            confirmacion: true 
+                        }
+                    );
+                }
+            } catch (error) {
+                console.error('[PADRE] Error al ocultar la flecha de navegación:', error);
+            }
+        }
         
         // ================== FUNCIONES DE COMUNICACIÓN ==================
 
