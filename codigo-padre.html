@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="mobile-web-app-capable" content="yes">
     <title>Aventura 1 - Padre</title>
     
     <!-- Política de seguridad de contenido mejorada -->
@@ -20,58 +21,119 @@
     
     <title>Valencia Tour</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
-    <script src="js/mensajeria.js" type="module"></script>
     
     <!-- Script de Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Cargar mensajería con manejo de errores -->
+    <script>
+    // Variable global para rastrear si la mensajería está lista
+    window.mensajeriaCargada = false;
+    
+    // Función para cargar el script de mensajería
+    function cargarMensajeria() {
+        return new Promise((resolve, reject) => {
+            // Verificar si ya está cargado
+            if (window.Mensajeria) {
+                window.mensajeriaCargada = true;
+                return resolve();
+            }
+            
+            const script = document.createElement('script');
+            script.src = 'js/mensajeria.js';
+            script.onload = () => {
+                window.mensajeriaCargada = true;
+                console.log('✅ Módulo de mensajería cargado correctamente');
+                resolve();
+            };
+            script.onerror = (error) => {
+                console.error('❌ Error al cargar el módulo de mensajería:', error);
+                mostrarErrorEnInterfaz('Error al cargar un componente esencial. Por favor, recarga la página.');
+                reject(error);
+            };
+            document.head.appendChild(script);
+        });
+    }
+    
+    // Cargar mensajería al inicio
+    document.addEventListener('DOMContentLoaded', () => {
+        cargarMensajeria().catch(error => {
+            console.error('Error en la carga inicial de mensajería:', error);
+        });
+    });
+    </script>
     
     <script>
     // Inicialización del sistema de mensajería centralizado
     document.addEventListener('DOMContentLoaded', async function() {
         try {
             // Esperar a que el módulo de mensajería esté disponible
-            const esperarMensajeria = setInterval(() => {
-                if (window.Mensajeria) {
-                    clearInterval(esperarMensajeria);
-                    
-                    const mensajeria = window.Mensajeria;
-                    
-                    // Configuración centralizada de la mensajería
-                    mensajeria.inicializarMensajeria({
-                        iframeId: 'padre',
-                        logLevel: mensajeria.LOG_LEVELS.INFO,
-                        debug: false,
-                        dominioPermitido: window.location.origin,
-                        maxRetries: 3,
-                        retryDelay: 1000
-                    });
-                    
-                    // Registrar manejadores centralizados por tipo de mensaje
-                    mensajeria.registrarControlador(mensajeria.TIPOS_MENSAJE.INICIALIZACION, manejarInicializacionHijo);
-                    mensajeria.registrarControlador(mensajeria.TIPOS_MENSAJE.CONFIRMACION, manejarConfirmacion);
-                    
-                    // Manejadores específicos por flujo
-                    mensajeria.registrarControlador(mensajeria.TIPOS_MENSAJE.NAVEGACION, manejarMensajeHijo2);
-                    mensajeria.registrarControlador(mensajeria.TIPOS_MENSAJE.AUDIO, manejarMensajeHijo3);
-                    mensajeria.registrarControlador(mensajeria.TIPOS_MENSAJE.RETO, manejarMensajeHijo4);
-                    mensajeria.registrarControlador(mensajeria.TIPOS_MENSAJE.MODO, manejarMensajeHijo5);
-                    
-                    console.log('✅ Sistema de mensajería centralizado inicializado', {
-                        version: '2.0.0',
-                        timestamp: new Date().toISOString(),
-                        config: {
-                            iframeId: 'padre',
-                            logLevel: 'INFO',
-                            dominio: window.location.origin
+            if (!window.Mensajeria) {
+                await new Promise(resolve => {
+                    const checkMensajeria = setInterval(() => {
+                        if (window.Mensajeria) {
+                            clearInterval(checkMensajeria);
+                            resolve();
                         }
-                    });
-                    
-                    // Notificar a la interfaz
-                    if (window.mostrarMensajeInfoParada) {
-                        window.mostrarMensajeInfoParada('Sistema listo');
-                    }
+                    }, 100);
+                });
+            }
+            
+            const mensajeria = window.Mensajeria;
+            
+            // Configuración centralizada de la mensajería
+            mensajeria.inicializarMensajeria({
+                iframeId: 'padre',
+                logLevel: mensajeria.LOG_LEVELS.INFO,
+                debug: false,
+                dominioPermitido: window.location.origin,
+                maxRetries: 3,
+                retryDelay: 1000,
+                timeoutMensaje: 10000,
+                mensajeTtl: 300000,
+                habilitarMetricas: true,
+                confirmacionesHabilitadas: true
+            });
+            
+            // Registrar manejadores centralizados
+            if (typeof registrarManejadoresCentralizados === 'function') {
+                registrarManejadoresCentralizados(mensajeria);
+            } else {
+                console.warn('La función registrarManejadoresCentralizados no está definida');
+            }
+            
+            console.log('✅ Sistema de mensajería centralizado inicializado', {
+                version: '2.0.0',
+                timestamp: new Date().toISOString(),
+                config: {
+                    iframeId: 'padre',
+                    logLevel: 'INFO',
+                    dominio: window.location.origin
                 }
-            }, 100);
+            });
+            
+            // Inicializar la aplicación
+            if (window.inicializarAplicacion) {
+                window.inicializarAplicacion();
+            }
+            
+            // Manejo de errores no capturados
+            window.addEventListener('error', (event) => {
+                const error = event.error || new Error('Error desconocido');
+                console.error('Error no capturado:', error);
+                if (window.Mensajeria) {
+                    window.Mensajeria.enviarMensajeATodosLosHijos('error', {
+                        mensaje: error.message,
+                        stack: error.stack,
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            });
+            
+            // Notificar a la interfaz
+            if (window.mostrarMensajeInfoParada) {
+                window.mostrarMensajeInfoParada('Sistema listo');
+            }
             
             // Timeout para la inicialización
             setTimeout(() => {
@@ -199,12 +261,12 @@
             map.tap?.enable();
         }
         
-        // Deshabilitar controles de zoom
-        map.touchZoom.disable();
-        map.doubleClickZoom.disable();
-        map.scrollWheelZoom.disable();
-        map.boxZoom.disable();
-        map.keyboard.disable();
+        // Deshabilitar controles de zoom con comprobaciones de seguridad
+        if (map.touchZoom && typeof map.touchZoom.disable === 'function') map.touchZoom.disable();
+        if (map.doubleClickZoom && typeof map.doubleClickZoom.disable === 'function') map.doubleClickZoom.disable();
+        if (map.scrollWheelZoom && typeof map.scrollWheelZoom.disable === 'function') map.scrollWheelZoom.disable();
+        if (map.boxZoom && typeof map.boxZoom.disable === 'function') map.boxZoom.disable();
+        if (map.keyboard && typeof map.keyboard.disable === 'function') map.keyboard.disable();
         
         // Función para manejar el gesto de pellizco
         function handlePinch(e) {
@@ -597,6 +659,213 @@
     </style>
 </head>
 <body>
+    <!-- Sistema centralizado de manejo de errores -->
+    <style id="error-styles">
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        
+        .error-mensaje {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #d32f2f;
+            color: white;
+            padding: 15px 25px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            z-index: 10000;
+            max-width: 400px;
+            word-break: break-word;
+            animation: fadeIn 0.3s ease-in-out;
+            font-family: Arial, sans-serif;
+            border-left: 4px solid #b71c1c;
+        }
+        
+        .error-mensaje h3 {
+            margin: 0 0 10px 0;
+            color: white;
+            font-size: 1.1em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .error-mensaje p {
+            margin: 0 0 12px 0;
+            line-height: 1.4;
+        }
+        
+        .error-botones {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 12px;
+        }
+        
+        .error-btn {
+            padding: 6px 14px;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.9em;
+        }
+        
+        .error-btn-reintentar {
+            background-color: white;
+            color: #d32f2f;
+        }
+        
+        .error-btn-cerrar {
+            background-color: transparent;
+            color: white;
+            border: 1px solid rgba(255,255,255,0.3) !important;
+        }
+        
+        .error-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+    </style>
+    
+    <script>
+    /**
+     * Muestra un mensaje de error en la interfaz de usuario
+     * @param {string} mensaje - El mensaje de error a mostrar
+     * @param {Function} [onRetry=null] - Función opcional a ejecutar al hacer clic en Reintentar
+     * @param {Object} [opciones={}] - Opciones adicionales
+     * @param {number} [opciones.tiempo=10000] - Tiempo en ms antes de que el mensaje desaparezca automáticamente (0 para deshabilitar)
+     * @param {string} [opciones.tipo='error'] - Tipo de mensaje: 'error', 'advertencia' o 'info'
+     * @param {boolean} [opciones.cerrable=true] - Si el mensaje se puede cerrar manualmente
+     * @returns {Function} Función para cerrar manualmente el mensaje
+     */
+    function mostrarErrorEnInterfaz(mensaje, onRetry = null, opciones = {}) {
+        // Configuración por defecto
+        const config = {
+            tiempo: 10000,
+            tipo: 'error',
+            cerrable: true,
+            ...opciones
+        };
+        
+        // Eliminar mensajes de error anteriores del mismo tipo
+        const erroresAnteriores = document.querySelectorAll('.error-mensaje');
+        erroresAnteriores.forEach(el => {
+            // Solo eliminar si no es un error persistente
+            if (!el.hasAttribute('data-persistente')) {
+                el.remove();
+            }
+        });
+        
+        // Crear contenedor del mensaje
+        const errorMsg = document.createElement('div');
+        errorMsg.className = `error-mensaje error-tipo-${config.tipo}`;
+        
+        // Configurar estilos según el tipo de mensaje
+        const estilosPorTipo = {
+            error: {
+                backgroundColor: '#d32f2f',
+                borderColor: '#b71c1c',
+                icon: '❌'
+            },
+            advertencia: {
+                backgroundColor: '#ff9800',
+                borderColor: '#f57c00',
+                icon: '⚠️'
+            },
+            info: {
+                backgroundColor: '#1976d2',
+                borderColor: '#1565c0',
+                icon: 'ℹ️'
+            }
+        };
+        
+        const estilo = estilosPorTipo[config.tipo] || estilosPorTipo.error;
+        errorMsg.style.backgroundColor = estilo.backgroundColor;
+        errorMsg.style.borderLeft = `4px solid ${estilo.borderColor}`;
+        
+        // Construir el contenido HTML
+        let contenidoHTML = `
+            <h3>${estilo.icon} ${config.tipo.charAt(0).toUpperCase() + config.tipo.slice(1)}</h3>
+            <p>${mensaje}</p>
+            <div class="error-botones">
+        `;
+        
+        // Agregar botón de reintento si es necesario
+        if (onRetry && typeof onRetry === 'function') {
+            contenidoHTML += `
+                <button class="error-btn error-btn-reintentar" data-action="reintentar">
+                    Reintentar
+                </button>
+            `;
+        }
+        
+        // Agregar botón de cierre si es cerrable
+        if (config.cerrable) {
+            contenidoHTML += `
+                <button class="error-btn error-btn-cerrar" data-action="cerrar">
+                    Cerrar
+                </button>
+            `;
+        }
+        
+        contenidoHTML += '</div>';
+        errorMsg.innerHTML = contenidoHTML;
+        
+        // Agregar manejadores de eventos
+        errorMsg.addEventListener('click', (e) => {
+            const target = e.target.closest('[data-action]');
+            if (!target) return;
+            
+            const action = target.getAttribute('data-action');
+            if (action === 'reintentar' && onRetry) {
+                onRetry();
+            }
+            
+            // Cerrar el mensaje en cualquier caso
+            cerrarMensaje(errorMsg);
+        });
+        
+        // Agregar al documento
+        document.body.appendChild(errorMsg);
+        
+        // Configurar eliminación automática
+        let timeoutId;
+        if (config.tiempo > 0) {
+            timeoutId = setTimeout(() => {
+                cerrarMensaje(errorMsg);
+            }, config.tiempo);
+        }
+        
+        // Función para cerrar el mensaje
+        function cerrarMensaje(elemento) {
+            if (elemento && document.body.contains(elemento)) {
+                elemento.style.animation = 'fadeOut 0.3s ease-in-out';
+                setTimeout(() => elemento.remove(), 300);
+                if (timeoutId) clearTimeout(timeoutId);
+            }
+        }
+        
+        // Devolver función para cerrar manualmente
+        return () => cerrarMensaje(errorMsg);
+    }
+    
+    // Hacer la función accesible globalmente
+    window.mostrarErrorEnInterfaz = mostrarErrorEnInterfaz;
+    </script>
+    
     <!-- Contenedor del mapa -->
     <div id="mapa"></div>
 
@@ -806,186 +1075,187 @@
         
         const AVENTURA_PARADAS = [
   // Parada 0 – INICIO (Torres de Serranos start) reto 2 (223, 226, 228, 229)//
-  { tipo: "inicio", parada_id: 'P-0', audio_id: "audio_P-0", reto_id: "R-2" },
+  { tipo: "inicio", parada_id: 'P-0', audio_id: "audio-P-0", reto_id: "R-2" },
   // tramo 1 (Torres de Serranos → Plaza de la crida) (2, 126,)//
-  { tipo: "tramo", tramo_id: 'TR-1', audio_id: "audio_TR-1" },
+  { tipo: "tramo", tramo_id: 'TR-1', audio_id: "audio-TR-1" },
   // Parada 1 - Plaza de la crida (Puente de Serranos) Reto 3 (233) //
-  { tipo: "parada", parada_id: 'P-1', audio_id: "audio_P-1", reto_id: "R-3" },
+  { tipo: "parada", parada_id: 'P-1', audio_id: "audio-P-1", reto_id: "R-3" },
   // tramo 2 (Plaza de la crida → Calle Muro de Santa Ana) (81) //
-  { tipo: "tramo", tramo_id: 'TR-2', audio_id: "audio_TR-2" },
+  { tipo: "tramo", tramo_id: 'TR-2', audio_id: "audio-TR-2" },
   // Parada 2 (Calle Muro de Santa Ana) Reto 4 (68) //
-  { tipo: "parada", parada_id: 'P-2', audio_id: "audio_P-2", reto_id: "R-4" },
+  { tipo: "parada", parada_id: 'P-2', audio_id: "audio-P-2", reto_id: "R-4" },
   // tramo 3 (Calle Muro de Santa Ana → Palacio de los Borgia) (52) //
-  { tipo: "tramo", tramo_id: 'TR-3', audio_id: "audio_TR-3" },
+  { tipo: "tramo", tramo_id: 'TR-3', audio_id: "audio-TR-3" },
   // Parada 3 (Iglesia de San Lorenzo) Reto 5 (686, 682-B, 462, 683, 684) //
-  { tipo: "parada", parada_id: 'P-3', audio_id: "audio_P-3", reto_id: "R-5" },
+  { tipo: "parada", parada_id: 'P-3', audio_id: "audio-P-3", reto_id: "R-5" },
   // tramo 4 (Iglesia de San Lorenzo → Plaza de la Virgen) (465-B) //
-  { tipo: "tramo", tramo_id: 'TR-4', audio_id: "audio_TR-4" },
+  { tipo: "tramo", tramo_id: 'TR-4', audio_id: "audio-TR-4" },
   // Parada 4 (Plaza de la Virgen) Reto 6 (466, 467) //
-  { tipo: "parada", parada_id: 'P-4', audio_id: "audio_P-4", reto_id: "R-6" },
+  { tipo: "parada", parada_id: 'P-4', audio_id: "audio-P-4", reto_id: "R-6" },
   // Parada 5 (Plaza de la Virgen) Reto 7, 8 Puzzle plaza de la virgen (468)  //
   { 
       tipo: "parada", 
       parada_id: 'P-5', 
-      audio_id: "audio_P-5", 
+      audio_id: "audio-P-5", 
       retos: [
           { tipo: "reto", id: "R-7" },
           { tipo: "puzzle", id: "PZ-8" }
       ] 
   },
   // tramo 5 (Plaza de la Virgen → Plaza de la Almoína) (477-B, 479, 141, 83, 8-C) //
-  { tipo: "tramo", tramo_id: 'TR-5', audio_id: "audio_TR-5" },
+  { tipo: "tramo", tramo_id: 'TR-5', audio_id: "audio-TR-5" },
   // Parada 6 (Panel cerámico muro Catedral) Reto 9 (434, 440, 441, 442) //
-  { tipo: "parada", parada_id: 'P-6', audio_id: "audio_P-6", reto_id: "R-9" },
+  { tipo: "parada", parada_id: 'P-6', audio_id: "audio-P-6", reto_id: "R-9" },
   // Parada 7 (Capilla exterior catedral) Reto 10 (443, 444, 445) //
-  { tipo: "parada", parada_id: 'P-7', audio_id: "audio_P-7", reto_id: "R-10" },
+  { tipo: "parada", parada_id: 'P-7', audio_id: "audio-P-7", reto_id: "R-10" },
   // Parada 8 (Capilla exterior catedral) Reto 11 (445) //
-  { tipo: "parada", parada_id: 'P-8', audio_id: "audio_P-8", reto_id: "R-11" },
+  { tipo: "parada", parada_id: 'P-8', audio_id: "audio-P-8", reto_id: "R-11" },
   // Parada 9 (Arco Novo Catedral y Puerta Negra Basílica) (446, 355, 447, 11-B, 451, 452) //
-  { tipo: "parada", parada_id: 'P-9', audio_id: "audio_P-9" },
+  { tipo: "parada", parada_id: 'P-9', audio_id: "audio-P-9" },
   // Parada 10 (Casa del Punt de Gantxo) Reto 12 (51-C, 454, 455, 455-B, 456, 148) //
-  { tipo: "parada", parada_id: 'P-10', audio_id: "audio_P-10", reto_id: "R-12"  },
+  { tipo: "parada", parada_id: 'P-10', audio_id: "audio-P-10", reto_id: "R-12"  },
   // tramo 6 (Plaza de la Almoína (casa del punt de Gantxo) → Plaza Decimo Junio Bruto) (457, 10-B)//
-  { tipo: "tramo", tramo_id: 'TR-6', audio_id: "audio_TR-6" },
+  { tipo: "tramo", tramo_id: 'TR-6', audio_id: "audio-TR-6" },
   // Parada 11 (Museo arqueológico La Almoína) Reto 13 (458) //
-  { tipo: "parada", parada_id: 'P-11', audio_id: "audio_P-11", reto_id: "R-13" },
+  { tipo: "parada", parada_id: 'P-11', audio_id: "audio-P-11", reto_id: "R-13" },
   // Parada 12 (Museo arqueológico La Almoína 2) (459, 460, 461) //
-  { tipo: "parada", parada_id: 'P-12', audio_id: "audio_P-12" },
+  { tipo: "parada", parada_id: 'P-12', audio_id: "audio-P-12" },
   // Parada 13 (Vista de la Catedral, Cimborrio) Reto 14 (8-C, 464) //
-  { tipo: "parada", parada_id: 'P-13', audio_id: "audio_P-13", reto_id: "R-14" },
+  { tipo: "parada", parada_id: 'P-13', audio_id: "audio-P-13", reto_id: "R-14" },
   // tramo 7 (Museo arqueológico La Almoína → Palacio Arzobispal) (85) //
-  { tipo: "tramo", tramo_id: 'TR-7', audio_id: "audio_TR-7" },
+  { tipo: "tramo", tramo_id: 'TR-7', audio_id: "audio-TR-7" },
   // Parada 14 (Palacio Arzobispal y Puerta Románica de la Catedral) Reto 15 (673, 86, 426-B, 141, 437, 438) //
-  { tipo: "parada", parada_id: 'P-14', audio_id: "audio_P-14", reto_id: "R-15" },
+  { tipo: "parada", parada_id: 'P-14', audio_id: "audio-P-14", reto_id: "R-15" },
   // Parada 15 (Puerta Románica de la Catedral) (439) //
-  { tipo: "parada", parada_id: 'P-15', audio_id: "audio_P-15" },
+  { tipo: "parada", parada_id: 'P-15', audio_id: "audio-P-15" },
   // tramo 8 (Puerta Románica de la Catedral → Plaza del Ayuntamiento) (125) //
-  { tipo: "tramo", tramo_id: 'TR-8', audio_id: "audio_TR-8" },
+  { tipo: "tramo", tramo_id: 'TR-8', audio_id: "audio-TR-8" },
   // Parada 16 (Plaza del Ayuntamiento) (13-B, 263, 332, 14-C) //
-  { tipo: "parada", parada_id: 'P-16', audio_id: "audio_P-16" },
+  { tipo: "parada", parada_id: 'P-16', audio_id: "audio-P-16" },
   // tramo 9 (Plaza del Ayuntamiento → Edificio del Ayuntamiento) (334, 335) //
-  { tipo: "tramo", tramo_id: 'TR-9', audio_id: "audio_TR-9" },
+  { tipo: "tramo", tramo_id: 'TR-9', audio_id: "audio-TR-9" },
   // Parada 17 (Edificio del Ayuntamiento) Reto 16 (336, 337, 338) //
-  { tipo: "parada", parada_id: 'P-17', audio_id: "audio_P-17", reto_id: "R-16" },
+  { tipo: "parada", parada_id: 'P-17', audio_id: "audio-P-17", reto_id: "R-16" },
   // Parada 18 (Edificio del Ayuntamiento, leyenda del murciélago) (339, 340, 341, 54) //
-  { tipo: "parada", parada_id: 'P-18', audio_id: "audio_P-18" },
+  { tipo: "parada", parada_id: 'P-18', audio_id: "audio-P-18" },
   // tramo 10 (Edificio del Ayuntamiento → Estación del Norte) (87, 15-C) //
-  { tipo: "tramo", tramo_id: 'TR-10', audio_id: "audio_TR-10" },
+  { tipo: "tramo", tramo_id: 'TR-10', audio_id: "audio-TR-10" },
   // Parada 19 (Estación del Norte) Reto 17, 18 Puzzle Estación del Norte (326) //
   { 
       tipo: "parada", 
       parada_id: 'P-19', 
-      audio_id: "audio_P-19", 
+      audio_id: "audio-P-19", 
       retos: [
           { tipo: "reto", id: "R-17" },
           { tipo: "puzzle", id: "PZ-18" }
       ] 
   },
   // tramo 11 (Estación del Norte → Plaza de Toros) (20-C, 323-B, 88) //
-  { tipo: "tramo", tramo_id: 'TR-11', audio_id: "audio_TR-11" },
+  { tipo: "tramo", tramo_id: 'TR-11', audio_id: "audio-TR-11" },
   // Tramo 12 (Plaza de Toros → Casa estilo Árabe) (89, 3-D) //
-  { tipo: "tramo", tramo_id: 'TR-12', audio_id: "audio_TR-12" },
+  { tipo: "tramo", tramo_id: 'TR-12', audio_id: "audio-TR-12" },
   // Parada 20 (Casa estilo Árabe) Reto 19 (99) //
-  { tipo: "parada", parada_id: 'P-20', audio_id: "audio_P-20", reto_id: "R-19" },
+  { tipo: "parada", parada_id: 'P-20', audio_id: "audio-P-20", reto_id: "R-19" },
   // Parada 21 (Casa estilo Árabe, mitad Aventura) (100) //
-  { tipo: "parada", parada_id: 'P-21', audio_id: "audio_P-21" },
+  { tipo: "parada", parada_id: 'P-21', audio_id: "audio-P-21" },
   // tramo 13 (Casa estilo Árabe → Palacio de Comunicaciones) (21-B) //
-  { tipo: "tramo", tramo_id: 'TR-13', audio_id: "audio_TR-13" },
+  { tipo: "tramo", tramo_id: 'TR-13', audio_id: "audio-TR-13" },
   // Parada 22 (Palacio de Comunicaciones) Reto 20 y Reto 21 (700, 343, 344) //
-  { tipo: "parada", parada_id: 'P-22', audio_id: "audio_P-22", retos: ["R-20", "R-21"] },
+  { tipo: "parada", parada_id: 'P-22', audio_id: "audio-P-22", retos: ["R-20", "R-21"] },
   // Parada 23 (Edificio Suay) Reto 21 (693, 693-B) //
-  { tipo: "parada", parada_id: 'P-23', audio_id: "audio_P-23" ,reto_id: "R-21" },
+  { tipo: "parada", parada_id: 'P-23', audio_id: "audio-P-23" ,reto_id: "R-21" },
   // tramo 14 (Palacio de Comunicaciones, edificio Suay → Banco de València) (345, 347, 348, 22, 109) //
-  { tipo: "tramo", tramo_id: 'TR-14', audio_id: "audio_TR-14" },
+  { tipo: "tramo", tramo_id: 'TR-14', audio_id: "audio-TR-14" },
   // Parada 24 (Banco de Valencia) Reto 22 (349, 350) //
-  { tipo: "parada", parada_id: 'P-24', audio_id: "audio_P-24", reto_id: "R-22" },
+  { tipo: "parada", parada_id: 'P-24', audio_id: "audio-P-24", reto_id: "R-22" },
   // tramo 15 (Banco de València → Palacio del Marqués de Dos Aguas) (351, 23-B, 352, 354) //
-  { tipo: "tramo", tramo_id: 'TR-15', audio_id: "audio_TR-15" },
+  { tipo: "tramo", tramo_id: 'TR-15', audio_id: "audio-TR-15" },
   // Parada 25 (Palacio del Marqués de Dos Aguas) (356, 357)//
-  { tipo: "parada", parada_id: 'P-25', audio_id: "audio_P-25" },
+  { tipo: "parada", parada_id: 'P-25', audio_id: "audio-P-25" },
   // tramo 16 (Palacio del Marqués → Mercado Central) (358, 359-B, 101) //
-  { tipo: "tramo", tramo_id: 'TR-16', audio_id: "audio_TR-16" },
+  { tipo: "tramo", tramo_id: 'TR-16', audio_id: "audio-TR-16" },
   // Parada 26 (Mercado central) Reto23 (701, 24-D, 361, 362, 363, 364) //
-  { tipo: "parada", parada_id: 'P-26', audio_id: "audio_P-26", reto_id: "R-23" },
+  { tipo: "parada", parada_id: 'P-26', audio_id: "audio-P-26", reto_id: "R-23" },
   // tramo 17 (Mercado Central → Iglesia de los Santos Juanes) (274, 27-C) //
-  { tipo: "tramo", tramo_id: 'TR-17', audio_id: "audio_TR-17" },
+  { tipo: "tramo", tramo_id: 'TR-17', audio_id: "audio-TR-17" },
   // Parada 27 (Iglesia de los Santos Juanes) Reto 24) (365, 366) //
-  { tipo: "parada", parada_id: 'P-27', audio_id: "audio_P-27", reto_id: "R-24" },
+  { tipo: "parada", parada_id: 'P-27', audio_id: "audio-P-27", reto_id: "R-24" },
   // Parada 28 (Iglesia de los Santos Juanes reto 25) (367) //
-  { tipo: "parada", parada_id: 'P-28', audio_id: "audio_P-28", reto_id: "R-25" },
+  { tipo: "parada", parada_id: 'P-28', audio_id: "audio-P-28", reto_id: "R-25" },
   // tramo 18 (Iglesia Santos Juanes → Lonja de València) (368, 369, 28, 370, 371, 372, 373, 374, 375, 376, 377) //
-  { tipo: "tramo", tramo_id: 'TR-18', audio_id: "audio_TR-18" },
+  { tipo: "tramo", tramo_id: 'TR-18', audio_id: "audio-TR-18" },
   // Parada 29 (Lonja Puerta de Los Pecados barquero) Reto 27 (378, 379) //
-  { tipo: "parada", parada_id: 'P-29', audio_id: "audio_P-29", reto_id: "R-27" },
+  { tipo: "parada", parada_id: 'P-29', audio_id: "audio-P-29", reto_id: "R-27" },
   // Parada 30 (Lonja Puerta de Los Pecados árbol muerto) Reto 28 (380, 381) //
-  { tipo: "parada", parada_id: 'P-30', audio_id: "audio_P-30", reto_id: "R-28" },
+  { tipo: "parada", parada_id: 'P-30', audio_id: "audio-P-30", reto_id: "R-28" },
   // tramo 19 (Lonja Gárgolas) (383) //
-  { tipo: "tramo", tramo_id: 'TR-19', audio_id: "audio_TR-19" },
+  { tipo: "tramo", tramo_id: 'TR-19', audio_id: "audio-TR-19" },
   // Parada 31 (Lonja Gárgolas ángel vasija) Reto 29 (384) //
-  { tipo: "parada", parada_id: 'P-31', audio_id: "audio_P-31", reto_id: "R-29" },
+  { tipo: "parada", parada_id: 'P-31', audio_id: "audio-P-31", reto_id: "R-29" },
   // Parada 32 (Lonja Gárgolas barbudo y león) Reto 30 (385) //
-  { tipo: "parada", parada_id: 'P-32', audio_id: "audio_P-32", reto_id: "R-30" },
+  { tipo: "parada", parada_id: 'P-32', audio_id: "audio-P-32", reto_id: "R-30" },
   // Parada 33 (Lonja Gárgolas fornicador ventana) Reto 31, Puzzle 26 ) (386) //
-  { tipo: "parada", parada_id: 'P-33', audio_id: "audio_P-33", retos: [ { tipo: "reto", id: "R-31" }, { tipo: "puzzle", id: "PZ-26" } ] },
+  { tipo: "parada", parada_id: 'P-33', audio_id: "audio-P-33", retos: [ { tipo: "reto", id: "R-31" }, { tipo: "puzzle", id: "PZ-26" } ] },
   // tramo 20 (Lonja → Plaza del Doctor Collado) (388, 389, 390, 391, 392) //
-  { tipo: "tramo", tramo_id: 'TR-20', audio_id: "audio_TR-20" },
+  { tipo: "tramo", tramo_id: 'TR-20', audio_id: "audio-TR-20" },
   // tramo 21 (Plaza del Doctor Collado → Plaza del Negrito) (333, 397, 41, 398, 198, 671, 522, 32-C) //
-  { tipo: "tramo", tramo_id: 'TR-21', audio_id: "audio_TR-21" },
+  { tipo: "tramo", tramo_id: 'TR-21', audio_id: "audio-TR-21" },
   // Parada 34 (Fuente del Negrito) Reto 32 (382, 501) //
-  { tipo: "parada", parada_id: 'P-34', audio_id: "audio_P-34", reto_id: "R-32" },
+  { tipo: "parada", parada_id: 'P-34', audio_id: "audio-P-34", reto_id: "R-32" },
   // tramo 22 (Plaza del Negrito → Calle Caballeros) (33-B, 486, 480-B) //
-  { tipo: "tramo", tramo_id: 'TR-22', audio_id: "audio_TR-22" },
-  // Parada 35 (Palau de la Generalitat) (481-B, 482-B, 2-D) //
-  { tipo: "parada", parada_id: 'P-35', audio_id: "audio_P-35" },
+  { tipo: "tramo", tramo_id: 'TR-22', audio_id: "audio-TR-22" },
+  // Parada 35 (Palacio de la Generalitat) (481-B, 482-B, 2-D) //
+  { tipo: "parada", parada_id: 'P-35', audio_id: "audio-P-35" },
   // tramo 23 (Palacio de la Generalitat → Calle de los Serranos - FINAL)  //
-  { tipo: "tramo", tramo_id: 'TR-23', audio_id: "audio_TR-23" },
+  { tipo: "tramo", tramo_id: 'TR-23', audio_id: "audio-TR-23" },
   // Parada 36 (Torres de Serranos Final) //
-  { tipo: "parada", parada_id: 'P-36', audio_id: "audio_P-36" }
+  { tipo: "parada", parada_id: 'P-36', audio_id: "audio-P-36" }
 ];
 
-        
-        // Función para habilitar controles
-        function enableControls() {
-            console.log('Habilitando controles...');
-            const controls = document.querySelectorAll('button, input, select, textarea');
-            controls.forEach(control => {
-                control.disabled = false;
-            });
-            return 'Controles habilitados';
-        }
-        
-        // Función para deshabilitar controles
-        function disableControls() {
-            console.log('Deshabilitando controles...');
-            const controls = document.querySelectorAll('button, input, select, textarea');
-            controls.forEach(control => {
-                control.disabled = true;
-            });
-            return 'Controles deshabilitados';
-        }
         
         // Variables globales
         window.paradaActual = 0; // Índice de la parada actual
         
-        // Función para habilitar controles
+        // Función centralizada para habilitar controles
         function enableControls() {
-            console.log('Controles habilitados');
-            // Implementación básica - puedes personalizar según necesites
-            const controles = document.querySelectorAll('button, input, select, textarea');
-            controles.forEach(control => {
-                control.disabled = false;
-            });
+            console.log('Habilitando controles de interfaz...');
+            try {
+                const controls = document.querySelectorAll('button, input, select, textarea, [data-control]');
+                controls.forEach(control => {
+                    if (!control.classList.contains('no-deshabilitar')) {
+                        control.disabled = false;
+                    }
+                });
+                console.log('✅ Controles habilitados');
+                return true;
+            } catch (error) {
+                console.error('❌ Error al habilitar controles:', error);
+                return false;
+            }
         }
         
-        // Función para deshabilitar controles
+        // Función centralizada para deshabilitar controles
         function disableControls() {
-            console.log('Controles deshabilitados');
-            // Implementación básica - puedes personalizar según necesites
-            const controles = document.querySelectorAll('button, input, select, textarea');
-            controles.forEach(control => {
-                control.disabled = true;
-            });
+            console.log('Deshabilitando controles de interfaz...');
+            try {
+                const controls = document.querySelectorAll('button, input, select, textarea, [data-control]');
+                controls.forEach(control => {
+                    if (!control.classList.contains('no-deshabilitar') && 
+                        !control.classList.contains('emergency-close')) {
+                        control.disabled = true;
+                    }
+                });
+                console.log('✅ Controles deshabilitados');
+                return true;
+            } catch (error) {
+                console.error('❌ Error al deshabilitar controles:', error);
+                return false;
+            }
         }
+        
+        // Hacer las funciones accesibles globalmente
+        window.enableControls = enableControls;
+        window.disableControls = disableControls;
         
         // Hacer las funciones accesibles globalmente
         window.enableControls = enableControls;
@@ -1116,68 +1386,7 @@
         }
         
         // Función auxiliar para mostrar errores en la interfaz
-        function mostrarErrorEnInterfaz(mensaje, onRetry = null) {
-            // Eliminar mensajes de error anteriores
-            const erroresAnteriores = document.querySelectorAll('.mapa-error-mensaje');
-            erroresAnteriores.forEach(el => el.remove());
-            
-            // Crear y mostrar el nuevo mensaje de error
-            const errorMsg = document.createElement('div');
-            errorMsg.className = 'mapa-error-mensaje';
-            errorMsg.style.position = 'fixed';
-            errorMsg.style.top = '50%';
-            errorMsg.style.left = '50%';
-            errorMsg.style.transform = 'translate(-50%, -50%)';
-            errorMsg.style.backgroundColor = 'rgba(255, 0, 0, 0.9)';
-            errorMsg.style.color = 'white';
-            errorMsg.style.padding = '20px';
-            errorMsg.style.borderRadius = '5px';
-            errorMsg.style.zIndex = '1000';
-            errorMsg.style.maxWidth = '80%';
-            errorMsg.style.textAlign = 'center';
-            errorMsg.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.3)';
-            errorMsg.style.fontFamily = 'Arial, sans-serif';
-            errorMsg.style.fontSize = '16px';
-            
-            let contenidoHTML = `
-                <h3 style="margin-top: 0; color: white;">Error en el mapa</h3>
-                <p style="margin-bottom: 20px;">${mensaje}</p>
-            `;
-            
-            if (onRetry && typeof onRetry === 'function') {
-                contenidoHTML += `
-                    <button 
-                        onclick="this.parentElement.remove(); ${onRetry.toString().replace(/\n/g, ' ')};" 
-                        style="
-                            margin-top: 10px; 
-                            padding: 8px 16px; 
-                            cursor: pointer; 
-                            background-color: white; 
-                            color: #d32f2f; 
-                            border: none; 
-                            border-radius: 4px; 
-                            font-weight: bold;
-                        "
-                    >
-                        Reintentar
-                    </button>
-                `;
-            }
-            
-            errorMsg.innerHTML = contenidoHTML;
-            document.body.appendChild(errorMsg);
-            
-            // Eliminar el mensaje después de 10 segundos si no hay botón de reintento
-            if (!onRetry) {
-                setTimeout(() => {
-                    if (document.body.contains(errorMsg)) {
-                        errorMsg.style.transition = 'opacity 0.5s';
-                        errorMsg.style.opacity = '0';
-                        setTimeout(() => errorMsg.remove(), 500);
-                    }
-                }, 10000);
-            }
-        }
+        // (Usa la implementación centralizada en la parte superior del documento)
         
         // Función para verificar e inicializar el mapa
         function verificarEInicializarMapa() {
@@ -2953,16 +3162,6 @@ async function obtenerPistaParaReto(retoId, numeroPista) {
 // ================== FUNCIONES DE CONTROL ==================
 
 /**
- * Deshabilita los controles con un motivo específico
- * @param {string} motivo - Razón de la deshabilitación
- */
-function disableControls(motivo = 'desconocido') {
-    console.log(`🔒 Deshabilitando controles: ${motivo}`);
-    // Implementa la lógica para deshabilitar controles
-    return Promise.resolve();
-}
-
-/**
  * Habilita los controles según el modo especificado
  * @param {string} modo - Modo de operación ('casa' o 'aventura')
  */
@@ -3743,8 +3942,10 @@ function avanzarSiguientePunto() {
                 });
                 
                 console.log(`✅ PADRE: Tramo cambiado a TR-${tramo.tramo}: ${tramo.nombre}`);
+                return tramo; // Devolver el tramo encontrado
             } else {
                 console.error(`❌ PADRE: No se encontró el tramo con ID ${idTramo} (${numTramo})`);
+                return null;
             }
         }
         
@@ -3783,146 +3984,6 @@ function avanzarSiguientePunto() {
                     }
                 } catch (error) {
                     console.error(`Error actualizando estado de ${id}:`, error);
-                }
-            }
-            
-                    case 'PUNTO_SELECCIONADO':
-                        console.log('📍 PUNTO_SELECCIONADO recibido:', datos);
-                        
-                        if (datos.punto?.tipo === 'parada') {
-                            // Notificar a hijo2
-                            await enviarMensaje('hijo2', 'cambioPunto', {
-                                tipo: 'parada',
-                                ...datos.punto,
-                                origen: 'padre',
-                                timestamp: Date.now()
-                            });
-                            // Notificar a hijo3
-                            await enviarMensaje('hijo3', 'cargarAudio', {
-                                tipo: 'parada',
-                                ...datos.punto,
-                                origen: 'padre',
-                                timestamp: Date.now()
-                            });
-                            // Notificar a hijo4
-                            await enviarMensaje('hijo4', 'mostrarReto', {
-                                tipo: 'parada',
-                                ...datos.punto,
-                                origen: 'padre',
-                                timestamp: Date.now()
-                            });
-                        } else if (datos.punto?.tipo === 'tramo') {
-                            // Notificar a hijo2
-                            await enviarMensaje('hijo2', 'cambioPunto', {
-                                tipo: 'tramo',
-                                ...datos.punto,
-                                origen: 'padre',
-                                timestamp: Date.now()
-                            });
-                            // Notificar a hijo3
-                            await enviarMensaje('hijo3', 'cargarVideo', {
-                                tipo: 'tramo',
-                                ...datos.punto,
-                                origen: 'padre',
-                                timestamp: Date.now()
-                            });
-                            // Notificar a hijo4
-                            await enviarMensaje('hijo4', 'ocultarReto', {
-                                tipo: 'tramo',
-                                ...datos.punto,
-                                origen: 'padre',
-                                timestamp: Date.now()
-                            });
-                        }
-                        break;
-                        
-                    case 'cambioTramo':
-                        await manejarCambioTramo(datos);
-                        // Forward to other children
-                        if (datos.tramo) {
-                            await enviarMensaje('hijo2', 'cambioPunto', {
-                                tipo: 'tramo',
-                                id: datos.tramo.id,
-                                numero: datos.tramo.numero,
-                                nombre: datos.tramo.nombre,
-                                origen: 'hijo5-casa',
-                                timestamp: datos.timestamp || Date.now()
-                            });
-                            
-                            await enviarMensaje('hijo3', 'cargarVideo', {
-                                tipo: 'tramo',
-                                id: datos.tramo.id,
-                                numero: datos.tramo.numero,
-                                nombre: datos.tramo.nombre,
-                                origen: 'hijo5-casa',
-                                timestamp: datos.timestamp || Date.now()
-                            });
-                            
-                            await enviarMensaje('hijo4', 'ocultarReto', {
-                                origen: 'hijo5-casa',
-                                timestamp: datos.timestamp || Date.now()
-                            });
-                        }
-                        break;
-                        
-                    case 'actualizarPuntoActual':
-                        // Handle the update point message
-                        if (datos.puntoActual) {
-                            const { tipo, id, numero, nombre } = datos.puntoActual;
-                            await actualizarEstadoPuntoActual(tipo, id, numero, nombre);
-                            await sincronizarEstadoConHijos();
-                        }
-                        break;
-                        
-                    case 'solicitarEstado':
-                        await enviarEstadoHijo5();
-                        break;
-                        
-                    case 'reiniciarRuta':
-                        await manejarReinicioRuta(datos);
-                        break;
-                        
-                    case 'sincronizarEstado':
-                    case 'hijo5Ready':
-                    case 'casa-hijo-listo':
-                        await enviarEstadoHijo5();
-                        break;
-                        
-                    case 'error':
-                        await manejarErrorHijo5(datos);
-                        break;
-                        
-                    case 'expandirIframe':
-                        await manejarExpansionIframe(datos);
-                        break;
-                        
-                    default:
-                        console.warn(`${logPrefix} Tipo de mensaje no reconocido:`, tipo);
-                }
-                
-                // Confirmar recepción del mensaje si tiene un ID
-                if (event?.data?.id) {
-                    await enviarMensaje('hijo5-casa', 'confirmacionRecepcion', {
-                        idMensajeOriginal: event.data.id,
-                        timestamp: Date.now(),
-                        estado: 'procesado',
-                        tipo: tipo
-                    });
-                }
-            } catch (error) {
-                console.error(`${logPrefix} Error al procesar mensaje:`, error);
-                
-                // Notificar al hijo5 sobre el error
-                try {
-                    await enviarMensaje('hijo5-casa', 'error', {
-                        codigo: 'ERROR_PROCESAMIENTO',
-                        mensaje: error.message || 'Error al procesar el mensaje',
-                        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-                        timestamp: Date.now(),
-                        tipoMensajeOriginal: tipo
-                    });
-                } catch (e) {
-                    console.error(`${logPrefix} Error al notificar error al hijo5-casa:`, e);
                 }
             }
         }
