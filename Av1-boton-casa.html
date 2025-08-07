@@ -2264,31 +2264,66 @@
      * @param {boolean} [opciones.notificarPadre=true] - Si se debe notificar al padre del cambio
      * @returns {Promise<Object>} - Resultado de la operación con estado, mensaje y datos relevantes
      */
+    /**
+     * Maneja el cambio de modo de la aplicación
+     * @param {string} modo - Nuevo modo ('casa' o 'aventura')
+     * @param {boolean} [habilitar=true] - Si se deben habilitar los controles
+     * @param {Object} opciones - Opciones adicionales
+     * @param {string} [opciones.motivo='cambio_modo'] - Razón del cambio
+     * @param {boolean} [opciones.forzar=false] - Forzar el cambio
+     * @param {boolean} [opciones.notificarPadre=true] - Si se debe notificar al padre del cambio
+     * @param {boolean} [opciones.actualizarInterfaz=true] - Si se debe actualizar la interfaz
+     * @returns {Promise<Object>} - Resultado de la operación con estado, mensaje y datos relevantes
+     */
     async function manejarCambioModo(modo, habilitar = true, { 
       motivo = 'cambio_modo', 
       forzar = false, 
-      notificarPadre = true 
+      notificarPadre = true,
+      actualizarInterfaz = true
     } = {}) {
+      // Generar un ID único para esta transacción
       const ID_TRANSACCION = `cambio-mod-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      
+      // Función de utilidad para registrar mensajes de log
       const log = (nivel, mensaje, datos = {}) => {
-        console[nivel](`[${CONFIG.IFRAME_ID}] [${ID_TRANSACCION}] ${mensaje}`, datos);
+        const timestamp = new Date().toISOString();
+        const prefijo = `[${timestamp}] [${CONFIG.IFRAME_ID}] [${ID_TRANSACCION}]`;
+        const mensajeCompleto = `${prefijo} ${mensaje}`;
+        
+        // Registrar en consola
+        if (CONFIG.DEBUG || nivel === 'error' || nivel === 'warn') {
+          console[nivel](mensajeCompleto, datos);
+        }
+        
+        // Opcional: Registrar en un array de logs para depuración
+        if (!window._logs) window._logs = [];
+        window._logs.push({ nivel, mensaje, datos, timestamp, id: ID_TRANSACCION });
+        if (window._logs.length > 100) window._logs.shift(); // Limitar el tamaño
       };
       
       try {
-        log('info', `Iniciando cambio de modo a ${modo}`, { habilitar, motivo, forzar });
+        log('info', `Iniciando cambio de modo a ${modo}`, { 
+          habilitar, 
+          motivo, 
+          forzar,
+          notificarPadre,
+          estadoActual: { ...estadoApp }
+        });
         
         // Validar el modo
         if (modo !== 'casa' && modo !== 'aventura') {
-          const error = new Error(`Modo no válido: ${modo}`);
+          const error = new Error(`Modo no válido: ${modo}. Debe ser 'casa' o 'aventura'`);
           error.codigo = 'MODO_NO_VALIDO';
+          error.datos = { modoRecibido: modo, modosValidos: ['casa', 'aventura'] };
           throw error;
         }
         
-        // Actualizar el estado local
-        const nuevoEstadoGPS = (modo === 'aventura');
+        // Obtener el estado actual
         const modoAnterior = estadoApp.modo;
+        const gpsAnterior = estadoApp.gpsActivo;
+        const nuevoEstadoGPS = (modo === 'aventura');
         
-        // Si el modo no está cambiando y no se fuerza, no hacer nada
+        // Verificar si es necesario hacer algún cambio
         if (modoAnterior === modo && !forzar) {
           log('debug', 'El modo no ha cambiado y no se forzó el cambio');
           return {
@@ -2297,73 +2332,120 @@
             modo,
             modoAnterior,
             gpsActivo: estadoApp.gpsActivo,
-            timestamp: new Date().toISOString()
+            gpsAnterior,
+            cambiado: false,
+            timestamp: new Date().toISOString(),
+            idTransaccion: ID_TRANSACCION
           };
-        }
-        
-        // Si se debe habilitar/deshabilitar los controles
-        try {
-          if (habilitar) {
-            await enableControls(modo, { motivo, forzar });
-          } else {
-            await disableControls(motivo);
-          }
-        } catch (error) {
-          log('error', 'Error al actualizar controles', { 
-            error: error.message,
-            stack: error.stack 
-          });
-          // Continuar a pesar del error si se está forzando
-          if (!forzar) throw error;
         }
         
         // Actualizar el estado de la aplicación
         estadoApp.modo = modo;
+        estadoApp.gpsActivo = nuevoEstadoGPS;
         estadoApp.ultimaActualizacion = new Date().toISOString();
         
-        // Actualizar el estado del GPS según el modo
-        if (estadoApp.gpsActivo !== nuevoEstadoGPS) {
-          estadoApp.gpsActivo = nuevoEstadoGPS;
-          actualizarBotonGPS();
+        // 1. Actualizar controles si es necesario
+        try {
+          if (habilitar) {
+            log('debug', 'Habilitando controles...');
+            await enableControls(modo, { 
+              motivo: `${motivo} (cambio a modo ${modo})`,
+              forzar 
+            });
+            log('debug', 'Controles habilitados exitosamente');
+          } else {
+            log('debug', 'Deshabilitando controles...');
+            await disableControls(`${motivo} (cambio a modo ${modo})`, { forzar });
+            log('debug', 'Controles deshabilitados exitosamente');
+          }
+        } catch (error) {
+          log('error', 'Error al actualizar controles', { 
+            error: error.message,
+            stack: error.stack,
+            motivo,
+            habilitar
+          });
+          
+          // Si no es un error crítico, continuar
+          if (!forzar) throw error;
+          
+          log('warn', 'Continuando a pesar del error (modo forzado)');
         }
         
-        // Notificar el cambio al padre si es necesario
+        // 2. Notificar al padre si es necesario
         if (notificarPadre) {
           try {
+            log('debug', 'Notificando cambio de modo al padre...');
             await enviarMensajeAlPadre('sistema:configuracion', { 
               modo, 
               habilitado: habilitar, 
-              motivo,
-              timestamp: estadoApp.ultimaActualizacion
-            }, { reintentos: 2, tiempoEspera: 500 });
+              motivo: `cambio_modo:${motivo}`,
+              timestamp: estadoApp.ultimaActualizacion,
+              idTransaccion: ID_TRANSACCION,
+              desdeHijo: CONFIG.IFRAME_ID
+            }, { 
+              reintentos: 3, 
+              tiempoEspera: 1000,
+              esencial: true
+            });
+            log('debug', 'Notificación al padre completada');
           } catch (error) {
             log('error', 'Error al notificar el cambio de modo al padre', {
               error: error.message,
-              stack: error.stack
+              stack: error.stack,
+              motivo
             });
-            // No lanzar el error a menos que sea crítico
-            if (forzar) throw error;
+            
+            // Si es crítico, revertir el cambio
+            if (forzar) {
+              log('warn', 'Continuando a pesar del error (modo forzado)');
+            } else {
+              // Revertir cambios en caso de error
+              estadoApp.modo = modoAnterior;
+              estadoApp.gpsActivo = gpsAnterior;
+              throw error;
+            }
           }
         }
         
-        // Actualizar la interfaz
-        actualizarInterfaz();
-        if (!estadoApp.gpsActivo) {
-          renderParadasYTramos();
+        // 3. Actualizar la interfaz si es necesario
+        if (actualizarInterfaz) {
+          try {
+            log('debug', 'Actualizando interfaz...');
+            actualizarBotonGPS();
+            
+            if (!estadoApp.gpsActivo) {
+              renderParadasYTramos();
+            }
+            
+            // Forzar actualización de la interfaz
+            actualizarInterfaz();
+            log('debug', 'Interfaz actualizada');
+          } catch (error) {
+            log('error', 'Error al actualizar la interfaz', {
+              error: error.message,
+              stack: error.stack
+            });
+            // No lanzar el error, ya que el cambio de modo fue exitoso
+          }
         }
         
+        // 4. Preparar resultado exitoso
         const resultado = {
           estado: 'ok',
           mensaje: `Modo cambiado a ${modo} exitosamente`,
           modo,
           modoAnterior,
           gpsActivo: estadoApp.gpsActivo,
+          gpsAnterior,
           habilitado: habilitar,
           motivo,
-          timestamp: estadoApp.ultimaActualizacion
+          cambiado: true,
+          timestamp: estadoApp.ultimaActualizacion,
+          idTransaccion: ID_TRANSACCION
         };
         
-        log('info', 'Cambio de modo completado', resultado);
+        log('info', 'Cambio de modo completado exitosamente', resultado);
         return resultado;
         
       } catch (error) {
@@ -2521,20 +2603,54 @@
             
           // Manejo de mensajes de cambio de modo para compatibilidad
           case 'cambiarModo':
-            log('info', 'Cambiando modo', { modo: datos?.modo });
+          case 'cambio_modo': // Añadido para compatibilidad
+            log('info', 'Cambiando modo', { modo: datos?.modo, datos });
             if (datos?.modo === 'casa' || datos?.modo === 'aventura') {
-              await manejarCambioModo(datos.modo);
-              return { 
-                estado: 'ok', 
-                modo: estadoApp.modo,
-                gpsActivo: estadoApp.gpsActivo,
-                timestamp: new Date().toISOString()
-              };
+              try {
+                // Llamar a manejarCambioModo con parámetros completos
+                const resultado = await manejarCambioModo(datos.modo, true, {
+                  motivo: datos.motivo || 'cambio_modo',
+                  forzar: datos.forzar || false,
+                  notificarPadre: datos.notificarPadre !== false
+                });
+                
+                // Actualizar el estado local
+                estadoApp.modo = datos.modo;
+                estadoApp.gpsActivo = datos.modo === 'aventura';
+                
+                // Actualizar la interfaz
+                actualizarBotonGPS();
+                if (!estadoApp.gpsActivo) {
+                  renderParadasYTramos();
+                }
+                
+                log('info', 'Cambio de modo completado', resultado);
+                return { 
+                  estado: 'ok', 
+                  modo: estadoApp.modo,
+                  gpsActivo: estadoApp.gpsActivo,
+                  timestamp: new Date().toISOString(),
+                  ...resultado
+                };
+              } catch (error) {
+                log('error', 'Error al cambiar el modo', {
+                  error: error.message,
+                  stack: error.stack,
+                  datos
+                });
+                return { 
+                  estado: 'error', 
+                  mensaje: `Error al cambiar el modo: ${error.message}`,
+                  error: error.toString(),
+                  timestamp: new Date().toISOString()
+                };
+              }
             }
             return { 
               estado: 'error', 
               mensaje: 'Modo no válido. Debe ser "casa" o "aventura"',
-              recibido: datos?.modo
+              recibido: datos?.modo,
+              timestamp: new Date().toISOString()
             };
             
           case 'cambiarParada':
