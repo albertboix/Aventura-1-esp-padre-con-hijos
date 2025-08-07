@@ -996,6 +996,9 @@ const Mensajeria = {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = Mensajeria;
     module.exports.default = Mensajeria; // Para compatibilidad con ES modules
+    module.exports.inicializarMensajeria = Mensajeria.inicializarMensajeria;
+    module.exports.enableControls = Mensajeria.enableControls;
+    module.exports.disableControls = Mensajeria.disableControls;
 } else if (typeof define === 'function' && define.amd) {
     define([], function() { return Mensajeria; });
 } else {
