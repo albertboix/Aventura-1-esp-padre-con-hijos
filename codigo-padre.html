@@ -30,8 +30,8 @@
     // Variable global para rastrear si la mensajería está lista
     window.mensajeriaCargada = false;
     
-    // Cargar el módulo de mensajería
-    async function cargarMensajeria() {
+    // Hacer la función accesible globalmente
+    window.cargarMensajeria = async function cargarMensajeria() {
         try {
             // Verificar si ya está cargado
             if (window.Mensajeria) {
@@ -41,61 +41,101 @@
             
             console.log('🔍 Cargando módulo de mensajería...');
             
-            // Importar como módulo ES6
-            const moduloMensajeria = await import('./js/mensajeria.js');
-            
-            // Asignar a window.Mensajeria para compatibilidad global
-            window.Mensajeria = moduloMensajeria.default || moduloMensajeria;
-            
-            // Asegurarse de que las funciones principales estén disponibles
-            if (typeof window.Mensajeria !== 'object' || !window.Mensajeria.inicializarMensajeria) {
-                throw new Error('El módulo de mensajería no se cargó correctamente');
+            try {
+                // Importar como módulo ES6
+                const moduloMensajeria = await import('./js/mensajeria.js');
+                
+                // Asignar a window.Mensajeria para compatibilidad global
+                window.Mensajeria = moduloMensajeria.default || moduloMensajeria;
+                
+                // Verificar que se hayan cargado las funciones esenciales
+                const funcionesEsenciales = [
+                    'inicializarMensajeria',
+                    'enableControls',
+                    'disableControls',
+                    'enviarMensaje',
+                    'registrarControlador'
+                ];
+                
+                const faltanFunciones = funcionesEsenciales.filter(
+                    fn => typeof window.Mensajeria[fn] !== 'function'
+                );
+                
+                if (faltanFunciones.length > 0) {
+                    throw new Error(`Faltan funciones esenciales: ${faltanFunciones.join(', ')}`);
+                }
+                
+                // Hacer que las funciones estén disponibles globalmente
+                window.enableControls = window.Mensajeria.enableControls;
+                window.disableControls = window.Mensajeria.disableControls;
+                
+                window.mensajeriaCargada = true;
+                console.log('✅ Módulo de mensajería cargado correctamente');
+                return true;
+                
+            } catch (importError) {
+                console.error('❌ Error al importar el módulo de mensajería:', importError);
+                
+                // Intentar cargar desde CDN como respaldo
+                console.log('⚠️ Intentando cargar mensajería desde CDN...');
+                try {
+                    // Cargar desde CDN o ruta alternativa
+                    const script = document.createElement('script');
+                    script.src = 'https://cdn.jsdelivr.net/gh/tu-usuario/valencia-tour@latest/js/mensajeria.js';
+                    script.onload = () => {
+                        console.log('✅ Módulo de mensajería cargado desde CDN');
+                        window.mensajeriaCargada = true;
+                    };
+                    script.onerror = () => {
+                        throw new Error('No se pudo cargar el módulo de mensajería desde ninguna fuente');
+                    };
+                    document.head.appendChild(script);
+                    return true;
+                } catch (cdnError) {
+                    throw new Error(`Error al cargar mensajería: ${cdnError.message}`);
+                }
             }
             
-            window.mensajeriaCargada = true;
-            console.log('✅ Módulo de mensajería cargado correctamente', window.Mensajeria);
-            return true;
         } catch (error) {
-            const errorMsg = `❌ Error al cargar el módulo de mensajería: ${error.message}`;
+            const errorMsg = `❌ Error crítico al cargar el módulo de mensajería: ${error.message}`;
             console.error(errorMsg, error);
-            mostrarErrorEnInterfaz('Error al cargar un componente esencial. Por favor, recarga la página.');
-            throw new Error(errorMsg);
+            
+            // Mostrar error en la interfaz si es posible
+            if (typeof mostrarErrorEnInterfaz === 'function') {
+                mostrarErrorEnInterfaz('Error al cargar un componente esencial. Por favor, recarga la página.');
+            } else {
+                // Fallback en caso de que mostrarErrorEnInterfaz no esté disponible
+                alert('Error crítico: ' + error.message + '\n\nPor favor, recarga la página.');
+            }
+            
+            throw error; // Relanzar para que el llamador pueda manejarlo
         }
-    }
+    };
     
     // Cargar mensajería al inicio
     document.addEventListener('DOMContentLoaded', () => {
         console.log('🚀 Iniciando carga del módulo de mensajería...');
-        cargarMensajeria().catch(error => {
+        window.cargarMensajeria().catch(error => {
             console.error('Error en la carga inicial de mensajería:', error);
         });
     });
     </script>
     
+    <!-- Inicialización del sistema de mensajería centralizado -->
     <script>
     // Inicialización del sistema de mensajería centralizado
     async function inicializarSistemaMensajeria() {
         console.log('🔍 Inicializando sistema de mensajería...');
         
         try {
-            // 1. Esperar a que el módulo de mensajería esté disponible
-            if (!window.Mensajeria) {
-                console.log('⏳ Esperando a que el módulo de mensajería esté disponible...');
-                await new Promise((resolve, reject) => {
-                    const checkMensajeria = setInterval(() => {
-                        if (window.Mensajeria) {
-                            clearInterval(checkMensajeria);
-                            console.log('✅ Módulo de mensajería disponible');
-                            resolve();
-                        }
-                    }, 100);
-                    
-                    // Timeout después de 5 segundos
-                    setTimeout(() => {
-                        clearInterval(checkMensajeria);
-                        reject(new Error('Tiempo de espera agotado para cargar el módulo de mensajería'));
-                    }, 5000);
-                });
+            // 1. Asegurarse de que el módulo de mensajería esté cargado
+            if (typeof window.cargarMensajeria === 'function') {
+                const cargado = await window.cargarMensajeria();
+                if (!cargado) {
+                    throw new Error('No se pudo cargar el módulo de mensajería');
+                }
+            } else {
+                throw new Error('La función cargarMensajeria no está disponible');
             }
             
             // 2. Verificar que la API sea válida
@@ -105,52 +145,114 @@
                     'enableControls',
                     'disableControls',
                     'enviarMensaje',
-                    'enviarMensajeConReintenos',
                     'registrarControlador'
                 ];
                 
-                if (typeof api !== 'object') return false;
+                if (typeof api !== 'object') {
+                    console.error('❌ La API no es un objeto');
+                    return false;
+                }
                 
-                return funcionesRequeridas.every(
-                    func => typeof api[func] === 'function'
+                const faltanFunciones = funcionesRequeridas.filter(
+                    fn => typeof api[fn] !== 'function'
                 );
+                
+                if (faltanFunciones.length > 0) {
+                    console.error('❌ Faltan funciones requeridas:', faltanFunciones);
+                    return false;
+                }
+                
+                return true;
             };
             
             if (!validarAPI(window.Mensajeria)) {
+                const funcionesDisponibles = Object.keys(window.Mensajeria || {})
+                    .filter(k => typeof window.Mensajeria[k] === 'function');
+                    
                 console.error('❌ La API de mensajería no es válida. Funciones disponibles:', 
-                    Object.keys(window.Mensajeria).filter(k => typeof window.Mensajeria[k] === 'function')
+                    funcionesDisponibles
                 );
+                
                 throw new Error('La API de mensajería no es válida o no está correctamente exportada');
             }
             
-            // 3. Inicializar el sistema de mensajería
-            console.log('🔄 Inicializando sistema de mensajería...');
+            // 3. Configuración de inicialización
             const opcionesInicializacion = {
                 iframeId: 'padre',
                 logLevel: 'DEBUG',
                 maxReintentos: 3,
                 timeout: 10000,
-                dominio: window.location.origin
+                dominio: window.location.origin,
+                debug: true
             };
             
-            console.log('⚙️ Opciones de inicialización:', opcionesInicializacion);
+            console.log('⚙️ Inicializando mensajería con opciones:', opcionesInicializacion);
             
-            await window.Mensajeria.inicializarMensajeria(opcionesInicializacion);
+            // 4. Inicializar el sistema de mensajería
+            try {
+                await window.Mensajeria.inicializarMensajeria(opcionesInicializacion);
+                console.log('✅ Mensajería inicializada correctamente');
+                
+                // 5. Configurar controladores globales
+                if (typeof configurarControladoresGlobales === 'function') {
+                    configurarControladoresGlobales();
+                    console.log('✅ Controladores globales configurados');
+                } else {
+                    console.warn('⚠️ La función configurarControladoresGlobales no está definida');
+                }
+                
+                // 6. Configurar manejador de errores global
+                window.addEventListener('error', (event) => {
+                    console.error('⚠️ Error global detectado:', event.error || event.message);
+                    
+                    if (window.Mensajeria && typeof window.Mensajeria.enviarMensaje === 'function') {
+                        window.Mensajeria.enviarMensaje('hijo2', 'error_global', {
+                            mensaje: event.message,
+                            archivo: event.filename,
+                            linea: event.lineno,
+                            columna: event.colno,
+                            error: event.error ? event.error.stack : null
+                        }).catch(err => console.error('Error al notificar error global:', err));
+                    }
+                });
+                
+                // 7. Confirmar inicialización
+                console.log('✅ Sistema de mensajería centralizado inicializado correctamente', {
+                    version: '2.0.1',
+                    timestamp: new Date().toISOString(),
+                    config: opcionesInicializacion
+                });
+                
+                return true;
+                
+            } catch (initError) {
+                console.error('❌ Error durante la inicialización de la mensajería:', initError);
+                
+                // Intentar limpiar el estado en caso de error
+                if (window.Mensajeria && typeof window.Mensajeria.limpiarEstado === 'function') {
+                    try {
+                        window.Mensajeria.limpiarEstado(true);
+                        console.log('🔄 Estado de mensajería limpiado después del error');
+                    } catch (cleanupError) {
+                        console.error('❌ Error al limpiar el estado:', cleanupError);
+                    }
+                }
+                
+                throw new Error(`Error al inicializar la mensajería: ${initError.message}`);
+            }
             
-            // 4. Configurar controladores globales
-            configurarControladoresGlobales();
-            
-            console.log('✅ Sistema de mensajería centralizado inicializado', {
-                version: '2.0.0',
-                timestamp: new Date().toISOString(),
-                config: opcionesInicializacion
-            });
-            
-            return true;
         } catch (error) {
-            console.error('❌ Error al inicializar el sistema de mensajería:', error);
-            mostrarErrorEnInterfaz('Error al inicializar el sistema de mensajería: ' + error.message);
-            throw error;
+            const errorMsg = `❌ Error crítico en inicializarSistemaMensajeria: ${error.message}`;
+            console.error(errorMsg, error);
+            
+            // Mostrar error en la interfaz si es posible
+            if (typeof mostrarErrorEnInterfaz === 'function') {
+                mostrarErrorEnInterfaz(errorMsg);
+            } else {
+                console.error('⚠️ No se pudo mostrar el error en la interfaz');
+            }
+            
+            throw error; // Relanzar para manejo superior
         }
     }
     
