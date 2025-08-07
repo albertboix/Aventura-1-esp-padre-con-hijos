@@ -40,16 +40,29 @@
        */
       async function inicializarMensajeria() {
         try {
-          // Importar e inicializar el módulo de mensajería
-          const moduloMensajeria = await import('./js/mensajeria.js');
-          window.Mensajeria = moduloMensajeria.default || moduloMensajeria;
+          console.log(`[${CONFIG.IFRAME_ID}] Cargando módulo de mensajería...`);
           
-          if (!window.Mensajeria || typeof window.Mensajeria.inicializarMensajeria !== 'function') {
-            throw new Error('No se pudo inicializar el módulo de mensajería');
+          // Importar e inicializar el módulo de mensajería
+          try {
+            const moduloMensajeria = await import('./js/mensajeria.js');
+            window.Mensajeria = moduloMensajeria.default || moduloMensajeria;
+            console.log(`[${CONFIG.IFRAME_ID}] Módulo de mensajería cargado:`, window.Mensajeria);
+          } catch (importError) {
+            console.error(`[${CONFIG.IFRAME_ID}] Error al cargar el módulo de mensajería:`, importError);
+            throw new Error(`Error al cargar el módulo de mensajería: ${importError.message}`);
+          }
+          
+          if (!window.Mensajeria) {
+            throw new Error('El módulo de mensajería se cargó pero es undefined');
+          }
+          
+          if (typeof window.Mensajeria.inicializarMensajeria !== 'function') {
+            console.error('Métodos disponibles en Mensajeria:', Object.keys(window.Mensajeria).join(', '));
+            throw new Error('La función inicializarMensajeria no está disponible en el módulo');
           }
           
           // Configurar la mensajería
-          await window.Mensajeria.inicializarMensajeria({
+          console.log(`[${CONFIG.IFRAME_ID}] Inicializando mensajería con configuración:`, {
             iframeId: CONFIG.IFRAME_ID,
             logLevel: CONFIG.LOG_LEVEL,
             debug: CONFIG.DEBUG,
@@ -60,16 +73,52 @@
             }
           });
 
-          console.log(`[${CONFIG.IFRAME_ID}] Mensajería inicializada`);
+          try {
+            await window.Mensajeria.inicializarMensajeria({
+              iframeId: CONFIG.IFRAME_ID,
+              logLevel: CONFIG.LOG_LEVEL,
+              debug: CONFIG.DEBUG,
+              reintentos: {
+                max: CONFIG.REINTENTOS.MAXIMOS,
+                delay: CONFIG.REINTENTOS.TIEMPO_ESPERA,
+                factor: CONFIG.REINTENTOS.FACTOR
+              }
+            });
+            console.log(`[${CONFIG.IFRAME_ID}] Mensajería inicializada correctamente`);
+          } catch (initError) {
+            console.error(`[${CONFIG.IFRAME_ID}] Error al inicializar la mensajería:`, initError);
+            throw new Error(`Error al inicializar la mensajería: ${initError.message}`);
+          }
           
-          // Registrar manejadores de mensajes
-          await registrarManejadores();
+          // Asegurarse de que las funciones globales estén disponibles
+          if (window.Mensajeria) {
+            // Hacer que las funciones estén disponibles globalmente
+            window.enableControls = window.Mensajeria.enableControls || function() {
+              console.warn('enableControls no está disponible en Mensajeria');
+              return Promise.resolve(false);
+            };
+            
+            window.disableControls = window.Mensajeria.disableControls || function() {
+              console.warn('disableControls no está disponible en Mensajeria');
+              return Promise.resolve(false);
+            };
+          }
           
-          // Notificar al padre que estamos listos
-          await notificarEstado('inicializado');
-          
-          console.log(`[${CONFIG.IFRAME_ID}] Inicialización completada`);
-          return true;
+          try {
+            // Registrar manejadores de mensajes
+            console.log(`[${CONFIG.IFRAME_ID}] Registrando manejadores de mensajes...`);
+            await registrarManejadores();
+            
+            // Notificar al padre que estamos listos
+            console.log(`[${CONFIG.IFRAME_ID}] Notificando al padre...`);
+            await notificarEstado('inicializado');
+            
+            console.log(`[${CONFIG.IFRAME_ID}] Inicialización completada exitosamente`);
+            return true;
+          } catch (handlerError) {
+            console.error(`[${CONFIG.IFRAME_ID}] Error al registrar manejadores:`, handlerError);
+            throw new Error(`Error al registrar manejadores: ${handlerError.message}`);
+          }
           
         } catch (error) {
           const errorMsg = `Error al inicializar la mensajería: ${error.message}`;
