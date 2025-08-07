@@ -35,19 +35,55 @@
           console.log('[HIJO2] Iniciando sistema de mensajería...');
           
           // 1. Importar dinámicamente el módulo de mensajería
-          const moduloMensajeria = await cargarModuloMensajeria();
+          let moduloMensajeria;
+          try {
+            console.log('[HIJO2] Importando módulo de mensajería...');
+            moduloMensajeria = await import('./js/mensajeria.js');
+            console.log('[HIJO2] Módulo de mensajería cargado correctamente:', 
+              Object.keys(moduloMensajeria.default || moduloMensajeria));
+          } catch (error) {
+            console.error('[HIJO2] Error al cargar el módulo de mensajería:', error);
+            throw new Error(`Error al cargar el módulo de mensajería: ${error.message}`);
+          }
           
           // 2. Hacerlo globalmente disponible
           window.Mensajeria = moduloMensajeria.default || moduloMensajeria;
-          const { TIPOS_MENSAJE, LOG_LEVELS, ERRORES } = window.Mensajeria;
           
-          // 3. Configuración avanzada de la mensajería
+          if (!window.Mensajeria) {
+            console.error('[HIJO2] El módulo de mensajería no exporta un objeto válido:', moduloMensajeria);
+            throw new Error('El módulo de mensajería no exporta un objeto válido');
+          }
+          
+          // 3. Verificar que las funciones necesarias estén disponibles
+          console.log('[HIJO2] Funciones disponibles en Mensajeria:', Object.keys(window.Mensajeria));
+          
+          if (typeof window.Mensajeria.inicializarMensajeria !== 'function') {
+            console.error('[HIJO2] La función inicializarMensajeria no está disponible');
+            throw new Error('La función inicializarMensajeria no está disponible en el módulo');
+          }
+          
+          // 4. Obtener constantes con valores por defecto si no están disponibles
+          const TIPOS_MENSAJE = window.Mensajeria.TIPOS_MENSAJE || {
+            SISTEMA: 'sistema',
+            CONTROLES_HABILITADOS: 'sistema:controles_habilitados',
+            CONTROLES_DESHABILITADOS: 'sistema:controles_deshabilitados'
+          };
+          
+          const LOG_LEVELS = window.Mensajeria.LOG_LEVELS || {
+            DEBUG: 0,
+            INFO: 1,
+            WARN: 2,
+            ERROR: 3,
+            NONE: 4
+          };
+          
+          // 5. Configuración avanzada de la mensajería
           const configuracion = {
             iframeId: 'hijo2',
             logLevel: LOG_LEVELS.DEBUG,
             debug: true,
             dominioPermitido: window.parent.location.origin,
-            maxRetries: estadoApp.configuracion.maxReintentos,
+            maxRetries: estadoApp.configuracion.maxReintenos,
             retryDelay: 1000,
             timeout: estadoApp.configuracion.timeoutMensajes,
             mensajeTtl: 10 * 60 * 1000,  // 10 minutos
