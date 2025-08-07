@@ -987,16 +987,22 @@ const Mensajeria = {
             return true;
         } catch (error) {
             console.error('Error al deshabilitar controles:', error);
-            throw error;
+            throw error; // Re-lanzar el error para manejarlo más arriba
         }
-    },
+    }
 };
 
 // Export universal
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = Mensajeria;
+    module.exports.default = Mensajeria; // Para compatibilidad con ES modules
 } else if (typeof define === 'function' && define.amd) {
-    define([], function () { return Mensajeria; });
-} else if (typeof window !== 'undefined') {
+    define([], function() { return Mensajeria; });
+} else {
     window.Mensajeria = Mensajeria;
+}
+
+// Para compatibilidad con CommonJS
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports.default = MensajeriaCompleta;
 }
