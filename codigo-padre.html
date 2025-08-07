@@ -61,24 +61,41 @@
     
     <script>
     // Inicialización del sistema de mensajería centralizado
-    document.addEventListener('DOMContentLoaded', async function() {
+    async function inicializarSistemaMensajeria() {
         try {
+            console.log('🔍 Inicializando sistema de mensajería...');
+            
             // Esperar a que el módulo de mensajería esté disponible
             if (!window.Mensajeria) {
-                await new Promise(resolve => {
+                console.log('⏳ Esperando a que el módulo de mensajería esté disponible...');
+                await new Promise((resolve, reject) => {
                     const checkMensajeria = setInterval(() => {
                         if (window.Mensajeria) {
                             clearInterval(checkMensajeria);
+                            console.log('✅ Módulo de mensajería disponible');
                             resolve();
                         }
                     }, 100);
+                    
+                    // Timeout después de 5 segundos
+                    setTimeout(() => {
+                        clearInterval(checkMensajeria);
+                        reject(new Error('Tiempo de espera agotado para cargar el módulo de mensajería'));
+                    }, 5000);
                 });
             }
             
             const mensajeria = window.Mensajeria;
             
+            // Verificar que la API de mensajería sea válida
+            if (!mensajeria || typeof mensajeria.inicializarMensajeria !== 'function') {
+                throw new Error('La API de mensajería no es válida o no está correctamente exportada');
+            }
+            
+            console.log('⚙️ Configurando mensajería...');
+            
             // Configuración centralizada de la mensajería
-            mensajeria.inicializarMensajeria({
+            await mensajeria.inicializarMensajeria({
                 iframeId: 'padre',
                 logLevel: mensajeria.LOG_LEVELS.INFO,
                 debug: false,
@@ -91,11 +108,39 @@
                 confirmacionesHabilitadas: true
             });
             
+            console.log('✅ Sistema de mensajería inicializado correctamente');
+            
             // Registrar manejadores centralizados
             if (typeof registrarManejadoresCentralizados === 'function') {
+                console.log('🔗 Registrando manejadores centralizados...');
                 registrarManejadoresCentralizados(mensajeria);
+                console.log('✅ Manejadores centralizados registrados');
             } else {
-                console.warn('La función registrarManejadoresCentralizados no está definida');
+                console.warn('⚠️ La función registrarManejadoresCentralizados no está definida');
+            }
+            
+            console.log('✅ Sistema de mensajería centralizado inicializado', {
+                version: '2.0.0',
+                timestamp: new Date().toISOString()
+            });
+            
+            return mensajeria;
+        } catch (error) {
+            console.error('❌ Error al inicializar el sistema de mensajería:', error);
+            mostrarErrorEnInterfaz('Error al inicializar el sistema de mensajería: ' + error.message);
+            throw error;
+        }
+    }
+    
+    // Inicializar cuando el DOM esté listo
+    document.addEventListener('DOMContentLoaded', async () => {
+        try {
+            await inicializarSistemaMensajeria();
+            console.log('🚀 Aplicación inicializada correctamente');
+            
+            // Inicializar el resto de la aplicación
+            if (window.inicializarAplicacion && typeof window.inicializarAplicacion === 'function') {
+                await window.inicializarAplicacion();
             }
             
             console.log('✅ Sistema de mensajería centralizado inicializado', {
@@ -107,11 +152,11 @@
                     dominio: window.location.origin
                 }
             });
-            
-            // Inicializar la aplicación
-            if (window.inicializarAplicacion) {
-                window.inicializarAplicacion();
-            }
+        } catch (error) {
+            console.error('❌ Error crítico en la inicialización:', error);
+            mostrarErrorEnInterfaz('Error crítico al inicializar la aplicación: ' + error.message);
+        }
+    });
             
             // Manejo de errores no capturados
             window.addEventListener('error', (event) => {
