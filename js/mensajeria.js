@@ -936,13 +936,60 @@ const Mensajeria = {
         metricas: obtenerMetricas()
     }),
     
-    // Métodos de control (compatibilidad)
-    enableControls() {
-        logger.warn('enableControls está obsoleto. Usa los métodos de mensajería directamente.');
+    // Métodos de control
+    /**
+     * Habilita los controles en todos los iframes
+     * @param {string} [modo='casa'] - Modo de operación
+     * @param {Object} [opciones={}] - Opciones adicionales
+     * @param {string} [opciones.motivo='sin_especificar'] - Razón del cambio
+     * @param {boolean} [opciones.forzar=false] - Forzar la operación
+     * @returns {Promise<boolean>} True si se completó exitosamente
+     */
+    async enableControls(modo = 'casa', { motivo = 'sin_especificar', forzar = false } = {}) {
+        try {
+            console.log(`[Mensajeria] Habilitando controles (modo: ${modo}, motivo: ${motivo})`);
+            
+            // Habilitar controles localmente
+            document.body.classList.remove('controles-deshabilitados');
+            
+            // Notificar a todos los iframes
+            await this.enviarATodos('sistema:controles_habilitados', { 
+                modo, 
+                motivo,
+                timestamp: Date.now()
+            });
+            
+            return true;
+        } catch (error) {
+            console.error('Error al habilitar controles:', error);
+            throw error;
+        }
     },
-    disableControls() {
-        logger.warn('disableControls está obsoleto. Usa los métodos de mensajería directamente.');
-    }
+    
+    /**
+     * Deshabilita los controles en todos los iframes
+     * @param {string} [motivo='sin_especificar'] - Razón de la deshabilitación
+     * @returns {Promise<boolean>} True si se completó exitosamente
+     */
+    async disableControls(motivo = 'sin_especificar') {
+        try {
+            console.log(`[Mensajeria] Deshabilitando controles (motivo: ${motivo})`);
+            
+            // Deshabilitar controles localmente
+            document.body.classList.add('controles-deshabilitados');
+            
+            // Notificar a todos los iframes
+            await this.enviarATodos('sistema:controles_deshabilitados', { 
+                motivo,
+                timestamp: Date.now()
+            });
+            
+            return true;
+        } catch (error) {
+            console.error('Error al deshabilitar controles:', error);
+            throw error;
+        }
+    },
 };
 
 // Export universal
