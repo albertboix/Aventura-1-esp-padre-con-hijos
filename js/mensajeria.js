@@ -1,54 +1,196 @@
-// Mensajería centralizada para padre e hijos (Aventura 1)
-// Versión mejorada con manejo bidireccional y prevención de duplicados
+/**
+ * @module Mensajeria
+ * @description Sistema de mensajería centralizada para la aplicación Valencia Tour.
+ * Proporciona una API robusta para la comunicación entre iframes con soporte para
+ * reintentos, confirmaciones, métricas y manejo de errores.
+ * 
+ * @example
+ * // Uso básico
+ * import Mensajeria from './mensajeria.js';
+ * 
+ * // Inicialización
+ * await Mensajeria.inicializar({ iframeId: 'miIframe' });
+ * 
+ * // Registrar manejador
+ * Mensajeria.on('tipo.mensaje', (datos, metadata) => {
+ *   console.log('Mensaje recibido:', datos);
+ * });
+ * 
+ * // Enviar mensaje
+ * await Mensajeria.enviar('destino', 'tipo.mensaje', { clave: 'valor' });
+ */
 
-const LOG_LEVELS = { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3, NONE: 4 };
-const ERRORES = {
-    MENSAJE_INVALIDO: 'MENSAJE_INVALIDO',
-    DESTINO_NO_DISPONIBLE: 'DESTINO_NO_DISPONIBLE',
-    TIMEOUT: 'TIMEOUT',
-    ENVIO_FALLIDO: 'ENVIO_FALLIDO',
-    TIPO_INVALIDO: 'TIPO_INVALIDO',
-    MENSAJE_DUPLICADO: 'MENSAJE_DUPLICADO'
+/**
+ * Niveles de log disponibles
+ * @readonly
+ * @enum {number}
+ */
+export const LOG_LEVELS = Object.freeze({
+  DEBUG: 0,   // Mensajes detallados para depuración
+  INFO: 1,    // Información general de operaciones
+  WARN: 2,    // Advertencias de posibles problemas
+  ERROR: 3,   // Errores que no detienen la ejecución
+  NONE: 4     // No mostrar logs
+});
+
+/**
+ * Códigos de error estandarizados
+ * @readonly
+ * @enum {string}
+ */
+export const ERRORES = Object.freeze({
+  // Errores de validación
+  MENSAJE_INVALIDO: 'MENSAJE_INVALIDO',
+  DESTINO_INVALIDO: 'DESTINO_INVALIDO',
+  TIPO_INVALIDO: 'TIPO_INVALIDO',
+  
+  // Errores de red/comunicación
+  DESTINO_NO_DISPONIBLE: 'DESTINO_NO_DISPONIBLE',
+  TIMEOUT: 'TIMEOUT',
+  ENVIO_FALLIDO: 'ENVIO_FALLIDO',
+  
+  // Errores de estado
+  NO_INICIALIZADO: 'NO_INICIALIZADO',
+  YA_INICIALIZADO: 'YA_INICIALIZADO',
+  
+  // Errores de mensajes
+  MENSAJE_DUPLICADO: 'MENSAJE_DUPLICADO',
+  CONFIRMACION_PENDIENTE: 'CONFIRMACION_PENDIENTE',
+  
+  // Errores de sistema
+  ERROR_INTERNO: 'ERROR_INTERNO'
+});
+
+/**
+ * Tipos de mensaje predefinidos
+ * @readonly
+ * @enum {string}
+ */
+export const TIPOS_MENSAJE = Object.freeze({
+  // Mensajes del sistema
+  INICIALIZACION: 'sistema:inicializacion',
+  CAMBIO_MODO: 'sistema:cambio_modo',
+  CAMBIO_ESTADO: 'sistema:cambio_estado',
+  HABILITAR_CONTROLES: 'sistema:habilitar_controles',
+  DESHABILITAR_CONTROLES: 'sistema:deshabilitar_controles',
+  
+  // Mensajes específicos de módulos
+  SELECCION_PUNTO: 'hijo5:seleccion_punto',
+  AUDIO: 'hijo3:audio',
+  NAVEGACION: 'hijo2:navegacion',
+  RETO: 'hijo4:reto',
+  CONFIRMACION: 'sistema:confirmacion',
+  
+  // Flujo de navegación
+  USUARIO_FUERA_RADIO: 'usuario-fuera-radio',
+  ESTADO_INICIAL: 'estado-inicial',
+  PARADA_COMPLETADA: 'parada-completada',
+  VER_IMAGEN: 'ver-imagen',
+  
+  // Navegación
+  INICIO_NAVEGACION: 'inicio-navegacion',
+  FIN_NAVEGACION: 'fin-navegacion',
+  LLEGADA_PARADA: 'llegada-parada',
+  OCULTAR_FLECHA: 'ocultar-flecha-navegacion'
+});
+
+/**
+ * Esquema de validación para mensajes
+ * @type {Object}
+ */
+const ESQUEMA_MENSAJE = {
+  id: { type: 'string', required: true },
+  origen: { type: 'string', required: true },
+  destino: { type: 'string', required: true },
+  tipo: { type: 'string', required: true },
+  timestamp: { type: 'number', required: true },
+  datos: { type: 'object', required: false },
+  metadata: { type: 'object', required: false }
 };
 
-const TIPOS_MENSAJE = {
-    INICIALIZACION: 'sistema:inicializacion',
-    CAMBIO_MODO: 'sistema:cambio_modo',
-    CAMBIO_ESTADO: 'sistema:cambio_estado',
-    HABILITAR_CONTROLES: 'sistema:habilitar_controles',
-    DESHABILITAR_CONTROLES: 'sistema:deshabilitar_controles',
-    SELECCION_PUNTO: 'hijo5:seleccion_punto',
-    AUDIO: 'hijo3:audio',
-    NAVEGACION: 'hijo2:navegacion',
-    RETO: 'hijo4:reto',
-    CONFIRMACION: 'sistema:confirmacion',
-    
-    // TIPOS PARA EL FLUJO DE NAVEGACIÓN
-    USUARIO_FUERA_RADIO: 'usuario-fuera-radio',
-    ESTADO_INICIAL: 'estado-inicial',
-    PARADA_COMPLETADA: 'parada-completada',
-    VER_IMAGEN: 'ver-imagen',
-    
-    // TIPOS DE NAVEGACIÓN ESPECÍFICOS
-    INICIO_NAVEGACION: 'inicio-navegacion',
-    FIN_NAVEGACION: 'fin-navegacion',
-    LLEGADA_PARADA: 'llegada-parada',
-    OCULTAR_FLECHA: 'ocultar-flecha-navegacion'
-};
+/**
+ * Configuración por defecto para la mensajería
+ * @type {Object}
+ */
+const CONFIG_POR_DEFECTO = Object.freeze({
+  // Identificación
+  iframeId: 'desconocido',
+  
+  // Logging
+  logLevel: LOG_LEVELS.INFO,
+  debug: false,
+  
+  // Seguridad
+  dominioPermitido: window.location.origin || '*',
+  
+  // Reintentos
+  maxRetries: 3,
+  retryDelay: 1000,
+  maxRetryDelay: 10000,
+  factorBackoff: 2,
+  
+  // Timeouts
+  timeoutMensaje: 10000, // 10 segundos
+  
+  // TTL
+  mensajeTtl: 5 * 60 * 1000, // 5 minutos
+  
+  // Métricas
+  habilitarMetricas: true,
+  
+  // Confirmaciones
+  confirmacionesHabilitadas: true
+});
 
-// Configuración por defecto
-let config = {
-    iframeId: 'desconocido',
-    logLevel: LOG_LEVELS.INFO,
-    debug: false,
-    dominioPermitido: '*',
-    maxRetries: 3,
-    retryDelay: 1000,
-    mensajeTtl: 5 * 60 * 1000 // 5 minutos de vida para los mensajes
-};
+let config = { ...CONFIG_POR_DEFECTO };
 
-// Sistema de seguimiento de mensajes procesados
+// Sistema de seguimiento de mensajes mejorado
 const mensajesProcesados = new Map();
+const mensajesPendientes = new Map();
+const metricas = {
+    mensajesEnviados: 0,
+    mensajesRecibidos: 0,
+    mensajesFallidos: 0,
+    errores: 0,
+    reintentos: 0,
+    tiempoPromedioRespuesta: 0,
+    ultimoError: null,
+    ultimoMensaje: null,
+    ultimaActualizacion: new Date().toISOString()
+};
+
+// Configuración de reintentos con retroceso exponencial
+const RETRY_CONFIG = {
+    maxRetries: 5,
+    initialDelay: 1000, // 1 segundo
+    maxDelay: 30000,   // 30 segundos
+    factor: 2,         // Factor de multiplicación para el retraso
+    jitter: 0.5        // Variación aleatoria en el retraso (0-1)
+};
+
+/**
+ * Genera un ID único para mensajes
+ * @returns {string} ID único generado
+ */
+function generarIdUnico() {
+    return 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+}
+
+/**
+ * Calcula el tiempo de espera con retroceso exponencial
+ * @param {number} intento - Número de intento actual
+ * @returns {number} Tiempo de espera en milisegundos
+ */
+function calcularTiempoEspera(intento) {
+    const { initialDelay, maxDelay, factor, jitter } = RETRY_CONFIG;
+    const delay = Math.min(initialDelay * Math.pow(factor, intento - 1), maxDelay);
+    const jitterAmount = delay * jitter * Math.random();
+    return delay + jitterAmount;
+}
+
+// Historial de mensajes para depuración (últimos 100 mensajes)
+const historialMensajes = [];
+const MAX_HISTORIAL = 100;
 
 // Sistema de logging mejorado
 class Logger {
@@ -105,32 +247,54 @@ setInterval(() => {
     }
 }, 60000); // Ejecutar cada minuto
 
-function crearMensaje(tipo, datos = {}, destino = null) {
+/**
+ * Crea un mensaje con metadatos estandarizados
+ * @param {string} tipo - Tipo de mensaje (de TIPOS_MENSAJE)
+ * @param {Object} [datos={}] - Datos del mensaje
+ * @param {string} [destino=null] - ID del iframe destino
+ * @param {Object} [opciones={}] - Opciones adicionales
+ * @returns {Object} Mensaje formateado
+ */
+function crearMensaje(tipo, datos = {}, destino = null, opciones = {}) {
     if (!tipo || typeof tipo !== 'string') {
         const error = new Error('El tipo de mensaje es requerido y debe ser una cadena');
-        logger.error('Error al crear mensaje', error);
+        error.codigo = 'TIPO_INVALIDO';
         throw error;
     }
     
     const mensaje = {
-        version: '1.1', // Versión incrementada para señalar cambios en la estructura
-        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        timestamp: new Date().toISOString(),
+        id: generarIdUnico(),
         tipo,
+        datos,
+        timestamp: Date.now(),
+        timestampISO: new Date().toISOString(),
         origen: config.iframeId,
         destino,
-        datos: { ...datos } // Clonar para evitar mutaciones
+        version: '2.0.0',
+        // Metadatos adicionales
+        secuencia: metricas.mensajesEnviados + 1,
+        ...opciones
     };
-    
+
+    // Añadir información de seguimiento si está habilitado
+    if (opciones.habilitarSeguimiento !== false) {
+        mensaje._seguimiento = {
+            intento: opciones.intento || 1,
+            maxIntentos: opciones.maxIntentos || RETRY_CONFIG.maxRetries,
+            timeout: opciones.timeout || config.timeoutMensaje
+        };
+    }
+
     // Asegurar que los datos tengan un tipo si no lo tienen
     if (!mensaje.datos.tipo) {
         mensaje.datos.tipo = tipo.split(':').pop(); // Extrae el último segmento como subtipo
     }
-    
+
     logger.debug('Mensaje creado', { tipo, destino, id: mensaje.id });
     return mensaje;
 }
 
+// Función para validar mensajes
 function validarMensaje(m) {
     if (!m) return { valido: false, error: 'Mensaje nulo' };
     const req = ['version', 'id', 'timestamp', 'tipo', 'origen'];
@@ -139,79 +303,118 @@ function validarMensaje(m) {
     return { valido: true };
 }
 
-/**
- * Envía un mensaje a un iframe destino
- * @param {string} destino - ID del iframe destino
- * @param {string} tipo - Tipo de mensaje (de TIPOS_MENSAJE)
- * @param {Object} [datos={}] - Datos del mensaje
- * @returns {Object} El mensaje enviado
- * @throws {Error} Si no se puede encontrar el iframe o hay un error al enviar
- */
-function enviarMensaje(destino, tipo, datos = {}) {
-    // Validar parámetros
-    if (!destino || typeof destino !== 'string') {
-        const error = new Error('El destino es requerido y debe ser una cadena');
-        logger.error('Error al enviar mensaje', error);
-        throw error;
-    }
-    
-    if (!tipo || typeof tipo !== 'string') {
-        const error = new Error('El tipo de mensaje es requerido y debe ser una cadena');
-        logger.error('Error al enviar mensaje', error);
-        throw error;
-    }
-    
-    // Crear el mensaje
-    const mensaje = crearMensaje(tipo, datos, destino);
-    
-    // Obtener la ventana de destino
-    let ventanaDestino;
-    
-    if (destino === 'padre' && window.parent !== window) {
-        ventanaDestino = window.parent;
-    } else {
-        const iframe = document.getElementById(destino);
-        if (!iframe || !iframe.contentWindow) {
-            const error = new Error(`No se pudo encontrar el iframe con ID: ${destino}`);
-            logger.error('Error al enviar mensaje', { 
-                error: error.message, 
-                destino, 
-                tipo, 
-                mensaje 
-            });
-            throw error;
+// Envía un mensaje a un iframe destino con manejo de errores mejorado
+async function enviarMensaje(destino, tipo, datos = {}, opciones = {}) {
+    // Validar parámetros con mensajes de error detallados
+    const validaciones = [
+        { cond: !destino || typeof destino !== 'string', error: 'Destino inválido' },
+        { cond: !tipo || typeof tipo !== 'string', error: 'Tipo de mensaje inválido' },
+        { cond: datos && typeof datos !== 'object', error: 'Los datos deben ser un objeto' },
+        { cond: opciones && typeof opciones !== 'object', error: 'Las opciones deben ser un objeto' }
+    ];
+
+    for (const { cond, error } of validaciones) {
+        if (cond) {
+            const errorObj = new Error(error);
+            errorObj.codigo = 'VALIDACION_FALLIDA';
+            errorObj.detalles = { destino, tipo };
+            throw errorObj;
         }
-        ventanaDestino = iframe.contentWindow;
     }
-    
-    // Intentar enviar el mensaje
+
+    // Crear el mensaje con metadatos
+    const mensaje = crearMensaje(tipo, datos, destino, {
+        ...opciones,
+        timestampEnvio: Date.now()
+    });
+
+    // Registrar el mensaje como pendiente
+    mensajesPendientes.set(mensaje.id, {
+        mensaje,
+        timestamp: Date.now(),
+        intentos: 1,
+        estado: 'enviando',
+        timeout: null
+    });
+
+    // Obtener el iframe destino con validación
+    const iframe = document.getElementById(destino);
+    if (!iframe || !iframe.contentWindow) {
+        const error = new Error(`No se pudo encontrar el iframe con ID: ${destino}`);
+        error.codigo = 'DESTINO_NO_ENCONTRADO';
+        throw error;
+    }
+
+    // Validar origen del iframe
     try {
-        // Usar el dominio configurado o '*' si no está definido
-        const targetOrigin = config.dominioPermitido || '*';
-        
-        // Registrar el envío
-        logger.debug(`[${config.iframeId}] Enviando mensaje a ${destino}`, {
-            tipo,
-            mensajeId: mensaje.id,
-            timestamp: new Date().toISOString(),
-            datos: Object.keys(datos)
-        });
-        
-        // Enviar el mensaje
-        ventanaDestino.postMessage(JSON.stringify(mensaje), targetOrigin);
-        
+        const iframeOrigin = new URL(iframe.src).origin;
+        if (iframeOrigin !== window.location.origin) {
+            throw new Error('Origen del iframe no coincide');
+        }
+    } catch (e) {
+        const error = new Error(`Origen del iframe no válido: ${e.message}`);
+        error.codigo = 'ORIGEN_INVALIDO';
+        throw error;
+    }
+
+    // Enviar el mensaje con manejo de errores mejorado
+    try {
+        const destinoWindow = iframe.contentWindow;
+        const mensajeSerializado = JSON.stringify(mensaje);
+
+        // Usar postMessage con transferencia estructurada si está disponible
+        if (window.structuredClone) {
+            const mensajeClonado = JSON.parse(mensajeSerializado);
+            destinoWindow.postMessage(mensajeClonado, window.location.origin);
+        } else {
+            destinoWindow.postMessage(JSON.parse(mensajeSerializado), window.location.origin);
+        }
+
+        // Actualizar métricas
+        const ahora = Date.now();
+        metricas.mensajesEnviados++;
+        metricas.ultimaActualizacion = new Date().toISOString();
+
+        // Configurar timeout para confirmación
+        const timeoutId = setTimeout(() => {
+            const pendiente = mensajesPendientes.get(mensaje.id);
+            if (pendiente && pendiente.estado === 'enviando') {
+                pendiente.estado = 'timeout';
+                metricas.errores++;
+
+                // Notificar al sistema de monitoreo
+                if (config.onError) {
+                    const error = new Error(`Timeout al enviar mensaje ${mensaje.id}`);
+                    error.codigo = 'TIMEOUT_ENVIO';
+                    error.mensaje = mensaje;
+                    config.onError(error);
+                }
+            }
+        }, opciones.timeout || config.timeoutMensaje);
+
+        // Actualizar estado del mensaje
+        const pendiente = mensajesPendientes.get(mensaje.id);
+        if (pendiente) {
+            pendiente.timeout = timeoutId;
+            pendiente.estado = 'enviado';
+            pendiente.timestampEnvio = ahora;
+        }
+
         return mensaje;
-        
+
     } catch (error) {
-        // Registrar el error
-        logger.error(`[${config.iframeId}] Error al enviar mensaje a ${destino}`, {
-            tipo,
-            mensajeId: mensaje.id,
-            error: error.message,
+        // Manejo de errores mejorado
+        metricas.errores++;
+        metricas.ultimoError = {
+            codigo: 'ERROR_ENVIO',
+            mensaje: error.message,
+            timestamp: new Date().toISOString(),
             stack: error.stack
-        });
-        
+        };
         throw new Error(`Error al enviar mensaje a ${destino}: ${error.message}`);
+    } finally {
+        // Limpiar mensajes pendientes antiguos
+        limpiarMensajesPendientes();
     }
 }
 
@@ -228,165 +431,195 @@ function enviarMensaje(destino, tipo, datos = {}) {
  * @returns {Promise<Object>} Promesa que se resuelve con la respuesta o rechaza con error
  */
 async function enviarMensajeConReintenos(destino, tipo, datos = {}, opciones = {}) {
-    const {
-        maxRetries = config.maxRetries,
-        retryDelay = config.retryDelay,
-        timeout = 5000,
-        esperarConfirmacion = true
-    } = opciones;
+    const idTransaccion = opciones.idTransaccion || `tx_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    const timestampInicio = Date.now();
     
-    let attempts = 0;
-    let lastError = null;
-    
-    // No esperar confirmación para mensajes de confirmación
-    const esperar = esperarConfirmacion && tipo !== TIPOS_MENSAJE.CONFIRMACION;
-    
-    // Crear un ID único para este envío si no se proporciona uno
-    const mensajeId = datos.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
-    // Si es un mensaje que espera confirmación, crear una promesa que se resolverá con la confirmación
-    let resolverConfirmacion, rechazarConfirmacion;
-    let confirmacionRecibida = false;
-    
-    if (esperar) {
-        const promesaConfirmacion = new Promise((resolve, reject) => {
-            resolverConfirmacion = (respuesta) => {
-                confirmacionRecibida = true;
-                clearTimeout(timeoutId);
-                resolve(respuesta);
-            };
-            rechazarConfirmacion = (error) => {
-                confirmacionRecibida = true;
-                clearTimeout(timeoutId);
-                reject(error);
-            };
-        });
-        
-        // Configurar un manejador temporal para la confirmación
-        const manejadorConfirmacion = (mensaje) => {
-            if (mensaje.datos?.idMensajeOriginal === mensajeId) {
-                // Eliminar el manejador temporal
-                Mensajeria.eliminarControlador(TIPOS_MENSAJE.CONFIRMACION, manejadorConfirmacion);
-                
-                if (mensaje.datos.estado === 'error') {
-                    rechazarConfirmacion(new Error(`Error en destino: ${mensaje.datos.mensaje || 'Error desconocido'}`));
-                } else {
-                    resolverConfirmacion(mensaje.datos);
-                }
-            }
-        };
-        
-        // Registrar el manejador temporal
-        Mensajeria.registrarControlador(TIPOS_MENSAJE.CONFIRMACION, manejadorConfirmacion);
-        
-        // Configurar timeout para la confirmación
-        const timeoutId = setTimeout(() => {
-            if (!confirmacionRecibida) {
-                Mensajeria.eliminarControlador(TIPOS_MENSAJE.CONFIRMACION, manejadorConfirmacion);
-                rechazarConfirmacion(new Error(`Timeout esperando confirmación para mensaje ${mensajeId}`));
-            }
-        }, timeout);
-        
-        // Configurar limpieza en caso de que la promesa sea rechazada
-        promesaConfirmacion.catch(() => {
-            clearTimeout(timeoutId);
-            Mensajeria.eliminarControlador(TIPOS_MENSAJE.CONFIRMACION, manejadorConfirmacion);
-        });
+    // Validar parámetros
+    if (!config.iframeId || config.iframeId === 'desconocido') {
+        const error = new Error('Sistema de mensajería no inicializado');
+        error.codigo = ERRORES.NO_INICIALIZADO;
+        throw error;
     }
     
-    // Función para realizar un intento de envío
-    const intentarEnvio = async () => {
-        attempts++;
+    if (!destino || typeof destino !== 'string') {
+        const error = new Error('El destino es requerido y debe ser una cadena');
+        error.codigo = ERRORES.DESTINO_INVALIDO;
+        throw error;
+    }
+    
+    if (!tipo || typeof tipo !== 'string') {
+        const error = new Error('El tipo de mensaje es requerido y debe ser una cadena');
+        error.codigo = ERRORES.TIPO_INVALIDO;
+        throw error;
+    }
+    
+    // Combinar opciones con la configuración global
+    const opcionesEnvio = {
+        maxRetries: config.maxRetries,
+        retryDelay: config.retryDelay,
+        maxRetryDelay: config.maxRetryDelay,
+        timeout: config.timeoutMensaje,
+        esperarConfirmacion: config.confirmacionesHabilitadas,
+        factorBackoff: config.factorBackoff,
+        ...opciones
+    };
+    
+    // Crear el mensaje base
+    const mensaje = crearMensaje(tipo, {
+        ...datos,
+        _idTransaccion: idTransaccion,
+        _timestampEnvio: timestampInicio
+    }, destino);
+    
+    // Registrar en el historial
+    registrarEnHistorial({
+        id: mensaje.id,
+        tipo,
+        origen: config.iframeId,
+        destino,
+        timestamp: new Date().toISOString(),
+        estado: 'enviando',
+        intento: 0,
+        idTransaccion
+    });
+    
+    // Función para realizar el envío con reintentos
+    const enviarConReintentos = async (intento = 0) => {
+        const intentoActual = intento + 1;
+        const tiempoEspera = Math.min(
+            opcionesEnvio.retryDelay * Math.pow(opcionesEnvio.factorBackoff, intento),
+            opcionesEnvio.maxRetryDelay
+        );
         
         try {
-            logger.debug(`[${config.iframeId}] Intento ${attempts}/${maxRetries} de enviar mensaje`, {
-                tipo,
-                destino,
-                mensajeId,
-                esperandoConfirmacion: esperar
+            // Verificar si el mensaje ya fue confirmado por otro intento
+            if (mensajesPendientes.has(mensaje.id) && 
+                mensajesPendientes.get(mensaje.id).estado === 'confirmado') {
+                const resultado = mensajesPendientes.get(mensaje.id).resultado;
+                mensajesPendientes.delete(mensaje.id);
+                return resultado;
+            }
+            
+            // Configurar timeout
+            const controladorTimeout = setTimeout(() => {
+                const error = new Error(`Timeout al enviar mensaje a ${destino} (${tipo})`);
+                error.codigo = ERRORES.TIMEOUT;
+                throw error;
+            }, opcionesEnvio.timeout);
+            
+            // Crear promesa para manejar la confirmación
+            let resolverConfirmacion, rechazarConfirmacion;
+            const promesaConfirmacion = new Promise((resolve, reject) => {
+                resolverConfirmacion = resolve;
+                rechazarConfirmacion = reject;
             });
             
-            // Crear una copia de los datos para no modificar el original
-            const datosEnvio = { ...datos, id: mensajeId };
+            // Registrar el mensaje como pendiente
+            mensajesPendientes.set(mensaje.id, {
+                mensaje,
+                timestamp: Date.now(),
+                intento: intentoActual,
+                estado: 'pendiente',
+                resolver: resolverConfirmacion,
+                rechazar: rechazarConfirmacion
+            });
             
             // Enviar el mensaje
-            const resultado = enviarMensaje(destino, tipo, datosEnvio);
+            enviarMensaje(destino, tipo, mensaje.datos);
             
-            // Si no necesitamos esperar confirmación, retornar inmediatamente
-            if (!esperar) {
-                logger.debug(`[${config.iframeId}] Mensaje enviado sin esperar confirmación`, {
-                    tipo,
-                    destino,
-                    mensajeId
-                });
-                return { exito: true, mensaje: 'Enviado sin esperar confirmación' };
+            // Actualizar métricas
+            metricas.mensajesEnviados++;
+            
+            // Si no se requiere confirmación, resolver inmediatamente
+            if (!opcionesEnvio.esperarConfirmacion) {
+                clearTimeout(controladorTimeout);
+                mensajesPendientes.delete(mensaje.id);
+                return Promise.resolve({ confirmado: true });
             }
             
-            // Esperar la confirmación con un timeout
-            try {
-                const confirmacion = await Promise.race([
-                    promesaConfirmacion,
-                    new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('Timeout esperando confirmación')), timeout)
-                    )
-                ]);
-                
-                logger.debug(`[${config.iframeId}] Confirmación recibida`, {
-                    tipo,
-                    destino,
-                    mensajeId,
-                    confirmacion
-                });
-                
-                return confirmacion;
-                
-            } catch (error) {
-                throw new Error(`Error en confirmación: ${error.message}`);
-            }
+            // Esperar confirmación con timeout
+            const resultado = await Promise.race([
+                promesaConfirmacion,
+                new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Tiempo de espera agotado')), opcionesEnvio.timeout)
+                )
+            ]);
+            
+            clearTimeout(controladorTimeout);
+            return resultado;
             
         } catch (error) {
-            lastError = error;
+            clearTimeout(controladorTimeout);
             
-            // Si aún tenemos intentos disponibles, reintentar después del retryDelay
-            if (attempts < maxRetries) {
-                const delay = retryDelay * Math.pow(2, attempts - 1); // Backoff exponencial
-                logger.warn(`[${config.iframeId}] Error en intento ${attempts}/${maxRetries}, reintentando en ${delay}ms`, {
+            // Actualizar métricas
+            metricas.errores++;
+            metricas.ultimoError = {
+                mensaje: error.message,
+                codigo: error.codigo || 'DESCONOCIDO',
+                timestamp: new Date().toISOString(),
+                intento: intentoActual,
+                tipo,
+                destino
+            };
+            
+            // Si se agotaron los reintentos, rechazar con el último error
+            if (intentoActual >= opcionesEnvio.maxRetries) {
+                logger.error(`Error al enviar mensaje después de ${intentoActual} intentos`, {
+                    error: error.message,
                     tipo,
                     destino,
-                    mensajeId,
-                    error: error.message,
-                    proximoIntentoEn: `${delay}ms`
+                    idTransaccion
                 });
                 
-                // Esperar antes de reintentar (con backoff exponencial)
-                await new Promise(resolve => setTimeout(resolve, delay));
-                return intentarEnvio();
+                // Eliminar de pendientes si existe
+                if (mensajesPendientes.has(mensaje.id)) {
+                    const { rechazar } = mensajesPendientes.get(mensaje.id);
+                    mensajesPendientes.delete(mensaje.id);
+                    if (rechazar) rechazar(error);
+                }
+                
+                throw error;
             }
             
-            // Si se agotaron los intentos, lanzar el último error
-            throw new Error(`Error al enviar mensaje después de ${maxRetries} intentos: ${error.message}`);
+            // Esperar antes de reintentar
+            await new Promise(resolve => setTimeout(resolve, tiempoEspera));
+            
+            // Reintentar
+            metricas.reintentos++;
+            return enviarConReintentos(intentoActual);
         }
     };
     
-    // Iniciar el proceso de envío
+    // Iniciar el proceso de envío con reintentos
     try {
-        const resultado = await intentarEnvio();
+        const resultado = await enviarConReintenos();
+        
+        // Si llegamos aquí, el mensaje se envió correctamente
         logger.info(`[${config.iframeId}] Mensaje enviado exitosamente`, {
             tipo,
             destino,
-            mensajeId,
-            intentos: attempts
+            mensajeId: mensaje.id,
+            idTransaccion
         });
+        
         return resultado;
         
     } catch (error) {
-        logger.error(`[${config.iframeId}] Error al enviar mensaje después de ${attempts} intentos`, {
+        // El error ya fue registrado en enviarConReintenos, solo lo propagamos
+        logger.error(`[${config.iframeId}] Error al enviar mensaje`, {
             tipo,
             destino,
-            mensajeId,
+            mensajeId: mensaje.id,
+            idTransaccion,
             error: error.message,
             stack: error.stack
         });
+        
+        // Asegurarse de que el mensaje no quede como pendiente
+        if (mensajesPendientes.has(mensaje.id)) {
+            mensajesPendientes.delete(mensaje.id);
+        }
+        
         throw error;
     }
 }
@@ -618,24 +851,98 @@ function inicializarMensajeria(opciones = {}) {
     return config;
 }
 
-// API pública
+// ================== FUNCIONES AUXILIARES ==================
+
+/**
+ * Registra un mensaje en el historial de mensajes
+ * @param {Object} entrada - Entrada del historial
+ */
+function registrarEnHistorial(entrada) {
+    historialMensajes.unshift(entrada);
+    if (historialMensajes.length > MAX_HISTORIAL) {
+        historialMensajes.pop();
+    }
+}
+
+/**
+ * Obtiene las métricas actuales del sistema
+ * @returns {Object} Métricas de rendimiento
+ */
+function obtenerMetricas() {
+    return {
+        ...metricas,
+        uptime: Date.now() - (window.performance.timing.navigationStart || 0),
+        mensajesPendientes: mensajesPendientes.size,
+        mensajesProcesados: mensajesProcesados.size,
+        historicoMensajes: [...historialMensajes]
+    };
+}
+
+/**
+ * Limpia el estado de mensajes pendientes y procesados
+ * @param {boolean} forzar - Si es true, limpia incluso los mensajes no confirmados
+ */
+function limpiarEstado(forzar = false) {
+    if (forzar) {
+        mensajesPendientes.clear();
+    } else {
+        // Solo limpiar mensajes antiguos
+        const ahora = Date.now();
+        for (const [id, entrada] of mensajesPendientes.entries()) {
+            if (ahora - entrada.timestamp > config.mensajeTtl) {
+                mensajesPendientes.delete(id);
+            }
+        }
+    }
+    
+    // Limpiar mensajes procesados antiguos
+    const ahora = Date.now();
+    for (const [id, timestamp] of mensajesProcesados.entries()) {
+        if (ahora - timestamp > config.mensajeTtl) {
+            mensajesProcesados.delete(id);
+        }
+    }
+}
+
+// ================== API PÚBLICA ==================
+
 const Mensajeria = {
+    // Constantes
     TIPOS_MENSAJE,
     ERRORES,
+    LOG_LEVELS,
     LOG_LEVELS,
     logger,
     crearMensaje,
     validarMensaje,
     inicializar: inicializarMensajeria, // Alias para compatibilidad
     inicializarMensajeria,
-    enviarMensaje,
-    enviarMensajeConReintentos,
-    enviarMensajeConReintenos: enviarMensajeConReintentos, // Alias para compatibilidad
+    enviarMensaje: enviarMensajeConReintenos,
+    enviarMensajeConReintenos,
     registrarControlador,
-    manejarMensajeEntrante, // Asegurar que está disponible
-    // Añadir funciones de control
-    enableControls: function() { console.log('enableControls llamado desde mensajeria'); },
-    disableControls: function() { console.log('disableControls llamado desde mensajeria'); }
+    manejarMensajeEntrante,
+    removerControladores: (tipo) => { delete controladores[tipo]; },
+    
+    // Métodos de utilidad
+    obtenerMetricas,
+    limpiarEstado,
+    
+    // Métodos de depuración
+    getConfig: () => ({ ...config }),
+    getEstado: () => ({
+        inicializado: config.iframeId !== 'desconocido',
+        mensajesPendientes: mensajesPendientes.size,
+        mensajesProcesados: mensajesProcesados.size,
+        metricas: obtenerMetricas()
+    }),
+    
+    // Métodos de control (compatibilidad)
+    enableControls() {
+        logger.warn('enableControls está obsoleto. Usa los métodos de mensajería directamente.');
+    },
+    disableControls() {
+        logger.warn('disableControls está obsoleto. Usa los métodos de mensajería directamente.');
+    }
 };
 
 // Export universal
