@@ -308,6 +308,9 @@ function configurarManejadoresEventos() {
           throw new Error('El sistema de mensajería no está disponible');
         }
         
+        // Obtener referencias a constantes del módulo de mensajería
+        const { TIPOS_MENSAJE, LOG_LEVELS } = window.Mensajeria;
+        
         try {
           // 1. Manejador de inicialización
           window.Mensajeria.registrarControlador(
@@ -1008,32 +1011,78 @@ function configurarManejadoresEventos() {
        * Maneja la habilitación de controles
        * @param {Object} mensaje - Mensaje de habilitación
        */
+      // Función para manejar la habilitación de controles
       async function manejarHabilitarControles(mensaje) {
-        const { modo = 'aventura', motivo = 'desconocido' } = mensaje.datos || {};
-        console.log(`[${IFRAME_ID}] Habilitando controles:`, { modo, motivo });
+        console.log(`[${IFRAME_ID}] Solicitando habilitar controles`, mensaje);
         
         try {
-          await manejarEstadoControles(true, modo, 'modo_' + modo);
-          estadoApp.controlesHabilitados = true;
+          // Validar mensaje
+          if (!mensaje || typeof mensaje !== 'object') {
+            throw new Error('Mensaje inválido');
+          }
           
-          await notificarEstado('controles_habilitados', { 
+          const { modo = 'aventura', motivo = 'sin_especificar' } = mensaje.datos || {};
+          
+          // Actualizar estado local
+          estadoApp.controlesHabilitados = true;
+          estadoApp.modo = modo;
+          
+          // Actualizar interfaz
+          document.body.classList.remove('controles-deshabilitados');
+          
+          // Notificar al padre
+          await enviarMensajeAlPadre('sistema:controles_habilitados', { 
             modo,
             motivo,
-            timestamp: new Date().toISOString() 
+            timestamp: Date.now(),
+            origen: IFRAME_ID
           });
           
-          console.log(`[${IFRAME_ID}] Controles habilitados correctamente`);
+          console.log(`[${IFRAME_ID}] Controles habilitados (modo: ${modo}, motivo: ${motivo})`);
+          return true;
           
         } catch (error) {
           console.error(`[${IFRAME_ID}] Error al habilitar controles:`, error);
           await notificarError('error_habilitar_controles', {
             error: error.message,
             stack: error.stack,
-            modo,
-            motivo,
+            modo: mensaje?.datos?.modo || 'desconocido',
+            motivo: mensaje?.datos?.motivo || 'error_desconocido',
             timestamp: new Date().toISOString()
           });
+          throw error;
         }
+      }
+      
+      // Manejar mensaje de controles habilitados
+      function manejarControlesHabilitados(mensaje) {
+        console.log(`[${IFRAME_ID}] Recibido mensaje de controles habilitados:`, mensaje);
+        const { modo = 'aventura', motivo = 'sin_especificar' } = mensaje.datos || {};
+        
+        // Actualizar estado local
+        estadoApp.controlesHabilitados = true;
+        estadoApp.modo = modo;
+        
+        // Actualizar interfaz
+        document.body.classList.remove('controles-deshabilitados');
+        
+        console.log(`[${IFRAME_ID}] Controles habilitados (modo: ${modo}, motivo: ${motivo})`);
+        return true;
+      }
+      
+      // Manejar mensaje de controles deshabilitados
+      function manejarControlesDeshabilitados(mensaje) {
+        console.log(`[${IFRAME_ID}] Recibido mensaje de controles deshabilitados:`, mensaje);
+        const { motivo = 'sin_especificar' } = mensaje.datos || {};
+        
+        // Actualizar estado local
+        estadoApp.controlesHabilitados = false;
+        
+        // Actualizar interfaz
+        document.body.classList.add('controles-deshabilitados');
+        
+        console.log(`[${IFRAME_ID}] Controles deshabilitados (motivo: ${motivo})`);
+        return true;
       }
       
       /**
