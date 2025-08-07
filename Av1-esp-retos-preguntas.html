@@ -23,50 +23,45 @@
 
       // ================== DECLARACIONES DE FUNCIONES ==================
 
-      // Funciones auxiliares
-      function enableControls(modo = 'casa') {
-        console.log(`[${IFRAME_ID}] Habilitando controles en modo: ${modo}`);
-        estadoApp.controlesHabilitados = true;
+      // ================== FUNCIONES AUXILIARES ==================
+
+      /**
+       * Habilita o deshabilita los controles de la interfaz
+       * @param {boolean} habilitar - true para habilitar, false para deshabilitar
+       * @param {string} [modo='aventura'] - Modo actual ('casa' o 'aventura')
+       * @param {string} [motivo='desconocido'] - Razón del cambio de estado
+       */
+      function manejarEstadoControles(habilitar, modo = 'aventura', motivo = 'desconocido') {
+        console.log(`[${IFRAME_ID}] ${habilitar ? 'Habilitando' : 'Deshabilitando'} controles en modo ${modo}. Motivo: ${motivo}`);
         
-        // Mostrar/ocultar controles según el modo
+        estadoApp.controlesHabilitados = habilitar;
         const controles = document.querySelectorAll('.control-reto');
-        controles.forEach(control => {
-          control.disabled = false;
-          control.style.opacity = '1';
-          control.style.pointerEvents = 'auto';
-        });
-        
-        // Ocultar overlay de deshabilitado si existe
-        const overlay = document.getElementById('overlay-deshabilitado');
-        if (overlay) {
-          overlay.classList.remove('mostrar');
-        }
-        
-        console.log(`[${IFRAME_ID}] Controles habilitados`);
-      }
-      
-      function disableControls(motivo = 'desconocido') {
-        console.log(`[${IFRAME_ID}] Deshabilitando controles. Motivo: ${motivo}`);
-        estadoApp.controlesHabilitados = false;
-        
-        // Deshabilitar todos los controles
-        const controles = document.querySelectorAll('.control-reto');
-        controles.forEach(control => {
-          control.disabled = true;
-          control.style.opacity = '0.5';
-          control.style.pointerEvents = 'none';
-        });
-        
-        // Mostrar overlay de deshabilitado si existe
         const overlay = document.getElementById('overlay-deshabilitado');
         const motivoElement = document.getElementById('motivo-deshabilitado');
-        if (overlay && motivoElement) {
-          motivoElement.textContent = obtenerMensajeMotivo(motivo);
-          overlay.classList.add('mostrar');
+        
+        // Actualizar estado de los controles
+        controles.forEach(control => {
+          control.disabled = !habilitar;
+          control.style.opacity = habilitar ? '1' : '0.5';
+          control.style.pointerEvents = habilitar ? 'auto' : 'none';
+        });
+        
+        // Actualizar overlay de deshabilitado
+        if (overlay) {
+          if (habilitar) {
+            overlay.classList.remove('mostrar');
+          } else if (motivoElement) {
+            motivoElement.textContent = obtenerMensajeMotivo(motivo);
+            overlay.classList.add('mostrar');
+          }
         }
         
-        console.log(`[${IFRAME_ID}] Controles deshabilitados`);
+        console.log(`[${IFRAME_ID}] Controles ${habilitar ? 'habilitados' : 'deshabilitados'}`);
+        return habilitar;
       }
+      
+      // Funciones de conveniencia para compatibilidad
+      // Nota: Estas funciones están definidas más abajo en el código
       
       function obtenerMensajeMotivo(motivo) {
         const mensajes = {
@@ -78,110 +73,242 @@
         return mensajes[motivo] || mensajes['desconocido'];
       }
       
-      // Función para notificar el estado al iframe padre
-      async function notificarEstado(tipo, datos = {}) {
+      // ================== SISTEMA DE MENSAJERÍA ==================
+
+      /**
+       * Envía un mensaje al iframe padre usando el sistema de mensajería centralizado
+       * @param {string} tipo - Tipo de mensaje (ej: 'sistema_estado', 'puzzle_mostrado', etc.)
+       * @param {Object} [datos={}] - Datos adicionales del mensaje
+       * @param {Object} [opciones] - Opciones adicionales
+       * @param {number} [opciones.reintentos=3] - Número de reintentos en caso de fallo
+       * @param {boolean} [opciones.esencial=true] - Si es true, se reintentará en caso de fallo
+       * @returns {Promise<Object>} Promesa que se resuelve con la respuesta del padre
+       */
+      async function enviarMensajeAlPadre(tipo, datos = {}, { reintentos = 3, esencial = true } = {}) {
         if (!window.Mensajeria) {
-          console.warn(`[${IFRAME_ID}] No se puede notificar estado: Mensajería no disponible`);
+          const error = new Error('Mensajería no disponible');
+          console.error(`[${IFRAME_ID}] ${error.message}`, { tipo, datos });
+          if (esencial) throw error;
           return Promise.resolve();
         }
         
         const mensaje = {
-          tipo,
+          tipo: `reto_${tipo}`.replace(/^reto_reto_/, 'reto_'), // Evitar duplicados
           datos: {
             ...datos,
             timestamp: new Date().toISOString(),
-            origen: IFRAME_ID
+            origen: IFRAME_ID,
+            retoId: estadoApp.retoActual?.id
           }
         };
         
-        console.log(`[${IFRAME_ID}] Notificando estado:`, mensaje);
+        console.log(`[${IFRAME_ID}] Enviando mensaje al padre:`, mensaje);
         
         try {
-          return await window.Mensajeria.enviarMensajeConReintenos(
+          const respuesta = await window.Mensajeria.enviarMensajeConReintenos(
             'padre',
-            tipo,
+            mensaje.tipo,
             mensaje.datos,
-            CONFIG_REINTENTOS
+            { intentosMaximos: reintentos, tiempoEspera: 1000 }
           );
+          
+          console.log(`[${IFRAME_ID}] Respuesta del padre recibida:`, respuesta);
+          return respuesta;
+          
         } catch (error) {
-          console.error(`[${IFRAME_ID}] Error al notificar estado:`, error);
+          console.error(`[${IFRAME_ID}] Error al enviar mensaje al padre:`, error, { tipo, datos });
+          if (esencial) throw error;
+          return null;
+        }
+      }
+      
+      /**
+       * Notifica un error al iframe padre
+       * @param {string} tipo - Tipo de error
+       * @param {Object} [detalles={}] - Detalles adicionales del error
+       * @param {Error} [error] - Objeto de error opcional
+       * @returns {Promise<void>}
+       */
+      async function notificarError(tipo, detalles = {}, error = null) {
+        const errorInfo = {
+          tipo,
+          ...detalles,
+          mensaje: error?.message || detalles.mensaje || 'Error desconocido',
+          stack: error?.stack,
+          timestamp: new Date().toISOString()
+        };
+        
+        console.error(`[${IFRAME_ID}] Notificando error:`, errorInfo);
+        
+        try {
+          return await enviarMensajeAlPadre('error', errorInfo, { esencial: false });
+        } catch (e) {
+          console.error(`[${IFRAME_ID}] Error al notificar error:`, e);
+          console.error(`[${IFRAME_ID}] Error original:`, errorInfo);
+          return null;
+        }
+      }
+      
+      // Alias para compatibilidad
+      const notificarEstado = enviarMensajeAlPadre;
+
+      // ================== CONFIGURACIÓN DE EVENTOS ==================
+
+/**
+ * Configura los manejadores de eventos del DOM
+ */
+function configurarManejadoresEventos() {
+  // Configurar botón de enviar
+  const btnEnviar = document.getElementById('btnEnviar');
+  if (btnEnviar) {
+    btnEnviar.addEventListener('click', verificar);
+  }
+  
+  // Configurar botón de mostrar respuesta
+  const btnMostrarRespuesta = document.getElementById('btnMostrarRespuesta');
+  if (btnMostrarRespuesta) {
+    btnMostrarRespuesta.addEventListener('click', () => {
+      const reto = retosAventura1Es.find(r => r.id === estadoApp.retoActual?.id);
+      if (reto) {
+        const respuesta = Array.isArray(reto.correctas) 
+          ? reto.correctas.join(', ') 
+          : String(reto.correctas);
+        
+        const divRespuesta = document.getElementById('respuestaCorrectaTexto');
+        if (divRespuesta) {
+          divRespuesta.textContent = `Respuesta correcta: ${respuesta}`;
+          divRespuesta.style.display = 'block';
+        }
+      }
+    });
+  }
+  
+  // Configurar botón de continuar
+  const btnContinueReto = document.getElementById('btnContinueReto');
+  if (btnContinueReto) {
+    btnContinueReto.addEventListener('click', () => {
+      enviarMensajeAlPadre('continuar', { retoId: estadoApp.retoActual?.id });
+    });
+  }
+}
+
+      // ================== INICIALIZACIÓN ==================
+
+      /**
+       * Maneja la inicialización del iframe
+       * @param {Object} mensaje - Mensaje de inicialización
+       * @returns {Promise<Object>} Respuesta de inicialización
+       */
+      async function manejarInicializacion(mensaje) {
+        const ID_TRANSACCION = `init-${Date.now()}`;
+        const log = (nivel, mensaje, datos = {}) => {
+          console[nivel](`[${IFRAME_ID}] [${ID_TRANSACCION}] ${mensaje}`, datos);
+        };
+        
+        log('info', 'Manejando inicialización', { 
+          origen: mensaje?.origen,
+          version: '1.0.0',
+          timestamp: new Date().toISOString()
+        });
+        
+        try {
+          // 1. Validar mensaje de inicialización
+          if (!mensaje?.datos) {
+            throw new Error('Mensaje de inicialización sin datos');
+          }
+          
+          // 2. Aplicar configuración inicial
+          const { 
+            modo = 'aventura', 
+            controlesHabilitados = false,
+            configuracion = {}
+          } = mensaje.datos;
+          
+          log('debug', 'Configuración recibida', { 
+            modo, 
+            controlesHabilitados,
+            configuracion
+          });
+          
+          // 3. Validar modo
+          if (!['aventura', 'casa'].includes(modo)) {
+            throw new Error(`Modo no válido: ${modo}. Debe ser 'aventura' o 'casa'`);
+          }
+          
+          // 4. Actualizar estado de la aplicación
+          estadoApp.modo = modo;
+          estadoApp.controlesHabilitados = !!controlesHabilitados;
+          estadoApp.ultimaActualizacion = new Date().toISOString();
+          estadoApp.configuracion = {
+            ...estadoApp.configuracion,
+            ...configuracion,
+            version: '1.0.0',
+            timestamp: estadoApp.ultimaActualizacion
+          };
+          
+          // 5. Aplicar configuración a la interfaz
+          await manejarEstadoControles(estadoApp.controlesHabilitados, modo, 'inicializacion');
+          
+          // 6. Confirmar inicialización
+          const respuesta = {
+            estado: 'ok',
+            mensaje: 'Sistema de retos inicializado correctamente',
+            timestamp: estadoApp.ultimaActualizacion,
+            configuracion: {
+              controlesHabilitados: estadoApp.controlesHabilitados,
+              modo: estadoApp.modo,
+              retoActual: estadoApp.retoActual?.id || null,
+              version: '1.0.0'
+            },
+            soporte: [
+              'mostrar_reto', 
+              'ocultar_reto', 
+              'cambiar_modo',
+              'habilitar_controles',
+              'deshabilitar_controles'
+            ]
+          };
+          
+          log('info', 'Sistema de retos inicializado correctamente', { configuracion: respuesta.configuracion });
+          return respuesta;
+          
+        } catch (error) {
+          const mensajeError = `Error durante la inicialización: ${error.message}`;
+          log('error', mensajeError, { error: error.stack });
+          
+          // Mostrar error al usuario
+          mostrarErrorInicializacion(error);
+          
+          // Notificar al padre del error
+          try {
+            await enviarMensajeAlPadre('error_inicializacion', {
+              mensaje: error.message,
+              stack: error.stack,
+              timestamp: new Date().toISOString()
+            }, { 
+              reintentos: 2,
+              tiempoEspera: 500,
+              esencial: false 
+            });
+          } catch (e) {
+            log('error', 'No se pudo notificar el error al padre', { error: e });
+          }
+          
+          // Relanzar el error para que pueda ser manejado por el llamador
           throw error;
         }
       }
       
-      async function notificarError(tipo, detalles = {}) {
-        console.error(`[${IFRAME_ID}] Notificando error:`, { tipo, detalles });
-        
-        try {
-          await notificarEstado('error', {
-            tipo,
-            ...detalles,
-            timestamp: new Date().toISOString(),
-            origen: IFRAME_ID
-          });
-        } catch (error) {
-          console.error(`[${IFRAME_ID}] Error al notificar error:`, error);
-          // Si falla la notificación, al menos lo mostramos en consola
-          console.error(`[${IFRAME_ID}] Error original:`, detalles);
-        }
-      }
-      
-      // ================== MANEJADORES DE MENSAJES ==================
-
-      // Función para notificar el estado al iframe padre
-      async function notificarEstado(tipo, datos = {}) {
+      /**
+       * Configura los manejadores de mensajes
+       * @returns {Promise<void>}
+       */
+      async function configurarManejadoresMensajes() {
         if (!window.Mensajeria) {
-          console.warn(`[${IFRAME_ID}] No se puede notificar estado: Mensajería no disponible`);
-          return Promise.resolve();
+          throw new Error('El sistema de mensajería no está disponible');
         }
         
-        const mensaje = {
-          tipo,
-          datos: {
-            ...datos,
-            timestamp: new Date().toISOString(),
-            origen: IFRAME_ID
-          }
-        };
-        
-        console.log(`[${IFRAME_ID}] Notificando estado:`, mensaje);
-        
         try {
-          return await window.Mensajeria.enviarMensajeConReintenos(
-            'padre',
-            tipo,
-            mensaje.datos,
-            CONFIG_REINTENTOS
-          );
-        } catch (error) {
-          console.error(`[${IFRAME_ID}] Error al notificar estado:`, error);
-          throw error;
-        }
-      }
-
-      // Inicialización de la aplicación
-      document.addEventListener('DOMContentLoaded', async () => {
-        try {
-          // Importar e inicializar el módulo de mensajería
-          const moduloMensajeria = await import('./js/mensajeria.js');
-          // Asegurarse de manejar tanto el export por defecto como el export nombrado
-          window.Mensajeria = moduloMensajeria.default || moduloMensajeria;
-          
-          if (!window.Mensajeria || typeof window.Mensajeria.inicializarMensajeria !== 'function') {
-            throw new Error('No se pudo inicializar el módulo de mensajería');
-          }
-          
-          // Configurar la mensajería con parámetros básicos
-          window.Mensajeria.inicializarMensajeria({
-            iframeId: IFRAME_ID,
-            logLevel: 2, // Nivel de log aumentado para depuración
-            debug: true
-          });
-
-          console.log(`[${IFRAME_ID}] Sistema de mensajería inicializado`);
-
-          // ================== REGISTRO DE MANEJADORES ==================
-          
           // 1. Manejador de inicialización
           window.Mensajeria.registrarControlador(
             window.Mensajeria.TIPOS_MENSAJE.INICIALIZACION, 
@@ -202,7 +329,7 @@
           
           // 4. Manejador de confirmaciones
           window.Mensajeria.registrarControlador(
-            window.Mensajeria.TIPOS_MENSAJE.CONFIRMACION, 
+            'confirmacion', 
             manejarConfirmacion
           );
           
@@ -217,6 +344,7 @@
             'habilitar_controles', 
             manejarHabilitarControles
           );
+          
           window.Mensajeria.registrarControlador(
             'deshabilitar_controles', 
             manejarDeshabilitarControles
@@ -225,15 +353,15 @@
           console.log(`[${IFRAME_ID}] Manejadores de mensajes registrados`);
           
           // Notificar al padre que el iframe está listo
-          await notificarEstado('inicializado');
+          return notificarEstado('inicializado');
           
         } catch (error) {
-          console.error(`[${IFRAME_ID}] Error durante la inicialización:`, error);
-          // Notificar al padre del error de inicialización
+          console.error(`[${IFRAME_ID}] Error al configurar manejadores de mensajes:`, error);
+          // Notificar al padre del error
           if (window.Mensajeria) {
             try {
               await window.Mensajeria.enviarMensaje('padre', 'error', {
-                tipo: 'error_inicializacion',
+                tipo: 'error_configuracion',
                 mensaje: error.message,
                 stack: error.stack,
                 timestamp: Date.now()
@@ -242,9 +370,9 @@
               console.error(`[${IFRAME_ID}] No se pudo notificar el error al padre:`, e);
             }
           }
-          throw error; // Relanzar para que se muestre en la consola
+          throw error; // Relanzar para manejo posterior
         }
-      });
+      }
 
       // ================== MANEJADORES DE MENSAJES ==================
 
@@ -285,49 +413,199 @@
       }
 
       /**
-       * Maneja el cambio de modo (casa/aventura)
-       * @param {Object} mensaje - Mensaje de cambio de modo
+       * Maneja el cambio de modo (aventura/casa)
+       * @param {Object} mensaje - Mensaje con los datos del cambio de modo
+       * @returns {Promise<void>}
        */
       async function manejarCambioModo(mensaje) {
         const { modo = 'aventura', motivo = 'desconocido' } = mensaje.datos || {};
         console.log(`[${IFRAME_ID}] Cambio de modo solicitado:`, { modo, motivo });
         
+        // Validar parámetros
+        if (!['aventura', 'casa'].includes(modo)) {
+          const error = new Error(`Modo no válido: ${modo}`);
+          console.error(`[${IFRAME_ID}] ${error.message}`);
+          throw error;
+        }
+        
         try {
-          // Validar el modo
-          if (!['casa', 'aventura'].includes(modo)) {
-            throw new Error(`Modo no válido: ${modo}`);
-          }
-          
-          // Actualizar el estado
+          // 1. Actualizar el estado local
           estadoApp.modo = modo;
+          estadoApp.ultimoCambioModo = new Date().toISOString();
           
-          // Aplicar cambios visuales según el modo
-          if (modo === 'casa') {
-            document.body.classList.add('modo-casa');
-            document.body.classList.remove('modo-aventura');
-            disableControls('modo_casa');
+          // 2. Obtener referencias a elementos del DOM
+          const contenedorReto = document.getElementById('contenedor-reto');
+          const overlay = document.getElementById('overlay-deshabilitado');
+          
+          // 3. Aplicar cambios según el modo
+          if (modo === 'aventura') {
+            // 3.1. Modo aventura: mostrar el reto y ocultar el overlay
+            if (contenedorReto) contenedorReto.style.display = 'block';
+            if (overlay) overlay.style.display = 'none';
+            
+            // 3.2. Habilitar controles específicos de la aventura
+            await manejarEstadoControles(true, 'aventura', 'cambio_modo');
+            
           } else {
-            document.body.classList.add('modo-aventura');
-            document.body.classList.remove('modo-casa');
-            enableControls('aventura');
+            // 3.1. Modo casa: ocultar el reto y mostrar el overlay
+            if (contenedorReto) contenedorReto.style.display = 'none';
+            if (overlay) {
+              overlay.style.display = 'flex';
+              const mensajeElemento = overlay.querySelector('.mensaje-deshabilitado');
+              if (mensajeElemento) {
+                mensajeElemento.textContent = obtenerMensajeModo('casa', motivo);
+              }
+            }
+            
+            // 3.2. Deshabilitar controles
+            await manejarEstadoControles(false, 'casa', motivo);
           }
           
-          // Notificar al padre del cambio de modo
-          await notificarEstado('modo_cambiado', {
+          // 4. Notificar al padre que el modo ha cambiado correctamente
+          await enviarMensajeAlPadre('modo_cambiado', { 
             modo,
+            exito: true,
             motivo,
-            controlesHabilitados: estadoApp.controlesHabilitados
+            timestamp: new Date().toISOString()
           });
           
-          console.log(`[${IFRAME_ID}] Modo cambiado a ${modo} (${motivo})`);
+          console.log(`[${IFRAME_ID}] Modo cambiado a '${modo}' correctamente`);
+          
         } catch (error) {
           console.error(`[${IFRAME_ID}] Error al cambiar el modo:`, error);
-          await notificarError('cambio_modo', {
+          
+          // Notificar al padre del error
+          await notificarError('error_cambio_modo', {
             modo,
             motivo,
-            error: error.message,
+            mensaje: error.message,
             stack: error.stack
           });
+          
+          // Relanzar el error para que pueda ser manejado por el llamador
+          throw error;
+        }
+      }
+
+      /**
+       * Maneja el estado de los controles (habilitar/deshabilitar)
+       * @param {boolean} habilitar - true para habilitar, false para deshabilitar
+       * @param {string} modo - Modo actual ('casa' o 'aventura')
+       * @param {string} motivo - Razón del cambio de estado
+       * @returns {Promise<void>}
+       */
+      async function manejarEstadoControles(habilitar, modo, motivo = 'desconocido') {
+        console.log(`[${IFRAME_ID}] ${habilitar ? 'Habilitando' : 'Deshabilitando'} controles:`, { modo, motivo });
+        
+        // Validar parámetros
+        if (typeof habilitar !== 'boolean') {
+          const error = new Error('El parámetro "habilitar" debe ser un booleano');
+          console.error(`[${IFRAME_ID}] ${error.message}`, { habilitar, modo, motivo });
+          throw error;
+        }
+        
+        if (!['casa', 'aventura'].includes(modo)) {
+          const error = new Error('Modo no válido. Debe ser "casa" o "aventura"');
+          console.error(`[${IFRAME_ID}] ${error.message}`, { modo });
+          throw error;
+        }
+        
+        // Si no hay cambio de estado, no hacer nada
+        if (estadoApp.controlesHabilitados === habilitar) {
+          console.log(`[${IFRAME_ID}] Los controles ya están ${habilitar ? 'habilitados' : 'deshabilitados'}`);
+          return;
+        }
+        
+        try {
+          // 1. Actualizar el estado de los controles
+          estadoApp.controlesHabilitados = habilitar;
+          estadoApp.ultimoCambioControles = new Date().toISOString();
+          
+          // 2. Obtener todos los controles que deben ser afectados
+          const selectores = [
+            '#btnEnviar',
+            '#btnMostrarRespuesta',
+            '#btnContinueReto',
+            'input[type="radio"]',
+            'input[type="checkbox"]',
+            'button:not(.excluir-control)',
+            'select',
+            'textarea',
+            '.control-interactivo' // Clase adicional para elementos personalizados
+          ];
+          
+          const controles = Array.from(document.querySelectorAll(selectores.join(',')));
+          
+          // 3. Aplicar el estado a cada control
+          controles.forEach(control => {
+            if (control && control !== document.body) {
+              // Solo actualizar si el estado actual es diferente
+              if (control.disabled === habilitar) {
+                control.disabled = !habilitar;
+                
+                // Aplicar estilos según el estado
+                control.classList.toggle('control-habilitado', habilitar);
+                control.classList.toggle('control-deshabilitado', !habilitar);
+                
+                // Actualizar atributos ARIA para accesibilidad
+                control.setAttribute('aria-disabled', String(!habilitar));
+                
+                // Actualizar título para indicar el estado
+                if (!habilitar && !control.hasAttribute('data-titulo-original')) {
+                  control.setAttribute('data-titulo-original', control.title || '');
+                  control.title = `Deshabilitado: ${obtenerMensajeModo(modo, motivo)}`;
+                } else if (habilitar && control.hasAttribute('data-titulo-original')) {
+                  control.title = control.getAttribute('data-titulo-original');
+                  control.removeAttribute('data-titulo-original');
+                }
+              }
+            }
+          });
+          
+          // 4. Actualizar el overlay de deshabilitado si existe
+          const overlay = document.getElementById('overlay-deshabilitado');
+          if (overlay) {
+            // Solo actualizar si el estado es diferente
+            const mostrarOverlay = !habilitar && modo === 'casa';
+            if (overlay.style.display !== (mostrarOverlay ? 'flex' : 'none')) {
+              overlay.style.display = mostrarOverlay ? 'flex' : 'none';
+              
+              if (mostrarOverlay) {
+                const mensajeElemento = overlay.querySelector('.mensaje-deshabilitado');
+                if (mensajeElemento) {
+                  mensajeElemento.textContent = obtenerMensajeModo(modo, motivo);
+                }
+              }
+            }
+          }
+          
+          // 5. Notificar al padre del cambio de estado de los controles
+          await enviarMensajeAlPadre('estado_controles_actualizado', {
+            habilitados: habilitar,
+            modo,
+            motivo,
+            timestamp: estadoApp.ultimoCambioControles,
+            totalControles: controles.length
+          });
+          
+          console.log(`[${IFRAME_ID}] ${controles.length} controles ${habilitar ? 'habilitados' : 'deshabilitados'} correctamente`);
+          
+        } catch (error) {
+          console.error(`[${IFRAME_ID}] Error al ${habilitar ? 'habilitar' : 'deshabilitar'} controles:`, error);
+          
+          // Revertir el estado en caso de error
+          estadoApp.controlesHabilitados = !habilitar;
+          
+          // Notificar al padre del error
+          await notificarError('error_estado_controles', {
+            habilitar,
+            modo,
+            motivo,
+            mensaje: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString()
+          });
+          
           throw error;
         }
       }
@@ -335,118 +613,356 @@
       /**
        * Maneja los comandos de retos
        * @param {Object} mensaje - Mensaje con el comando de reto
+       * @returns {Promise<void>}
        */
       async function manejarComandoReto(mensaje) {
-        const { accion, parametros = {} } = mensaje.datos || {};
-        console.log(`[${IFRAME_ID}] Comando de reto recibido:`, { accion, parametros });
+        const { comando, parametros = {} } = mensaje.datos || {};
+        const idTransaccion = mensaje.idTransaccion || `reto_${Date.now()}`;
+        
+        console.log(`[${IFRAME_ID}] Comando de reto recibido:`, { 
+          comando, 
+          idTransaccion,
+          parametros 
+        });
+        
+        // Validar el comando
+        if (!comando) {
+          const error = new Error('No se especificó ningún comando');
+          console.error(`[${IFRAME_ID}] ${error.message}`, { mensaje });
+          throw error;
+        }
+        
+        // Verificar si el comando está soportado
+        const comandosSoportados = [
+          'mostrar', 'ocultar', 'reiniciar', 
+          'verificar', 'mostrar_respuesta', 'cambiar_modo'
+        ];
+        
+        if (!comandosSoportados.includes(comando)) {
+          const error = new Error(`Comando no soportado: ${comando}`);
+          console.error(`[${IFRAME_ID}] ${error.message}`, { 
+            comando, 
+            comandosSoportados 
+          });
+          throw error;
+        }
         
         try {
-          switch (accion) {
+          let resultado = null;
+          
+          // Ejecutar el comando correspondiente
+          switch (comando) {
             case 'mostrar':
-              await manejarMostrarReto(parametros);
+              resultado = await mostrarReto(parametros);
               break;
               
             case 'ocultar':
-              await manejarOcultarReto(parametros);
+              resultado = await ocultarReto(parametros);
               break;
               
-            case 'resetear':
-              await manejarResetearReto(parametros);
+            case 'reiniciar':
+              resultado = await reiniciarReto(parametros);
               break;
               
-            default:
-              throw new Error(`Acción de reto no reconocida: ${accion}`);
+            case 'verificar':
+              resultado = await verificarRespuesta(parametros);
+              break;
+              
+            case 'mostrar_respuesta':
+              resultado = await mostrarRespuestaCorrecta(parametros);
+              break;
+              
+            case 'cambiar_modo':
+              // El cambio de modo ya tiene su propio manejador, pero lo soportamos aquí por compatibilidad
+              return manejarCambioModo({
+                ...mensaje,
+                datos: { ...parametros, desdeComando: true }
+              });
+              
+            // No se necesita default porque ya validamos los comandos soportados
           }
-        } catch (error) {
-          console.error(`[${IFRAME_ID}] Error al procesar comando de reto:`, error);
-          await notificarError('procesar_reto', {
-            accion,
+          
+          // Notificar al padre que el comando se ejecutó correctamente
+          await enviarMensajeAlPadre('comando_reto_ejecutado', {
+            comando,
+            idTransaccion,
+            exito: true,
+            resultado,
             parametros,
-            error: error.message,
-            stack: error.stack
+            timestamp: new Date().toISOString()
           });
+          
+          console.log(`[${IFRAME_ID}] Comando '${comando}' ejecutado correctamente`, { 
+            idTransaccion,
+            resultado 
+          });
+          
+          return resultado;
+          
+        } catch (error) {
+          console.error(`[${IFRAME_ID}] Error al ejecutar el comando '${comando}':`, error);
+          
+          // Notificar al padre del error
+          await notificarError('error_comando_reto', {
+            comando,
+            idTransaccion,
+            parametros,
+            mensaje: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString()
+          });
+          
+          // Relanzar el error para que pueda ser manejado por el llamador
           throw error;
         }
       }
       
       /**
-       * Maneja la acción de mostrar un reto
-       * @param {Object} parametros - Parámetros del reto
+       * Muestra un reto específico
+       * @param {Object} parametros - Parámetros del reto a mostrar
+       * @returns {Promise<Object>} Información del reto mostrado
        */
-      async function manejarMostrarReto(parametros) {
+      async function mostrarReto(parametros = {}) {
         const { retoId } = parametros;
+        const idTransaccion = `mostrar_reto_${Date.now()}`;
         
+        console.log(`[${IFRAME_ID}] Mostrando reto:`, { retoId, idTransaccion });
+        
+        // Validar parámetros
         if (!retoId) {
-          throw new Error('Se requiere el ID del reto');
+          const error = new Error('No se especificó el ID del reto');
+          console.error(`[${IFRAME_ID}] ${error.message}`, { parametros });
+          throw error;
         }
         
-        // Buscar el índice del reto
+        // Buscar el reto
         const retoIndex = retosAventura1Es.findIndex(r => r.id === retoId);
         if (retoIndex === -1) {
-          throw new Error(`No se encontró el reto con ID: ${retoId}`);
+          const error = new Error(`No se encontró el reto con ID: ${retoId}`);
+          console.error(`[${IFRAME_ID}] ${error.message}`, { retoId });
+          throw error;
         }
         
-        // Renderizar el reto
-        renderizarReto(retoIndex);
+        const reto = retosAventura1Es[retoIndex];
         
-        // Actualizar el estado
-        estadoApp.retoActual = retoId;
-        estadoApp.retoMostrado = true;
-        
-        // Notificar al padre
-        await notificarEstado('reto_mostrado', {
-          retoId,
-          indice: retoIndex,
-          totalRetos: retosAventura1Es.length
-        });
-        
-        console.log(`[${IFRAME_ID}] Reto mostrado:`, retoId);
+        try {
+          // 1. Renderizar el reto
+          await renderizarReto(retoIndex);
+          
+          // 2. Actualizar el estado
+          estadoApp.retoActual = {
+            id: retoId,
+            indice: retoIndex,
+            timestamp: new Date().toISOString(),
+            estado: 'mostrado'
+          };
+          
+          estadoApp.retoMostrado = true;
+          
+          // 3. Preparar respuesta
+          const respuesta = {
+            retoId,
+            indice: retoIndex,
+            tipo: reto.tipo,
+            totalRetos: retosAventura1Es.length,
+            timestamp: estadoApp.retoActual.timestamp,
+            idTransaccion
+          };
+          
+          // 4. Notificar al padre
+          await enviarMensajeAlPadre('reto_mostrado', respuesta);
+          
+          console.log(`[${IFRAME_ID}] Reto mostrado correctamente`, { 
+            retoId, 
+            idTransaccion 
+          });
+          
+          return respuesta;
+          
+        } catch (error) {
+          console.error(`[${IFRAME_ID}] Error al mostrar el reto ${retoId}:`, error);
+          
+          // Notificar al padre del error
+          await notificarError('error_mostrar_reto', {
+            retoId,
+            idTransaccion,
+            mensaje: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString()
+          });
+          
+          throw error;
+        }
       }
       
       /**
-       * Maneja la acción de ocultar el reto actual
+       * Oculta el reto actual si hay uno mostrado
        * @param {Object} parametros - Parámetros adicionales
+       * @returns {Promise<Object>} Información del reto ocultado
        */
-      async function manejarOcultarReto(parametros = {}) {
-        // Ocultar el contenido del reto
-        if (retoContenidoDiv) {
-          retoContenidoDiv.innerHTML = '';
-        }
+      async function ocultarReto(parametros = {}) {
+        const { motivo = 'usuario' } = parametros;
+        const idTransaccion = `ocultar_reto_${Date.now()}`;
         
-        // Actualizar el estado
-        const retoAnterior = estadoApp.retoActual;
-        estadoApp.retoActual = null;
-        estadoApp.retoMostrado = false;
-        
-        // Notificar al padre
-        await notificarEstado('reto_oculto', {
-          retoAnterior,
-          motivo: parametros.motivo || 'usuario'
+        console.log(`[${IFRAME_ID}] Ocultando reto:`, { 
+          retoActual: estadoApp.retoActual, 
+          motivo,
+          idTransaccion 
         });
         
-        console.log(`[${IFRAME_ID}] Reto ocultado:`, retoAnterior);
-      }
-      
-      /**
-       * Maneja la acción de resetear el reto actual
-       * @param {Object} parametros - Parámetros adicionales
-       */
-      async function manejarResetearReto(parametros = {}) {
+        // Verificar si hay un reto mostrado
         if (!estadoApp.retoActual) {
-          console.warn(`[${IFRAME_ID}] No hay reto actual para resetear`);
-          return;
+          console.warn(`[${IFRAME_ID}] No hay ningún reto para ocultar`);
+          return { 
+            exito: true, 
+            mensaje: 'No hay ningún reto para ocultar',
+            idTransaccion
+          };
         }
         
-        // Resetear el reto actual
-        resetCurrentReto();
+        const retoAnterior = { ...estadoApp.retoActual };
+        const retoIndex = retosAventura1Es.findIndex(r => r.id === retoAnterior.id);
         
-        // Notificar al padre
-        await notificarEstado('reto_reseteado', {
-          retoId: estadoApp.retoActual,
-          motivo: parametros.motvo || 'usuario'
+        try {
+          // 1. Ocultar el contenido del reto
+          const retoContenidoDiv = document.getElementById('reto-contenido');
+          if (retoContenidoDiv) {
+            retoContenidoDiv.innerHTML = '';
+          }
+          
+          // 2. Actualizar el estado
+          estadoApp.retoActual = null;
+          estadoApp.retoMostrado = false;
+          
+          // 3. Preparar respuesta
+          const respuesta = {
+            retoId: retoAnterior.id,
+            indice: retoIndex,
+            motivo,
+            timestamp: new Date().toISOString(),
+            idTransaccion
+          };
+          
+          // 4. Notificar al padre
+          await enviarMensajeAlPadre('reto_ocultado', respuesta);
+          
+          console.log(`[${IFRAME_ID}] Reto ocultado correctamente`, { 
+            retoId: retoAnterior.id,
+            idTransaccion 
+          });
+          
+          return respuesta;
+          
+        } catch (error) {
+          console.error(`[${IFRAME_ID}] Error al ocultar el reto:`, error);
+          
+          // Revertir el estado en caso de error
+          estadoApp.retoActual = retoAnterior;
+          estadoApp.retoMostrado = true;
+          
+          // Notificar al padre del error
+          await notificarError('error_ocultar_reto', {
+            retoId: retoAnterior?.id,
+            idTransaccion,
+            mensaje: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString()
+          });
+          
+          throw error;
+        }
+      }
+      
+      /**
+       * Reinicia el reto actual, limpiando las respuestas del usuario
+       * @param {Object} parametros - Parámetros adicionales
+       * @returns {Promise<Object>} Información del reto reiniciado
+       */
+      async function reiniciarReto(parametros = {}) {
+        const { motivo = 'usuario' } = parametros;
+        const idTransaccion = `reiniciar_reto_${Date.now()}`;
+        
+        console.log(`[${IFRAME_ID}] Reiniciando reto:`, { 
+          retoActual: estadoApp.retoActual, 
+          motivo,
+          idTransaccion 
         });
         
-        console.log(`[${IFRAME_ID}] Reto reseteado:`, estadoApp.retoActual);
+        // Verificar si hay un reto actual
+        if (!estadoApp.retoActual) {
+          const error = new Error('No hay ningún reto para reiniciar');
+          console.warn(`[${IFRAME_ID}] ${error.message}`);
+          throw error;
+        }
+        
+        const retoId = estadoApp.retoActual.id;
+        const retoIndex = retosAventura1Es.findIndex(r => r.id === retoId);
+        
+        if (retoIndex === -1) {
+          const error = new Error(`No se encontró el reto con ID: ${retoId}`);
+          console.error(`[${IFRAME_ID}] ${error.message}`);
+          throw error;
+        }
+        
+        try {
+          // 1. Guardar el estado anterior para poder revertir en caso de error
+          const estadoAnterior = { ...estadoApp };
+          
+          // 2. Limpiar las respuestas del usuario
+          const retoContenidoDiv = document.getElementById('reto-contenido');
+          if (retoContenidoDiv) {
+            // Limpiar solo los campos de entrada, no todo el contenido
+            const inputs = retoContenidoDiv.querySelectorAll('input, textarea, select');
+            inputs.forEach(input => {
+              if (input.type === 'checkbox' || input.type === 'radio') {
+                input.checked = false;
+              } else {
+                input.value = '';
+              }
+            });
+            
+            // Limpiar mensajes de retroalimentación
+            const feedbackElements = retoContenidoDiv.querySelectorAll('.feedback, .retroalimentacion');
+            feedbackElements.forEach(el => el.remove());
+          }
+          
+          // 3. Actualizar el estado
+          estadoApp.respuestaUsuario = null;
+          estadoApp.respuestaVerificada = false;
+          
+          // 4. Preparar respuesta
+          const respuesta = {
+            retoId,
+            indice: retoIndex,
+            motivo,
+            timestamp: new Date().toISOString(),
+            idTransaccion
+          };
+          
+          // 5. Notificar al padre
+          await enviarMensajeAlPadre('reto_reiniciado', respuesta);
+          
+          console.log(`[${IFRAME_ID}] Reto reiniciado correctamente`, { 
+            retoId,
+            idTransaccion 
+          });
+          
+          return respuesta;
+          
+        } catch (error) {
+          console.error(`[${IFRAME_ID}] Error al reiniciar el reto:`, error);
+          
+          // Notificar al padre del error
+          await notificarError('error_reiniciar_reto', {
+            retoId,
+            idTransaccion,
+            mensaje: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString()
+          });
+          
+          throw error;
+        }
       }
 
           /**
@@ -488,28 +1004,35 @@
           });
         }
       }
-      
       /**
        * Maneja la habilitación de controles
        * @param {Object} mensaje - Mensaje de habilitación
        */
       async function manejarHabilitarControles(mensaje) {
-        const { motivo = 'desconocido' } = mensaje.datos || {};
-        console.log(`[${IFRAME_ID}] Habilitando controles:`, { motivo });
+        const { modo = 'aventura', motivo = 'desconocido' } = mensaje.datos || {};
+        console.log(`[${IFRAME_ID}] Habilitando controles:`, { modo, motivo });
         
         try {
-          enableControls(motivo);
+          await manejarEstadoControles(true, modo, 'modo_' + modo);
           estadoApp.controlesHabilitados = true;
           
-          await notificarEstado('controles_habilitados', { motivo });
+          await notificarEstado('controles_habilitados', { 
+            modo,
+            motivo,
+            timestamp: new Date().toISOString() 
+          });
+          
+          console.log(`[${IFRAME_ID}] Controles habilitados correctamente`);
+          
         } catch (error) {
           console.error(`[${IFRAME_ID}] Error al habilitar controles:`, error);
-          await notificarError('habilitar_controles', {
-            motivo,
+          await notificarError('error_habilitar_controles', {
             error: error.message,
-            stack: error.stack
+            stack: error.stack,
+            modo,
+            motivo,
+            timestamp: new Date().toISOString()
           });
-          throw error;
         }
       }
       
@@ -893,11 +1416,14 @@ function manejarCambioModo(modo, habilitar = false) {
     console.log(`✅ HIJO 4: Modo cambiado a ${modo}, controles ${controlesHabilitados ? 'habilitados' : 'deshabilitados'}`);
 }
 
-// ================== ARRAY DE RETOS DE LA AVENTURA 1 ==================
+// ================== VARIABLES GLOBALES ==================
 
+// Índice del reto actual
+let currentRetoIndex = -1;
+
+// ================== ARRAY DE RETOS DE LA AVENTURA 1 ==================
 // Cada objeto representa un reto. El campo 'tipo' puede ser 'opcion', 'opcion-multiple', 'texto' o 'puzzle'.
 // El campo 'correctas' contiene la(s) respuesta(s) correcta(s).
-let currentRetoIndex = -1; // Moved to global scope
 const retosAventura1Es = [
   {
     reto: 1,
@@ -1185,24 +1711,163 @@ const DURACION_TOTAL_MS = 3000;
 // ================== FUNCIONES DE MENSAJERÍA PADRE-HIJO ==================
 
 /**
- * Envía un mensaje al padre usando mensajeria.js
- * @param {string} tipo - Tipo de mensaje (ej: SISTEMA.ESTADO, NAVEGACION.ACCION, etc.)
- * @param {Object} datos - Datos del mensaje
+ * Envía un mensaje al padre usando el sistema de mensajería centralizado
+ * @param {string} tipo - Tipo de mensaje (ej: 'sistema_estado', 'puzzle_mostrado', etc.)
+ * @param {Object} [datos={}] - Datos del mensaje
+ * @param {Object} [opciones={}] - Opciones de envío
+ * @param {number} [opciones.reintentos=3] - Número de reintentos
+ * @param {number} [opciones.tiempoEspera=1000] - Tiempo de espera entre reintentos en ms
+ * @param {boolean} [opciones.esencial=true] - Si es true, se reintentará incluso en modo silencioso
+ * @returns {Promise<Object>} Promesa que se resuelve con la respuesta del padre
  */
-function enviarMensajeAlPadre(tipo, datos = {}) {
-    if (!window.mensajeria || !window.mensajeria.enviarMensaje) {
-        console.error('❌ No se puede enviar mensaje: mensajeria.js no está disponible');
-        return;
-    }
-    
-    // Asegurarse de que los datos tengan el origen
-    const mensaje = {
-        ...datos,
-        origen: 'hijo4-retos',
-        timestamp: Date.now()
+async function enviarMensajeAlPadre(tipo, datos = {}, opciones = {}) {
+    const ID_TRANSACCION = `msg-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const log = (nivel, mensaje, datos = {}) => {
+        console[nivel](`[${IFRAME_ID}] [${ID_TRANSACCION}] ${mensaje}`, datos);
     };
     
-    window.mensajeria.enviarMensaje(tipo, mensaje);
+    const config = {
+        reintentos: 3,
+        tiempoEspera: 1000,
+        esencial: true,
+        ...opciones
+    };
+    
+    log('debug', `Enviando mensaje al padre (${tipo})`, { 
+        tipo, 
+        datos,
+        config 
+    });
+    
+    try {
+        // Verificar que el sistema de mensajería esté disponible
+        if (!window.Mensajeria || typeof window.Mensajeria.enviarMensajeConReintenos !== 'function') {
+            const error = new Error('El sistema de mensajería no está disponible');
+            log('error', 'No se puede enviar mensaje', { error: error.message });
+            throw error;
+        }
+        
+        // Crear el mensaje con metadatos
+        const mensaje = {
+            ...datos,
+            origen: IFRAME_ID,
+            tipo,
+            timestamp: new Date().toISOString(),
+            idTransaccion: ID_TRANSACCION
+        };
+        
+        // Enviar el mensaje usando el sistema de mensajería centralizado
+        const respuesta = await window.Mensajeria.enviarMensajeConReintenos(
+            'padre',  // Destino
+            tipo,     // Tipo de mensaje
+            mensaje,  // Datos del mensaje
+            {
+                maxRetries: config.reintentos,
+                retryDelay: config.tiempoEspera,
+                timeout: config.tiempoEspera * 2,
+                esperarConfirmacion: true,
+                esEsencial: config.esencial
+            }
+        );
+        
+        log('debug', 'Respuesta recibida del padre', { respuesta });
+        return respuesta;
+        
+    } catch (error) {
+        const errorInfo = {
+            mensaje: error.message,
+            stack: error.stack,
+            tipo: error.name || 'Error',
+            codigo: error.code || 'ERROR_DESCONOCIDO',
+            timestamp: new Date().toISOString(),
+            idTransaccion: ID_TRANSACCION
+        };
+        
+        log('error', 'Error al enviar mensaje al padre', errorInfo);
+        
+        // Notificar al padre del error si es posible
+        try {
+            await window.Mensajeria?.enviarMensajeConReintenos(
+                'padre',
+                'error_comunicacion',
+                {
+                    ...errorInfo,
+                    origen: IFRAME_ID,
+                    tipoMensajeOriginal: tipo,
+                    datosOriginales: datos
+                },
+                { reintentos: 1, tiempoEspera: 500, esencial: false }
+            );
+        } catch (e) {
+            log('warn', 'No se pudo notificar el error al padre', { error: e });
+        }
+        
+        // Relanzar el error para que pueda ser manejado por el llamador
+        throw error;
+    }
+}
+
+// ================== MANEJO DE ERRORES ==================
+
+/**
+ * Muestra un mensaje de error al usuario cuando hay un problema de inicialización
+ * @param {Error} error - El error que ocurrió durante la inicialización
+ */
+function mostrarErrorInicializacion(error) {
+    try {
+        // Crear elemento de error si no existe
+        let errorDiv = document.getElementById('error-inicializacion');
+        
+        if (!errorDiv) {
+            errorDiv = document.createElement('div');
+            errorDiv.id = 'error-inicializacion';
+            errorDiv.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                background-color: #ffebee;
+                color: #b71c1c;
+                padding: 15px;
+                text-align: center;
+                font-family: Arial, sans-serif;
+                font-size: 14px;
+                border-bottom: 2px solid #ef9a9a;
+                z-index: 9999;
+            `;
+            
+            document.body.appendChild(errorDiv);
+        }
+        
+        // Mensaje de error amigable
+        const mensajeError = `
+            <div style="font-weight: bold; margin-bottom: 8px;">
+                ⚠️ Error al cargar los retos interactivos
+            </div>
+            <div style="margin-bottom: 8px;">
+                Por favor, recarga la página. Si el problema persiste, contacta con soporte.
+            </div>
+            ${process.env.NODE_ENV === 'development' ? 
+                `<div style="font-size: 12px; color: #7f0000; margin-top: 5px; text-align: left;">
+                    ${error.message || 'Error desconocido'}
+                </div>` 
+                : ''
+            }
+        `;
+        
+        errorDiv.innerHTML = mensajeError;
+        
+        // Deshabilitar todos los controles
+        const controles = document.querySelectorAll('button, input, select, textarea');
+        controles.forEach(control => {
+            control.disabled = true;
+            control.style.opacity = '0.5';
+            control.style.cursor = 'not-allowed';
+        });
+        
+    } catch (e) {
+        console.error('Error al mostrar mensaje de error:', e);
+    }
 }
 
 // ================== EFECTOS VISUALES ==================
@@ -1326,125 +1991,424 @@ function renderizarReto(retoIndex) {
 }
 
 // --- VERIFICAR LA RESPUESTA DEL USUARIO ---
-function verificar() {
-    const retoActual = retosAventura1Es[currentRetoIndex];
-    if (!retoActual) return;
-
-    const opciones = document.querySelectorAll('input[type="radio"]:checked, input[type="checkbox"]:checked');
-    const inputTexto = document.getElementById("respuestaTexto");
-    let respuestaUsuario = [];
-
-    if (opciones.length > 0) {
-        opciones.forEach((opcion) => {
-            respuestaUsuario.push(opcion.value);
-        });
-    } else if (inputTexto) {
-        respuestaUsuario.push(inputTexto.value.trim().toLowerCase());
-    } else {
-        mostrarMensaje("Por favor, selecciona una opción o escribe tu respuesta.", "error");
-        return;
-    }
-
-    // Verificar si la respuesta es correcta (comparación insensible a mayúsculas/minúsculas)
-    const esCorrecta = retoActual.correctas.some((correcta) =>
-        respuestaUsuario.some((respuesta) => respuesta.toLowerCase() === correcta.toLowerCase())
-    );
-
-    // Mostrar retroalimentación
-    if (esCorrecta) {
-        mostrarMensaje("¡Respuesta correcta!", "exito");
-        fuegosArtificiales();
+async function verificar() {
+    const idTransaccion = `verificar_respuesta_${Date.now()}`;
+    let retoActual, respuestaUsuario;
+    
+    try {
+        // Validar que hay un reto actual
+        retoActual = retosAventura1Es[currentRetoIndex];
+        if (!retoActual) {
+            throw new Error('No hay un reto actual para verificar');
+        }
         
-        // Habilitar el botón de continuar
-        const btnContinuar = document.getElementById("btnContinueReto");
-        if (btnContinuar) {
-            btnContinuar.disabled = false;
+        console.log(`[${IFRAME_ID}] Verificando respuesta para reto:`, { 
+            retoId: retoActual.id, 
+            idTransaccion 
+        });
+
+        // Obtener la respuesta del usuario
+        const opciones = document.querySelectorAll('input[type="radio"]:checked, input[type="checkbox"]:checked');
+        const inputTexto = document.getElementById("respuestaTexto");
+        respuestaUsuario = [];
+
+        if (opciones.length > 0) {
+            opciones.forEach((opcion) => {
+                respuestaUsuario.push(opcion.value);
+            });
+        } else if (inputTexto && inputTexto.value.trim() !== '') {
+            respuestaUsuario.push(inputTexto.value.trim());
+        } else {
+            mostrarMensaje("Por favor, selecciona una opción o escribe tu respuesta.", "error");
+            return;
+        }
+
+        // Verificar si la respuesta es correcta (comparación insensible a mayúsculas/minúsculas)
+        const esCorrecta = retoActual.correctas.some((correcta) =>
+            respuestaUsuario.some((respuesta) => respuesta.toLowerCase() === correcta.toLowerCase())
+        );
+
+        // Actualizar el estado
+        estadoApp.ultimaRespuesta = {
+            retoId: retoActual.id,
+            respuesta: respuestaUsuario,
+            esCorrecta,
+            timestamp: new Date().toISOString(),
+            idTransaccion
+        };
+
+        // Mostrar retroalimentación
+        if (esCorrecta) {
+            await manejarRespuestaCorrecta(retoActual, idTransaccion);
+        } else {
+            await manejarRespuestaIncorrecta(retoActual, idTransaccion);
+        }
+        
+    } catch (error) {
+        console.error(`[${IFRAME_ID}] Error al verificar la respuesta:`, error);
+        
+        // Notificar al padre del error
+        await notificarError('error_verificar_respuesta', {
+            retoId: retoActual?.id,
+            respuestaUsuario,
+            idTransaccion,
+            mensaje: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString()
+        });
+        
+        // Mostrar mensaje de error al usuario
+        mostrarMensaje("Ha ocurrido un error al verificar tu respuesta. Por favor, inténtalo de nuevo.", "error");
+    }
+}
+
+/**
+ * Maneja una respuesta correcta del usuario
+ * @param {Object} retoActual - El reto actual
+ * @param {string} idTransaccion - ID de transacción para seguimiento
+ */
+async function manejarRespuestaCorrecta(retoActual, idTransaccion) {
+    // Mostrar retroalimentación visual
+    mostrarMensaje("¡Respuesta correcta!", "exito");
+    fuegosArtificiales();
+    
+    // Deshabilitar controles
+    const btnEnviar = document.getElementById("btnEnviar");
+    if (btnEnviar) btnEnviar.disabled = true;
+    
+    // Habilitar el botón de continuar
+    const btnContinuar = document.getElementById("btnContinueReto");
+    if (btnContinuar) {
+        btnContinuar.disabled = false;
+        
+        // Configurar manejador de eventos para continuar
+        const manejarContinuar = async () => {
+            console.log(`[${IFRAME_ID}] Continuando después del reto ${retoActual.id}`);
             
-            // Asegurarse de que el botón tenga un manejador de eventos
-            btnContinuar.onclick = function() {
-                console.log(`🏁 HIJO 4: Continuar después del reto ${window.retoActual?.id}`);
-                
+            try {
                 // Notificar al padre que el usuario quiere continuar
-                if (window.retoActual) {
-                    enviarMensajeAlPadre('RETO.FINALIZADO', {
-                        retoId: window.retoActual.id,
-                        exito: true,
-                        continuar: true
-                    });
-                }
-                
-                // Limpiar la referencia al reto actual
-                delete window.retoActual;
+                await enviarMensajeAlPadre('reto_finalizado', {
+                    retoId: retoActual.id,
+                    exito: true,
+                    continuar: true,
+                    idTransaccion
+                });
                 
                 // Limpiar la interfaz
+                const retoContenidoDiv = document.getElementById("reto-contenido");
                 if (retoContenidoDiv) {
                     retoContenidoDiv.innerHTML = '';
                 }
                 
                 // Deshabilitar el botón de nuevo
                 btnContinuar.disabled = true;
-            };
-            
-            btnContinuar.focus();
-        }
+                
+                // Limpiar el manejador de eventos para evitar duplicados
+                btnContinuar.removeEventListener('click', manejarContinuar);
+                
+            } catch (error) {
+                console.error(`[${IFRAME_ID}] Error al continuar después del reto:`, error);
+                mostrarMensaje("Error al continuar. Por favor, inténtalo de nuevo.", "error");
+            }
+        };
         
-        // Notificar al padre que el reto se completó exitosamente
-        if (window.retoActual) {
-            enviarMensajeAlPadre('RETO.COMPLETADO', {
-                retoId: window.retoActual.id,
-                exito: true,
-                esPuzzle: false
-            });
-        }
-        
-        console.log(`✅ HIJO 4: Reto ${retoActual.reto} completado correctamente`);
-    } else {
-        vibrar();
-        btnEnviar.disabled = false;
-        btnMostrarRespuesta.style.display = "inline-block";
-        enviarAlPadre({ type: "reto-interactivo-fallado", index: currentRetoIndex });
-        console.log(`❌ HIJO 4: Reto ${currentRetoIndex + 1} fallado`);
+        // Asignar el manejador de eventos
+        btnContinuar.addEventListener('click', manejarContinuar);
+        btnContinuar.focus();
     }
+    
+    // Notificar al padre que el reto se completó exitosamente
+    await enviarMensajeAlPadre('reto_completado', {
+        retoId: retoActual.id,
+        tipo: retoActual.tipo,
+        exito: true,
+        esPuzzle: false,
+        puntos: retoActual.puntos || 10,
+        idTransaccion,
+        timestamp: new Date().toISOString()
+    });
+    
+    console.log(`[${IFRAME_ID}] Reto completado correctamente:`, { 
+        retoId: retoActual.id,
+        idTransaccion 
+    });
+}
+
+/**
+ * Maneja una respuesta incorrecta del usuario
+ * @param {Object} retoActual - El reto actual
+ * @param {string} idTransaccion - ID de transacción para seguimiento
+ */
+async function manejarRespuestaIncorrecta(retoActual, idTransaccion) {
+    // Efecto de vibración para retroalimentación
+    vibrar();
+    
+    // Habilitar controles para reintentar
+    const btnEnviar = document.getElementById("btnEnviar");
+    if (btnEnviar) btnEnviar.disabled = false;
+    
+    // Mostrar botón para ver la respuesta
+    const btnMostrarRespuesta = document.getElementById("btnMostrarRespuesta");
+    if (btnMostrarRespuesta) {
+        btnMostrarRespuesta.style.display = "inline-block";
+    }
+    
+    // Notificar al padre del fallo
+    await notificarEstado('reto_fallido', {
+        retoId: retoActual.id,
+        idTransaccion,
+        timestamp: new Date().toISOString()
+    });
+    
+    console.log(`[${IFRAME_ID}] Respuesta incorrecta para el reto:`, { 
+        retoId: retoActual.id,
+        idTransaccion 
+    });
 }
 
 // ================== EVENT LISTENERS ==================
 
+// --- REFERENCIAS A ELEMENTOS DEL DOM ---
+const elementosUI = {
+    // Obtiene los elementos del DOM de forma perezosa
+    get btnEnviar() { return document.getElementById("btnEnviar"); },
+    get btnContinueReto() { return document.getElementById("btnContinueReto"); },
+    get divRespuestaCorrecta() { return document.getElementById("respuesta-correcta"); },
+    get retoContenido() { return document.getElementById("reto-contenido"); },
+    get btnMostrarRespuesta() { return document.getElementById("btnMostrarRespuesta"); },
+    get iframe() { return window.frameElement; },
+    
+    // Métodos de utilidad
+    limpiarContenido() {
+        if (this.retoContenido) this.retoContenido.innerHTML = '';
+        if (this.divRespuestaCorrecta) {
+            this.divRespuestaCorrecta.textContent = '';
+            this.divRespuestaCorrecta.style.display = 'none';
+        }
+    },
+    
+    configurarBotonContinuar(manejador) {
+        if (!this.btnContinueReto) return;
+        
+        // Clonar el botón para eliminar manejadores anteriores
+        const nuevoBoton = this.btnContinueReto.cloneNode(true);
+        this.btnContinueReto.parentNode.replaceChild(nuevoBoton, this.btnContinueReto);
+        
+        // Configurar el nuevo manejador
+        nuevoBoton.style.display = 'inline-block';
+        nuevoBoton.addEventListener('click', manejador, { once: true });
+    },
+    
+    ocultarInterfaz() {
+        if (this.iframe) {
+            this.iframe.style.display = 'none';
+        }
+    }
+};
+
+// --- FUNCIONES DE UTILIDAD ---
+
+/**
+ * Limpia la interfaz del reto
+ */
+function limpiarInterfaz() {
+    elementosUI.limpiarContenido();
+    
+    if (elementosUI.btnEnviar) {
+        elementosUI.btnEnviar.disabled = false;
+    }
+    
+    if (elementosUI.btnContinueReto) {
+        elementosUI.btnContinueReto.style.display = 'none';
+    }
+}
+
+/**
+ * Notifica al padre que un reto ha finalizado
+ * @param {Object} reto - El reto actual
+ * @param {string} idTransaccion - ID de transacción para seguimiento
+ * @param {boolean} exito - Indica si el reto se completó con éxito
+ * @param {boolean} respuestaMostrada - Indica si se mostró la respuesta
+ * @returns {Promise<void>}
+ */
+async function notificarRetoFinalizado(reto, idTransaccion, exito, respuestaMostrada = false) {
+    return enviarMensajeAlPadre('reto_finalizado', {
+        retoId: reto.id,
+        exito,
+        respuestaMostrada,
+        continuar: true,
+        idTransaccion,
+        timestamp: new Date().toISOString()
+    });
+}
+
+/**
+ * Muestra un mensaje de error al usuario y lo registra
+ * @param {Error|string} error - El error ocurrido o mensaje de error
+ * @param {string} contexto - Contexto donde ocurrió el error
+ * @param {Object} [datosAdicionales={}] - Datos adicionales para el log
+ * @returns {Promise<Error>} El error procesado
+ */
+async function manejarError(error, contexto, datosAdicionales = {}) {
+    // Manejar tanto objetos Error como strings
+    const errorObj = typeof error === 'string' ? new Error(error) : error;
+    const { retoId, idTransaccion } = datosAdicionales;
+    const mensajeError = `[${IFRAME_ID}] Error en ${contexto}: ${errorObj.message}`;
+    
+    console.error(mensajeError, errorObj);
+    
+    if (idTransaccion) {
+        try {
+            await notificarError(`error_${contexto}`.toLowerCase(), {
+                retoId,
+                idTransaccion,
+                mensaje: errorObj.message,
+                stack: errorObj.stack,
+                ...datosAdicionales,
+                timestamp: new Date().toISOString()
+            });
+        } catch (notifyError) {
+            console.error(`[${IFRAME_ID}] Error al notificar error al padre:`, notifyError);
+        }
+    }
+    
+    mostrarMensaje(`Ha ocurrido un error al ${contexto}. Por favor, inténtalo de nuevo.`, "error");
+    return errorObj;
+}
+
+/**
+ * Muestra la respuesta correcta al usuario y notifica al padre
+ * @param {Object} reto - El reto actual
+ * @param {string} idTransaccion - ID de transacción para seguimiento
+ */
+async function mostrarRespuestaCorrecta(reto, idTransaccion) {
+    if (!reto) {
+        return manejarError(new Error('reto no definido'), 'mostrar respuesta', { idTransaccion });
+    }
+
+    try {
+        // Mostrar la respuesta correcta según el tipo de reto
+        if (elementosUI.divRespuestaCorrecta) {
+            elementosUI.divRespuestaCorrecta.textContent = 
+                (reto.tipo === "opcion" || reto.tipo === "opcion-multiple")
+                    ? `Respuesta correcta: ${reto.correctas.join(", ")}`
+                    : "Puede continuar con la aventura.";
+            elementosUI.divRespuestaCorrecta.style.display = "block";
+        }
+
+        // Deshabilitar el botón de enviar
+        if (elementosUI.btnEnviar) {
+            elementosUI.btnEnviar.disabled = true;
+        }
+
+        // Configurar el botón de continuar
+        const manejarContinuar = async () => {
+            try {
+                await notificarRetoFinalizado(reto, idTransaccion, false, true);
+                limpiarInterfaz();
+            } catch (error) {
+                await manejarError(error, 'continuar después de mostrar respuesta', { 
+                    retoId: reto.id, 
+                    idTransaccion 
+                });
+            }
+        };
+        
+        elementosUI.configurarBotonContinuar(manejarContinuar);
+        
+        // Notificar al padre que se mostró la respuesta
+        await notificarEstado('respuesta_mostrada', {
+            retoId: reto.id,
+            respuestaCorrecta: reto.correctas,
+            idTransaccion,
+            timestamp: new Date().toISOString()
+        });
+        
+        console.log(`[${IFRAME_ID}] Respuesta mostrada para el reto:`, { 
+            retoId: reto.id,
+            idTransaccion 
+        });
+        
+    } catch (error) {
+        await manejarError(error, 'mostrar respuesta', { retoId: reto?.id, idTransaccion });
+    }
+}
+
 // --- MOSTRAR RESPUESTA CORRECTA AL USUARIO ---
-btnMostrarRespuesta.addEventListener("click", () => {
-    if (currentRetoIndex === -1 || retosDisabled) return;
+btnMostrarRespuesta.addEventListener("click", async () => {
+    if (currentRetoIndex === -1 || !estadoApp.controlesHabilitados) {
+        console.warn(`[${IFRAME_ID}] No se puede mostrar la respuesta: reto no disponible o controles deshabilitados`);
+        return;
+    }
     
     const reto = retosAventura1Es[currentRetoIndex];
-    if (reto.tipo === "opcion" || reto.tipo === "opcion-multiple") {
-        divRespuestaCorrecta.textContent = "Respuesta correcta: " + reto.correctas.join(", ");
-    } else if (reto.tipo === "texto") {
-        divRespuestaCorrecta.textContent = "Puede continuar con la aventura.";
-    }
-    divRespuestaCorrecta.style.display = "block";
-    btnEnviar.disabled = true;
+    const idTransaccion = `mostrar_respuesta_${Date.now()}`;
     
-    // Mostrar el botón de continuar si no está visible
-    if (btnContinueReto.style.display === "none") {
-        btnContinueReto.style.display = "inline-block";
-    }
-});
-
-// --- BOTÓN CONTINÚE SU RETO ---
-btnContinueReto.addEventListener("click", () => {
-    if (retosDisabled) return;
-    
-    btnContinueReto.style.display = "none";
-    
-    // Notificar al padre que el reto se ha completado
-    enviarAlPadre({ 
-        type: "retoCompletado",
-        retoId: retosAventura1Es[currentRetoIndex].id || `R-${currentRetoIndex + 1}`,
-        index: currentRetoIndex
+    console.log(`[${IFRAME_ID}] Mostrando respuesta para reto:`, { 
+        retoId: reto?.id, 
+        idTransaccion 
     });
     
-    // Opcional: Ocultar el iframe (el padre también puede manejarlo)
-    window.setTimeout(() => {
-        if (window.frameElement) window.frameElement.style.display = 'none';
-    }, 100);
+    await mostrarRespuestaCorrecta(reto, idTransaccion);
+});
+
+/**
+ * Maneja la acción de continuar después de completar un reto
+ * @param {Object} reto - El reto actual
+ * @param {string} idTransaccion - ID de transacción para seguimiento
+ * @param {boolean} [exito=false] - Indica si el reto se completó con éxito
+ */
+async function manejarContinuarReto(reto, idTransaccion, exito = false) {
+    if (!reto) {
+        return manejarError(new Error('reto no definido'), 'continuar reto', { idTransaccion, exito });
+    }
+
+    try {
+        // Ocultar el botón de continuar
+        if (elementosUI.btnContinueReto) {
+            elementosUI.btnContinueReto.style.display = "none";
+        }
+
+        // Notificar al padre que el reto se ha completado
+        await notificarRetoFinalizado(reto, idTransaccion, exito, false);
+
+        // Limpiar la interfaz
+        limpiarInterfaz();
+
+        // Ocultar el iframe después de un breve retraso
+        setTimeout(() => elementosUI.ocultarInterfaz(), 100);
+
+        console.log(`[${IFRAME_ID}] Continuando después del reto:`, { 
+            retoId: reto.id,
+            exito,
+            idTransaccion 
+        });
+
+    } catch (error) {
+        await manejarError(error, 'continuar reto', { 
+            retoId: reto?.id, 
+            idTransaccion, 
+            exito 
+        });
+    }
+}
+
+// --- BOTÓN CONTINUAR RETO ---
+btnContinueReto.addEventListener("click", async () => {
+    if (currentRetoIndex === -1 || !estadoApp.controlesHabilitados) {
+        console.warn(`[${IFRAME_ID}] No se puede continuar: reto no disponible o controles deshabilitados`);
+        return;
+    }
+    
+    const reto = retosAventura1Es[currentRetoIndex];
+    const idTransaccion = `continuar_reto_${Date.now()}`;
+    
+    console.log(`[${IFRAME_ID}] Continuando reto:`, { 
+        retoId: reto?.id, 
+        idTransaccion 
+    });
+    
+    await manejarContinuarReto(reto, idTransaccion, true);
 });
 
 // --- EVENTOS DE BOTONES ---
@@ -1551,48 +2515,78 @@ window.addEventListener("DOMContentLoaded", async () => {
         window.puzzleActual = null;
         
         // Verificar que Mensajeria esté disponible
-        if (!window.Mensajeria || typeof window.Mensajeria.inicializarMensajeria !== 'function') {
+        if (typeof window.Mensajeria === 'undefined') {
+            console.error('❌ No se pudo cargar el módulo de mensajería');
             throw new Error('El módulo de mensajería no está disponible');
         }
         
-        // Inicializar mensajería
-        await window.Mensajeria.inicializarMensajeria({
-            iframeId: 'hijo4',
-            logLevel: 1, // DEBUG
-            debug: true
-        });
+        // Inicializar mensajería con configuración
+        try {
+            await window.Mensajeria.inicializarMensajeria({
+                iframeId: 'hijo4',
+                logLevel: 1, // 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR, 4=NONE
+                debug: true,
+                dominioPermitido: '*',
+                maxRetries: 3,
+                retryDelay: 1000
+            });
+            
+            console.log('✅ HIJO 4: Mensajería inicializada correctamente');
+        } catch (error) {
+            console.error('❌ HIJO 4: Error al inicializar la mensajería:', error);
+            throw error; // Relanzar para ser manejado por el catch externo
+        }
         
         // Configurar manejadores de mensajes
         configurarManejadoresMensajes();
+        console.log('✅ HIJO 4: Manejadores de mensajes configurados');
         
-        console.log('🔌 HIJO 4: Mensajería inicializada correctamente');
-        
-        // Empezar con retos deshabilitados (modo aventura)
+        // Empezar con retos deshabilitados (modo aventura por defecto)
         manejarCambioModo('aventura', false);
         
         // Notificar al padre que el hijo está listo
-        enviarMensajeAlPadre('sistema_estado', {
-            modo: modoActual,
-            controlesHabilitados: controlesHabilitados
-        });
+        try {
+            await enviarMensajeAlPadre('sistema_estado', {
+                tipo: 'inicializacion_completa',
+                estado: 'listo',
+                modo: 'aventura',
+                controlesHabilitados: false,
+                timestamp: Date.now()
+            });
+            console.log('✅ HIJO 4: Notificación de inicialización enviada al padre');
+        } catch (error) {
+            console.warn('⚠️ HIJO 4: No se pudo notificar al padre:', error);
+            // Continuar a pesar del error de notificación
+        }
         
-        console.log(`🧩 HIJO 4: Retos inicializados - Modo: ${modoActual}, Controles: ${controlesHabilitados ? 'Habilitados' : 'Deshabilitados'}`);
+        console.log(`✅ HIJO 4: Inicialización completada - Modo: aventura, Controles: Deshabilitados`);
     } catch (error) {
-        console.error('❌ HIJO 4: Error al inicializar:', error);
+        console.error('❌ HIJO 4: Error crítico durante la inicialización:', error);
+        
         // Asegurarse de que los retos estén deshabilitados en caso de error
         disableControls('error_inicializacion');
         
         // Notificar el error al padre si es posible
-        if (window.mensajeria?.enviarMensaje) {
-            window.mensajeria.enviarMensaje(
-                window.mensajeria.TIPOS_MENSAJE.SISTEMA.ERROR,
-                {
-                    tipo: 'error_inicializacion',
-                    mensaje: error.message,
-                    stack: error.stack
-                }
-            );
+        if (window.Mensajeria?.enviarMensajeConReintenos) {
+            try {
+                await window.Mensajeria.enviarMensajeConReintenos(
+                    'padre',
+                    'sistema_error',
+                    {
+                        tipo: 'error_inicializacion',
+                        mensaje: error.message,
+                        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+                        timestamp: Date.now()
+                    },
+                    { maxRetries: 2, retryDelay: 500 }
+                );
+            } catch (e) {
+                console.error('❌ HIJO 4: No se pudo notificar el error al padre:', e);
+            }
         }
+        
+        // Mostrar mensaje de error al usuario
+        mostrarErrorInicializacion(error);
     }
 });
 </script>
