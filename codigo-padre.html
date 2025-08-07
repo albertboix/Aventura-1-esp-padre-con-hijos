@@ -134,62 +134,84 @@
     
     // Inicializar cuando el DOM esté listo
     document.addEventListener('DOMContentLoaded', async () => {
-        try {
-            await inicializarSistemaMensajeria();
-            console.log('🚀 Aplicación inicializada correctamente');
-            
-            // Inicializar el resto de la aplicación
-            if (window.inicializarAplicacion && typeof window.inicializarAplicacion === 'function') {
-                await window.inicializarAplicacion();
-            }
-            
-            console.log('✅ Sistema de mensajería centralizado inicializado', {
-                version: '2.0.0',
-                timestamp: new Date().toISOString(),
-                config: {
-                    iframeId: 'padre',
-                    logLevel: 'INFO',
-                    dominio: window.location.origin
-                }
-            });
-        } catch (error) {
-            console.error('❌ Error crítico en la inicialización:', error);
-            mostrarErrorEnInterfaz('Error crítico al inicializar la aplicación: ' + error.message);
-        }
-    });
-            
-            // Manejo de errores no capturados
-            window.addEventListener('error', (event) => {
-                const error = event.error || new Error('Error desconocido');
-                console.error('Error no capturado:', error);
-                if (window.Mensajeria) {
-                    window.Mensajeria.enviarMensajeATodosLosHijos('error', {
-                        mensaje: error.message,
-                        stack: error.stack,
-                        timestamp: new Date().toISOString()
+        // Función para inicializar el sistema de mensajería
+        const inicializarSistema = async () => {
+            try {
+                // Inicializar el sistema de mensajería
+                await inicializarSistemaMensajeria();
+                
+                // Configuración de mensajería
+                if (window.Mensajeria && typeof window.Mensajeria.inicializarMensajeria === 'function') {
+                    await window.Mensajeria.inicializarMensajeria({
+                        iframeId: 'padre',
+                        logLevel: 'INFO',
+                        dominio: window.location.origin
                     });
+                    
+                    console.log('✅ Sistema de mensajería centralizado inicializado', {
+                        version: '2.0.0',
+                        timestamp: new Date().toISOString(),
+                        config: {
+                            iframeId: 'padre',
+                            logLevel: 'INFO',
+                            dominio: window.location.origin
+                        }
+                    });
+                    
+                    // Inicializar la aplicación principal
+                    if (typeof window.inicializarAplicacion === 'function') {
+                        await window.inicializarAplicacion();
+                    }
+                    
+                    // Notificar a la interfaz
+                    if (window.mostrarMensajeInfoParada) {
+                        window.mostrarMensajeInfoParada('Sistema listo');
+                    }
+                    
+                    return true;
+                } else {
+                    throw new Error('La API de mensajería no está disponible');
                 }
-            });
-            
-            // Notificar a la interfaz
-            if (window.mostrarMensajeInfoParada) {
-                window.mostrarMensajeInfoParada('Sistema listo');
+            } catch (error) {
+                console.error('❌ Error crítico en la inicialización:', error);
+                mostrarErrorEnInterfaz('Error crítico al inicializar la aplicación: ' + error.message);
+                return false;
             }
-            
-            // Timeout para la inicialización
-            setTimeout(() => {
-                if (!window.Mensajeria) {
-                    console.error('❌ Error: No se pudo cargar el módulo de mensajería');
-                    mostrarErrorEnInterfaz('Error de inicialización');
-                }
-            }, 5000);
-            
-        } catch (error) {
-            console.error('❌ Error crítico en inicialización:', error);
-            mostrarErrorEnInterfaz(`Error: ${error.message}`);
-        }
-        // Configuración del mapa con mejoras táctiles
-        const valenciaCoords = [39.44859, -0.37489]; // Coordenadas exactas de Valencia
+        };
+        
+        // Inicializar el sistema
+        inicializarSistema().then(inicializado => {
+            if (inicializado) {
+                // Configurar manejador de errores no capturados
+                window.addEventListener('error', (event) => {
+                    const error = event.error || new Error('Error desconocido');
+                    console.error('Error no capturado:', error);
+                    if (window.Mensajeria) {
+                        window.Mensajeria.enviarMensajeATodosLosHijos('error', {
+                            mensaje: error.message,
+                            stack: error.stack,
+                            timestamp: new Date().toISOString()
+                        }).catch(console.error);
+                    }
+                });
+                
+                // Timeout para verificar la inicialización
+                setTimeout(() => {
+                    if (!window.Mensajeria) {
+                        console.error('❌ Error: No se pudo cargar el módulo de mensajería');
+                        mostrarErrorEnInterfaz('Error de inicialización: Módulo de mensajería no disponible');
+                    }
+                }, 5000);
+            }
+            return inicializado;
+        }).catch(error => {
+            console.error('❌ Error en la inicialización del sistema:', error);
+            mostrarErrorEnInterfaz('Error al inicializar el sistema: ' + error.message);
+            return false;
+        });
+    
+    // Configuración del mapa con mejoras táctiles
+    const valenciaCoords = [39.44859, -0.37489]; // Coordenadas exactas de Valencia
         const map = L.map('mapa', {
             center: valenciaCoords,
             zoom: 13,
@@ -293,13 +315,23 @@
         map.touchZoom.enable();
         
         // Mejorar la experiencia táctil en dispositivos móviles
-        if (L.Browser.touch) {
-            // Desactivar rotación táctil para evitar cambios accidentales
-            map.dragging._touchRotate.disable();
-            map.dragging._touchZoom.disable();
-            
-            // Mejorar la respuesta táctil
-            map.tap?.enable();
+        if (L.Browser.touch && map && map.dragging) {
+            try {
+                // Desactivar rotación táctil para evitar cambios accidentales
+                if (map.dragging._touchRotate) {
+                    map.dragging._touchRotate.disable();
+                }
+                if (map.dragging._touchZoom) {
+                    map.dragging._touchZoom.disable();
+                }
+                
+                // Mejorar la respuesta táctil
+                if (map.tap) {
+                    map.tap.enable();
+                }
+            } catch (error) {
+                console.warn('No se pudieron configurar todas las opciones táctiles:', error);
+            }
         }
         
         // Deshabilitar controles de zoom con comprobaciones de seguridad
