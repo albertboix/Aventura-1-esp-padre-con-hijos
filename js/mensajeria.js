@@ -994,15 +994,6 @@ const Mensajeria = {
 
 // Asegurarse de que las funciones estén disponibles directamente en el objeto Mensajeria
 Object.assign(Mensajeria, {
-    // Métodos principales
-    inicializarMensajeria: Mensajeria.inicializarMensajeria,
-    enableControls: Mensajeria.enableControls,
-    disableControls: Mensajeria.disableControls,
-    registrarControlador: Mensajeria.registrarControlador,
-    removerControladores: Mensajeria.removerControladores,
-    enviarMensaje: Mensajeria.enviarMensaje,
-    enviarMensajeConReintenos: Mensajeria.enviarMensajeConReintenos,
-    
     // Constantes
     LOG_LEVELS,
     ERRORES,
@@ -1022,50 +1013,55 @@ Object.assign(Mensajeria, {
         RETO_COMPLETADO: 'reto_completado',
         RETO_FALLIDO: 'reto_fallido',
         SOLICITUD_PISTA: 'solicitud_pista',
-        PUZZLE_COMPLETADO: 'puzzle_completado'
-    }
+        PUZZLE_COMPLETADO: 'puzzle_completado',
+        CAMBIO_MODO: 'cambio_modo'  // Añadido para consistencia
+    },
+    // Métodos de utilidad
+    obtenerMetricas,
+    limpiarEstado,
+    // Métodos de depuración
+    getConfig: () => ({
+        logLevel: logger.logLevel,
+        debug: logger.logLevel === LOG_LEVELS.DEBUG,
+        maxRetries: 3,
+        retryDelay: 1000
+    }),
+    getEstado: () => ({
+        mensajesPendientes: Object.keys(mensajesPendientes).length,
+        mensajesProcesados: Object.keys(mensajesProcesados).length,
+        metricas: obtenerMetricas()
+    })
 });
 
-// Exportar el módulo para diferentes entornos
+// Exportación para navegadores (módulos ES6)
 if (typeof window !== 'undefined') {
+    // Hacer disponible globalmente
     window.Mensajeria = Mensajeria;
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Mensajeria;
-}
-
-// Hacer que las funciones estén disponibles globalmente
-if (typeof window !== 'undefined') {
+    // Exportar funciones globales necesarias
     window.enableControls = Mensajeria.enableControls;
     window.disableControls = Mensajeria.disableControls;
 }
 
-// Hacer disponible globalmente en el navegador
-if (typeof window !== 'undefined') {
-    window.Mensajeria = Mensajeria;
-}
-
-// Export para CommonJS (Node.js)
+// Exportación para Node.js (CommonJS)
 if (typeof module !== 'undefined' && module.exports) {
-    // CommonJS
     module.exports = Mensajeria;
     module.exports.default = Mensajeria;
+    
     // Exportar funciones individuales para CommonJS
     Object.entries({
-        inicializarMensajeria,
+        inicializarMensajeria: Mensajeria.inicializarMensajeria,
         enableControls: Mensajeria.enableControls,
         disableControls: Mensajeria.disableControls,
         registrarControlador: Mensajeria.registrarControlador,
-        LOG_LEVELS,
-        ERRORES
+        removerControladores: Mensajeria.removerControladores,
+        enviarMensaje: Mensajeria.enviarMensaje,
+        enviarMensajeConReintenos: Mensajeria.enviarMensajeConReintenos,
+        LOG_LEVELS: Mensajeria.LOG_LEVELS,
+        ERRORES: Mensajeria.ERRORES
     }).forEach(([key, value]) => {
         module.exports[key] = value;
     });
-} else if (typeof define === 'function' && define.amd) {
-    // AMD
-    define([], function() { return Mensajeria; });
-} else {
-    // Browser global
-    window.Mensajeria = Mensajeria;
 }
+
+// Exportación estándar para módulos ES6
+export default Mensajeria;
