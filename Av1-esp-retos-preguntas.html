@@ -25,47 +25,104 @@
         mensajeriaInicializada: false
       };
       
-      // Inicializar la mensajería
+      // Inicializar la mensajería con manejo mejorado de errores
       async function inicializarMensajeria() {
-        try {
-          console.log(`[${IFRAME_ID}] Inicializando sistema de mensajería...`);
-          
-          // Importar el módulo de mensajería
-          const moduloMensajeria = await import('./js/mensajeria.js');
-          window.Mensajeria = Mensajeria = moduloMensajeria.default || moduloMensajeria;
-          
-          if (!Mensajeria || typeof Mensajeria.inicializarMensajeria !== 'function') {
-            throw new Error('La API de mensajería no es válida');
+        const MAX_REINTENTOS = 3;
+        let intentos = 0;
+        let ultimoError = null;
+        
+        while (intentos < MAX_REINTENTOS) {
+          try {
+            console.log(`[${IFRAME_ID}] Inicializando sistema de mensajería (intento ${intentos + 1}/${MAX_REINTENTOS})...`);
+            
+            // 1. Importar el módulo de mensajería
+            const moduloMensajeria = await import('./js/mensajeria.js');
+            if (!moduloMensajeria) {
+              throw new Error('No se pudo cargar el módulo de mensajería');
+            }
+            
+            // 2. Asignar a variables globales
+            window.Mensajeria = Mensajeria = moduloMensajeria.default || moduloMensajeria;
+            
+            if (!Mensajeria || typeof Mensajeria.inicializarMensajeria !== 'function') {
+              throw new Error('La API de mensajería no es válida');
+            }
+            
+            // 3. Asegurar que TIPOS_MENSAJE esté disponible
+            if (!window.TIPOS_MENSAJE) {
+              window.TIPOS_MENSAJE = Mensajeria.TIPOS_MENSAJE || {
+                SISTEMA: 'sistema',
+                INICIALIZACION: 'inicializacion',
+                CONFIGURACION: 'configuracion',
+                ESTADO: 'estado',
+                ERROR: 'error',
+                NAVEGACION: 'navegacion',
+                AUDIO: 'audio',
+                RETO: 'reto',
+                CONFIRMACION: 'confirmacion',
+                CONTROLES_HABILITADOS: 'sistema:controles_habilitados',
+                CONTROLES_DESHABILITADOS: 'sistema:controles_deshabilitados',
+                CAMBIO_MODO: 'sistema:cambio_modo',
+                HABILITAR_CONTROLES: 'sistema:habilitar_controles',
+                DESHABILITAR_CONTROLES: 'sistema:deshabilitar_controles'
+              };
+            }
+            
+            // 4. Configurar mensajería
+            await Mensajeria.inicializarMensajeria({
+              iframeId: IFRAME_ID,
+              logLevel: (Mensajeria.LOG_LEVELS || {}).INFO || 1,
+              debug: true,
+              maxReintentos: 3,
+              timeoutMensajes: 5000
+            });
+            
+            // 5. Configurar manejadores de mensajes
+            if (typeof configurarManejadoresMensajes === 'function') {
+              configurarManejadoresMensajes();
+            }
+            
+            // 6. Actualizar estado
+            estadoApp.mensajeriaInicializada = true;
+            estadoApp.ultimoError = null;
+            
+            console.log(`[${IFRAME_ID}] ✅ Mensajería inicializada correctamente`);
+            
+            // 7. Notificar al padre que estamos listos
+            try {
+              await enviarMensajeAlPadre('sistema:inicializacion', { 
+                estado: 'listo',
+                timestamp: new Date().toISOString(),
+                version: '1.0.0',
+                iframeId: IFRAME_ID
+              });
+            } catch (notifyError) {
+              console.warn(`[${IFRAME_ID}] No se pudo notificar al padre:`, notifyError);
+              // No es crítico, continuamos
+            }
+            
+            return Mensajeria;
+            
+          } catch (error) {
+            ultimoError = error;
+            console.error(`[${IFRAME_ID}] Error en el intento ${intentos + 1}:`, error);
+            
+            // Esperar antes de reintentar (backoff exponencial)
+            const tiempoEspera = Math.min(1000 * Math.pow(2, intentos), 10000);
+            if (intentos < MAX_REINTENTOS - 1) {
+              console.log(`[${IFRAME_ID}] Reintentando en ${tiempoEspera}ms...`);
+              await new Promise(resolve => setTimeout(resolve, tiempoEspera));
+            }
+            intentos++;
           }
-          
-          // Configurar mensajería
-          await Mensajeria.inicializarMensajeria({
-            iframeId: IFRAME_ID,
-            logLevel: Mensajeria.LOG_LEVELS.INFO,
-            debug: true
-          });
-          
-          estadoApp.mensajeriaInicializada = true;
-          console.log(`[${IFRAME_ID}] Mensajería inicializada correctamente`);
-          
-          // Configurar manejadores de mensajes
-          if (typeof configurarManejadoresMensajes === 'function') {
-            configurarManejadoresMensajes();
-          }
-          
-          // Notificar al padre que estamos listos
-          await enviarMensajeAlPadre('sistema:inicializacion', { 
-            estado: 'listo',
-            timestamp: new Date().toISOString()
-          });
-          
-          return Mensajeria;
-        } catch (error) {
-          console.error(`[${IFRAME_ID}] Error al inicializar la mensajería:`, error);
-          estadoApp.ultimoError = error;
-          mostrarErrorInicializacion(error);
-          throw error;
         }
+        
+        // Si llegamos aquí, todos los intentos fallaron
+        const errorFinal = new Error(`No se pudo inicializar la mensajería después de ${MAX_REINTENTOS} intentos. Último error: ${ultimoError?.message || 'desconocido'}`);
+        console.error(`[${IFRAME_ID}]`, errorFinal);
+        estadoApp.ultimoError = errorFinal;
+        mostrarErrorInicializacion(errorFinal);
+        throw errorFinal;
       }
 
       // ================== DECLARACIONES DE FUNCIONES ==================
@@ -124,75 +181,220 @@
 
       /**
        * Envía un mensaje al iframe padre usando el sistema de mensajería centralizado
+       * con manejo mejorado de errores y reintentos.
+       * 
        * @param {string} tipo - Tipo de mensaje (ej: 'sistema_estado', 'puzzle_mostrado', etc.)
        * @param {Object} [datos={}] - Datos adicionales del mensaje
        * @param {Object} [opciones] - Opciones adicionales
        * @param {number} [opciones.reintentos=3] - Número de reintentos en caso de fallo
-       * @param {boolean} [opciones.esencial=true] - Si es true, se reintentará en caso de fallo
+       * @param {number} [opciones.tiempoEspera=1000] - Tiempo base de espera entre reintentos en ms
+       * @param {boolean} [opciones.esencial=true] - Si es true, se reintentará incluso en modo silencioso
+       * @param {number} [opciones.timeout=10000] - Tiempo máximo de espera por intento en ms
        * @returns {Promise<Object>} Promesa que se resuelve con la respuesta del padre
        */
-      async function enviarMensajeAlPadre(tipo, datos = {}, { reintentos = 3, esencial = true } = {}) {
-        if (!window.Mensajeria) {
-          const error = new Error('Mensajería no disponible');
-          console.error(`[${IFRAME_ID}] ${error.message}`, { tipo, datos });
-          if (esencial) throw error;
-          return Promise.resolve();
+      /**
+       * Envía un mensaje al iframe padre usando el sistema de mensajería centralizado
+       * con manejo mejorado de errores y reintentos.
+       * 
+       * @param {string} tipo - Tipo de mensaje (ej: 'sistema_estado', 'puzzle_mostrado', etc.)
+       * @param {Object} [datos={}] - Datos adicionales del mensaje
+       * @param {Object} [opciones] - Opciones adicionales
+       * @param {number} [opciones.reintentos=3] - Número de reintentos en caso de fallo
+       * @param {number} [opciones.tiempoEspera=1000] - Tiempo base de espera entre reintentos en ms
+       * @param {boolean} [opciones.esencial=true] - Si es true, se reintentará incluso en modo silencioso
+       * @param {number} [opciones.timeout=10000] - Tiempo máximo de espera por intento en ms
+       * @returns {Promise<Object>} Promesa que se resuelve con la respuesta del padre
+       */
+      async function enviarMensajeAlPadre(tipo, datos = {}, opciones = {}) {
+        const {
+          reintentos = 3,
+          tiempoEspera = 1000,
+          esencial = true,
+          timeout = 10000
+        } = opciones;
+        
+        // Validaciones iniciales
+        if (!tipo || typeof tipo !== 'string') {
+          const error = new Error('El tipo de mensaje es requerido y debe ser una cadena');
+          console.error(`[${IFRAME_ID}] Error de validación:`, error);
+          return Promise.reject(error);
         }
         
+        // Verificar que el sistema de mensajería esté disponible
+        if (!window.Mensajeria || typeof window.Mensajeria.enviarMensaje !== 'function') {
+          const error = new Error('Sistema de mensajería no disponible o no tiene el método enviarMensaje');
+          console.error(`[${IFRAME_ID}]`, error);
+          
+          // Si es un mensaje crítico, intentar reconectar
+          if (esencial) {
+            console.log(`[${IFRAME_ID}] Intentando reconexión completa...`);
+            try {
+              await inicializarMensajeria();
+              if (window.Mensajeria) {
+                console.log(`[${IFRAME_ID}] Reconexión exitosa, reenviando mensaje...`);
+                return enviarMensajeAlPadre(tipo, datos, { ...opciones, reintentos: reintentos - 1 });
+              }
+            } catch (reconnectError) {
+              console.error(`[${IFRAME_ID}] Error en la reconexión:`, reconnectError);
+            }
+          }
+          
+          return Promise.reject(error);
+        }
+        
+        // Construir el mensaje con metadatos estándar
         const mensaje = {
           tipo: `reto_${tipo}`.replace(/^reto_reto_/, 'reto_'), // Evitar duplicados
-          datos: {
+          origen: IFRAME_ID,
+          timestamp: new Date().toISOString(),
+          version: '1.0.0',
+          idMensaje: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          datos: { 
             ...datos,
-            timestamp: new Date().toISOString(),
-            origen: IFRAME_ID,
-            retoId: estadoApp.retoActual?.id
+            retoId: estadoApp.retoActual?.id 
+          },
+          // Metadatos para seguimiento
+          metadata: {
+            intento: 1,
+            maxReintentos: reintentos,
+            esReintento: false
           }
         };
         
-        console.log(`[${IFRAME_ID}] Enviando mensaje al padre:`, mensaje);
-        
-        try {
-          const respuesta = await window.Mensajeria.enviarMensajeConReintenos(
-            'padre',
-            mensaje.tipo,
-            mensaje.datos,
-            { intentosMaximos: reintentos, tiempoEspera: 1000 }
-          );
+        // Función para realizar el envío con manejo de timeouts y reintentos
+        const realizarEnvio = async (mensajeActual, intento = 1) => {
+          const idIntento = `${mensajeActual.idMensaje}_${intento}`;
+          const esUltimoIntento = intento >= reintentos;
           
-          console.log(`[${IFRAME_ID}] Respuesta del padre recibida:`, respuesta);
-          return respuesta;
-          
-        } catch (error) {
-          console.error(`[${IFRAME_ID}] Error al enviar mensaje al padre:`, error, { tipo, datos });
-          if (esencial) throw error;
-          return null;
-        }
-      }
-      
-      /**
-       * Notifica un error al iframe padre
-       * @param {string} tipo - Tipo de error
-       * @param {Object} [detalles={}] - Detalles adicionales del error
-       * @param {Error} [error] - Objeto de error opcional
-       * @returns {Promise<void>}
-       */
-      async function notificarError(tipo, detalles = {}, error = null) {
-        const errorInfo = {
-          tipo,
-          ...detalles,
-          mensaje: error?.message || detalles.mensaje || 'Error desconocido',
-          stack: error?.stack,
-          timestamp: new Date().toISOString()
+          try {
+            // Actualizar metadatos del mensaje
+            mensajeActual.metadata = {
+              ...mensajeActual.metadata,
+              intento,
+              timestampUltimoIntento: new Date().toISOString(),
+              esReintento: intento > 1
+            };
+            
+            console.log(`[${IFRAME_ID}] [${idIntento}] Enviando mensaje (${tipo})`, {
+              intento: `${intento}/${reintentos}`,
+              mensaje: mensajeActual
+            });
+            
+            // Configurar timeout para el envío
+            let timeoutId;
+            const promesaTimeout = new Promise((_, reject) => {
+              timeoutId = setTimeout(() => {
+                const error = new Error(`Timeout al enviar mensaje después de ${timeout}ms`);
+                error.code = 'TIMEOUT';
+                error.esRecuperable = true;
+                reject(error);
+              }, timeout);
+            });
+            
+            // Enviar el mensaje con timeout
+            const promesaEnvio = window.Mensajeria.enviarMensaje(mensajeActual, {
+              timeout,
+              esperarRespuesta: true
+            });
+            
+            // Esperar a que termine el envío o el timeout
+            const respuesta = await Promise.race([promesaEnvio, promesaTimeout]);
+            
+            // Limpiar el timeout si el envío fue exitoso
+            clearTimeout(timeoutId);
+            
+            console.log(`[${IFRAME_ID}] [${idIntento}] Respuesta recibida para mensaje ${tipo}:`, respuesta);
+            
+            // Verificar si la respuesta indica un error
+            if (respuesta && respuesta.error) {
+              const errorRespuesta = new Error(respuesta.mensaje || 'Error en la respuesta del servidor');
+              errorRespuesta.detalles = respuesta.detalles;
+              errorRespuesta.codigo = respuesta.codigo || 'ERROR_RESPUESTA';
+              errorRespuesta.esRecuperable = respuesta.reintentable !== false;
+              throw errorRespuesta;
+            }
+            
+            return respuesta;
+            
+          } catch (error) {
+            // Limpiar el timeout en caso de error
+            if (timeoutId) clearTimeout(timeoutId);
+            
+            // Determinar si el error es recuperable
+            const esErrorRecuperable = error.esRecuperable !== false && 
+                                     error.code !== 'NO_RECONNECT' &&
+                                     error.code !== 'NO_RETRY';
+            
+            // Determinar si se debe reintentar
+            const debeReintentar = esErrorRecuperable && 
+                                 intento < reintentos &&
+                                 (esencial || error.reintentar !== false);
+            
+            // Registrar el error
+            const nivelLog = debeReintentar ? 'warn' : 'error';
+            console[nivelLog](`[${IFRAME_ID}] [${idIntento}] Error al enviar mensaje ${tipo}:`, {
+              error: error.message,
+              code: error.code,
+              stack: error.stack,
+              esRecuperable,
+              debeReintentar,
+              intentoActual: intento,
+              maxReintentos: reintentos
+            });
+            
+            // Si no se debe reintentar o es el último intento, rechazar la promesa
+            if (!debeReintentar || esUltimoIntento) {
+              // Mejorar el mensaje de error para el usuario final
+              if (esencial) {
+                mostrarError(
+                  'Error de comunicación', 
+                  `No se pudo completar la operación: ${error.message || 'Error desconocido'}`
+                );
+              }
+              throw error;
+            }
+            
+            // Calcular tiempo de espera con backoff exponencial y jitter
+            const baseDelay = Math.min(tiempoEspera * Math.pow(2, intento - 1), 30000); // Máximo 30 segundos
+            const jitter = Math.random() * 1000; // Hasta 1 segundo de variación aleatoria
+            const tiempoEsperaConJitter = Math.floor(baseDelay + jitter);
+            
+            console.log(`[${IFRAME_ID}] [${idIntento}] Reintentando en ${tiempoEsperaConJitter}ms...`);
+            
+            // Esperar antes de reintentar
+            await new Promise(resolve => setTimeout(resolve, tiempoEsperaConJitter));
+            
+            // Reintentar con el siguiente intento
+            return realizarEnvio(mensajeActual, intento + 1);
+          }
         };
         
-        console.error(`[${IFRAME_ID}] Notificando error:`, errorInfo);
-        
+        // Iniciar el proceso de envío
         try {
-          return await enviarMensajeAlPadre('error', errorInfo, { esencial: false });
-        } catch (e) {
-          console.error(`[${IFRAME_ID}] Error al notificar error:`, e);
-          console.error(`[${IFRAME_ID}] Error original:`, errorInfo);
-          return null;
+          return await realizarEnvio(mensaje, 1);
+        } catch (error) {
+          // Si llegamos aquí, todos los reintentos fallaron
+          console.error(`[${IFRAME_ID}] Todos los intentos fallaron para el mensaje ${tipo}:`, error);
+          
+          // Notificar al sistema que hay un problema de conexión persistente
+          if (esencial) {
+            mostrarError(
+              'Error de conexión', 
+              'No se pudo establecer conexión con el servidor. Por favor, verifica tu conexión a internet e inténtalo de nuevo.'
+            );
+            
+            // Intentar una reconexión completa
+            try {
+              console.log(`[${IFRAME_ID}] Intentando reconexión completa...`);
+              await inicializarMensajeria();
+              console.log(`[${IFRAME_ID}] Reconexión completada, puedes intentar la operación nuevamente.`);
+            } catch (reconnectError) {
+              console.error(`[${IFRAME_ID}] Error en la reconexión:`, reconnectError);
+            }
+          }
+          
+          // Rechazar con el último error
+          throw error;
         }
       }
       
@@ -350,10 +552,21 @@ function configurarManejadoresEventos() {
        * Configura los manejadores de mensajes
        * @returns {Promise<void>}
        */
+      /**
+       * Configura los manejadores de mensajes para la comunicación con el iframe padre
+       * @returns {boolean} true si se configuraron correctamente, false en caso contrario
+       */
       async function configurarManejadoresMensajes() {
-        if (!window.Mensajeria) {
-          throw new Error('El sistema de mensajería no está disponible');
+        // Verificar que el sistema de mensajería esté disponible
+        if (!window.Mensajeria || !window.Mensajeria.registrarManejador) {
+          const error = new Error('El sistema de mensajería no está disponible o no tiene el método registrarManejador');
+          console.error(`[${IFRAME_ID}]`, error);
+          estadoApp.ultimoError = error;
+          return false;
         }
+        
+        // Asegurar que TIPOS_MENSAJE esté disponible
+        const TIPOS = window.TIPOS_MENSAJE || {};
         
         // Obtener referencias a constantes del módulo de mensajería
         const { TIPOS_MENSAJE, LOG_LEVELS } = window.Mensajeria;
