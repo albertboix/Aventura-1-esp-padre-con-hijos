@@ -994,6 +994,7 @@ const Mensajeria = {
 
 // Asegurarse de que las funciones estén disponibles directamente en el objeto Mensajeria
 Object.assign(Mensajeria, {
+    // Métodos principales
     inicializarMensajeria: Mensajeria.inicializarMensajeria,
     enableControls: Mensajeria.enableControls,
     disableControls: Mensajeria.disableControls,
@@ -1001,11 +1002,51 @@ Object.assign(Mensajeria, {
     removerControladores: Mensajeria.removerControladores,
     enviarMensaje: Mensajeria.enviarMensaje,
     enviarMensajeConReintenos: Mensajeria.enviarMensajeConReintenos,
+    
+    // Constantes
     LOG_LEVELS,
-    ERRORES
+    ERRORES,
+    TIPOS_MENSAJE: {
+        INICIALIZACION: 'inicializacion',
+        CONFIRMACION: 'confirmacion',
+        ERROR: 'error',
+        SELECCION_PUNTO: 'seleccion_punto',
+        NAVEGACION_INICIADA: 'navegacion_iniciada',
+        NAVEGACION_TERMINADA: 'navegacion_terminada',
+        AUDIO_INICIADO: 'audio_iniciado',
+        AUDIO_TERMINADO: 'audio_terminado',
+        CAMBIO_VOLUMEN: 'cambio_volumen',
+        SOLICITUD_ESTADO: 'solicitud_estado',
+        CAMBIO_TIEMPO: 'cambio_tiempo',
+        RETO_INICIADO: 'reto_iniciado',
+        RETO_COMPLETADO: 'reto_completado',
+        RETO_FALLIDO: 'reto_fallido',
+        SOLICITUD_PISTA: 'solicitud_pista',
+        PUZZLE_COMPLETADO: 'puzzle_completado'
+    }
 });
 
-// Export universal
+// Exportar el módulo para diferentes entornos
+if (typeof window !== 'undefined') {
+    window.Mensajeria = Mensajeria;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = Mensajeria;
+}
+
+// Hacer que las funciones estén disponibles globalmente
+if (typeof window !== 'undefined') {
+    window.enableControls = Mensajeria.enableControls;
+    window.disableControls = Mensajeria.disableControls;
+}
+
+// Hacer disponible globalmente en el navegador
+if (typeof window !== 'undefined') {
+    window.Mensajeria = Mensajeria;
+}
+
+// Export para CommonJS (Node.js)
 if (typeof module !== 'undefined' && module.exports) {
     // CommonJS
     module.exports = Mensajeria;
