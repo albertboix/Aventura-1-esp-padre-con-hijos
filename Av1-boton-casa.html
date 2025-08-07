@@ -1208,11 +1208,12 @@
      * @param {boolean} [opciones.forzar=false] - Forzar la operación
      * @returns {boolean} - True si se realizó el cambio, false si ya estaba en el estado solicitado
      */
-    function enableControls(modo = CONFIG.defaultMode, { motivo = 'sin_especificar', forzar = false } = {}) {
+    async function enableControls(modo = CONFIG.defaultMode, { motivo = 'sin_especificar', forzar = false } = {}) {
       // Validar modo
       if (modo !== 'casa' && modo !== 'aventura') {
-        console.error(`[${CONFIG.IFRAME_ID}] Modo no válido: ${modo}`);
-        return false;
+        const errorMsg = `[${CONFIG.IFRAME_ID}] Modo no válido: ${modo}`;
+        console.error(errorMsg);
+        throw new Error(errorMsg);
       }
 
       // Si ya están habilitados y no se fuerza el cambio
@@ -1221,95 +1222,122 @@
         return false;
       }
 
-      // Actualizar estado
-      estadoApp.controlesHabilitados = true;
-      estadoApp.motivoDeshabilitado = '';
-      estadoApp.modo = modo;
+      try {
+        // Actualizar estado
+        estadoApp.controlesHabilitados = true;
+        estadoApp.motivoDeshabilitado = '';
+        estadoApp.modo = modo;
 
-      // Actualizar interfaz
-      const gpsBtn = document.getElementById('gps-casa-btn');
-      if (gpsBtn) {
-        gpsBtn.disabled = false;
-        gpsBtn.classList.toggle('on', modo === 'aventura');
-        gpsBtn.classList.toggle('off', modo !== 'aventura');
-        gpsBtn.title = modo === 'aventura' ? 'GPS Activado' : 'GPS Desactivado';
+        // Actualizar interfaz
+        const gpsBtn = document.getElementById('gps-casa-btn');
+        if (gpsBtn) {
+          gpsBtn.disabled = false;
+          gpsBtn.classList.toggle('on', modo === 'aventura');
+          gpsBtn.classList.toggle('off', modo !== 'aventura');
+          gpsBtn.title = modo === 'aventura' ? 'GPS Activado' : 'GPS Desactivado';
+        }
+
+        // Actualizar la interfaz
+        actualizarBotonGPS();
+
+        // Notificar el cambio de estado
+        console.log(`[${CONFIG.IFRAME_ID}] Controles habilitados en modo ${modo}`, { motivo });
+
+        // Notificar al padre
+        if (window.Mensajeria) {
+          // Usar el sistema de mensajería si está disponible
+          await Mensajeria.enviarMensajeConReintenos(
+            'padre',
+            'sistema:controles_habilitados',
+            { 
+              modo, 
+              motivo,
+              timestamp: new Date().toISOString(),
+              origen: CONFIG.IFRAME_ID
+            }
+          ).catch(console.error);
+        } else {
+          // Fallback a postMessage si Mensajeria no está disponible
+          window.parent?.postMessage({
+            tipo: 'sistema:controles_habilitados',
+            datos: {
+              modo,
+              motivo,
+              timestamp: new Date().toISOString(),
+              origen: CONFIG.IFRAME_ID
+            }
+          }, '*');
+        }
+
+        return true;
+      } catch (error) {
+        console.error(`[${CONFIG.IFRAME_ID}] Error al habilitar controles:`, error);
+        throw error;
       }
-
-      // Notificar el cambio de estado
-      console.log(`[${CONFIG.IFRAME_ID}] Controles habilitados en modo ${modo}`, { motivo });
-
-      // Notificar al padre si es necesario
-      if (window.Mensajeria) {
-        notificarEstado('controles_habilitados', { modo, motivo });
-      } else {
-        // Fallback a postMessage si Mensajeria no está disponible
-        window.parent.postMessage({
-          tipo: 'cambiarModo',
-          modo: modo,
-          motivo: motivo,
-          timestamp: new Date().toISOString()
-        }, '*');
-      }
-
-      return true;
-
-      console.log(`Habilitando controles en modo ${modo}. Motivo: ${motivo}`);
-
-      // Actualizar la interfaz
-      actualizarBotonGPS();
-
-      // Notificar el cambio de modo
-      if (window.Mensajeria) {
-        Mensajeria.enviarMensajeConReintenos(
-          'padre',
-          'sistema:configuracion',
-          { modo, habilitado: true, motivo }
-        ).catch(console.error);
-      }
-
-      return true;
     }
 
     /**
      * Deshabilita los controles de la aplicación
      * @param {string} motivo - Razón por la que se deshabilitan los controles
-     * @returns {boolean} - True si se deshabilitaron los controles, false si ya estaban deshabilitados
+     * @param {Object} [opciones] - Opciones adicionales
+     * @param {boolean} [opciones.forzar=false] - Forzar la operación aunque ya estén deshabilitados
+     * @returns {Promise<boolean>} - True si se deshabilitaron los controles, false si ya estaban deshabilitados
      */
-    function disableControls(motivo = 'sin_especificar') {
-      if (!estadoApp.controlesHabilitados) {
+    async function disableControls(motivo = 'sin_especificar', { forzar = false } = {}) {
+      if (!estadoApp.controlesHabilitados && !forzar) {
         console.log(`[${CONFIG.IFRAME_ID}] Los controles ya están deshabilitados`, { 
           motivo: estadoApp.motivoDeshabilitado 
         });
         return false;
       }
 
-      // Actualizar estado
-      estadoApp.controlesHabilitados = false;
-      estadoApp.motivoDeshabilitado = motivo;
+      try {
+        // Actualizar estado
+        estadoApp.controlesHabilitados = false;
+        estadoApp.motivoDeshabilitado = motivo;
 
-      // Actualizar interfaz
-      const gpsBtn = document.getElementById('gps-casa-btn');
-      if (gpsBtn) {
-        gpsBtn.disabled = true;
-        gpsBtn.title = `Controles deshabilitados: ${motivo}`;
+        // Actualizar interfaz
+        const gpsBtn = document.getElementById('gps-casa-btn');
+        if (gpsBtn) {
+          gpsBtn.disabled = true;
+          gpsBtn.title = `Controles deshabilitados: ${motivo}`;
+        }
+
+        // Actualizar la interfaz
+        actualizarBotonGPS();
+
+        // Notificar el cambio de estado
+        console.log(`[${CONFIG.IFRAME_ID}] Controles deshabilitados`, { motivo });
+        
+        // Notificar al padre
+        if (window.Mensajeria) {
+          // Usar el sistema de mensajería si está disponible
+          await Mensajeria.enviarMensajeConReintenos(
+            'padre',
+            'sistema:controles_deshabilitados',
+            { 
+              motivo,
+              timestamp: new Date().toISOString(),
+              origen: CONFIG.IFRAME_ID
+            }
+          ).catch(console.error);
+        } else {
+          // Fallback a postMessage si Mensajeria no está disponible
+          window.parent?.postMessage({
+            tipo: 'sistema:controles_deshabilitados',
+            datos: {
+              motivo,
+              timestamp: new Date().toISOString(),
+              origen: CONFIG.IFRAME_ID
+            }
+          }, '*');
+        }
+
+        return true;
+      } catch (error) {
+        console.error(`[${CONFIG.IFRAME_ID}] Error al deshabilitar controles:`, error);
+        throw error;
       }
-
-      // Notificar el cambio de estado
-      console.log(`[${CONFIG.IFRAME_ID}] Controles deshabilitados`, { motivo });
-      
-      // Notificar al padre si es necesario
-      if (window.Mensajeria) {
-        notificarEstado('controles_deshabilitados', { motivo });
-      } else {
-        // Fallback a postMessage si Mensajeria no está disponible
-        window.parent?.postMessage({
-          tipo: 'controlesDeshabilitados',
-          motivo: motivo,
-          timestamp: new Date().toISOString()
-        }, '*');
-      }
-
-      return true;
     }
 
     // Array completo de paradas y tramos
