@@ -1,7 +1,21 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Botones y Coordenadas GPS</title>
     <script type="module">
+      // Importar las funciones necesarias del módulo de mensajería
+      import { 
+        enviarMensaje, 
+        inicializarMensajeria as inicializarMensajeriaModulo, 
+        TIPOS_MENSAJE as TIPOS_MSG 
+      } from './js/mensajeria.js';
+      
+      // Hacer las funciones disponibles globalmente
+      window.Mensajeria = { enviarMensaje, inicializarMensajeria: inicializarMensajeriaModulo };
+      window.TIPOS_MENSAJE = TIPOS_MSG;
+      
       // ================== INICIALIZACIÓN DE MENSAJERÍA MEJORADA ==================
       
       // Estado global de la aplicación
@@ -53,171 +67,291 @@
       // Hacer las constantes accesibles globalmente
       window.TIPOS_MENSAJE = TIPOS_MENSAJE;
 
-      // Inicialización mejorada del sistema de mensajería
-      async function inicializarMensajeria() {
+      /**
+       * Inicializa el sistema de mensajería con manejo mejorado de errores y reintentos
+       * @returns {Promise<boolean>} True si la inicialización fue exitosa
+       */
+      const inicializarMensajeria = async function() {
+        const ID_APLICACION = 'botones-coordenadas';
+        const MAX_REINTENTOS = estadoApp.configuracion.maxReintentos || 5;
+        const DELAY_BASE = estadoApp.configuracion.delayReconexion || 2000;
+        
+        // Función para notificar error al padre
+        const notificarErrorAlPadre = (error) => {
+          if (!window.parent || window.parent === window) return;
+          
+          try {
+            window.parent.postMessage({
+              tipo: 'sistema:error',
+              origen: ID_APLICACION,
+              error: {
+                mensaje: error.message,
+                stack: error.stack,
+                codigo: error.code || 'ERROR_DESCONOCIDO',
+                timestamp: new Date().toISOString()
+              },
+              intento: estadoApp.reintentos + 1,
+              maxReintentos: MAX_REINTENTOS,
+              estado: 'error'
+            }, '*');
+          } catch (e) {
+            console.error(`[${ID_APLICACION}] Error al notificar error al padre:`, e);
+          }
+        };
+        // Función para programar reintento
+        const programarReintento = () => {
+          if (estadoApp.reintentos >= MAX_REINTENTOS) {
+            console.error(`[${ID_APLICACION}] Se alcanzó el número máximo de reintentos (${MAX_REINTENTOS})`);
+            estadoApp.reconectando = false;
+            return false;
+          }
+          
+          const delay = Math.min(DELAY_BASE * Math.pow(2, estadoApp.reintentos), 30000); // Backoff exponencial con máximo 30s
+          const jitter = Math.random() * 1000; // Jitter de hasta 1s para evitar picos de reintentos
+          const tiempoEspera = Math.floor(delay + jitter);
+          
+          estadoApp.reconectando = true;
+          estadoApp.reintentos++;
+          
+          console.log(`[${ID_APLICACION}] Programando reintento ${estadoApp.reintentos}/${MAX_REINTENTOS} en ${tiempoEspera}ms...`);
+          
+          setTimeout(() => {
+            console.log(`[${ID_APLICACION}] Iniciando reintento ${estadoApp.reintentos}/${MAX_REINTENTOS}...`);
+            inicializarMensajeria().catch(console.error);
+          }, tiempoEspera);
+          
+          return true;
+        };
+        
         try {
-          console.log('[HIJO2] Iniciando sistema de mensajería...');
+          console.log(`[${ID_APLICACION}] Iniciando sistema de mensajería (intento ${estadoApp.reintentos + 1}/${MAX_REINTENTOS})...`);
           
           // 1. Verificar si ya está cargado el módulo
-          if (window.Mensajeria) {
-            console.log('[HIJO2] Módulo de mensajería ya cargado');
-            estadoApp.mensajeriaInicializada = true;
+          if (window.Mensajeria && estadoApp.mensajeriaInicializada) {
+            console.log(`[${ID_APLICACION}] Módulo de mensajería ya cargado y listo`);
             return true;
           }
           
           // 2. Importar dinámicamente el módulo de mensajería
-          let moduloMensajeria;
+          console.log(`[${ID_APLICACION}] Importando módulo de mensajería...`);
+          const moduloMensajeria = await import('./js/mensajeria.js');
+          
+          if (!moduloMensajeria) {
+            throw new Error('No se pudo cargar el módulo de mensajería');
+          }
+          
+          // 3. Hacer el módulo globalmente disponible
+          window.Mensajeria = moduloMensajeria.default || moduloMensajeria;
+          
+          // 5. Asegurar que TIPOS_MENSAJE esté disponible globalmente
+          window.TIPOS_MENSAJE = window.Mensajeria.TIPOS_MENSAJE || {
+            // Tipos básicos
+            SISTEMA: 'sistema',
+            INICIALIZACION: 'inicializacion',
+            CONFIGURACION: 'configuracion',
+            ESTADO: 'estado',
+            ERROR: 'error',
+            NAVEGACION: 'navegacion',
+            AUDIO: 'audio',
+            RETO: 'reto',
+            CONFIRMACION: 'confirmacion',
+            
+            // Controles
+            CONTROLES_HABILITADOS: 'sistema:controles_habilitados',
+            CONTROLES_DESHABILITADOS: 'sistema:controles_deshabilitados',
+            
+            // Eventos del sistema
+            CAMBIO_MODO: 'sistema:cambio_modo',
+            HABILITAR_CONTROLES: 'sistema:habilitar_controles',
+            DESHABILITAR_CONTROLES: 'sistema:deshabilitar_controles',
+            
+            // Navegación
+            INICIAR_NAVEGACION: 'navegacion:iniciar',
+            DETENER_NAVEGACION: 'navegacion:detener',
+            LLEGADA_DESTINO: 'navegacion:llegada_destino',
+            
+            // Audio
+            REPRODUCIR_AUDIO: 'audio:reproducir',
+            PAUSAR_AUDIO: 'audio:pausar',
+            DETENER_AUDIO: 'audio:detener',
+            
+            // Retos
+            INICIAR_RETO: 'reto:iniciar',
+            COMPLETAR_RETO: 'reto:completar',
+            FALLAR_RETO: 'reto:fallar'
+          };
+          
+          // Hacer una copia local para usar en este ámbito
+          const TIPOS_MENSAJE = window.TIPOS_MENSAJE;
+          
+          // 6. Configuración de la mensajería
+          const configuracion = {
+            iframeId: ID_APLICACION,
+            logLevel: 2, // DEBUG
+            debug: true,
+            dominioPermitido: window.parent?.location?.origin || '*',
+            maxRetries: 3,
+            retryDelay: 1000,
+            timeout: estadoApp.configuracion.timeoutMensajes || 10000,
+            mensajeTtl: 10 * 60 * 1000,  // 10 minutos
+            version: estadoApp.configuracion.version || '1.0.0',
+            habilitarMetricas: true,
+            confirmacionesHabilitadas: true,
+            // Configuración adicional para manejo de reconexión
+            onError: (error) => {
+              console.error(`[${ID_APLICACION}] Error en la conexión de mensajería:`, error);
+              if (!estadoApp.reconectando) {
+                programarReintento();
+              }
+            },
+            onReconnect: (intento) => {
+              console.log(`[${ID_APLICACION}] Reconectando... (intento ${intento})`);
+            }
+          };
+          
+          // 7. Inicializar la mensajería
+          console.log(`[${ID_APLICACION}] Inicializando mensajería con configuración:`, configuracion);
+          
           try {
-            console.log('[HIJO2] Importando módulo de mensajería...');
-            moduloMensajeria = await import('./js/mensajeria.js');
-            console.log('[HIJO2] Módulo de mensajería cargado correctamente:', 
-              Object.keys(moduloMensajeria.default || moduloMensajeria));
-              
-            // Hacerlo globalmente disponible
-            window.Mensajeria = moduloMensajeria.default || moduloMensajeria;
-            
-            // Asegurarse de que TIPOS_MENSAJE esté disponible
-            if (!window.Mensajeria.TIPOS_MENSAJE) {
-              console.warn('[HIJO2] El módulo no tiene TIPOS_MENSAJE, usando constantes locales');
-              window.Mensajeria.TIPOS_MENSAJE = window.TIPOS_MENSAJE;
-            }
-            
-            // Verificar que las funciones necesarias estén disponibles
-            if (typeof window.Mensajeria.inicializarMensajeria !== 'function') {
-              console.error('[HIJO2] La función inicializarMensajeria no está disponible en el módulo');
-              throw new Error('La función inicializarMensajeria no está disponible en el módulo');
-            }
-            
-            // 3. Asegurar que TIPOS_MENSAJE esté disponible globalmente
-            window.TIPOS_MENSAJE = window.Mensajeria.TIPOS_MENSAJE || {
-              // Tipos básicos
-              SISTEMA: 'sistema',
-              INICIALIZACION: 'inicializacion',
-              CONFIGURACION: 'configuracion',
-              ESTADO: 'estado',
-              ERROR: 'error',
-              NAVEGACION: 'navegacion',
-              AUDIO: 'audio',
-              RETO: 'reto',
-              CONFIRMACION: 'confirmacion',
-              
-              // Controles
-              CONTROLES_HABILITADOS: 'sistema:controles_habilitados',
-              CONTROLES_DESHABILITADOS: 'sistema:controles_deshabilitados',
-              
-              // Eventos del sistema
-              CAMBIO_MODO: 'sistema:cambio_modo',
-              HABILITAR_CONTROLES: 'sistema:habilitar_controles',
-              DESHABILITAR_CONTROLES: 'sistema:deshabilitar_controles',
-              
-              // Navegación
-              INICIAR_NAVEGACION: 'navegacion:iniciar',
-              DETENER_NAVEGACION: 'navegacion:detener',
-              LLEGADA_DESTINO: 'navegacion:llegada_destino',
-              
-              // Audio
-              REPRODUCIR_AUDIO: 'audio:reproducir',
-              PAUSAR_AUDIO: 'audio:pausar',
-              DETENER_AUDIO: 'audio:detener',
-              
-              // Retos
-              INICIAR_RETO: 'reto:iniciar',
-              COMPLETAR_RETO: 'reto:completar',
-              FALLAR_RETO: 'reto:fallar'
-            };
-            
-            // Hacer una copia local para usar en este ámbito
-            const TIPOS_MENSAJE = window.TIPOS_MENSAJE;
-            
-            // 4. Configuración de la mensajería
-            const configuracion = {
-              iframeId: 'botones-coordenadas',
-              logLevel: 1, // INFO
-              debug: true,
-              dominioPermitido: window.parent.location.origin,
-              maxRetries: estadoApp.configuracion.maxReintentos,
-              retryDelay: 1000,
-              timeout: estadoApp.configuracion.timeoutMensajes,
-              mensajeTtl: 10 * 60 * 1000,  // 10 minutos
-              version: estadoApp.configuracion.version,
-              habilitarMetricas: true,
-              confirmacionesHabilitadas: true
-            };
-            
-            // 5. Inicializar la mensajería
             await window.Mensajeria.inicializarMensajeria(configuracion);
-            console.log('[HIJO2] Mensajería inicializada con configuración:', configuracion);
             
-            // 6. Configurar manejadores de mensajes
-            configurarManejadoresMensajes();
+            // 8. Configurar manejadores de mensajes
+            if (typeof configurarManejadoresMensajes === 'function') {
+              configurarManejadoresMensajes();
+            } else {
+              console.warn(`[${ID_APLICACION}] La función configurarManejadoresMensajes no está definida`);
+            }
             
-            // 7. Configurar sistema de reconexión
-            configurarSistemaReconexion();
+            // 9. Configurar sistema de reconexión
+            if (typeof configurarSistemaReconexion === 'function') {
+              configurarSistemaReconexion();
+            } else {
+              console.warn(`[${ID_APLICACION}] La función configurarSistemaReconexion no está definida`);
+            }
             
-            // 8. Notificar al padre que estamos listos
-            await notificarInicializacion();
+            // 10. Notificar al padre que estamos listos
+            if (typeof notificarInicializacion === 'function') {
+              await notificarInicializacion();
+            } else {
+              console.warn(`[${ID_APLICACION}] La función notificarInicializacion no está definida`);
+            }
             
-            // 9. Actualizar estado
+            // 11. Actualizar estado
             estadoApp.mensajeriaInicializada = true;
             estadoApp.reconectando = false;
+            estadoApp.reintentos = 0;
             estadoApp.ultimoError = null;
             
-            // 10. Notificar al padre que la mensajería está lista
+            // 12. Notificar al padre que la mensajería está lista
             if (window.parent && window.parent !== window) {
-              window.parent.postMessage({
-                tipo: TIPOS_MENSAJE.INICIALIZACION,
-                origen: 'botones-coordenadas',
-                estado: 'listo',
-                timestamp: Date.now(),
-                version: estadoApp.configuracion.version
-              }, '*');
+              try {
+                window.parent.postMessage({
+                  tipo: TIPOS_MENSAJE.INICIALIZACION,
+                  origen: ID_APLICACION,
+                  estado: 'listo',
+                  timestamp: Date.now(),
+                  version: estadoApp.configuracion.version || '1.0.0',
+                  detalles: {
+                    mensajeria: 'inicializada',
+                    controles: estadoApp.controlesHabilitados ? 'habilitados' : 'deshabilitados',
+                    modo: estadoApp.modoActual || 'desconocido',
+                    reconexiones: estadoApp.reintentos
+                  }
+                }, '*');
+                console.log(`[${ID_APLICACION}] ✅ Sistema de mensajería inicializado correctamente`);
+              } catch (error) {
+                console.error(`[${ID_APLICACION}] Error al notificar al padre:`, error);
+              }
+            } else {
+              console.warn(`[${ID_APLICACION}] No se pudo notificar al padre: window.parent no disponible`);
             }
             
-            console.log('[HIJO2] ✅ Sistema de mensajería inicializado correctamente');
             return true;
-            
           } catch (error) {
-            console.error('[HIJO2] Error al cargar el módulo de mensajería:', error);
+            console.error(`[${ID_APLICACION}] Error al inicializar la mensajería:`, error);
             estadoApp.ultimoError = error;
             estadoApp.mensajeriaInicializada = false;
             
-            // Intentar reconexión automática
-            if (!estadoApp.reconectando) {
-              estadoApp.reconectando = true;
-              const delay = Math.min(estadoApp.configuracion.delayReconexion * (estadoApp.reintentos + 1), 30000);
-              console.log(`[HIJO2] Intentando reconexión en ${delay}ms...`);
-              
-              setTimeout(() => {
-                estadoApp.reintentos++;
-                console.log(`[HIJO2] Intento de reconexión ${estadoApp.reintentos}/${estadoApp.configuracion.maxReintentos}`);
-                inicializarMensajeria();
-              }, delay);
+            // Notificar al padre sobre el error
+            notificarErrorAlPadre(error);
+            
+            // Mostrar error al usuario
+            if (typeof mostrarError === 'function') {
+              mostrarError('Error en el sistema de mensajería. Reconectando...', 'error');
             }
             
-            throw error;
+            // Intentar reconexión automática
+            if (!programarReintento()) {
+              // Si no se pudo programar el reintento (porque se alcanzó el máximo)
+              const mensajeFinal = `No se pudo conectar después de ${MAX_REINTENTOS} intentos. Por favor, recargue la página.`;
+              console.error(`[${ID_APLICACION}] ${mensajeFinal}`);
+              
+              if (typeof mostrarError === 'function') {
+                mostrarError(mensajeFinal, 'error', 0); // 0 = mostrar permanentemente
+              }
+              
+              // Notificar al padre sobre el fallo final
+              if (window.parent && window.parent !== window) {
+                window.parent.postMessage({
+                  tipo: 'sistema:error_fatal',
+                  origen: ID_APLICACION,
+                  error: {
+                    mensaje: 'Fallo en la inicialización de la mensajería',
+                    intentos: estadoApp.reintentos,
+                    ultimoError: error.message,
+                    timestamp: new Date().toISOString()
+                  },
+                  estado: 'error_fatal',
+                  requiereRecarga: true
+                }, '*');
+              }
+            }
+            
+            throw error; // Relanzar el error para que sea manejado por el bloque catch externo si es necesario
           }
         } catch (error) {
           // Manejo detallado de errores
-          const errorMsg = `[HIJO2] ❌ Error en inicialización: ${error.message || 'Error desconocido'}`;
+          const errorMsg = `[${ID_APLICACION}] ❌ Error en inicialización: ${error.message || 'Error desconocido'}`;
           console.error(errorMsg, error);
           
           // Actualizar estado
           estadoApp.ultimoError = error;
           estadoApp.mensajeriaInicializada = false;
           
+          // Notificar al padre sobre el error
+          notificarErrorAlPadre(error);
+          
           // Mostrar error al usuario
-          mostrarError('Error en el sistema de mensajería. Reconectando...', 'error');
+          if (typeof mostrarError === 'function') {
+            mostrarError('Error en el sistema de mensajería. Reconectando...', 'error');
+          }
           
-          // Intentar reconexión automática con retroceso exponencial
-          const delay = estadoApp.reconectando ? 
-            Math.min(estadoApp.configuracion.delayReconexion * 2, 30000) : 
-            estadoApp.configuracion.delayReconexion;
+          // Intentar reconexión automática
+          if (!programarReintento()) {
+            // Si no se pudo programar el reintento (porque se alcanzó el máximo)
+            const mensajeFinal = `No se pudo conectar después de ${MAX_REINTENTOS} intentos. Por favor, recargue la página.`;
+            console.error(`[${ID_APLICACION}] ${mensajeFinal}`);
             
-          console.log(`[HIJO2] ⏳ Reintentando en ${delay/1000} segundos...`);
-          
-          estadoApp.reconectando = true;
-          setTimeout(inicializarMensajeria, delay);
-        }
+            if (typeof mostrarError === 'function') {
+              mostrarError(mensajeFinal, 'error', 0); // 0 = mostrar permanentemente
+            }
+            
+            // Notificar al padre sobre el fallo final
+            if (window.parent && window.parent !== window) {
+              window.parent.postMessage({
+                tipo: 'sistema:error_fatal',
+                origen: ID_APLICACION,
+                error: {
+                  mensaje: 'Fallo en la inicialización de la mensajería',
+                  intentos: estadoApp.reintentos,
+                  ultimoError: error.message,
+                  timestamp: new Date().toISOString()
+                },
+                estado: 'error_fatal',
+                requiereRecarga: true
+              }, '*');
+            }
+          }
       }
       
       // Cargar el módulo de mensajería con manejo de errores
@@ -864,6 +998,12 @@
         }
       }
       
+      // Hacer las funciones disponibles globalmente para compatibilidad
+      window.inicializarMensajeria = inicializarMensajeriaModulo;
+      window.TIPOS_MENSAJE = TIPOS_MSG;
+      window.enableControls = enableControls;
+      window.disableControls = disableControls;
+      
       // Inicializar la mensajería cuando el DOM esté listo
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', inicializarMensajeria);
@@ -871,29 +1011,7 @@
         // Si el DOM ya está listo, inicializar inmediatamente
         setTimeout(inicializarMensajeria, 100);
       }
-    </script>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Botones y Coordenadas GPS (hijo2)</title>
-    <!-- Script para importar el módulo de mensajería -->
-    <script type="module">
-        // Importar las funciones necesarias del módulo de mensajería
-        import { 
-            inicializar as inicializarMensajeria, 
-            TIPOS_MENSAJE, 
-            LOG_LEVELS,
-            enableControls,
-            disableControls,
-            manejarMensajeEntrante
-        } from './js/mensajeria.js';
-        
-        // Hacer las funciones disponibles globalmente para compatibilidad
-        window.inicializarMensajeria = inicializarMensajeria;
-        window.TIPOS_MENSAJE = TIPOS_MENSAJE;
-        window.LOG_LEVELS = LOG_LEVELS;
-        window.enableControls = enableControls;
-        window.disableControls = disableControls;
-        window.manejarMensajeEntrante = manejarMensajeEntrante;
+      window.manejarMensajeEntrante = manejarMensajeEntrante;
     </script>
     <style>
         :root {
@@ -5911,6 +6029,11 @@
         } else {
             inicializarAplicacion();
         }
+        
+        // Cerrar la función inicializarAplicacion
+        }
     </script>
+</head>
+
 </body>
 </html>
