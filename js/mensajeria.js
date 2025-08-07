@@ -1037,9 +1037,41 @@ Object.assign(Mensajeria, {
 if (typeof window !== 'undefined') {
     // Hacer disponible globalmente
     window.Mensajeria = Mensajeria;
-    // Exportar funciones globales necesarias
+    
+    // Exportar funciones individuales
     window.enableControls = Mensajeria.enableControls;
     window.disableControls = Mensajeria.disableControls;
+    
+    // Exportar como módulo
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = {
+            ...Mensajeria,
+            enableControls: Mensajeria.enableControls,
+            disableControls: Mensajeria.disableControls,
+            LOG_LEVELS,
+            ERRORES,
+            TIPOS_MENSAJE: {
+                ...Mensajeria.TIPOS_MENSAJE,
+                CAMBIO_MODO: 'cambio_modo',
+                HABILITAR_CONTROLES: 'habilitar_controles',
+                DESHABILITAR_CONTROLES: 'deshabilitar_controles'
+            }
+        };
+    } else if (typeof define === 'function' && define.amd) {
+        define([], () => ({
+            ...Mensajeria,
+            enableControls: Mensajeria.enableControls,
+            disableControls: Mensajeria.disableControls,
+            LOG_LEVELS,
+            ERRORES,
+            TIPOS_MENSAJE: {
+                ...Mensajeria.TIPOS_MENSAJE,
+                CAMBIO_MODO: 'cambio_modo',
+                HABILITAR_CONTROLES: 'habilitar_controles',
+                DESHABILITAR_CONTROLES: 'deshabilitar_controles'
+            }
+        }));
+    }
 }
 
 // Exportación para Node.js (CommonJS)
