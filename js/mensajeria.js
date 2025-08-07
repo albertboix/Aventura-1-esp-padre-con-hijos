@@ -992,20 +992,39 @@ const Mensajeria = {
     }
 };
 
+// Asegurarse de que las funciones estén disponibles directamente en el objeto Mensajeria
+Object.assign(Mensajeria, {
+    inicializarMensajeria: Mensajeria.inicializarMensajeria,
+    enableControls: Mensajeria.enableControls,
+    disableControls: Mensajeria.disableControls,
+    registrarControlador: Mensajeria.registrarControlador,
+    removerControladores: Mensajeria.removerControladores,
+    enviarMensaje: Mensajeria.enviarMensaje,
+    enviarMensajeConReintenos: Mensajeria.enviarMensajeConReintenos,
+    LOG_LEVELS,
+    ERRORES
+});
+
 // Export universal
 if (typeof module !== 'undefined' && module.exports) {
+    // CommonJS
     module.exports = Mensajeria;
-    module.exports.default = Mensajeria; // Para compatibilidad con ES modules
-    module.exports.inicializarMensajeria = Mensajeria.inicializarMensajeria;
-    module.exports.enableControls = Mensajeria.enableControls;
-    module.exports.disableControls = Mensajeria.disableControls;
+    module.exports.default = Mensajeria;
+    // Exportar funciones individuales para CommonJS
+    Object.entries({
+        inicializarMensajeria,
+        enableControls: Mensajeria.enableControls,
+        disableControls: Mensajeria.disableControls,
+        registrarControlador: Mensajeria.registrarControlador,
+        LOG_LEVELS,
+        ERRORES
+    }).forEach(([key, value]) => {
+        module.exports[key] = value;
+    });
 } else if (typeof define === 'function' && define.amd) {
+    // AMD
     define([], function() { return Mensajeria; });
 } else {
+    // Browser global
     window.Mensajeria = Mensajeria;
-}
-
-// Para compatibilidad con CommonJS
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports.default = MensajeriaCompleta;
 }
