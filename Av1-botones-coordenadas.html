@@ -28,101 +28,151 @@
           this.motivoDeshabilitado = '';
         }
       };
+      
+      // Hacer el estado accesible globalmente
+      window.estadoApp = estadoApp;
+      
+      // Constantes de mensajería como respaldo
+      const TIPOS_MENSAJE = {
+        SISTEMA: 'sistema',
+        INICIALIZACION: 'inicializacion',
+        CONFIGURACION: 'configuracion',
+        ESTADO: 'estado',
+        ERROR: 'error',
+        NAVEGACION: 'navegacion',
+        AUDIO: 'audio',
+        RETO: 'reto',
+        CONFIRMACION: 'confirmacion',
+        CONTROLES_HABILITADOS: 'sistema:controles_habilitados',
+        CONTROLES_DESHABILITADOS: 'sistema:controles_deshabilitados',
+        CAMBIO_MODO: 'sistema:cambio_modo',
+        HABILITAR_CONTROLES: 'sistema:habilitar_controles',
+        DESHABILITAR_CONTROLES: 'sistema:deshabilitar_controles'
+      };
+      
+      // Hacer las constantes accesibles globalmente
+      window.TIPOS_MENSAJE = TIPOS_MENSAJE;
 
       // Inicialización mejorada del sistema de mensajería
       async function inicializarMensajeria() {
         try {
           console.log('[HIJO2] Iniciando sistema de mensajería...');
           
-          // 1. Importar dinámicamente el módulo de mensajería
+          // 1. Verificar si ya está cargado el módulo
+          if (window.Mensajeria) {
+            console.log('[HIJO2] Módulo de mensajería ya cargado');
+            estadoApp.mensajeriaInicializada = true;
+            return true;
+          }
+          
+          // 2. Importar dinámicamente el módulo de mensajería
           let moduloMensajeria;
           try {
             console.log('[HIJO2] Importando módulo de mensajería...');
             moduloMensajeria = await import('./js/mensajeria.js');
             console.log('[HIJO2] Módulo de mensajería cargado correctamente:', 
               Object.keys(moduloMensajeria.default || moduloMensajeria));
-          } catch (error) {
-            console.error('[HIJO2] Error al cargar el módulo de mensajería:', error);
-            throw new Error(`Error al cargar el módulo de mensajería: ${error.message}`);
-          }
-          
-          // 2. Hacerlo globalmente disponible
-          window.Mensajeria = moduloMensajeria.default || moduloMensajeria;
-          
-          if (!window.Mensajeria) {
-            console.error('[HIJO2] El módulo de mensajería no exporta un objeto válido:', moduloMensajeria);
-            throw new Error('El módulo de mensajería no exporta un objeto válido');
-          }
-          
-          // 3. Verificar que las funciones necesarias estén disponibles
-          console.log('[HIJO2] Funciones disponibles en Mensajeria:', Object.keys(window.Mensajeria));
-          
-          if (typeof window.Mensajeria.inicializarMensajeria !== 'function') {
-            console.error('[HIJO2] La función inicializarMensajeria no está disponible');
-            throw new Error('La función inicializarMensajeria no está disponible en el módulo');
-          }
-          
-          // 4. Obtener constantes con valores por defecto si no están disponibles
-          const TIPOS_MENSAJE = window.Mensajeria.TIPOS_MENSAJE || {
-            SISTEMA: 'sistema',
-            CONTROLES_HABILITADOS: 'sistema:controles_habilitados',
-            CONTROLES_DESHABILITADOS: 'sistema:controles_deshabilitados'
-          };
-          
-          const LOG_LEVELS = window.Mensajeria.LOG_LEVELS || {
-            DEBUG: 0,
-            INFO: 1,
-            WARN: 2,
-            ERROR: 3,
-            NONE: 4
-          };
-          
-          // 5. Configuración avanzada de la mensajería
-          const configuracion = {
-            iframeId: 'hijo2',
-            logLevel: LOG_LEVELS.DEBUG,
-            debug: true,
-            dominioPermitido: window.parent.location.origin,
-            maxRetries: estadoApp.configuracion.maxReintenos,
-            retryDelay: 1000,
-            timeout: estadoApp.configuracion.timeoutMensajes,
-            mensajeTtl: 10 * 60 * 1000,  // 10 minutos
-            version: estadoApp.configuracion.version,
-            habilitarMetricas: true,
-            confirmacionesHabilitadas: true
-          };
-          
-          // 4. Inicializar con manejo de errores mejorado
-          try {
+              
+            // Hacerlo globalmente disponible
+            window.Mensajeria = moduloMensajeria.default || moduloMensajeria;
+            
+            // Asegurarse de que TIPOS_MENSAJE esté disponible
+            if (!window.Mensajeria.TIPOS_MENSAJE) {
+              console.warn('[HIJO2] El módulo no tiene TIPOS_MENSAJE, usando constantes locales');
+              window.Mensajeria.TIPOS_MENSAJE = window.TIPOS_MENSAJE;
+            }
+            
+            // Verificar que las funciones necesarias estén disponibles
+            if (typeof window.Mensajeria.inicializarMensajeria !== 'function') {
+              console.error('[HIJO2] La función inicializarMensajeria no está disponible en el módulo');
+              throw new Error('La función inicializarMensajeria no está disponible en el módulo');
+            }
+            
+            // 3. Obtener constantes con valores por defecto si no están disponibles
+            const TIPOS_MENSAJE = window.Mensajeria.TIPOS_MENSAJE || {
+              SISTEMA: 'sistema',
+              INICIALIZACION: 'inicializacion',
+              CONFIGURACION: 'configuracion',
+              ESTADO: 'estado',
+              ERROR: 'error',
+              NAVEGACION: 'navegacion',
+              AUDIO: 'audio',
+              RETO: 'reto',
+              CONFIRMACION: 'confirmacion',
+              CONTROLES_HABILITADOS: 'sistema:controles_habilitados',
+              CONTROLES_DESHABILITADOS: 'sistema:controles_deshabilitados',
+              CAMBIO_MODO: 'sistema:cambio_modo',
+              HABILITAR_CONTROLES: 'sistema:habilitar_controles',
+              DESHABILITAR_CONTROLES: 'sistema:deshabilitar_controles'
+            };
+            
+            // 4. Configuración de la mensajería
+            const configuracion = {
+              iframeId: 'botones-coordenadas',
+              logLevel: 1, // INFO
+              debug: true,
+              dominioPermitido: window.parent.location.origin,
+              maxRetries: estadoApp.configuracion.maxReintentos,
+              retryDelay: 1000,
+              timeout: estadoApp.configuracion.timeoutMensajes,
+              mensajeTtl: 10 * 60 * 1000,  // 10 minutos
+              version: estadoApp.configuracion.version,
+              habilitarMetricas: true,
+              confirmacionesHabilitadas: true
+            };
+            
+            // 5. Inicializar la mensajería
             await window.Mensajeria.inicializarMensajeria(configuracion);
             console.log('[HIJO2] Mensajería inicializada con configuración:', configuracion);
-          } catch (error) {
-            console.error('[HIJO2] Error en inicialización de mensajería:', error);
-            throw new Error(`Error al inicializar mensajería: ${error.message}`);
-          }
-          
-          // 5. Configurar manejadores de mensajes
-          try {
+            
+            // 6. Configurar manejadores de mensajes
             configurarManejadoresMensajes();
-            console.log('[HIJO2] Manejadores de mensajes configurados');
+            
+            // 7. Configurar sistema de reconexión
+            configurarSistemaReconexion();
+            
+            // 8. Notificar al padre que estamos listos
+            await notificarInicializacion();
+            
+            // 9. Actualizar estado
+            estadoApp.mensajeriaInicializada = true;
+            estadoApp.reconectando = false;
+            estadoApp.ultimoError = null;
+            
+            // 10. Notificar al padre que la mensajería está lista
+            if (window.parent && window.parent !== window) {
+              window.parent.postMessage({
+                tipo: TIPOS_MENSAJE.INICIALIZACION,
+                origen: 'botones-coordenadas',
+                estado: 'listo',
+                timestamp: Date.now(),
+                version: estadoApp.configuracion.version
+              }, '*');
+            }
+            
+            console.log('[HIJO2] ✅ Sistema de mensajería inicializado correctamente');
+            return true;
+            
           } catch (error) {
-            console.error('[HIJO2] Error al configurar manejadores:', error);
-            throw new Error(`Error en configuración de manejadores: ${error.message}`);
+            console.error('[HIJO2] Error al cargar el módulo de mensajería:', error);
+            estadoApp.ultimoError = error;
+            estadoApp.mensajeriaInicializada = false;
+            
+            // Intentar reconexión automática
+            if (!estadoApp.reconectando) {
+              estadoApp.reconectando = true;
+              const delay = Math.min(estadoApp.configuracion.delayReconexion * (estadoApp.reintentos + 1), 30000);
+              console.log(`[HIJO2] Intentando reconexión en ${delay}ms...`);
+              
+              setTimeout(() => {
+                estadoApp.reintentos++;
+                console.log(`[HIJO2] Intento de reconexión ${estadoApp.reintentos}/${estadoApp.configuracion.maxReintentos}`);
+                inicializarMensajeria();
+              }, delay);
+            }
+            
+            throw error;
           }
-          
-          // 6. Configurar sistema de reconexión
-          configurarSistemaReconexion();
-          
-          // 7. Notificar al padre que estamos listos
-          await notificarInicializacion();
-          
-          // 8. Actualizar estado
-          estadoApp.mensajeriaInicializada = true;
-          estadoApp.reconectando = false;
-          estadoApp.ultimoError = null;
-          
-          console.log('[HIJO2] ✅ Sistema de mensajería inicializado correctamente');
-          
         } catch (error) {
           // Manejo detallado de errores
           const errorMsg = `[HIJO2] ❌ Error en inicialización: ${error.message || 'Error desconocido'}`;
