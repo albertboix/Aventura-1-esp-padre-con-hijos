@@ -2,7 +2,8 @@
 <html lang="es">
 <head>
     <script type="module">
-      // ================== DECLARACIONES DE CONSTANTES ==================
+      // ================== INICIALIZACIÓN DE MENSAJERÍA ==================
+      let Mensajeria;
       const IFRAME_ID = 'hijo4';
       
       // Configuración de reintentos para mensajes importantes
@@ -18,8 +19,52 @@
         retoActual: null,
         controlesHabilitados: true,
         retoMostrado: false,
-        ultimoError: null
+        ultimoError: null,
+        mensajeriaInicializada: false
       };
+      
+      // Inicializar la mensajería
+      async function inicializarMensajeria() {
+        try {
+          console.log(`[${IFRAME_ID}] Inicializando sistema de mensajería...`);
+          
+          // Importar el módulo de mensajería
+          const moduloMensajeria = await import('./js/mensajeria.js');
+          window.Mensajeria = Mensajeria = moduloMensajeria.default || moduloMensajeria;
+          
+          if (!Mensajeria || typeof Mensajeria.inicializarMensajeria !== 'function') {
+            throw new Error('La API de mensajería no es válida');
+          }
+          
+          // Configurar mensajería
+          await Mensajeria.inicializarMensajeria({
+            iframeId: IFRAME_ID,
+            logLevel: Mensajeria.LOG_LEVELS.INFO,
+            debug: true
+          });
+          
+          estadoApp.mensajeriaInicializada = true;
+          console.log(`[${IFRAME_ID}] Mensajería inicializada correctamente`);
+          
+          // Configurar manejadores de mensajes
+          if (typeof configurarManejadoresMensajes === 'function') {
+            configurarManejadoresMensajes();
+          }
+          
+          // Notificar al padre que estamos listos
+          await enviarMensajeAlPadre('sistema:inicializacion', { 
+            estado: 'listo',
+            timestamp: new Date().toISOString()
+          });
+          
+          return Mensajeria;
+        } catch (error) {
+          console.error(`[${IFRAME_ID}] Error al inicializar la mensajería:`, error);
+          estadoApp.ultimoError = error;
+          mostrarErrorInicializacion(error);
+          throw error;
+        }
+      }
 
       // ================== DECLARACIONES DE FUNCIONES ==================
 
@@ -2558,6 +2603,22 @@ function configurarManejadoresMensajes() {
 
 // --- INICIALIZAR MENSAJERÍA Y NOTIFICAR AL PADRE ---
 window.addEventListener("DOMContentLoaded", async () => {
+  try {
+    console.log(`[${IFRAME_ID}] DOM cargado, inicializando mensajería...`);
+    
+    // Inicializar mensajería
+    await inicializarMensajeria();
+    
+    // Configurar manejadores de eventos
+    if (typeof configurarManejadoresEventos === 'function') {
+      configurarManejadoresEventos();
+    }
+    
+    console.log(`[${IFRAME_ID}] Inicialización completada`);
+  } catch (error) {
+    console.error(`[${IFRAME_ID}] Error en la inicialización:`, error);
+    mostrarErrorInicializacion(error);
+  }
     try {
         // Inicializar variables para rastrear el reto/puzzle actual
         window.retoActual = null;
