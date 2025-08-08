@@ -3121,6 +3121,222 @@
 
         // Función actualizarStatus duplicada eliminada - Ver implementación mejorada más arriba
 
+        // ================== MANEJO DE CAMBIO DE MODO ==================
+        
+        /**
+         * Maneja el cambio de modo de la aplicación (casa/aventura)
+         * @param {string} modo - Nuevo modo ('casa' o 'aventura')
+         * @param {boolean} [habilitar=true] - Si se deben habilitar los controles
+         * @param {Object} opciones - Opciones adicionales
+         * @param {string} [opciones.motivo='cambio_modo'] - Razón del cambio
+         * @param {boolean} [opciones.forzar=false] - Forzar el cambio
+         * @param {boolean} [opciones.notificarPadre=true] - Si se debe notificar al padre
+         * @param {boolean} [opciones.actualizarInterfaz=true] - Si se debe actualizar la interfaz
+         * @returns {Promise<Object>} - Resultado con estado, mensaje y datos relevantes
+         */
+        async function manejarCambioModo(modo, habilitar = true, { 
+            motivo = 'cambio_modo', 
+            forzar = false, 
+            notificarPadre = true,
+            actualizarInterfaz = true
+        } = {}) {
+            // Generar un ID único para esta transacción
+            const ID_TRANSACCION = `cambio-mod-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+            
+            // Función de utilidad para registrar mensajes de log
+            const log = (nivel, mensaje, datos = {}) => {
+                const timestamp = new Date().toISOString();
+                const prefijo = `[${timestamp}] [hijo2] [${ID_TRANSACCION}]`;
+                const mensajeCompleto = `${prefijo} ${mensaje}`;
+                
+                // Registrar en consola
+                console[nivel](mensajeCompleto, datos);
+                
+                // Opcional: Registrar en un array de logs para depuración
+                if (!window._logs) window._logs = [];
+                window._logs.push({ nivel, mensaje, datos, timestamp, id: ID_TRANSACCION });
+                if (window._logs.length > 100) window._logs.shift(); // Limitar el tamaño
+            };
+            
+            try {
+                log('info', `Iniciando cambio de modo a ${modo}`, { 
+                    habilitar, 
+                    motivo, 
+                    forzar,
+                    notificarPadre,
+                    estadoActual: window.estadoNavegacion?.obtenerEstado?.()
+                });
+                
+                // Validar el modo
+                if (modo !== 'casa' && modo !== 'aventura') {
+                    const error = new Error(`Modo no válido: ${modo}. Debe ser 'casa' o 'aventura'`);
+                    error.codigo = 'MODO_NO_VALIDO';
+                    error.datos = { modoRecibido: modo, modosValidos: ['casa', 'aventura'] };
+                    throw error;
+                }
+                
+                // Obtener el estado actual
+                const estadoActual = window.estadoNavegacion?.obtenerEstado?.() || {};
+                const modoAnterior = estadoActual.modo || 'casa';
+                
+                // Verificar si es necesario hacer algún cambio
+                if (modoAnterior === modo && !forzar) {
+                    log('debug', 'El modo no ha cambiado y no se forzó el cambio');
+                    return {
+                        estado: 'ok',
+                        mensaje: 'El modo no ha cambiado',
+                        modo,
+                        modoAnterior,
+                        cambiado: false,
+                        timestamp: new Date().toISOString(),
+                        idTransaccion: ID_TRANSACCION
+                    };
+                }
+                
+                // 1. Actualizar el estado de navegación
+                if (window.estadoNavegacion) {
+                    window.estadoNavegacion.actualizar({ 
+                        modo,
+                        ultimaActualizacion: new Date().toISOString()
+                    });
+                }
+                
+                // 2. Actualizar controles según el modo
+                try {
+                    if (modo === 'casa') {
+                        // Deshabilitar GPS y limpiar navegación en modo casa
+                        detenerGPS();
+                        limpiarDestinoNavegacion();
+                        
+                        // Actualizar estado de los botones
+                        actualizarEstadoBotonesModo('casa');
+                        
+                        log('debug', 'Modo casa activado - GPS desactivado');
+                    } else {
+                        // Modo aventura - habilitar controles
+                        actualizarEstadoBotonesModo('aventura');
+                        log('debug', 'Modo aventura activado - Controles habilitados');
+                    }
+                } catch (error) {
+                    log('error', 'Error al actualizar controles', { 
+                        error: error.message,
+                        stack: error.stack,
+                        motivo
+                    });
+                    
+                    // Si no es un error crítico, continuar
+                    if (!forzar) throw error;
+                    log('warn', 'Continuando a pesar del error (modo forzado)');
+                }
+                
+                // 3. Notificar al padre si es necesario
+                if (notificarPadre) {
+                    try {
+                        log('debug', 'Notificando cambio de modo al padre...');
+                        await window.Mensajeria?.enviarMensaje?.('padre', 'sistema:cambio_modo', { 
+                            modo, 
+                            habilitado: habilitar, 
+                            motivo,
+                            timestamp: new Date().toISOString(),
+                            idTransaccion: ID_TRANSACCION,
+                            desdeHijo: 'hijo2'
+                        });
+                        log('debug', 'Notificación al padre completada');
+                    } catch (error) {
+                        log('error', 'Error al notificar el cambio de modo al padre', {
+                            error: error.message,
+                            stack: error.stack,
+                            motivo
+                        });
+                        
+                        // Si es crítico, revertir el cambio
+                        if (!forzar) {
+                            // Revertir cambios en caso de error
+                            if (window.estadoNavegacion) {
+                                window.estadoNavegacion.actualizar({ 
+                                    modo: modoAnterior,
+                                    ultimaActualizacion: new Date().toISOString()
+                                });
+                            }
+                            throw error;
+                        }
+                        log('warn', 'Continuando a pesar del error (modo forzado)');
+                    }
+                }
+                
+                // 4. Actualizar la interfaz si es necesario
+                if (actualizarInterfaz) {
+                    try {
+                        log('debug', 'Actualizando interfaz...');
+                        actualizarEstadoBotones();
+                        
+                        // Actualizar estado de navegación si es necesario
+                        if (modo === 'casa') {
+                            actualizarStatus('Modo Casa activado - GPS desactivado');
+                        } else {
+                            actualizarStatus('Modo Aventura activado - GPS disponible');
+                        }
+                        
+                        log('debug', 'Interfaz actualizada');
+                    } catch (error) {
+                        log('error', 'Error al actualizar la interfaz', {
+                            error: error.message,
+                            stack: error.stack
+                        });
+                        // No lanzar el error, ya que el cambio de modo fue exitoso
+                    }
+                }
+                
+                // 5. Preparar resultado exitoso
+                const resultado = {
+                    estado: 'ok',
+                    mensaje: `Modo cambiado a ${modo} exitosamente`,
+                    modo,
+                    modoAnterior,
+                    habilitado: habilitar,
+                    motivo,
+                    cambiado: true,
+                    timestamp: new Date().toISOString(),
+                    idTransaccion: ID_TRANSACCION
+                };
+                
+                log('info', 'Cambio de modo completado exitosamente', resultado);
+                return resultado;
+                
+            } catch (error) {
+                // Manejo de errores
+                const errorInfo = {
+                    codigo: error.codigo || 'ERROR_DESCONOCIDO',
+                    mensaje: error.message,
+                    stack: error.stack,
+                    datos: error.datos || {},
+                    modoSolicitado: modo,
+                    modoAnterior: window.estadoNavegacion?.obtenerEstado?.()?.modo || 'desconocido',
+                    timestamp: new Date().toISOString(),
+                    idTransaccion: ID_TRANSACCION
+                };
+                
+                log('error', `Error al cambiar el modo a ${modo}`, errorInfo);
+                
+                // Notificar al padre del error
+                if (notificarPadre) {
+                    try {
+                        await window.Mensajeria?.enviarMensaje?.('padre', 'sistema:error', {
+                            tipo: 'cambio_modo_error',
+                            error: errorInfo,
+                            origen: 'hijo2',
+                            idTransaccion: ID_TRANSACCION
+                        });
+                    } catch (e) {
+                        console.error('Error al notificar error al padre:', e);
+                    }
+                }
+                
+                // Relanzar el error para que el llamador pueda manejarlo
+                throw error;
+            }
+        }
+
         // ================== FUNCIONES GPS MEJORADAS ==================
         
         // NUEVA: Verificar llegada a paradas (corregida)
@@ -3286,7 +3502,7 @@
                             nombre: tramo.nombre,
                             distancia: distancia,
                             punto: tramoMasCercano.punto,
-                            coordenadas: tramoMasCrecano.coordenadas,
+                            coordenadas: tramoMasCercano.coordenadas,
                             mostrarFlecha: true
                         });
                     } else if (intervaloFlecha) {
@@ -3315,202 +3531,6 @@
                     });
                 }
             }
-            
-            if (modoCasa || !ubicacionActual) return;
-            
-            const estado = estadoNavegacion.obtenerEstado();
-            const paradaActual = estado.paradaActual ? 
-                COORDENADAS_PARADAS.find(p => p.id === estado.paradaActual) : null;
-            
-            // Si hay una parada actual, verificar la distancia
-            if (paradaActual && estado.objetivoAlcanzado) {
-                const coordenadasObjetivo = paradaActual.coordenadas || paradaActual;
-                const distanciaActual = calcularDistancia(
-                    ubicacionActual.lat, ubicacionActual.lng,
-                    coordenadasObjetivo.lat, coordenadasObjetivo.lng
-                );
-                
-                // Si el usuario se aleja más de 50m del objetivo, reactivar el botón
-                if (distanciaActual > 50) {
-                    console.log('Usuario se alejó del objetivo, reactivando botón de punto de interés');
-                    estadoNavegacion.actualizar({ 
-                        objetivoAlcanzado: false,
-                        paradaActual: null
-                    });
-                    actualizarEstadoBotonesModo('aventura');
-                    
-                    // Limpiar marcadores y ruta
-                    Mensajes.enviar('limpiarMarcadores');
-                    Mensajes.enviar('limpiarRuta', { id: 'ruta_actual' });
-                    
-                    // Detener actualización de flecha si existe
-                    if (intervaloFlecha) {
-                        clearInterval(intervaloFlecha);
-                        intervaloFlecha = null;
-                    }
-                    return;
-                }
-            }
-            
-            // Si no estamos en una parada o el objetivo no se ha alcanzado, verificar paradas
-            if (!estado.objetivoAlcanzado) {
-                verificarLlegadaAParada();
-                
-                // Si hay una parada actual, verificar tramos
-                if (paradaActual) {
-                    const coordenadasObjetivo = paradaActual.coordenadas || paradaActual;
-                    const distanciaAParada = calcularDistancia(
-                        ubicacionActual.lat, ubicacionActual.lng,
-                        coordenadasObjetivo.lat, coordenadasObjetivo.lng
-                    );
-                    
-                    // Si estamos lejos de la parada, verificar tramos
-                    if (distanciaAParada > 50) {
-                        verificarUbicacionEnTramo();
-                    }
-                }
-            }
-        }
-
-        // Resto de funciones GPS (iniciarGPS, detenerGPS, etc.)
-        function iniciarGPS() {
-            if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
-                actualizarStatus('GPS requiere HTTPS en producción');
-                return;
-            }
-
-            if (!navigator.geolocation) {
-                actualizarStatus('GPS no disponible en este dispositivo');
-                return;
-            }
-
-            actualizarStatus('Obteniendo ubicación GPS...', true);
-            
-            resetTripProgress();
-            totalTimeSpan.textContent = formatTime(totalTripTime);
-            startTripProgressSimulation();
-
-            const options = {
-                enableHighAccuracy: true,
-                timeout: 10000,
-                maximumAge: 60000
-            };
-
-            navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    ubicacionActual = {
-                        lat: position.coords.latitude,
-                        lng: position.coords.longitude
-                    };
-                    
-                    // Actualizar el estado de navegación a 'navegando' si no lo está ya
-                    if (estadoNavegacion !== 'navegando') {
-                        estadoNavegacion = 'navegando';
-                    }
-                    
-                    // Si estamos en un tramo, actualizamos la flecha de navegación
-                    if (tramoActual && polylineActual) {
-                        // Si no hay un intervalo activo, lo creamos
-                        if (!intervaloFlecha) {
-                            intervaloFlecha = setInterval(() => {
-                                if (ubicacionActual && polylineActual && estadoNavegacion === 'navegando') {
-                                    actualizarFlechaNavegacion();
-                                }
-                            }, 5000);
-                        }
-                        // Actualizar la flecha inmediatamente
-                        actualizarFlechaNavegacion();
-                    }
-                    
-                    enviarMensajeAlPadre({
-                        tipo: 'actualizarUbicacionMapa',
-                        lat: ubicacionActual.lat,
-                        lng: ubicacionActual.lng
-                    });
-
-                    actualizarStatus(`GPS activo - Precisión: ${Math.round(position.coords.accuracy)}m`);
-                    
-                    // Informar estado GPS al padre
-                    informarEstadoGPS('activo', {
-                        precision: Math.round(position.coords.accuracy),
-                        coordenadas: ubicacionActual,
-                        enTramo: !!tramoActual
-                    });
-                    
-                    verificarUbicacionCompleta(); // ← Verificar paradas y tramos
-                },
-                (error) => {
-                    console.error('Error GPS:', error);
-                    let mensajeError = 'Error al obtener ubicación GPS';
-                    
-                    switch(error.code) {
-                        case error.PERMISSION_DENIED:
-                            mensajeError = 'Permisos GPS denegados. Actívalos en configuración.';
-                            break;
-                        case error.POSITION_UNAVAILABLE:
-                            mensajeError = 'Ubicación GPS no disponible';
-                            break;
-                        case error.TIMEOUT:
-                            mensajeError = 'Tiempo de espera GPS agotado';
-                            break;
-                    }
-                    
-                    actualizarStatus(mensajeError);
-                    
-                    setTimeout(() => {
-                        if (!ubicacionActual) {
-                            actualizarStatus('Activando modo sin GPS...');
-                            activarModoCasa();
-                        }
-                    }, 3000);
-                },
-                options
-            );
-
-            // Seguimiento continuo
-            watchId = navigator.geolocation.watchPosition(
-                (position) => {
-                    ubicacionActual = {
-                        lat: position.coords.latitude,
-                        lng: position.coords.longitude
-                    };
-                    
-                    enviarMensajeAlPadre({
-                        tipo: 'actualizarUbicacionMapa',
-                        lat: ubicacionActual.lat,
-                        lng: ubicacionActual.lng
-                    });
-
-                    verificarUbicacionCompleta(); // ← MEJORADO: verificar paradas y tramos
-                    
-                    // Verificar si hemos llegado al destino (si hay uno establecido)
-                    if (puntoDestino) {
-                        verificarLlegadaADestino();
-                    }
-                },
-                (error) => {
-                    console.error('Error GPS tracking:', error);
-                    if (!ubicacionActual) {
-                        let mensajeError = 'Error en seguimiento GPS';
-                        
-                        switch(error.code) {
-                            case error.PERMISSION_DENIED:
-                                mensajeError = 'Permisos GPS revocados';
-                                activarModoCasa();
-                                break;
-                            case error.POSITION_UNAVAILABLE:
-                                mensajeError = 'GPS temporalmente no disponible';
-                                break;
-                            case error.TIMEOUT:
-                                mensajeError = 'Conexión GPS lenta';
-                                break;
-                        }
-                        
-                        actualizarStatus(mensajeError);
-                    }
-                },
-                options
-            );
         }
 
         /**
@@ -3694,8 +3714,8 @@
             // Actualizar estado del botón GPS
             actualizarEstadoBoton(
                 document.getElementById('btn-gps'),
-                modoCasa || estado.gpsActivo,
-                modoCasa ? 'GPS controlado por el modo casa' : 'Activar/desactivar GPS'
+                estado.gpsActivo,
+                estado.gpsActivo ? 'Desactivar GPS' : 'Activar GPS'
             );
             
             // Actualizar botones de navegación
@@ -3745,46 +3765,45 @@
         // NOTA: La función enviarMensajeAlPadre ha sido eliminada. 
         // Usar Mensajeria.enviarMensaje('padre', tipo, datos) en su lugar.
 
-        function activarModoCasa() {
-            modoCasa = true;
-            detenerGPS();
+        /**
+         * Actualiza el estado de todos los botones de la interfaz
+         * centralizando la lógica de activación/desactivación
+         */
+        function actualizarEstadoBotonesModo(modo) {
+            const estado = estadoNavegacion.obtenerEstado();
             
-            // Actualizar el estado de todos los botones
-            actualizarEstadoBotones();
+            // Actualizar estado de los botones de multimedia
+            actualizarEstadoBotonesMultimedia();
             
-            // Limpiar intervalos y estados
-            clearInterval(tripProgressInterval);
-            resetTripProgress();
+            // Actualizar estado del botón de punto
+            actualizarEstadoBotonPunto();
             
-            // Actualizar estado
-            actualizarStatus('Modo Casa activado - GPS controlado por el modo casa');
-        }
-
-        function activarModoAventura() {
-            modoCasa = false;
+            // Actualizar estado del botón GPS
+            actualizarEstadoBoton(
+                document.getElementById('btn-gps'),
+                modo === 'aventura' && estado.gpsActivo,
+                modo === 'aventura' ? 'Desactivar GPS' : 'Activar GPS'
+            );
             
-            // Actualizar el estado de todos los botones
-            actualizarEstadoBotones();
+            // Actualizar botones de navegación
+            const btnRuta = document.getElementById('btn-ruta');
+            const btnBrujula = document.getElementById('btn-brujula');
             
-            // Si hay un destino activo, asegurarse de que el botón de punto esté activo
-            if (puntoDestino) {
-                actualizarEstadoBotonPunto();
-            } else {
-                // Si no hay ubicación, actualizar estado de los botones de multimedia
-                actualizarEstadoBotonesMultimedia();
-                
-                // Asegurarse de que el botón GPS esté en estado inactivo (rojo)
-                const gpsButton = document.getElementById('btn-gps');
-                if (gpsButton) {
-                    actualizarEstadoBoton(
-                        gpsButton,
-                        false,
-                        'Activar seguimiento GPS'
-                    );
-                }
+            if (btnRuta) {
+                actualizarEstadoBoton(
+                    btnRuta,
+                    true,
+                    'Ver ruta en el mapa'
+                );
             }
             
-            actualizarStatus('Modo Aventura activado - GPS disponible');
+            if (btnBrujula) {
+                actualizarEstadoBoton(
+                    btnBrujula,
+                    true,
+                    'Activar/desactivar brújula'
+                );
+            }
         }
 
         // === FLUJO DE NAVEGACIÓN COMPLETO ===
@@ -3970,14 +3989,7 @@
             // Manejar clic según el botón
             switch(id) {
                 case 'btn-punto':
-                    if (modoCasa) return; // No hacer nada en modo casa
-                    
-                    // Obtener la ubicación actual del usuario
-                    const ubicacionActual = estadoNavegacion.obtenerEstado().ubicacionActual;
-                    if (!ubicacionActual) {
-                        console.log('Ubicación actual no disponible');
-                        return;
-                    }
+                    if (!ubicacionActual) return; // No hacer nada si no hay ubicación
                     
                     // Obtener la parada actual o comenzar desde P-0 si es la primera vez
                     let paradaActual = estadoNavegacion.obtenerEstado().paradaActual;
@@ -4151,13 +4163,8 @@
                     break;
                     
                 case 'btn-gps':
-                    if (modoCasa) {
-                        // En modo casa, mostrar información estática de las paradas/tramos
-                        Mensajes.enviar('mostrarInfoEstatica', {
-                            paradas: COORDENADAS_PARADAS.filter(p => p.completada)
-                        });
-                    } else if (gpsActivo) {
-                        // En modo aventura, iniciar navegación GPS
+                    if (!ubicacionActual) {
+                        // Iniciar navegación GPS
                         if (ubicacionActual) {
                             const siguienteParada = COORDENADAS_PARADAS.find(p => p.parada === (window.paradaActual + 1));
                             
@@ -4214,27 +4221,22 @@
                             src: paradaActual.imagen || '',
                             titulo: paradaActual.nombre || 'Imagen de la ubicación',
                             descripcion: paradaActual.descripcion || '',
-                            modo: modoCasa ? 'casa' : 'aventura'
+                            modo: 'aventura'
                         });
                         
                         // Actualizar estado para indicar que se mostró la imagen
                         actualizarStatus(`Mostrando imagen: ${paradaActual.nombre || 'Ubicación actual'}`);
-                    } else if (modoCasa) {
-                        // En modo casa, incluso si no hay parada actual
-                        Mensajes.enviar('mostrarImagen', {
-                            id: 'modo-casa',
-                            tipo: 'casa',
-                            src: '',
-                            titulo: 'Modo Casa',
-                            descripcion: 'Selecciona un punto para ver su imagen',
-                            modo: 'casa'
+                    } else {
+                        // Enviar mensaje con información estática de las paradas/tramos
+                        Mensajes.enviar('mostrarInfoEstatica', {
+                            paradas: COORDENADAS_PARADAS.filter(p => p.completada)
                         });
                     }
                     break;
                     
                 case 'btn-video':
                     // Verificar si se puede mostrar el reproductor de video
-                    if (modoCasa || (gpsActivo && paradaActual && paradaActual.id && paradaActual.id.startsWith('TR-'))) {
+                    if (paradaActual && paradaActual.id && paradaActual.id.startsWith('TR-')) {
                         // Efecto de zoom antes de mostrar el reproductor de video
                         Mensajes.enviar('zoomSecuencial', {
                             coordenadas: paradaActual.coordenadas || paradaActual,
@@ -4246,7 +4248,7 @@
                                 datos: {
                                     id: paradaActual.id, // ID único del video
                                     src: paradaActual.video || '', // Puede estar vacío
-                                    modo: modoCasa ? 'casa' : 'aventura',
+                                    modo: 'aventura',
                                     // Permitir que el reproductor gestione su propia reproducción
                                     mostrarControles: true, // Habilitar controles nativos
                                     autoplay: false, // No reproducir automáticamente
@@ -4295,7 +4297,7 @@
 
         // Event listeners básicos
         btnGps.addEventListener('click', () => {
-            if (btnGps.classList.contains('disabled') || modoCasa) return;
+            if (btnGps.classList.contains('disabled')) return;
             
             // Informar interacción al padre
             informarInteraccionUsuario('gps', {
@@ -4346,8 +4348,7 @@
                         paso1: { accion: 'zoom', duracion: 1000 },
                         paso2: { accion: 'mostrar-video', ventana: '70%' }
                     },
-                    sincronizarConBarraProgreso: true,
-                    modoCasa: modoCasa
+                    sincronizarConBarraProgreso: true
                 });
             }
         });
