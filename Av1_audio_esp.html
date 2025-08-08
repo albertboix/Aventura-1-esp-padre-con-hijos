@@ -1,22 +1,17 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <script type="module">
       // Importar el módulo de mensajería
       import { inicializarMensajeria } from './js/mensajeria.js';
-      
+
       // ================== CONFIGURACIÓN ==================
       const CONFIG = {
         IFRAME_ID: 'hijo3-audio',
-        LOG_LEVEL: 1, // 0: debug, 1: info, 2: warn, 3: error, 4: none
+        LOG_LEVEL: 1,
         VERSION: '1.0.0',
         DEBUG: true,
-        REINTENTOS: {
-          MAXIMOS: 3,
-          TIEMPO_ESPERA: 1000,
-          FACTOR: 2
-        },
+        REINTENTOS: { MAXIMOS: 3, TIEMPO_ESPERA: 1000, FACTOR: 2 },
         ESTADO_INICIAL: {
           modo: 'aventura',
           volumen: 0.7,
@@ -27,90 +22,23 @@
         }
       };
 
-      // Estado global de la aplicación
       let estadoApp = { ...CONFIG.ESTADO_INICIAL };
-      
-      // Referencia al sistema de mensajería
       let Mensajeria = null;
-      
-      // ID de transacción para seguimiento
       let transaccionActual = null;
-      
+
       // ================== INICIALIZACIÓN ==================
-      
-      /**
-       * Inicializa el sistema de mensajería
-       * @returns {Promise<boolean>} True si la inicialización fue exitosa
-       */
       async function inicializarSistemaMensajeria() {
         const ID_TRANSACCION = `init-${Date.now()}`;
         transaccionActual = ID_TRANSACCION;
-        
-        const log = (nivel, mensaje, datos = {}) => {
-          const timestamp = new Date().toISOString();
-          console[nivel](`[${CONFIG.IFRAME_ID}] [${ID_TRANSACCION}] ${mensaje}`, datos);
-        };
-        
         try {
-          // Inicializar el sistema de mensajería
           window.Mensajeria = await inicializarMensajeria({
             iframeId: CONFIG.IFRAME_ID,
             logLevel: CONFIG.LOG_LEVEL,
             debug: CONFIG.DEBUG
           });
-          
-          log('info', 'Sistema de mensajería inicializado correctamente');
-          return true;
-          log('info', 'Iniciando inicialización del sistema de mensajería');
-          
-          // 1. Importar el módulo de mensajería
-          log('debug', 'Importando módulo de mensajería');
-          const moduloMensajeria = await import('./js/mensajeria.js');
-          Mensajeria = moduloMensajeria.default || moduloMensajeria;
-          
-          if (!Mensajeria || typeof Mensajeria.inicializarMensajeria !== 'function') {
-            throw new Error('La API de mensajería no está disponible');
-          }
-          
-          // 2. Configurar mensajería con opciones avanzadas
-          log('debug', 'Configurando mensajería', {
-            logLevel: CONFIG.LOG_LEVEL,
-            reintentos: CONFIG.REINTENTOS.MAXIMOS
-          });
-          
-          await Mensajeria.inicializarMensajeria({
-            iframeId: CONFIG.IFRAME_ID,
-            logLevel: CONFIG.LOG_LEVEL,
-            debug: CONFIG.DEBUG,
-            reintentos: {
-              max: CONFIG.REINTENTOS.MAXIMOS,
-              delay: CONFIG.REINTENTOS.TIEMPO_ESPERA,
-              factor: CONFIG.REINTENTOS.FACTOR
-            },
-            // Configuración adicional para manejo de errores
-            onError: (error, contexto) => {
-              log('error', `Error en mensajería [${contexto}]`, error);
-              // Intentar reconexión automática
-              if (contexto === 'conexion') {
-                manejarErrorConexion(error);
-              }
-            },
-            // Validar origen de los mensajes entrantes
-            validarOrigen: (origen) => {
-              // Solo aceptar mensajes del dominio padre
-              return origen === window.parent.location.origin;
-            }
-          });
-          
-          // 3. Registrar controladores de mensajes
-          log('info', 'Registrando controladores de mensajes');
+          Mensajeria = window.Mensajeria;
           await registrarControladores();
-          
-          // 4. Configurar sistema de reconexión
           configurarSistemaReconexion();
-          
-          // 5. Notificar al padre que estamos listos
-          log('info', 'Notificando al padre que el reproductor está listo');
           await notificarEstado('reproductor_listo', {
             configuracion: {
               volumen: estadoApp.volumen,
@@ -118,41 +46,21 @@
               controlesHabilitados: estadoApp.controlesHabilitados
             }
           });
-          
-          log('info', 'Inicialización completada exitosamente');
           return true;
-          
         } catch (error) {
-          const errorMsg = `Error al inicializar el sistema de mensajería: ${error.message}`;
-          log('error', errorMsg, { stack: error.stack });
-          
-          // Mostrar error en la interfaz
-          mostrarError(errorMsg);
-          
-          // Intentar notificar al padre del error
-          try {
-            await notificarError('error_inicializacion', {
-              error: error.message,
-              stack: error.stack,
-              timestamp: new Date().toISOString()
-            });
-          } catch (e) {
-            log('error', 'No se pudo notificar el error al padre', e);
-          }
-          
-          // Intentar reconexión automática
+          mostrarError('Error al inicializar el sistema de mensajería: ' + error.message);
+          await notificarError('error_inicializacion', {
+            error: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString()
+          });
           manejarErrorConexion(error);
           return false;
         } finally {
-          if (transaccionActual === ID_TRANSACCION) {
-            transaccionActual = null;
-          }
+          if (transaccionActual === ID_TRANSACCION) transaccionActual = null;
         }
       }
-      
-      /**
-       * Configura el sistema de reconexión automática
-       */
+
       function configurarSistemaReconexion() {
         // Verificar si ya está configurado
         if (window.sistemaReconexion) {
@@ -239,10 +147,6 @@
         console.log('[AUDIO] Sistema de reconexión configurado');
       }
       
-      /**
-       * Maneja errores de conexión con el padre
-       * @param {Error} error - Error que se produjo
-       */
       function manejarErrorConexion(error) {
         console.error('[AUDIO] Error de conexión:', error);
         
@@ -279,19 +183,9 @@
       
       // ================== REGISTRO DE CONTROLADORES ==================
       
-      /**
-       * Registra todos los controladores de mensajes
-       * @returns {Promise<boolean>} True si se registraron correctamente
-       */
       async function registrarControladores() {
-        if (!Mensajeria) {
-          throw new Error('Mensajería no inicializada');
-        }
-        
+        if (!Mensajeria) throw new Error('Mensajería no inicializada');
         try {
-          console.log(`[${CONFIG.IFRAME_ID}] Registrando controladores de mensajes`);
-          
-          // Mapa de tipos de mensaje a sus manejadores
           const manejadores = {
             [Mensajeria.TIPOS_MENSAJE.INICIALIZACION]: manejarInicializacion,
             [Mensajeria.TIPOS_MENSAJE.CAMBIO_MODO]: manejarCambioModo,
@@ -303,21 +197,12 @@
             'sistema:ping': manejarPing,
             'sistema:reiniciar': manejarReinicio
           };
-          
-          // Registrar cada manejador
           for (const [tipo, manejador] of Object.entries(manejadores)) {
-            if (typeof manejador === 'function') {
-              Mensajeria.registrarControlador(tipo, manejador);
-              console.log(`[${CONFIG.IFRAME_ID}] Manejador registrado para: ${tipo}`);
-            }
+            if (typeof manejador === 'function') Mensajeria.registrarControlador(tipo, manejador);
           }
-          
-          console.log(`[${CONFIG.IFRAME_ID}] Todos los controladores registrados`);
           return true;
-          
         } catch (error) {
-          console.error(`[${CONFIG.IFRAME_ID}] Error al registrar controladores:`, error);
-          throw error; // Relanzar para manejo de errores superior
+          throw error;
         }
       }
       
@@ -841,208 +726,105 @@
        * @returns {Promise<Object>} Resultado de la operación
        */
       async function establecerVolumen(volumen) {
-        const vol = Math.max(0, Math.min(1, parseFloat(volumen)));
-        
-        if (window.audioPlayer) {
-          window.audioPlayer.volume = vol;
+        if (!window.audioPlayer) {
+          return { estado: 'no_inicializado' };
         }
         
-        // Actualizar estado de la aplicación
-        estadoApp.volumen = vol;
-        
-        return { 
-          estado: 'ok', 
-          volumen: vol, 
-          timestamp: new Date().toISOString() 
-        };
+        try {
+          window.audioPlayer.volume = Math.max(0, Math.min(1, parseFloat(volumen)));
+          return { estado: 'ok', volumen: window.audioPlayer.volume };
+        } catch (error) {
+          console.error('[AUDIO] Error al establecer volumen:', error);
+          throw error;
+        }
       }
       
       /**
-       * Configura los manejadores de eventos del reproductor de audio
+       * Configura los eventos del reproductor de audio
        */
       function configurarEventosAudio() {
         if (!window.audioPlayer) return;
         
-        // Función auxiliar para manejar el evento de reproducción
-        const manejarPlay = async () => {
-          try {
-            const estado = await obtenerEstadoReproductor();
-            await notificarEstado('audio_play', estado);
-          } catch (error) {
-            console.error('Error en manejador de play:', error);
-          }
-        };
+        // Evento de reproducción
+        window.audioPlayer.addEventListener('play', () => {
+          estadoApp.reproduciendo = true;
+          notificarEstado('reproduccion_estado', { reproduciendo: true });
+        });
         
-        // Función auxiliar para manejar el evento de pausa
-        const manejarPause = async () => {
-          try {
-            const estado = await obtenerEstadoReproductor();
-            await notificarEstado('audio_pause', estado);
-          } catch (error) {
-            console.error('Error en manejador de pause:', error);
-          }
-        };
+        // Evento de pausa
+        window.audioPlayer.addEventListener('pause', () => {
+          estadoApp.reproduciendo = false;
+          notificarEstado('reproduccion_estado', { reproduciendo: false });
+        });
         
-        // Función auxiliar para manejar el evento de finalización
-        const manejarEnded = async () => {
-          try {
-            await notificarEstado('audio_ended', { 
-              timestamp: new Date().toISOString() 
-            });
-          } catch (error) {
-            console.error('Error en manejador de ended:', error);
-          }
-        };
+        // Evento de finalización
+        window.audioPlayer.addEventListener('ended', async () => {
+          estadoApp.reproduciendo = false;
+          notificarEstado('reproduccion_terminada', {});
+        });
         
-        // Función auxiliar para manejar cambios de volumen
-        const manejarVolumeChange = async () => {
-          try {
-            await notificarEstado('audio_volume_change', { 
-              volumen: window.audioPlayer.volume,
-              muted: window.audioPlayer.muted,
-              timestamp: new Date().toISOString()
-            });
-          } catch (error) {
-            console.error('Error en manejador de volumechange:', error);
-          }
-        };
-        
-        // Función auxiliar para manejar errores
-        const manejarError = (e) => {
-          console.error('[AUDIO] Error en reproductor:', e);
-          notificarError('error_reproductor', {
-            error: e.message || 'Error desconocido en el reproductor',
-            stack: e.stack,
-            timestamp: new Date().toISOString()
-          }).catch(console.error);
-        };
-        
-        // Limpiar manejadores anteriores si existen
-        if (window.audioPlayer._manejadoresEventos) {
-          Object.entries(window.audioPlayer._manejadoresEventos).forEach(([evento, manejador]) => {
-            window.audioPlayer.removeEventListener(evento, manejador);
-          });
-        }
-        
-        // Configurar nuevos manejadores de eventos
-        window.audioPlayer.addEventListener('play', manejarPlay);
-        window.audioPlayer.addEventListener('pause', manejarPause);
-        window.audioPlayer.addEventListener('ended', manejarEnded);
-        window.audioPlayer.addEventListener('volumechange', manejarVolumeChange);
-        window.audioPlayer.addEventListener('error', manejarError);
-        
-        // Guardar referencias a los manejadores para poder eliminarlos después
-        window.audioPlayer._manejadoresEventos = {
-          play: manejarPlay,
-          pause: manejarPause,
-          ended: manejarEnded,
-          volumechange: manejarVolumeChange,
-          error: manejarError
-        };
-        
-        console.log('[AUDIO] Manejadores de eventos configurados');
+        // Evento de error
+        window.audioPlayer.addEventListener('error', async (e) => {
+          console.error('[AUDIO] Error en reproductor de audio:', e);
+          estadoApp.ultimoError = e.message;
+          notificarEstado('error', { mensaje: e.message });
+        });
       }
       
       /**
-       * Limpia los manejadores de eventos del reproductor de audio
+       * Limpia los eventos del reproductor de audio
        */
       function limpiarEventosAudio() {
-        if (!window.audioPlayer || !window.audioPlayer._manejadoresEventos) return;
+        if (!window.audioPlayer) return;
         
-        // Eliminar todos los manejadores de eventos registrados
-        Object.entries(window.audioPlayer._manejadoresEventos).forEach(([evento, manejador]) => {
-          window.audioPlayer.removeEventListener(evento, manejador);
-        });
-        
-        // Limpiar referencias
-        delete window.audioPlayer._manejadoresEventos;
+        window.audioPlayer.removeEventListener('play', () => {});
+        window.audioPlayer.removeEventListener('pause', () => {});
+        window.audioPlayer.removeEventListener('ended', () => {});
+        window.audioPlayer.removeEventListener('error', () => {});
       }
       
       /**
        * Actualiza la interfaz de usuario según el estado actual
        */
       function actualizarInterfaz() {
-        if (!document.body) return;
+        // Actualizar controles de reproducción
+        const controles = document.getElementById('controles-reproduccion');
+        if (!controles) return;
         
-        // Actualizar controles según el estado de la aplicación
-        const controles = document.querySelectorAll('[data-control]');
-        controles.forEach(control => {
-          const tipo = control.dataset.control;
-          
-          switch (tipo) {
-            case 'play':
-            case 'pause':
-            case 'stop':
-              control.disabled = !estadoApp.controlesHabilitados;
-              break;
-              
-            case 'volumen':
-              control.disabled = !estadoApp.controlesHabilitados;
-              control.value = estadoApp.volumen * 100;
-              break;
-              
-            case 'mute':
-              control.disabled = !estadoApp.controlesHabilitados;
-              control.checked = window.audioPlayer?.muted || false;
-              break;
-          }
+        // Habilitar o deshabilitar controles
+        controles.querySelectorAll('button').forEach(btn => {
+          btn.disabled = !estadoApp.controlesHabilitados;
         });
         
-        // Actualizar indicador de modo
-        const indicadorModo = document.getElementById('indicador-modo');
-        if (indicadorModo) {
-          indicadorModo.textContent = `Modo: ${estadoApp.modo}`;
-          indicadorModo.className = `modo-${estadoApp.modo}`;
-        }
+        // Actualizar estado de reproducción
+        const reproduciendo = estadoApp.reproduciendo ? 'Reproduciendo' : 'Pausado';
+        controles.querySelector('.estado-reproduccion').textContent = reproduciendo;
         
-        // Actualizar indicador de estado
-        const indicadorEstado = document.getElementById('indicador-estado');
-        if (indicadorEstado) {
-          const estado = window.audioPlayer?.paused ? 'pausado' : 'reproduciendo';
-          indicadorEstado.textContent = `Estado: ${estado}`;
-          indicadorEstado.className = `estado-${estado}`;
-        }
-        
-        console.log(`[${CONFIG.IFRAME_ID}] Interfaz actualizada`, estadoApp);
-        
-        // Confirmar inicialización
-        return Mensajeria.enviarMensajeConReintenos(
-          'padre',
-          Mensajeria.TIPOS_MENSAJE.INICIALIZACION,
-          { 
-            estado: 'listo',
-            timestamp: new Date().toISOString(),
-            configuracion: {
-              volumen: window.audioPlayer?.volume ?? 1.0,
-              controlesHabilitados: !window.controlsDisabled
-            }
-          }
-        ).catch(error => {
-          console.error(`[${IFRAME_ID}] Error al confirmar inicialización:`, error);
-          throw error;
-        });
+        // Actualizar modo
+        const modoTexto = estadoApp.modo === 'aventura' ? 'Aventura' : 'Casa';
+        document.getElementById('modo-actual').textContent = `Modo: ${modoTexto}`;
       }
       
-      // La función manejarCambioModo ya está definida más arriba en el archivo
-      // Se ha eliminado la declaración duplicada
-      
       /**
-       * Manejador de comandos de audio
-       * @param {Object} mensaje - Mensaje con comando de audio
+       * Manejador del comando de audio
+       * @param {Object} mensaje - Mensaje con el comando de audio
+       * @returns {Promise<Object>} Resultado del comando
        */
-       async function manejarComandoAudio(mensaje) {
-        const { accion, parametros = {} } = mensaje.datos || {};
-        console.log(`[${IFRAME_ID}] Comando de audio recibido:`, { accion, parametros });
+      async function manejarComandoAudio(mensaje) {
+        const ID_TRANSACCION = `audio-${Date.now()}`;
+        const log = (nivel, msg, datos = {}) => {
+          console[nivel](`[${CONFIG.IFRAME_ID}] [${ID_TRANSACCION}] ${msg}`, datos);
+        };
+        
+        log('info', 'Manejando comando de audio', { comando: mensaje.datos });
         
         try {
-          let resultado = {};
+          const { accion, archivo, opciones } = mensaje.datos;
           
+          let resultado;
           switch (accion) {
             case 'reproducir':
-              if (!parametros.archivo) {
-                throw new Error('No se especificó archivo para reproducir');
-              }
-              resultado = await reproducirAudio(parametros.archivo, parametros);
+              resultado = await reproducirAudio(archivo, opciones);
               break;
               
             case 'pausar':
@@ -1053,777 +835,55 @@
               resultado = await detenerAudio();
               break;
               
-            case 'establecer_volumen':
-              if (parametros.volumen === undefined) {
-                throw new Error('No se especificó el volumen');
-              }
-              resultado = await establecerVolumen(parametros.volumen);
+            case 'volumen':
+              resultado = await establecerVolumen(opciones.volumen);
               break;
               
             default:
-              throw new Error(`Acción de audio no soportada: ${accion}`);
+              throw new Error(`Acción de audio no reconocida: ${accion}`);
           }
           
-          // Notificar éxito usando la función centralizada
-          return notificarEstado('audio_accion_completada', {
-            accion,
-            exito: true,
-            ...resultado
+          // Notificar estado después de ejecutar el comando
+          await notificarEstado('estado_audio', {
+            reproduciendo: estadoApp.reproduciendo,
+            volumen: estadoApp.volumen,
+            modo: estadoApp.modo
           });
-          
-        } catch (error) {
-          // Manejar el error de manera centralizada
-          return manejarError(error, 'manejarComandoAudio', { accion });
-        }
-      }
-      
-      /**
-       * Manejador de confirmaciones
-       * @param {Object} mensaje - Mensaje de confirmación
-       */
-      function manejarConfirmacion(mensaje) {
-        const { idMensaje, estado, timestamp, detalles } = mensaje.datos || {};
-        console.log(`[${IFRAME_ID}] Confirmación recibida:`, { idMensaje, estado, timestamp });
-        
-        // Aquí podrías implementar lógica adicional basada en las confirmaciones
-        // Por ejemplo, actualizar el estado de mensajes pendientes, reintentar fallos, etc.
-        
-        // Registrar la confirmación en el sistema de mensajería si está disponible
-        if (window.Mensajeria?.registrarConfirmacion) {
-          window.Mensajeria.registrarConfirmacion(idMensaje, {
-            estado: estado || 'confirmado',
-            timestamp: timestamp || new Date().toISOString(),
-            detalles: detalles || {}
-          });
-        }
-        
-        // Si es una confirmación de error, podríamos manejarla de manera especial
-        if (estado === 'error') {
-          console.error(`[${IFRAME_ID}] Error confirmado para mensaje ${idMensaje}:`, detalles);
-          
-          // Notificar al padre que hemos recibido la confirmación de error
-          window.Mensajeria.enviarMensajeConReintenos('padre', 'confirmacion_error_recibida', {
-            idMensaje,
-            timestamp: new Date().toISOString(),
-            detalles: {
-              mensaje: 'Error confirmado',
-              ...(detalles || {})
-            }
-          }).catch(error => {
-            console.error(`[${IFRAME_ID}] Error al notificar confirmación de error:`, error);
-          });
-        }
-        
-        return {
-          estado: 'procesado',
-          idMensaje,
-          timestamp: new Date().toISOString()
-        };
-      }
-      
-      /**
-       * Manejador de solicitud de estado
-       * @param {Object} mensaje - Mensaje de solicitud de estado
-       */
-      function manejarSolicitudEstado(mensaje) {
-        console.log(`[${IFRAME_ID}] Solicitando estado actual`);
-        
-        const estadoActual = obtenerEstadoActual();
-        const requiereConfirmacion = mensaje?.datos?.confirmacion === true;
-        
-        // Si se solicita confirmación, la enviamos
-        if (requiereConfirmacion) {
-          return Mensajeria.enviarMensajeConReintenos(
-            'padre',
-            'estado_actual',
-            estadoActual
-          ).then(() => ({
-            ...estadoActual,
-            confirmacionEnviada: true
-          }));
-        }
-        
-        return Promise.resolve(estadoActual);
-      }
-      
-      /**
-       * Obtiene el estado actual del reproductor
-       * @returns {Object} Estado actual
-       */
-      function obtenerEstadoActual() {
-        return {
-          estado: window.audioPlayer?.paused ? 'pausado' : 'reproduciendo',
-          archivoActual: window.audioPlayer?.src || null,
-          tiempoActual: window.audioPlayer?.currentTime || 0,
-          duracion: window.audioPlayer?.duration || 0,
-          volumen: window.audioPlayer?.volume ?? 1.0,
-          controlesHabilitados: !window.controlsDisabled,
-          modo: document.body.classList.contains('modo-casa') ? 'casa' : 'aventura',
-          timestamp: new Date().toISOString()
-        };
-      }
-      
-      /**
-       * Notifica el estado inicial al padre
-       */
-      function notificarEstadoInicial() {
-        console.log(`[${IFRAME_ID}] Notificando estado inicial al padre`);
-        
-        const estadoInicial = obtenerEstadoActual();
-        estadoInicial.estado = 'inicializado';
-        
-        return Mensajeria.enviarMensajeConReintenos(
-          'padre',
-          'reproductor_listo',
-          estadoInicial
-        ).catch(error => {
-          console.error(`[${IFRAME_ID}] Error al notificar estado inicial:`, error);
-          throw error;
-        });
-      }
-      
-      // ================== FUNCIONES AUXILIARES ==================
-      
-      /**
-       * Notifica un cambio de estado al iframe padre
-       * @param {string} tipo - Tipo de notificación (se añadirá el prefijo 'audio_')
-       * @param {Object} [datos={}] - Datos adicionales a enviar
-       * @returns {Promise} Promesa que se resuelve cuando se envía la notificación
-       */
-      function notificarEstado(tipo, datos = {}) {
-        if (!window.Mensajeria) {
-          console.warn(`[${IFRAME_ID}] Mensajería no disponible para notificar estado:`, { tipo, datos });
-          return Promise.resolve();
-        }
-        
-        const mensaje = {
-          tipo: `audio_${tipo}`,
-          origen: IFRAME_ID,
-          timestamp: new Date().toISOString(),
-          ...datos
-        };
-        
-        console.log(`[${IFRAME_ID}] Notificando estado:`, mensaje);
-        
-        return Mensajeria.enviarMensajeConReintenos(
-          'padre',
-          `audio_${tipo}`,
-          mensaje,
-          CONFIG_REINTENTOS
-        ).catch(error => {
-          console.error(`[${IFRAME_ID}] Error al notificar estado "${tipo}":`, error);
-          throw error;
-        });
-      }
-      
-      /**
-       * Notifica un error al iframe padre
-       * @param {string} tipo - Tipo de error
-       * @param {Object} [detalles={}] - Detalles adicionales del error
-       * @returns {Promise} Promesa que se resuelve cuando se envía la notificación de error
-       */
-      function notificarError(tipo, detalles = {}) {
-        console.error(`[${IFRAME_ID}] Error:`, tipo, detalles);
-        
-        // Usar notificarEstado para enviar el error con el prefijo 'error_'
-        return notificarEstado(`error_${tipo}`, {
-          error: detalles.error || 'Error desconocido',
-          detalles: {
-            ...detalles,
-            estadoReproductor: obtenerEstadoReproductor()
-          },
-          timestamp: new Date().toISOString()
-        }).catch(error => {
-          console.error(`[${IFRAME_ID}] Error al notificar error al padre:`, error);
-          // Si falla, intentar con postMessage directo como último recurso
-          try {
-            window.parent.postMessage({
-              tipo: `error_${tipo}`,
-              origen: IFRAME_ID,
-              error: detalles.error || 'Error desconocido',
-              detalles: {
-                ...detalles,
-                estadoReproductor: obtenerEstadoReproductor()
-              },
-              timestamp: new Date().toISOString()
-            }, '*');
-          } catch (e) {
-            console.error(`[${IFRAME_ID}] Error crítico al notificar error:`, e);
-          }
-        });
-      }
-      
-
-      
-      /**
-       * Obtiene el estado actual del reproductor
-       * @returns {Object} Estado actual del reproductor
-       */
-      function obtenerEstadoReproductor() {
-        if (!window.audioPlayer) {
-          return {
-            estado: 'no_inicializado',
-            error: 'Reproductor de audio no inicializado',
-            timestamp: new Date().toISOString()
-          };
-        }
-        
-        return {
-          estado: window.audioPlayer.paused ? 'pausado' : 'reproduciendo',
-          tiempoActual: window.audioPlayer.currentTime,
-          duracion: window.audioPlayer.duration || 0,
-          volumen: window.audioPlayer.volume,
-          muteado: window.audioPlayer.muted,
-          velocidad: window.audioPlayer.playbackRate,
-          archivo: window.audioPlayer.src || null,
-          redyState: window.audioPlayer.readyState,
-          networkState: window.audioPlayer.networkState,
-          buffered: window.audioPlayer.buffered.length > 0 
-                   ? {
-                       inicio: window.audioPlayer.buffered.start(0),
-                       fin: window.audioPlayer.buffered.end(0)
-                     } 
-                   : null,
-          controlesHabilitados: !controlsDisabled,
-          timestamp: new Date().toISOString()
-        };
-      }
-      
-      /**
-       * Reproduce un archivo de audio
-       * @param {string} archivo - Ruta del archivo de audio
-       * @param {Object} opciones - Opciones de reproducción
-       * @returns {Promise<Object>} Resultado de la operación
-       */
-      async function reproducirAudio(archivo, opciones = {}) {
-        if (!window.audioPlayer) {
-          const error = new Error('Reproductor de audio no inicializado');
-          await notificarError('reproduccion', { error: error.message });
-          throw error;
-        }
-        
-        try {
-          // Notificar inicio de carga
-          await notificarEstado('cargando_audio', { archivo });
-          
-          // Si es un archivo diferente, actualizamos la fuente
-          if (opciones.volumen !== undefined) {
-            await establecerVolumen(opciones.volumen);
-          }
-          
-          if (opciones.tiempoInicio !== undefined) {
-            audioPlayer.currentTime = opciones.tiempoInicio;
-          }
-          
-          // Iniciar la reproducción
-          const reproduccion = await audioPlayer.play();
-          
-          // Notificar que la reproducción ha comenzado
-          const estadoReproduccion = {
-            archivo,
-            tiempoActual: audioPlayer.currentTime,
-            duracion: audioPlayer.duration,
-            volumen: audioPlayer.volume,
-            muteado: audioPlayer.muted
-          };
-          
-          await notificarEstado('reproduccion_iniciada', estadoReproduccion);
           
           return {
-            estado: 'reproduciendo',
-            ...estadoReproduccion
+            estado: 'ok',
+            mensaje: `Comando de audio "${accion}" ejecutado`,
+            resultado
           };
           
         } catch (error) {
-          const errorInfo = { 
-            archivo,
+          const errorMsg = `Error al ejecutar comando de audio: ${error.message}`;
+          log('error', errorMsg, { stack: error.stack });
+          
+          // Notificar error al padre
+          await notificarError('error_comando_audio', {
             error: error.message,
-            tiempoActual: audioPlayer?.currentTime || 0,
-            duracion: audioPlayer?.duration || 0
-          };
-          
-          await manejarError(error, 'reproducirAudio', errorInfo);
-          throw error;
-        }
-      }
-      
-      /**
-       * Pausa la reproducción de audio actual
-       * @returns {Promise<Object>} Estado de la pausa
-       */
-      async function pausarAudio() {
-        if (!window.audioPlayer) {
-          throw new Error('Reproductor de audio no inicializado');
-        }
-        
-        try {
-          if (!audioPlayer.paused) {
-            await audioPlayer.pause();
-            
-            // Notificar que la reproducción se ha pausado
-            const estadoPausa = {
-              tiempoActual: audioPlayer.currentTime,
-              duracion: audioPlayer.duration,
-              timestamp: new Date().toISOString()
-            };
-            
-            await notificarEstado('reproduccion_pausada', estadoPausa);
-            
-            return {
-              estado: 'pausado',
-              ...estadoPausa
-            };
-          }
-          
-          return {
-            estado: 'ya_pausado',
-            tiempoActual: audioPlayer.currentTime,
-            duracion: audioPlayer.duration,
+            stack: error.stack,
             timestamp: new Date().toISOString()
-          };
-          
-        } catch (error) {
-          const errorInfo = { 
-            tiempoActual: audioPlayer?.currentTime || 0,
-            duracion: audioPlayer?.duration || 0
-          };
-          
-          await manejarError(error, 'pausarAudio', errorInfo);
-          throw error;
-        }
-      }
-      
-      /**
-       * Detiene la reproducción de audio actual
-       * @returns {Promise<Object>} Estado de la detención
-       */
-      async function detenerAudio() {
-        if (!window.audioPlayer) {
-          throw new Error('Reproductor de audio no inicializado');
-        }
-        
-        try {
-          const estadoAnterior = audioPlayer.paused ? 'pausado' : 'reproduciendo';
-          const tiempoDetencion = audioPlayer.currentTime;
-          
-          if (estadoAnterior === 'reproduciendo') {
-            audioPlayer.pause();
-          }
-          
-          audioPlayer.currentTime = 0;
-          
-          // Notificar que la reproducción se ha detenido
-          const estadoDetencion = {
-            tiempoDetencion,
-            duracion: audioPlayer.duration,
-            estadoAnterior,
-            timestamp: new Date().toISOString()
-          };
-          
-          await notificarEstado('reproduccion_detenida', estadoDetencion);
-          
-          return {
-            estado: 'detenido',
-            ...estadoDetencion
-          };
-          
-        } catch (error) {
-          const errorInfo = { 
-            tiempoActual: audioPlayer?.currentTime || 0,
-            duracion: audioPlayer?.duration || 0
-          };
-          
-          await manejarError(error, 'detenerAudio', errorInfo);
-          throw error;
-        }
-      }
-      
-      /**
-       * Establece el volumen del reproductor
-       * @param {number} volumen - Nivel de volumen (0.0 a 1.0)
-       * @returns {Promise<Object>} Resultado de la operación
-       */
-      async function establecerVolumen(volumen) {
-        // Validar parámetros
-        if (typeof volumen !== 'number' || isNaN(volumen)) {
-          const error = new Error('El volumen debe ser un número');
-          await notificarError('volumen_invalido', { volumen, error: error.message });
-          throw error;
-        }
-        
-        if (volumen < 0 || volumen > 1) {
-          const error = new Error('El volumen debe estar entre 0 y 1');
-          await notificarError('volumen_invalido', { volumen, error: error.message });
-          throw error;
-        }
-        
-        if (!window.audioPlayer) {
-          const error = new Error('Reproductor de audio no inicializado');
-          await notificarError('volumen', { volumen, error: error.message });
-          throw error;
-        }
-        
-        try {
-          const volumenAnterior = window.audioPlayer.volume;
-          window.audioPlayer.volume = volumen;
-          
-          // Notificar cambio de volumen exitoso
-          const estado = {
-            volumen: window.audioPlayer.volume,
-            volumenAnterior: volumenAnterior,
-            estado: window.audioPlayer.paused ? 'pausado' : 'reproduciendo',
-            tiempoActual: window.audioPlayer.currentTime,
-            timestamp: new Date().toISOString()
-          };
-          
-          await notificarEstado('volumen_ajustado', estado);
-          
-          return estado;
-          
-        } catch (error) {
-          console.error(`[${IFRAME_ID}] Error al establecer volumen:`, error);
-          await notificarError('volumen', { 
-            volumen,
-            error: error.message,
-            tiempoActual: window.audioPlayer?.currentTime || 0,
-            duracion: window.audioPlayer?.duration || 0
           });
+          
           throw error;
-        };
+        }
       }
       
-      /**
-       * Manejador unificado para controles
-       * @param {Object} mensaje - Mensaje con instrucciones
-       * @param {boolean} habilitar - true para habilitar, false para deshabilitar
-       */
-      function manejarEstadoControles(mensaje, habilitar) {
-        const { ids = [], excluir = [] } = mensaje.datos || {};
-        const accion = habilitar ? 'Habilitando' : 'Deshabilitando';
-        console.log(`[${IFRAME_ID}] ${accion} controles:`, { ids, excluir });
-        
+      // ================== INICIALIZACIÓN DOM ==================
+      document.addEventListener('DOMContentLoaded', async () => {
         try {
-          const actualizarControl = (control) => {
-            if (!control) return;
-            control.disabled = !habilitar;
-            control.style.opacity = habilitar ? '1' : '0.5';
-            control.style.pointerEvents = habilitar ? 'auto' : 'none';
-            control.setAttribute('aria-disabled', String(!habilitar));
-          };
-          
-          if (ids.length === 0) {
-            // Procesar todos los controles excepto los excluidos
-            document.querySelectorAll('.boton, button, [role="button"]').forEach(control => {
-              if (!excluir.includes(control.id)) {
-                actualizarControl(control);
-              }
-            });
-          } else {
-            // Procesar solo los controles especificados que no estén excluidos
-            ids.forEach(id => {
-              if (!excluir.includes(id)) {
-                actualizarControl(document.getElementById(id));
-              }
-            });
-          }
-          
-          // Actualizar estado global
-          window.controlsDisabled = !habilitar;
-          
-          return {
-            estado: habilitar ? 'controles_habilitados' : 'controles_deshabilitados',
-            ids,
-            excluidos: habilitar ? [] : excluir,
-            timestamp: new Date().toISOString()
-          };
-          
+          await inicializarSistemaMensajeria();
+          // Aquí puedes inicializar controles adicionales o el reproductor si es necesario
         } catch (error) {
-          const errorMsg = `No se pudieron ${habilitar ? 'habilitar' : 'deshabilitar'} los controles: ${error.message}`;
-          console.error(`[${IFRAME_ID}] ${errorMsg}`, error);
-          throw new Error(errorMsg);
+          mostrarError('Error al inicializar el reproductor: ' + error.message);
         }
-      }
-    </script>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Reproductor de Audio - Aventura 1 (hijo3)</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <style>
-        :root {
-            --btn-size: 60px;
-            --icon-size: 1.5em;
-            --progress-thick: 20px;
-            --trapecio-width: 290px;
-            --trapecio-height: 155px;
-            --trapecio-bg: white;
-            --trapecio-shadow: 0 2px 12px rgba(0,0,0,0.13);
-            --trapecio-radius: 15px;
-            --progress-color: #0077cc;
-            --progress-bg: #e0e0e0;
-            --timer-font-size: 1.1em;
-            --timer-color: #333;
-        }
-
-        html, body {
-            height: 100%;
-            margin: 0;
-            padding: 0;
-            background: transparent !important;
-        }
-
-        body {
-            font-family: "Book Antiqua", "Palatino Linotype", Palatino, Georgia, serif;
-            margin: 0;
-            padding: 0;
-            background: transparent !important;
-            overflow: hidden;
-            display: flex;
-            justify-content: center;
-            align-items: flex-end;
-        }
-
-        .audio-player-controls {
-            width: var(--trapecio-width);
-            max-width: 98vw;
-            min-width: 180px;
-            height: var(--trapecio-height);
-            background: var(--trapecio-bg);
-            clip-path: polygon(8% 0%, 92% 0%, 100% 100%, 0% 100%);
-            border-radius: var(--trapecio-radius);
-            box-shadow: var(--trapecio-shadow);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: space-around;
-            gap: 0.1em;
-            z-index: 1200;
-            padding: 5px 8px 5px 8px;
-            box-sizing: border-box;
-            border: none;
-            margin: 5px 0;
-        }
-
-        .player-buttons-row {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            width: 100%;
-            margin-bottom: 2px;
-        }
-
-        #playPauseBtn {
-            width: var(--btn-size);
-            height: var(--btn-size);
-            border-radius: 50%;
-            border: none;
-            background: linear-gradient(135deg, #28a745, #1e7e34);
-            color: white;
-            font-size: var(--icon-size);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.10);
-            padding: 0;
-        }
-
-        #playPauseBtn .icon-play {
-            color: white;
-            font-weight: bold;
-            filter: drop-shadow(0 1px 2px rgba(0,0,0,0.1));
-        }
-
-        #playPauseBtn:active:not(:disabled) { transform: scale(0.95); }
-        #playPauseBtn.active {
-            background: linear-gradient(135deg, #28a745, #1e7e34);
-            border: none;
-        }
-        #playPauseBtn:disabled { 
-            background: linear-gradient(135deg, #dc3545, #c82333);
-            opacity: 1;
-            cursor: not-allowed; 
-            opacity: 0.6;
-            border: none;
-        }
-
-        #retosBtn {
-            width: var(--btn-size);
-            height: var(--btn-size);
-            border-radius: 50%;
-            border: none;
-            background: linear-gradient(135deg, #dc3545, #c82333);
-            color: white;
-            font-size: var(--icon-size);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.10);
-            padding: 0;
-        }
-
-        #retosBtn .icon-puzzle {
-            background: linear-gradient(135deg, #007bff 0%, #0056d3 50%, #00c6ff 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            font-weight: bold;
-            filter: drop-shadow(0 1px 2px rgba(0,0,0,0.1));
-        }
-
-        #retosBtn:disabled { 
-            background: linear-gradient(135deg, #dc3545, #c82333);
-            cursor: not-allowed; 
-            opacity: 0.6;
-        }
-
-        #retosBtn:disabled .icon-puzzle {
-            opacity: 0.6;
-        }
-
-        #retosBtn:active:not(:disabled) { transform: scale(0.95); }
-        #retosBtn.active {
-            background: linear-gradient(135deg, #28a745, #1e7e34);
-        }
-
-        .progress-row {
-            display: flex;
-            align-items: center;
-            width: 90%;
-            margin: 0 0 5px 0;
-            padding: 0;
-            justify-content: center;
-        }
-
-        .progress-container {
-            flex: 1;
-            width: 100%;
-            height: var(--progress-thick);
-            background-color: #f0f0f0;
-            border-radius: calc(var(--progress-thick) / 2);
-            cursor: pointer;
-            position: relative;
-            margin: 0;
-            min-width: 0;
-            overflow: visible;
-            display: flex;
-            align-items: center;
-            border: 1px solid #ddd;
-            box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
-        }
-
-        #progressBar {
-            height: 100%;
-            width: 0%;
-            background: linear-gradient(90deg, #28a745, #1e7e34);
-            border-radius: calc(var(--progress-thick) / 2);
-            transition: width 0.1s linear;
-            position: relative;
-        }
-
-        #progressBar::after {
-            content: '';
-            position: absolute;
-            right: -8px;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
-            background: #007bff;
-            border: 3px solid white;
-            box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
-            display: block;
-            opacity: 1;
-            transition: opacity 0.2s ease;
-        }
-
-        #playPauseBtn:disabled ~ .progress-row #progressBar::after {
-            opacity: 0;
-        }
-
-        #playPauseBtn:disabled ~ .progress-row #progressBar {
-            background: linear-gradient(90deg, #dc3545, #c82333);
-        }
-
-        .time-display {
-            width: 90%;
-            font-size: var(--timer-font-size);
-            color: #333;
-            text-align: left;
-            user-select: none;
-            margin: 2px 0;
-            white-space: nowrap;
-            font-family: inherit;
-            display: flex;
-            justify-content: space-between;
-            font-weight: bold;
-        }
-
-        /* Efectos hover */
-        #playPauseBtn:hover:not(:disabled),
-        #retosBtn:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-        }
-
-        /* Estilos responsivos */
-        @media (max-width: 500px) {
-            :root {
-                --btn-size: 50px;
-                --icon-size: 1.3em;
-                --trapecio-width: 98vw;
-                --trapecio-height: 140px;
-                --progress-thick: 16px;
-                --timer-font-size: 0.9em;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="audio-player-controls">
-        <div class="player-buttons-row">
-            <button id="playPauseBtn" aria-label="Reproducir/Pausar">
-                <i class="fas fa-play icon-play"></i>
-            </button>
-            <button id="retosBtn" aria-label="Retos">
-                <i class="fas fa-puzzle-piece icon-puzzle"></i>
-            </button>
-        </div>
-        <div class="progress-row">
-            <div class="progress-container" id="progressContainer">
-                <div id="progressBar"></div>
-            </div>
-        </div>
-        <div class="time-display">
-            <span id="currentTime">00:00</span>
-            <span id="duration">00:00</span>
-        </div>
-    </div>
-
-    <audio id="audioPlayer" preload="metadata">
-        Tu navegador no soporta el elemento de audio.
-    </audio>
-
-    <script type="module">
-        // Constantes y variables globales
-        let audioPlayer;
-        let playPauseBtn;
-        let retosBtn;
-        let progressBar;
-        let progressContainer;
-        let currentTimeEl;
-        let durationEl;
-        let isPlaying = false;
-        let controlsDisabled = true;
-        let ultimoArchivoReproducido = null;
-
-        // Array de audios correspondientes a las paradas y tramos del recorrido
-        const audioFiles = [
-            // Parada 0 - Inicio
+      });
+      
+      // Array de audios correspondientes a las paradas y tramos del recorrido
+      const audioFiles = [
+        // Parada 0 - Inicio
             { 
                 id: "audio-P-0", 
                 title: "Torres de Serranos (inicio)", 
@@ -2242,814 +1302,88 @@
                 title: "Parada 36: Torres de Serranos (Final del recorrido)", 
                 file: "Av1_audio_esp/61 Av1 Pista 61 ESPAÑOL.mp3"
             }
-        ];
-
-        // Inicializar cuando el DOM esté listo
-        document.addEventListener('DOMContentLoaded', async () => {
-            try {
-                // Inicializar el sistema de mensajería
-                await inicializarSistemaMensajeria();
-                // Inicializar referencias a elementos del DOM
-                audioPlayer = document.getElementById('audioPlayer');
-                playPauseBtn = document.getElementById('playPauseBtn');
-                retosBtn = document.getElementById('retosBtn');
-                progressBar = document.getElementById('progressBar');
-                progressContainer = document.getElementById('progressContainer');
-                currentTimeEl = document.getElementById('currentTime');
-                durationEl = document.getElementById('duration');
-                
-                // Configurar manejadores de eventos
-                setupEventListeners();
-                
-                // Configurar manejadores de eventos del reproductor
-                setupAudioEventHandlers();
-                
-                // Configurar controles iniciales
-                actualizarEstadoControles();
-                
-                // Notificar al padre que el reproductor está listo
-                await notificarEstado('inicializado');
-                
-                console.log(`[${IFRAME_ID}] Reproductor de audio inicializado correctamente`);
-                
-            } catch (error) {
-                console.error(`[${IFRAME_ID}] Error al inicializar el reproductor:`, error);
-                notificarError('error_inicializacion', {
-                    error: error.message || 'Error desconocido al inicializar el reproductor',
-                    stack: error.stack
-                });
-            }
-        });
-        
-        /**
-         * Notifica el estado actual al padre
-         * @param {string} estado - Estado actual
-         * @param {Object} datosAdicionales - Datos adicionales a incluir en la notificación
-         * @returns {Promise} Promesa que se resuelve cuando se envía la notificación
-         */
-        async function notificarEstado(estado, datosAdicionales = {}) {
-            const datosEstado = {
-                estado,
-                timestamp: new Date().toISOString(),
-                origen: IFRAME_ID,
-                ...obtenerEstadoReproductor(),
-                ...datosAdicionales
-            };
-            
-            console.log(`[${IFRAME_ID}] Notificando estado:`, estado, datosAdicionales);
-            
-            try {
-                if (window.Mensajeria && typeof window.Mensajeria.enviarMensajeConReintenos === 'function') {
-                    return await window.Mensajeria.enviarMensajeConReintenos(
-                        'padre',
-                        `audio_${estado}`,
-                        datosEstado,
-                        CONFIG_REINTENTOS
-                    );
-                } else {
-                    // Fallback a postMessage si Mensajeria no está disponible
-                    window.parent.postMessage({
-                        tipo: `audio_${estado}`,
-                        origen: IFRAME_ID,
-                        ...datosEstado
-                    }, '*');
-                    return Promise.resolve();
-                }
-            } catch (error) {
-                console.error(`[${IFRAME_ID}] Error al notificar estado "${estado}":`, error);
-                throw error;
-            }
-        }
-        
-        /**
-         * Notifica un error al padre
-         * @param {string} tipo - Tipo de error
-         * @param {Object} detalles - Detalles del error
-         */
-        function notificarError(tipo, detalles = {}) {
-            console.error(`[${IFRAME_ID}] Error:`, tipo, detalles);
-            
-            const mensajeError = {
-                tipo: `error_${tipo}`,
-                origen: IFRAME_ID,
-                timestamp: new Date().toISOString(),
-                error: detalles.error || 'Error desconocido',
-                detalles: {
-                    ...detalles,
-                    estadoReproductor: obtenerEstadoReproductor()
-                }
-            };
-            
-            // Intentar notificar usando Mensajeria si está disponible
-            if (window.Mensajeria && typeof window.Mensajeria.enviarMensajeConReintenos === 'function') {
-                window.Mensajeria.enviarMensajeConReintenos(
-                    'padre',
-                    `error_${tipo}`,
-                    mensajeError,
-                    CONFIG_REINTENTOS
-                ).catch(error => {
-                    console.error(`[${IFRAME_ID}] Error al notificar error "${tipo}":`, error);
-                    // Fallback a postMessage si falla Mensajeria
-                    window.parent.postMessage(mensajeError, '*');
-                });
-            } else {
-                // Fallback a postMessage si Mensajeria no está disponible
-                window.parent.postMessage(mensajeError, '*');
-            }
-        }
-        
-        /**
-         * Obtiene el estado actual del reproductor
-         * @returns {Object} Estado actual del reproductor
-         */
-        function obtenerEstadoReproductor() {
-            return {
-                archivoActual: audioPlayer?.src || null,
-                tiempoActual: audioPlayer?.currentTime || 0,
-                duracion: audioPlayer?.duration || 0,
-                volumen: audioPlayer?.volume ?? 1.0,
-                enReproduccion: !audioPlayer?.paused,
-                controlesHabilitados: !controlsDisabled,
-                ultimoArchivoReproducido,
-                modo: document.body.classList.contains('modo-casa') ? 'casa' : 'aventura'
-            };
-        }
-        
-        /**
-         * Actualiza el estado de los controles según el estado actual
-         */
-        function actualizarEstadoControles() {
-            if (controlsDisabled) {
-                playPauseBtn.disabled = true;
-                retosBtn.disabled = true;
-                progressContainer.style.pointerEvents = 'none';
-            } else {
-                playPauseBtn.disabled = false;
-                retosBtn.disabled = false;
-                progressContainer.style.pointerEvents = 'auto';
-            }
-            
-            // Actualizar icono de reproducción/pausa
-            const icono = playPauseBtn.querySelector('i');
-            if (icono) {
-                icono.className = isPlaying ? 'fas fa-pause' : 'fas fa-play';
-            }
-        }
-
-        /**
-         * Configura los manejadores de eventos del reproductor de audio
-         */
-        /**
-         * Configura los manejadores de eventos del reproductor de audio
-         */
-        function setupAudioEventHandlers() {
-            // Eventos del reproductor de audio
-            audioPlayer.addEventListener('play', handlePlay);
-            audioPlayer.addEventListener('pause', handlePause);
-            audioPlayer.addEventListener('timeupdate', handleTimeUpdate);
-            audioPlayer.addEventListener('ended', handleAudioEnded);
-            audioPlayer.addEventListener('loadedmetadata', handleLoadedMetadata);
-            audioPlayer.addEventListener('error', handleAudioError);
-            audioPlayer.addEventListener('canplay', handleCanPlay);
-            audioPlayer.addEventListener('waiting', handleWaiting);
-            
-            // Eventos de los controles
-            playPauseBtn.addEventListener('click', togglePlay);
-            retosBtn.addEventListener('click', handleRetosClick);
-            progressContainer.addEventListener('click', handleProgressClick);
-            
-            // Eventos de teclado para accesibilidad
-            document.addEventListener('keydown', handleKeyDown);
-            
-            // Configurar arrastrar y soltar para el progreso
-            setupDragAndDrop();
-        }
-        
-        // ================== MANEJADORES DE EVENTOS DEL REPRODUCTOR ==================
-        
-        /**
-         * Maneja el evento de reproducción
-         */
-        function handlePlay() {
-            isPlaying = true;
-            actualizarEstadoControles();
-            notificarEstado('reproduccion_iniciada', {
-                tiempoActual: audioPlayer.currentTime,
-                duracion: audioPlayer.duration
-            }).catch(error => {
-                console.error(`[${IFRAME_ID}] Error al notificar inicio de reproducción:`, error);
-            });
-        }
-        
-        /**
-         * Maneja el evento de pausa
-         */
-        function handlePause() {
-            isPlaying = false;
-            actualizarEstadoControles();
-            notificarEstado('reproduccion_pausada', {
-                tiempoActual: audioPlayer.currentTime,
-                duracion: audioPlayer.duration
-            }).catch(error => {
-                console.error(`[${IFRAME_ID}] Error al notificar pausa de reproducción:`, error);
-            });
-        }
-        
-        /**
-         * Maneja la actualización del tiempo de reproducción
-         */
-        function handleTimeUpdate() {
-            if (!audioPlayer.duration) return;
-            
-            // Actualizar la barra de progreso
-            const progress = (audioPlayer.currentTime / audioPlayer.duration) * 100;
-            progressBar.style.width = `${progress}%`;
-            
-            // Actualizar los contadores de tiempo
-            currentTimeEl.textContent = formatTime(audioPlayer.currentTime);
-            
-            // Notificar progreso (con throttling para no saturar)
-            if (!this._lastProgressUpdate || Date.now() - this._lastProgressUpdate > 500) {
-                notificarEstado('progreso', {
-                    progreso: progress,
-                    tiempoActual: audioPlayer.currentTime,
-                    duracion: audioPlayer.duration
-                }).catch(error => {
-                    console.error(`[${IFRAME_ID}] Error al notificar progreso:`, error);
-                });
-                this._lastProgressUpdate = Date.now();
-            }
-        }
-        
-        /**
-         * Maneja el evento de finalización de reproducción
-         */
-        function handleAudioEnded() {
-            isPlaying = false;
-            actualizarEstadoControles();
-            
-            // Notificar que la reproducción ha terminado
-            notificarEstado('reproduccion_terminada', {
-                tiempoFinal: audioPlayer.currentTime,
-                duracion: audioPlayer.duration
-            }).catch(error => {
-                console.error(`[${IFRAME_ID}] Error al notificar fin de reproducción:`, error);
-            });
-        }
-        
-        /**
-         * Maneja la carga de metadatos del audio
-         */
-        function handleLoadedMetadata() {
-            // Actualizar la duración en la interfaz
-            durationEl.textContent = formatTime(audioPlayer.duration);
-            
-            // Notificar que los metadatos se han cargado
-            notificarEstado('metadatos_cargados', {
-                duracion: audioPlayer.duration,
-                volumen: audioPlayer.volume,
-                pausado: audioPlayer.paused
-            }).catch(error => {
-                console.error(`[${IFRAME_ID}] Error al notificar carga de metadatos:`, error);
-            });
-        }
-        
-        /**
-         * Maneja errores del reproductor de audio
-         */
-        function handleAudioError() {
-            const error = audioPlayer.error;
-            let mensajeError = 'Error desconocido en el reproductor de audio';
-            
-            if (error) {
-                switch(error.code) {
-                    case MediaError.MEDIA_ERR_ABORTED:
-                        mensajeError = 'La reproducción fue cancelada';
-                        break;
-                    case MediaError.MEDIA_ERR_NETWORK:
-                        mensajeError = 'Error de red al cargar el audio';
-                        break;
-                    case MediaError.MEDIA_ERR_DECODE:
-                        mensajeError = 'Error al decodificar el archivo de audio';
-                        break;
-                    case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-                        mensajeError = 'El formato de audio no es compatible';
-                        break;
-                }
-            }
-            
-            notificarError('reproductor', {
-                error: mensajeError,
-                codigoError: error ? error.code : null,
-                estadoReproductor: obtenerEstadoReproductor()
-            });
-        }
-        
-        /**
-         * Maneja el evento de que el audio está listo para reproducirse
-         */
-        function handleCanPlay() {
-            console.log(`[${IFRAME_ID}] Audio listo para reproducirse`);
-            // Podríamos notificar al padre si es necesario
-        }
-        
-        /**
-         * Maneja el evento de espera de datos
-         */
-        function handleWaiting() {
-            console.log(`[${IFRAME_ID}] Esperando datos...`);
-            notificarEstado('cargando', {
-                tiempoActual: audioPlayer.currentTime,
-                tiempoBuffer: audioPlayer.buffered.length > 0 ? audioPlayer.buffered.end(0) : 0
-            }).catch(error => {
-                console.error(`[${IFRAME_ID}] Error al notificar estado de carga:`, error);
-            });
-        }
-        
-        /**
-         * Maneja el clic en la barra de progreso
-         * @param {Event} event - Evento de clic
-         */
-        function handleProgressClick(event) {
-            if (controlsDisabled) return;
-            
-            const rect = progressContainer.getBoundingClientRect();
-            const pos = (event.clientX - rect.left) / rect.width;
-            const newTime = Math.max(0, Math.min(1, pos)) * audioPlayer.duration;
-            
-            if (isFinite(newTime)) {
-                audioPlayer.currentTime = newTime;
-                
-                // Notificar el cambio de tiempo
-                notificarEstado('tiempo_actualizado', {
-                    tiempoAnterior: audioPlayer.currentTime,
-                    tiempoNuevo: newTime
-                }).catch(error => {
-                    console.error(`[${IFRAME_ID}] Error al notificar cambio de tiempo:`, error);
-                });
-            }
-        }
-        
-        // ================== FUNCIONES AUXILIARES ==================
-        
-        /**
-         * Formatea segundos a formato MM:SS
-         * @param {number} seconds - Segundos a formatear
-         * @returns {string} Tiempo formateado
-         */
-        function formatTime(seconds) {
-            if (isNaN(seconds)) return '00:00';
-            
-            const minutes = Math.floor(seconds / 60);
-            const remainingSeconds = Math.floor(seconds % 60);
-            
-            return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
-        }
-
-        function togglePlay() {
-            if (controlsDisabled) return;
-            
-            if (isPlaying) {
-                audioPlayer.pause();
-            } else {
-                audioPlayer.play().catch(error => {
-                    console.error('Error al reproducir el audio:', error);
-                });
-            }
-            updatePlayPauseIcon();
-        }
-
-        function updatePlayPauseIcon() {
-            const icon = playPauseBtn.querySelector('i');
-            if (icon) {
-                icon.className = isPlaying ? 'fas fa-pause' : 'fas fa-play';
-            }
-        }
-
-        function updateProgress() {
-            if (!isFinite(audioPlayer.duration)) return;
-            
-            const progress = (audioPlayer.currentTime / audioPlayer.duration) * 100;
-            progressBar.style.width = `${progress}%`;
-            
-            // Actualizar tiempos
-            currentTimeEl.textContent = formatTime(audioPlayer.currentTime);
-            
-            // Notificar al padre sobre el progreso
-            window.parent.postMessage({
-                tipo: 'progreso_audio',
-                origen: IFRAME_ID,
-                datos: {
-                    progreso: progress,
-                    tiempoActual: audioPlayer.currentTime,
-                    duracion: audioPlayer.duration
-                }
-            }, '*');
-        }
-
-        function updateDuration() {
-            if (isFinite(audioPlayer.duration)) {
-                durationEl.textContent = formatTime(audioPlayer.duration);
-            }
-        }
-
-        function formatTime(seconds) {
-            if (isNaN(seconds)) return '00:00';
-            const minutes = Math.floor(seconds / 60);
-            seconds = Math.floor(seconds % 60);
-            return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-        }
-
-        function setProgress(e) {
-            if (controlsDisabled) return;
-
-            const width = this.clientWidth;
-            const clickX = e.offsetX;
-            const duration = audioPlayer.duration;
-            audioPlayer.currentTime = (clickX / width) * duration;
-        }
-
-        function handleAudioEnded() {
-            isPlaying = false;
-            updatePlayPauseIcon();
-            
-            // Notificar al padre que el audio terminó usando Mensajeria
-            if (window.Mensajeria && typeof window.Mensajeria.enviarMensaje === 'function') {
-                Mensajeria.enviarMensaje(
-                    'padre',
-                    'audio_terminado',
-                    { finalizado: true }
-                ).catch(error => {
-                    console.error('Error al notificar fin de audio:', error);
-                });
-            } else {
-                console.warn('Mensajeria no disponible para notificar fin de audio');
-            }
-        }
-
-        function handleRetosClick() {
-            if (controlsDisabled) return;
-            
-            // Notificar al padre que se hizo clic en el botón de retos usando Mensajeria
-            if (window.Mensajeria && typeof window.Mensajeria.enviarMensaje === 'function') {
-                Mensajeria.enviarMensaje(
-                    'padre',
-                    'abrir_retos',
-                    { mostrar: true }
-                ).catch(error => {
-                    console.error('Error al notificar clic en retos:', error);
-                });
-            } else {
-                console.warn('Mensajeria no disponible para notificar clic en retos');
-            }
-        }
-
-        function handleKeyDown(e) {
-            if (controlsDisabled) return;
-            
-            switch(e.key) {
-                case ' ':
-                case 'Spacebar':
-                case 'Enter':
-                    e.preventDefault();
-                    togglePlay();
-                    break;
-                case 'ArrowRight':
-                    e.preventDefault();
-                    audioPlayer.currentTime = Math.min(audioPlayer.currentTime + 5, audioPlayer.duration);
-                    break;
-                case 'ArrowLeft':
-                    e.preventDefault();
-                    audioPlayer.currentTime = Math.max(0, audioPlayer.currentTime - 5);
-                    break;
-            }
-        }
-
-        function setupDragAndDrop() {
-            let isDragging = false;
-            
-            progressContainer.addEventListener('mousedown', () => {
-                if (controlsDisabled) return;
-                isDragging = true;
-            });
-            
-            document.addEventListener('mousemove', (e) => {
-                if (!isDragging || controlsDisabled) return;
-                
-                const rect = progressContainer.getBoundingClientRect();
-                const pos = (e.clientX - rect.left) / rect.width;
-                const newTime = Math.max(0, Math.min(1, pos)) * audioPlayer.duration;
-                
-                if (isFinite(newTime)) {
-                    audioPlayer.currentTime = newTime;
-                }
-            });
-            
-            document.addEventListener('mouseup', () => {
-                isDragging = false;
-            });
-        }
-
-        // Configurar manejadores de eventos de audio
-        function setupAudioEventHandlers() {
-            audioPlayer.addEventListener('play', () => {
-                isPlaying = true;
-                updatePlayPauseIcon();
-            });
-            
-            audioPlayer.addEventListener('pause', () => {
-                isPlaying = false;
-                updatePlayPauseIcon();
-            });
-            
-            audioPlayer.addEventListener('timeupdate', updateProgress);
-            audioPlayer.addEventListener('ended', handleAudioEnded);
-            
-            // Configurar progreso de la barra de progreso
-            progressContainer.addEventListener('click', setProgress);
-            
-            // Configurar botones
-            playPauseBtn.addEventListener('click', togglePlay);
-            retosBtn.addEventListener('click', handleRetosClick);
-            
-            // Configurar arrastrar para la barra de progreso
-            setupDragAndDrop();
-            
-            // Configurar atajos de teclado
-            document.addEventListener('keydown', handleKeyDown);
-        }
-        
-        // Inicialización
-        document.addEventListener('DOMContentLoaded', () => {
-            // Elementos del DOM
-            audioPlayer = document.getElementById('audioPlayer');
-            playPauseBtn = document.getElementById('playPauseBtn');
-            retosBtn = document.getElementById('retosBtn');
-            progressBar = document.getElementById('progressBar');
-            progressContainer = document.getElementById('progressContainer');
-            currentTimeEl = document.getElementById('currentTime');
-            durationEl = document.getElementById('duration');
-            
-            // Configurar manejadores de eventos
-            setupAudioEventHandlers();
-            
-            // Notificar al padre que el reproductor está listo
-            if (window.Mensajeria && typeof window.Mensajeria.enviarMensaje === 'function') {
-                Mensajeria.enviarMensaje(
-                    'padre',
-                    'reproductor_listo',
-                    { estado: 'listo' }
-                ).catch(error => {
-                    console.error('Error al notificar que el reproductor está listo:', error);
-                });
-            }
-        });
-
-        // Función para actualizar el progreso del audio
-        function updateProgress() {
-            if (!audioPlayer.duration) return;
-            
-            const progress = (audioPlayer.currentTime / audioPlayer.duration) * 100;
-            progressBar.style.width = `${progress}%`;
-            
-            // Actualizar tiempos
-            currentTimeEl.textContent = formatTime(audioPlayer.currentTime);
-            durationEl.textContent = formatTime(audioPlayer.duration);
-            
-            // Notificar al padre sobre el progreso actual
-            if (window.Mensajeria && typeof window.Mensajeria.enviarMensaje === 'function') {
-                Mensajeria.enviarMensaje(
-                    'padre',
-                    'progreso_audio',
-                    {
-                        progreso: progress,
-                        tiempoActual: audioPlayer.currentTime,
-                        duracion: audioPlayer.duration
-                    }
-                ).catch(error => {
-                    console.error('Error al notificar progreso de audio:', error);
-                });
-            }
-        }
-        
-        // Configurar manejadores de eventos
-        function setupEventListeners() {
-            // Eventos de los botones
-            if (playPauseBtn) {
-                playPauseBtn.addEventListener('click', togglePlay);
-            }
-            
-            if (retosBtn) {
-                retosBtn.addEventListener('click', handleRetosClick);
-            }
-            
-            // Eventos de la barra de progreso
-            if (progressContainer) {
-                progressContainer.addEventListener('click', handleProgressClick);
-            }
-            
-            // Eventos de teclado para accesibilidad
-            document.addEventListener('keydown', handleKeyDown);
-        }
-        
-        // Configurar manejadores de eventos del reproductor
-        function setupAudioEventHandlers() {
-            if (!audioPlayer) return;
-            
-            // Configurar eventos del reproductor de audio
-            audioPlayer.addEventListener('play', handlePlay);
-            audioPlayer.addEventListener('pause', handlePause);
-            audioPlayer.addEventListener('ended', handleAudioEnded);
-            audioPlayer.addEventListener('timeupdate', updateProgress);
-            audioPlayer.addEventListener('loadedmetadata', handleLoadedMetadata);
-            audioPlayer.addEventListener('error', handleAudioError);
-            audioPlayer.addEventListener('canplay', handleCanPlay);
-            audioPlayer.addEventListener('waiting', handleWaiting);
-        }
-        
-        // Exponer funciones para acceso externo
-        window.reproductorAudio = {
-            reproducir: async (archivo) => {
-                try {
-                    if (archivo) {
-                        await cargarAudio(archivo);
-                    }
-                    await audioPlayer.play();
-                    isPlaying = true;
-                    actualizarEstadoControles();
-                    
-                    // Notificar al padre que la reproducción ha comenzado
-                    await notificarEstado('reproduccion_iniciada', {
-                        archivo: archivo || audioPlayer.src,
-                        tiempoActual: audioPlayer.currentTime,
-                        duracion: audioPlayer.duration
-                    });
-                    
-                    return true;
-                } catch (error) {
-                    console.error('Error al reproducir audio:', error);
-                    notificarError('reproduccion', {
-                        error: error.message || 'Error desconocido al reproducir',
-                        archivo: archivo || audioPlayer.src,
-                        tiempoActual: audioPlayer.currentTime,
-                        duracion: audioPlayer.duration || 0
-                    });
-                    throw error;
-                }
-            },
-            
-            pausar: async () => {
-                try {
-                    await pausarAudio();
-                    return true;
-                } catch (error) {
-                    console.error('Error al pausar audio:', error);
-                    throw error;
-                }
-            },
-            
-            detener: async () => {
-                try {
-                    await detenerAudio();
-                    return true;
-                } catch (error) {
-                    console.error('Error al detener audio:', error);
-                    throw error;
-                }
-            },
-            
-            establecerTiempo: (tiempo) => {
-                try {
-                    if (typeof tiempo === 'number') {
-                        audioPlayer.currentTime = tiempo;
-                        return true;
-                    }
-                    return false;
-                } catch (error) {
-                    console.error('Error al establecer tiempo:', error);
-                    notificarError('tiempo', {
-                        error: error.message || 'Error desconocido al establecer tiempo',
-                        tiempoSolicitado: tiempo,
-                        tiempoActual: audioPlayer.currentTime
-                    });
-                    throw error;
-                }
-            },
-            
-            habilitarControles: (habilitar) => {
-                controlsDisabled = !habilitar;
-                actualizarEstadoControles();
-                return true;
-            },
-            
-            cambiarModo: (modo) => {
-                const esModoCasa = modo === 'casa';
-                document.body.classList.toggle('modo-casa', esModoCasa);
-                document.body.classList.toggle('modo-aventura', !esModoCasa);
-                
-                // Notificar el cambio de modo
-                notificarEstado('modo_cambiado', {
-                    modo: esModoCasa ? 'casa' : 'aventura'
-                }).catch(error => {
-                    console.error('Error al notificar cambio de modo:', error);
-                });
-                
-                return true;
-            },
-            
-            obtenerEstado: () => {
-                return obtenerEstadoReproductor();
-            },
-            
-            establecerVolumen: async (volumen) => {
-                try {
-                    return await establecerVolumen(volumen);
-                } catch (error) {
-                    console.error('Error al establecer volumen:', error);
-                    throw error;
-                }
-            }
-        }; // Cierre correcto del objeto reproductorAudio
-
-    // Función para manejar mensajes de audio
-    function manejarMensajeAudio(mensaje) {
-        const { accion, parametros = {} } = mensaje.datos || {};
-        console.log(`[${IFRAME_ID}] Mensaje de audio recibido:`, { accion, parametros });
-        
-        try {
-            switch (accion) {
-                case 'reproducir':
-                    return reproducirAudio(parametros.archivo, parametros);
-                case 'pausar':
-                    return pausarAudio();
-                case 'detener':
-                    return detenerAudio();
-                case 'establecer_volumen':
-                    return establecerVolumen(parametros.volumen);
-                default:
-                    console.warn(`[${IFRAME_ID}] Acción de audio no reconocida:`, accion);
-                    return Promise.reject(new Error(`Acción de audio no reconocida: ${accion}`));
-            }
-        } catch (error) {
-            console.error(`[${IFRAME_ID}] Error al procesar mensaje de audio:`, error);
-            return Promise.reject(error);
-        }
-    }
-    
-    // Función para manejar solicitudes de estado
-    function manejarSolicitudEstado() {
-        console.log(`[${IFRAME_ID}] Solicitando estado actual`);
-        return Promise.resolve(obtenerEstadoReproductor());
-    }
-    
-    // Función para manejar la habilitación de controles
-    function manejarHabilitarControles(mensaje) {
-        const { ids = [] } = mensaje.datos || {};
-        console.log(`[${IFRAME_ID}] Habilitando controles:`, ids);
-        
-        if (ids.length === 0 || ids.includes('todos')) {
-            controlsDisabled = false;
-        } else if (ids.includes('playPauseBtn')) {
-            playPauseBtn.disabled = false;
-        }
-        
-        actualizarEstadoControles();
-        return Promise.resolve({ exito: true });
-    }
-    
-    // Función para manejar la deshabilitación de controles
-    function manejarDeshabilitarControles(mensaje) {
-        const { ids = [] } = mensaje.datos || {};
-        console.log(`[${IFRAME_ID}] Deshabilitando controles:`, ids);
-        
-        if (ids.length === 0 || ids.includes('todos')) {
-            controlsDisabled = true;
-        } else if (ids.includes('playPauseBtn')) {
-            playPauseBtn.disabled = true;
-        }
-        
-        actualizarEstadoControles();
-        return Promise.resolve({ exito: true });
-    }
-    
-    // Inicializar el sistema de mensajería
-    if (window.Mensajeria) {
-        // Configurar manejadores de mensajes
-        window.Mensajeria.registrarManejador('AUDIO', manejarMensajeAudio);
-        window.Mensajeria.registrarManejador('INICIALIZACION', manejarInicializacion);
-        window.Mensajeria.registrarManejador('CAMBIO_MODO', manejarCambioModo);
-        window.Mensajeria.registrarManejador('solicitar_estado', manejarSolicitudEstado);
-        window.Mensajeria.registrarManejador('habilitar_controles', manejarHabilitarControles);
-        window.Mensajeria.registrarManejador('deshabilitar_controles', manejarDeshabilitarControles);
-        
-        console.log(`[${IFRAME_ID}] Manejadores de mensajes registrados`);
-        
-        // Notificar que el iframe está listo
-        window.Mensajeria.enviarMensaje('padre', 'iframe_listo', { iframeId: IFRAME_ID })
-            .catch(error => console.error('Error al notificar que el iframe está listo:', error));
-    } else {
-        console.warn(`[${IFRAME_ID}] El módulo de mensajería no está disponible`);
-    }
-</script>
+      ];
+    </script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Reproductor de Audio - Aventura 1 (hijo3)</title>
+    <style>
+      /* Estilos básicos para el reproductor */
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f4f4f9;
+        margin: 0;
+        padding: 0;
+      }
+      
+      h1 {
+        text-align: center;
+        color: #333;
+      }
+      
+      #reproductor {
+        max-width: 600px;
+        margin: 20px auto;
+        background: #fff;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      }
+      
+      #controles-reproduccion {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 10px;
+      }
+      
+      button {
+        padding: 10px 20px;
+        font-size: 16px;
+        color: #fff;
+        background-color: #007bff;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+      }
+      
+      button:disabled {
+        background-color: #ccc;
+        cursor: not-allowed;
+      }
+      
+      button:hover:not(:disabled) {
+        background-color: #0056b3;
+      }
+      
+      .estado-reproduccion {
+        font-weight: bold;
+        font-size: 18px;
+        color: #333;
+      }
+      
+      #modo-actual {
+        text-align: center;
+        font-size: 16px;
+        margin-top: 10px;
+        color: #666;
+      }
+    </style>
+</head>
+<body>
+    <div id="reproductor">
+      <h1>Reproductor de Audio - Aventura 1</h1>
+      
+      <div id="controles-reproduccion">
+        <button id="btn-reproducir">Reproducir</button>
+        <button id="btn-pausar" disabled>Pausar</button>
+        <button id="btn-detener" disabled>Detener</button>
+        <button id="btn-volumen" disabled>Volumen</button>
+      </div>
+      
+      <div class="estado-reproduccion">Estado: Detenido</div>
+      <div id="modo-actual">Modo: Aventura</div>
+    </div>
 </body>
 </html>
