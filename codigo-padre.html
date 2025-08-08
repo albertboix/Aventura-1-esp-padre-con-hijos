@@ -2374,17 +2374,76 @@
             // Actualizar el estado de conexión de los hijos aquí
         });
 
-        // 2. Cambio de modo desde hijo5-casa
-        Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.CAMBIO_MODO, function(mensaje) {
-            console.log('[PADRE] Cambio de modo recibido:', mensaje.datos);
-            // Actualiza estado global y reenvía a los demás hijos
-            ['hijo2', 'hijo3', 'hijo4'].forEach(id => {
-                Mensajeria.enviarMensajeConReintenos(
-                    id,
-                    Mensajeria.TIPOS_MENSAJE.CAMBIO_MODO,
-                    mensaje.datos
-                );
-            });
+        // 2. Cambio de modo desde cualquier hijo
+        Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.CAMBIO_MODO, async function(mensaje) {
+            const logPrefix = '🔄 PADRE: Cambio de modo:';
+            const { origen, datos } = mensaje;
+            
+            try {
+                // Validar datos del mensaje
+                if (!datos || typeof datos.modo === 'undefined') {
+                    console.warn(`${logPrefix} Datos de cambio de modo inválidos:`, datos);
+                    return;
+                }
+                
+                const { modo, razon = 'cambio_desde_hijo', forzar = false } = datos;
+                console.log(`${logPrefix} ${modo} (origen: ${origen}, razón: ${razon})`);
+                
+                // Actualizar estado global
+                await actualizarEstadoGlobal({
+                    modoActual: modo,
+                    ultimoCambioModo: {
+                        timestamp: Date.now(),
+                        origen,
+                        razon
+                    },
+                    timestamp: Date.now()
+                });
+                
+                // Reenviar a todos los demás hijos (excepto al que originó el mensaje)
+                const hijos = ['hijo2', 'hijo3', 'hijo4', 'hijo5-casa'].filter(hijo => hijo !== origen);
+                const promesas = hijos.map(async hijo => {
+                    try {
+                        await Mensajeria.enviarMensajeConReintenos(
+                            hijo,
+                            Mensajeria.TIPOS_MENSAJE.CAMBIO_MODO,
+                            { 
+                                modo,
+                                razon: 'sincronizacion',
+                                forzar,
+                                timestamp: Date.now()
+                            }
+                        );
+                        console.log(`${logPrefix} Sincronizado con ${hijo}`);
+                    } catch (error) {
+                        console.error(`${logPrefix} Error al sincronizar con ${hijo}:`, error);
+                    }
+                });
+                
+                // Esperar a que todos los mensajes se envíen (sin bloquear)
+                Promise.allSettled(promesas).then(resultados => {
+                    const exitosos = resultados.filter(r => r.status === 'fulfilled').length;
+                    const fallidos = resultados.length - exitosos;
+                    console.log(`${logPrefix} Sincronización completada: ${exitosos} exitosos, ${fallidos} fallidos`);
+                });
+                
+            } catch (error) {
+                console.error(`${logPrefix} Error al procesar cambio de modo:`, error);
+                
+                // Notificar al remitente del error
+                if (origen) {
+                    Mensajeria.enviarMensajeConReintenos(
+                        origen,
+                        Mensajeria.TIPOS_MENSAJE.ERROR,
+                        {
+                            codigo: 'ERROR_CAMBIO_MODO',
+                            mensaje: 'Error al procesar el cambio de modo',
+                            error: error.message,
+                            timestamp: Date.now()
+                        }
+                    );
+                }
+            }
         });
 
         // 3. Selección de punto desde hijo5-casa
@@ -2418,8 +2477,112 @@
 
         // 7. Confirmaciones
         Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.CONFIRMACION, function(mensaje) {
-            console.log('[PADRE] Confirmación recibida:', mensaje);
+            const { origen, datos } = mensaje;
+            
+            // Verificar si es una confirmación de cambio de modo
+            if (datos?.tipo === 'cambio_modalidad') {
+                const logPrefix = `✅ PADRE: Confirmación de ${origen} - `;
+                
+                if (datos.exito) {
+                    console.log(`${logPrefix} Modo cambiado a ${datos.modoAplicado}`);
+                    
+                    // Actualizar el estado de sincronización del hijo
+                    actualizarEstadoSincronizacion(origen, {
+                        modo: datos.modoAplicado,
+                        ultimaSincronizacion: Date.now(),
+                        estado: 'sincronizado'
+                    });
+                } else {
+                    console.warn(`${logPrefix} Falló el cambio a ${datos.modoSolicitado}: ${datos.mensaje || 'Sin mensaje de error'}`);
+                    
+                    // Actualizar estado de error
+                    actualizarEstadoSincronizacion(origen, {
+                        modo: datos.modoSolicitado,
+                        ultimoError: {
+                            codigo: datos.codigo || 'ERROR_DESCONOCIDO',
+                            mensaje: datos.mensaje || 'Error desconocido',
+                            timestamp: Date.now()
+                        },
+                        estado: 'error'
+                    });
+                    
+                    // Reintentar si es necesario
+                    if (datos.reintentar !== false) {
+                        console.log(`${logPrefix} Reintentando cambio de modo...`);
+                        setTimeout(() => {
+                            Mensajeria.enviarMensajeConReintenos(
+                                origen,
+                                Mensajeria.TIPOS_MENSAJE.CAMBIO_MODALIDAD,
+                                { 
+                                    modo: datos.modoSolicitado,
+                                    razon: 'reintento_automatico',
+                                    forzar: true,
+                                    timestamp: Date.now()
+                                }
+                            );
+                        }, 1000);
+                    }
+                }
+            } else {
+                console.log('[PADRE] Confirmación recibida:', mensaje);
+            }
         });
+        
+        // 8. Manejo de errores
+        Mensajeria.registrarControlador(Mensajeria.TIPOS_MENSAJE.ERROR, function(mensaje) {
+            const { origen, datos } = mensaje;
+            console.error(`❌ PADRE: Error de ${origen}: ${datos?.codigo || 'ERROR_DESCONOCIDO'} - ${datos?.mensaje || 'Error sin mensaje'}`);
+            
+            if (datos?.stack) {
+                console.error('Stack trace:', datos.stack);
+            }
+            
+            // Actualizar estado de error
+            if (origen) {
+                actualizarEstadoSincronizacion(origen, {
+                    ultimoError: {
+                        codigo: datos?.codigo || 'ERROR_DESCONOCIDO',
+                        mensaje: datos?.mensaje || 'Error desconocido',
+                        timestamp: Date.now(),
+                        stack: datos?.stack
+                    },
+                    estado: 'error'
+                });
+            }
+        });
+        
+        // Estado de sincronización de los hijos
+        const estadoHijos = {
+            'hijo2': { estado: 'no_sincronizado' },
+            'hijo3': { estado: 'no_sincronizado' },
+            'hijo4': { estado: 'no_sincronizado' },
+            'hijo5-casa': { estado: 'no_sincronizado' }
+        };
+        
+        /**
+         * Actualiza el estado de sincronización de un hijo
+         * @param {string} idHijo - ID del hijo
+         * @param {Object} datos - Datos de estado a actualizar
+         */
+        function actualizarEstadoSincronizacion(idHijo, datos) {
+            if (!estadoHijos[idHijo]) return;
+            
+            estadoHijos[idHijo] = {
+                ...estadoHijos[idHijo],
+                ...datos,
+                ultimaActualizacion: Date.now()
+            };
+            
+            console.log(`🔄 Estado de ${idHijo}:`, estadoHijos[idHijo]);
+            
+            // Emitir evento de cambio de estado si es necesario
+            if (typeof window.dispatchEvent === 'function') {
+                const evento = new CustomEvent('estadoSincronizacionCambiado', {
+                    detail: { idHijo, estado: estadoHijos[idHijo] }
+                });
+                window.dispatchEvent(evento);
+            }
+        }
 
 // ================== MANEJADORES POR HIJO ==================
 
