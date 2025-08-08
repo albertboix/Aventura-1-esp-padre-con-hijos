@@ -2666,6 +2666,8 @@ btnMostrarRespuesta.addEventListener("click", async () => {
  * @param {Object} reto - El reto actual
  * @param {string} idTransaccion - ID de transacción para seguimiento
  * @param {boolean} [exito=false] - Indica si el reto se completó con éxito
+ * @param {boolean} [respuestaMostrada=false] - Indica si se mostró la respuesta
+ * @returns {Promise<void>}
  */
 async function manejarContinuarReto(reto, idTransaccion, exito = false) {
     if (!reto) {
@@ -2818,80 +2820,23 @@ function configurarManejadoresMensajes() {
 
 // --- INICIALIZAR MENSAJERÍA Y NOTIFICAR AL PADRE ---
 window.addEventListener("DOMContentLoaded", async () => {
-  try {
-    console.log(`[${IFRAME_ID}] DOM cargado, inicializando mensajería...`);
-    
-    // Inicializar mensajería
-    await inicializarMensajeria();
-    
-    // Configurar manejadores de eventos
-    if (typeof configurarManejadoresEventos === 'function') {
-      configurarManejadoresEventos();
-    }
-    
-    console.log(`[${IFRAME_ID}] Inicialización completada`);
-  } catch (error) {
-    console.error(`[${IFRAME_ID}] Error en la inicialización:`, error);
-    mostrarErrorInicializacion(error);
-  }
     try {
-        // Inicializar variables para rastrear el reto/puzzle actual
-        window.retoActual = null;
-        window.puzzleActual = null;
-        
-        // Verificar que Mensajeria esté disponible
-        if (typeof window.Mensajeria === 'undefined') {
-            console.error('❌ No se pudo cargar el módulo de mensajería');
-            throw new Error('El módulo de mensajería no está disponible');
-        }
-        
-        // Inicializar mensajería con configuración
-        try {
-            await window.Mensajeria.inicializarMensajeria({
-                iframeId: 'hijo4',
-                logLevel: 1, // 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR, 4=NONE
-                debug: true,
-                dominioPermitido: '*',
-                maxRetries: 3,
-                retryDelay: 1000
-            });
-            
-            console.log('✅ HIJO 4: Mensajería inicializada correctamente');
-        } catch (error) {
-            console.error('❌ HIJO 4: Error al inicializar la mensajería:', error);
-            throw error; // Relanzar para ser manejado por el catch externo
-        }
-        
-        // Configurar manejadores de mensajes
+        await inicializarMensajeria();
         configurarManejadoresMensajes();
-        console.log('✅ HIJO 4: Manejadores de mensajes configurados');
-        
-        // Empezar con retos deshabilitados (modo aventura por defecto)
-        manejarCambioModo('aventura', false);
-        
-        // Notificar al padre que el hijo está listo
-        try {
-            await enviarMensajeAlPadre('sistema_estado', {
-                tipo: 'inicializacion_completa',
-                estado: 'listo',
-                modo: 'aventura',
-                controlesHabilitados: false,
-                timestamp: Date.now()
-            });
-            console.log('✅ HIJO 4: Notificación de inicialización enviada al padre');
-        } catch (error) {
-            console.warn('⚠️ HIJO 4: No se pudo notificar al padre:', error);
-            // Continuar a pesar del error de notificación
+        if (typeof configurarManejadoresEventos === 'function') {
+            configurarManejadoresEventos();
         }
-        
-        console.log(`✅ HIJO 4: Inicialización completada - Modo: aventura, Controles: Deshabilitados`);
+        await enviarMensajeAlPadre('sistema_estado', {
+            tipo: 'inicializacion_completa',
+            estado: 'listo',
+            modo: 'aventura',
+            controlesHabilitados: false,
+            timestamp: Date.now()
+        });
+        console.log('✅ HIJO 4: Inicialización completada');
     } catch (error) {
-        console.error('❌ HIJO 4: Error crítico durante la inicialización:', error);
-        
-        // Asegurarse de que los retos estén deshabilitados en caso de error
         disableControls('error_inicializacion');
-        
-        // Notificar el error al padre si es posible
+        mostrarErrorInicializacion(error);
         if (window.Mensajeria?.enviarMensajeConReintenos) {
             try {
                 await window.Mensajeria.enviarMensajeConReintenos(
@@ -2900,7 +2845,7 @@ window.addEventListener("DOMContentLoaded", async () => {
                     {
                         tipo: 'error_inicializacion',
                         mensaje: error.message,
-                        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+                        stack: error.stack,
                         timestamp: Date.now()
                     },
                     { maxRetries: 2, retryDelay: 500 }
@@ -2909,9 +2854,6 @@ window.addEventListener("DOMContentLoaded", async () => {
                 console.error('❌ HIJO 4: No se pudo notificar el error al padre:', e);
             }
         }
-        
-        // Mostrar mensaje de error al usuario
-        mostrarErrorInicializacion(error);
     }
 });
 </script>
