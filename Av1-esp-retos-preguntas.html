@@ -680,70 +680,169 @@ function configurarManejadoresEventos() {
        * @param {Object} mensaje - Mensaje con los datos del cambio de modo
        * @returns {Promise<void>}
        */
+      /**
+       * Maneja el cambio de modo (casa/aventura) de manera robusta
+       * @param {Object} mensaje - Mensaje con los datos del cambio de modo
+       * @returns {Promise<Object>} Resultado de la operación
+       */
       async function manejarCambioModo(mensaje) {
-        const { modo = 'aventura', motivo = 'desconocido' } = mensaje.datos || {};
-        console.log(`[${IFRAME_ID}] Cambio de modo solicitado:`, { modo, motivo });
+        const { 
+          modo, 
+          habilitar = true, 
+          motivo = 'cambio_modo', 
+          forzar = false, 
+          notificarPadre = true,
+          actualizarInterfaz = true
+        } = mensaje.datos || {};
         
-        // Validar parámetros
-        if (!['aventura', 'casa'].includes(modo)) {
-          const error = new Error(`Modo no válido: ${modo}`);
-          console.error(`[${IFRAME_ID}] ${error.message}`);
-          throw error;
-        }
+        const ID_TRANSACCION = `cambio-mod-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        
+        const log = (nivel, mensaje, datos = {}) => {
+          const timestamp = new Date().toISOString();
+          const prefijo = `[${timestamp}] [${IFRAME_ID}] [${ID_TRANSACCION}]`;
+          const mensajeCompleto = `${prefijo} ${mensaje}`;
+          console[nivel](mensajeCompleto, datos);
+          if (!window._logs) window._logs = [];
+          window._logs.push({ nivel, mensaje, datos, timestamp, id: ID_TRANSACCION });
+          if (window._logs.length > 100) window._logs.shift();
+        };
         
         try {
-          // 1. Actualizar el estado local
+          log('info', `Iniciando cambio de modo a ${modo}`, { habilitar, motivo, forzar, notificarPadre, actualizarInterfaz, estadoActual: estadoApp });
+          if (modo !== 'casa' && modo !== 'aventura') {
+            const error = new Error(`Modo no válido: ${modo}. Debe ser 'casa' o 'aventura'`);
+            error.codigo = 'MODO_NO_VALIDO';
+            error.datos = { modoRecibido: modo, modosValidos: ['casa', 'aventura'] };
+            throw error;
+          }
+          
+          const modoAnterior = estadoApp.modo || 'casa';
+          if (modoAnterior === modo && !forzar) {
+            log('debug', 'El modo no ha cambiado y no se forzó el cambio');
+            return { estado: 'ok', mensaje: 'El modo no ha cambiado', modo, modoAnterior, cambiado: false, timestamp: new Date().toISOString(), idTransaccion: ID_TRANSACCION };
+          }
+          
+          const estadoAnterior = { ...estadoApp };
           estadoApp.modo = modo;
-          estadoApp.ultimoCambioModo = new Date().toISOString();
+          estadoApp.controlesHabilitados = habilitar;
+          estadoApp.ultimaActualizacion = new Date().toISOString();
           
-          // 2. Obtener referencias a elementos del DOM
-          const contenedorReto = document.getElementById('contenedor-reto');
-          const overlay = document.getElementById('overlay-deshabilitado');
-          
-          // 3. Aplicar cambios según el modo
-          if (modo === 'aventura') {
-            // 3.1. Modo aventura: mostrar el reto y ocultar el overlay
-            if (contenedorReto) contenedorReto.style.display = 'block';
-            if (overlay) overlay.style.display = 'none';
+          try {
+            // Obtener referencias a elementos del DOM
+            const contenedorReto = document.getElementById('contenedor-reto');
+            const overlay = document.getElementById('overlay-deshabilitado');
             
-            // 3.2. Habilitar controles específicos de la aventura
-            await manejarEstadoControles(true, 'aventura', 'cambio_modo');
+            if (modo === 'casa') {
+              // Modo casa: ocultar el reto y mostrar el overlay
+              log('debug', 'Configurando modo casa');
+              if (contenedorReto) contenedorReto.style.display = 'none';
+              if (overlay) {
+                overlay.style.display = 'flex';
+                const mensajeElemento = overlay.querySelector('.mensaje-deshabilitado');
+                if (mensajeElemento) {
+                  mensajeElemento.textContent = obtenerMensajeModo('casa', motivo);
+                }
+              }
+              
+              // Deshabilitar controles
+              await manejarEstadoControles(false, 'casa', motivo);
+              log('debug', 'Modo casa configurado correctamente');
+              
+            } else {
+              // Modo aventura: mostrar el reto y ocultar el overlay
+              log('debug', 'Configurando modo aventura');
+              if (contenedorReto) contenedorReto.style.display = 'block';
+              if (overlay) overlay.style.display = 'none';
+              
+              // Habilitar controles
+              await manejarEstadoControles(habilitar, 'aventura', motivo);
+              log('debug', 'Modo aventura configurado correctamente');
+            }
             
-          } else {
-            // 3.1. Modo casa: ocultar el reto y mostrar el overlay
-            if (contenedorReto) contenedorReto.style.display = 'none';
-            if (overlay) {
-              overlay.style.display = 'flex';
-              const mensajeElemento = overlay.querySelector('.mensaje-deshabilitado');
-              if (mensajeElemento) {
-                mensajeElemento.textContent = obtenerMensajeModo('casa', motivo);
+            if (actualizarInterfaz) {
+              try {
+                actualizarInterfaz();
+                log('debug', 'Interfaz actualizada');
+              } catch (error) {
+                log('error', 'Error al actualizar la interfaz', { error: error.message, stack: error.stack });
+                if (!forzar) throw error;
+                log('warn', 'Continuando a pesar del error (modo forzado)');
               }
             }
             
-            // 3.2. Deshabilitar controles
-            await manejarEstadoControles(false, 'casa', motivo);
+            if (notificarPadre) {
+              try {
+                log('debug', 'Notificando cambio de modo al padre...');
+                await window.Mensajeria?.enviarMensaje?.('padre', 'sistema:cambio_modo', { 
+                  modo, 
+                  habilitado: habilitar, 
+                  motivo, 
+                  timestamp: new Date().toISOString(), 
+                  idTransaccion: ID_TRANSACCION, 
+                  desdeHijo: 'hijo4', 
+                  estadoAnterior: { 
+                    modo: modoAnterior, 
+                    controlesHabilitados: estadoAnterior.controlesHabilitados 
+                  } 
+                });
+                log('debug', 'Notificación al padre completada');
+              } catch (error) {
+                log('error', 'Error al notificar el cambio de modo al padre', { error: error.message, stack: error.stack, motivo });
+                if (!forzar) {
+                  // Revertir cambios si no estamos en modo forzado
+                  estadoApp = { ...estadoAnterior };
+                  if (actualizarInterfaz) actualizarInterfaz();
+                  throw error;
+                }
+                log('warn', 'Continuando a pesar del error (modo forzado)');
+              }
+            }
+            
+            log('info', `Modo cambiado a '${modo}' correctamente`);
+            return { 
+              estado: 'ok', 
+              mensaje: 'Modo cambiado correctamente', 
+              modo, 
+              modoAnterior, 
+              cambiado: true, 
+              timestamp: new Date().toISOString(), 
+              idTransaccion: ID_TRANSACCION 
+            };
+            
+          } catch (error) {
+            // Si hay un error en la configuración del modo, revertir los cambios
+            log('error', 'Error al configurar el modo', { error: error.message, stack: error.stack, modo, motivo });
+            estadoApp = { ...estadoAnterior };
+            if (actualizarInterfaz) actualizarInterfaz();
+            throw error;
           }
           
-          // 4. Notificar al padre que el modo ha cambiado correctamente
-          await enviarMensajeAlPadre('modo_cambiado', { 
-            modo,
-            exito: true,
-            motivo,
-            timestamp: new Date().toISOString()
-          });
-          
-          console.log(`[${IFRAME_ID}] Modo cambiado a '${modo}' correctamente`);
-          
         } catch (error) {
-          console.error(`[${IFRAME_ID}] Error al cambiar el modo:`, error);
-          
-          // Notificar al padre del error
-          await notificarError('error_cambio_modo', {
-            modo,
+          log('error', 'Error en manejarCambioModo', { 
+            error: error.message, 
+            stack: error.stack, 
+            modo, 
             motivo,
-            mensaje: error.message,
-            stack: error.stack
+            codigo: error.codigo || 'ERROR_DESCONOCIDO',
+            datos: error.datos || {}
           });
+          
+          // Notificar al padre del error si es necesario
+          if (notificarPadre) {
+            try {
+              await notificarError('error_cambio_modo', {
+                modo,
+                motivo,
+                mensaje: error.message,
+                codigo: error.codigo || 'ERROR_DESCONOCIDO',
+                stack: error.stack,
+                idTransaccion: ID_TRANSACCION,
+                timestamp: new Date().toISOString()
+              });
+            } catch (notifyError) {
+              log('error', 'Error al notificar el error al padre', { error: notifyError.message, stack: notifyError.stack });
+            }
+          }
           
           // Relanzar el error para que pueda ser manejado por el llamador
           throw error;
@@ -1631,99 +1730,10 @@ function configurarManejadoresEventos() {
     <!-- Botón flotante para continuar tras acertar el reto -->
     <button id="btnContinueReto" class="btn" style="display:none;position:fixed;bottom:30px;right:30px;z-index:3000;background:#ff9800;font-size:1.2em;padding:1em 2em;box-shadow:0 2px 8px rgba(0,0,0,0.2);">Continúe su reto</button>
 <script>
-// ================== VARIABLES DE CONTROL DE MODO ==================
-
-let modoActual = 'aventura'; // 'aventura' o 'casa'
-let controlesHabilitados = false;
-let retosDisabled = true; // Empezar con retos deshabilitados (modo aventura)
-
 // ================== FUNCIONES DE CONTROL DE MODO ==================
 
-/**
- * Habilita los controles según el modo especificado
- * @param {string} modo - 'casa' o 'aventura'
- */
-function enableControls(modo = 'casa') {
-    modoActual = modo;
-    controlesHabilitados = true;
-    retosDisabled = false;
-    
-    // Actualizar la interfaz
-    document.body.classList.remove('disabled');
-    
-    // Notificar al padre que los controles están habilitados
-    enviarMensajeAlPadre('control', {
-        tipo: 'controles_habilitados',
-        modo: modo
-    }).catch(error => {
-        console.error('Error al notificar controles habilitados:', error);
-    });
-    
-    console.log(`✅ HIJO 4: Controles habilitados - Modo: ${modo}`);
-}
-
-/**
- * Deshabilita los controles con un motivo específico
- * @param {string} motivo - Razón de la deshabilitación
- */
-function disableControls(motivo = 'desconocido') {
-    controlesHabilitados = false;
-    retosDisabled = true;
-    
-    // Actualizar la interfaz
-    document.body.classList.add('disabled');
-    
-    // Notificar al padre que los controles están deshabilitados
-    enviarMensajeAlPadre('control', {
-        tipo: 'controles_deshabilitados',
-        motivo: motivo
-    }).catch(error => {
-        console.error('Error al notificar controles deshabilitados:', error);
-    });
-    
-    console.log(`🚫 HIJO 4: Controles deshabilitados - ${motivo}`);
-}
-
-/**
- * Maneja el cambio de modo (casa/aventura)
- * @param {string} modo - 'casa' o 'aventura'
- * @param {boolean} habilitar - Si es true, habilita los controles
- */
-function manejarCambioModo(modo, habilitar = false) {
-    console.log(`🔄 HIJO 4: Cambiando a modo ${modo}, habilitar: ${habilitar}`);
-    
-    // Actualizar el modo actual
-    const modoAnterior = modoActual;
-    modoActual = modo;
-    
-    // Manejar la habilitación/deshabilitación de controles
-    if (modo === 'casa') {
-        // En modo casa, siempre habilitar los controles
-        enableControls('casa');
-    } else if (habilitar) {
-        // Si se solicita habilitar los controles en otro modo
-        enableControls(modo);
-    } else {
-        // Solo deshabilitar controles si estamos en modo aventura y no se solicita habilitar
-        disableControls('modo_aventura');
-    }
-    
-    // Notificar al padre del cambio de modo
-    if (window.mensajeria) {
-        mensajeria.enviarMensaje(mensajeria.TIPOS_MENSAJE.SISTEMA.CONFIGURACION, {
-            tipo: 'cambio_modo',
-            modo: modo,
-            habilitado: habilitar || modo === 'casa', // Siempre true para modo casa
-            origen: 'hijo4-retos',
-            detalles: {
-                modoAnterior: modoAnterior,
-                controlesHabilitados: controlesHabilitados
-            }
-        });
-    }
-    
-    console.log(`✅ HIJO 4: Modo cambiado a ${modo}, controles ${controlesHabilitados ? 'habilitados' : 'deshabilitados'}`);
-}
+// Las funciones de control de modo han sido reemplazadas por la implementación
+// robusta en manejarCambioModo y manejarEstadoControles más arriba en el archivo.
 
 // ================== VARIABLES GLOBALES ==================
 
@@ -2666,8 +2676,6 @@ btnMostrarRespuesta.addEventListener("click", async () => {
  * @param {Object} reto - El reto actual
  * @param {string} idTransaccion - ID de transacción para seguimiento
  * @param {boolean} [exito=false] - Indica si el reto se completó con éxito
- * @param {boolean} [respuestaMostrada=false] - Indica si se mostró la respuesta
- * @returns {Promise<void>}
  */
 async function manejarContinuarReto(reto, idTransaccion, exito = false) {
     if (!reto) {
@@ -2734,13 +2742,69 @@ function configurarManejadoresMensajes() {
         return;
     }
     
-    // Manejar cambio de modo
+    // Manejar cambio de modo (sistema:cambio_modo)
     window.Mensajeria.registrarControlador(
         window.Mensajeria.TIPOS_MENSAJE.CAMBIO_MODO,
-        (mensaje) => {
-            const { modo, habilitar } = mensaje.datos || {};
-            console.log(`🔄 HIJO 4: Recibido cambio de modo: ${modo}, habilitar: ${habilitar}`);
-            manejarCambioModo(mensaje);
+        async (mensaje) => {
+            try {
+                const { modo, habilitar = true, motivo = 'cambio_modo', forzar = false } = mensaje.datos || {};
+                const idTransaccion = mensaje.datos?.idTransaccion || `ext-${Date.now()}`;
+                
+                console.log(`[${IFRAME_ID}] 🔄 Recibido cambio de modo:`, { 
+                    modo, 
+                    habilitar, 
+                    motivo, 
+                    forzar,
+                    idTransaccion,
+                    origen: mensaje.origen,
+                    timestamp: new Date().toISOString()
+                });
+                
+                // Validar que el mensaje tenga los datos necesarios
+                if (!modo) {
+                    const error = new Error('Mensaje de cambio de modo inválido: falta el parámetro "modo"');
+                    error.codigo = 'MENSAJE_INVALIDO';
+                    throw error;
+                }
+                
+                // Llamar a la función de manejo de cambio de modo
+                const resultado = await manejarCambioModo({
+                    ...mensaje,
+                    datos: {
+                        ...mensaje.datos,
+                        idTransaccion,
+                        notificarPadre: false // Ya que el mensaje viene del padre
+                    }
+                });
+                
+                console.log(`[${IFRAME_ID}] ✅ Cambio de modo completado:`, { 
+                    modo, 
+                    resultado,
+                    idTransaccion,
+                    timestamp: new Date().toISOString()
+                });
+                
+                return resultado;
+                
+            } catch (error) {
+                console.error(`[${IFRAME_ID}] ❌ Error al procesar cambio de modo:`, error);
+                
+                // Notificar al padre del error
+                try {
+                    await notificarError('error_procesar_cambio_modo', {
+                        mensaje: error.message,
+                        codigo: error.codigo || 'ERROR_DESCONOCIDO',
+                        stack: error.stack,
+                        mensajeOriginal: mensaje,
+                        timestamp: new Date().toISOString()
+                    });
+                } catch (notifyError) {
+                    console.error(`[${IFRAME_ID}] Error al notificar el error al padre:`, notifyError);
+                }
+                
+                // Relanzar el error para que se propague correctamente
+                throw error;
+            }
         }
     );
     
@@ -2820,23 +2884,80 @@ function configurarManejadoresMensajes() {
 
 // --- INICIALIZAR MENSAJERÍA Y NOTIFICAR AL PADRE ---
 window.addEventListener("DOMContentLoaded", async () => {
+  try {
+    console.log(`[${IFRAME_ID}] DOM cargado, inicializando mensajería...`);
+    
+    // Inicializar mensajería
+    await inicializarMensajeria();
+    
+    // Configurar manejadores de eventos
+    if (typeof configurarManejadoresEventos === 'function') {
+      configurarManejadoresEventos();
+    }
+    
+    console.log(`[${IFRAME_ID}] Inicialización completada`);
+  } catch (error) {
+    console.error(`[${IFRAME_ID}] Error en la inicialización:`, error);
+    mostrarErrorInicializacion(error);
+  }
     try {
-        await inicializarMensajeria();
-        configurarManejadoresMensajes();
-        if (typeof configurarManejadoresEventos === 'function') {
-            configurarManejadoresEventos();
+        // Inicializar variables para rastrear el reto/puzzle actual
+        window.retoActual = null;
+        window.puzzleActual = null;
+        
+        // Verificar que Mensajeria esté disponible
+        if (typeof window.Mensajeria === 'undefined') {
+            console.error('❌ No se pudo cargar el módulo de mensajería');
+            throw new Error('El módulo de mensajería no está disponible');
         }
-        await enviarMensajeAlPadre('sistema_estado', {
-            tipo: 'inicializacion_completa',
-            estado: 'listo',
-            modo: 'aventura',
-            controlesHabilitados: false,
-            timestamp: Date.now()
-        });
-        console.log('✅ HIJO 4: Inicialización completada');
+        
+        // Inicializar mensajería con configuración
+        try {
+            await window.Mensajeria.inicializarMensajeria({
+                iframeId: 'hijo4',
+                logLevel: 1, // 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR, 4=NONE
+                debug: true,
+                dominioPermitido: '*',
+                maxRetries: 3,
+                retryDelay: 1000
+            });
+            
+            console.log('✅ HIJO 4: Mensajería inicializada correctamente');
+        } catch (error) {
+            console.error('❌ HIJO 4: Error al inicializar la mensajería:', error);
+            throw error; // Relanzar para ser manejado por el catch externo
+        }
+        
+        // Configurar manejadores de mensajes
+        configurarManejadoresMensajes();
+        console.log('✅ HIJO 4: Manejadores de mensajes configurados');
+        
+        // Empezar con retos deshabilitados (modo aventura por defecto)
+        manejarCambioModo('aventura', false);
+        
+        // Notificar al padre que el hijo está listo
+        try {
+            await enviarMensajeAlPadre('sistema_estado', {
+                tipo: 'inicializacion_completa',
+                estado: 'listo',
+                modo: 'aventura',
+                controlesHabilitados: false,
+                timestamp: Date.now()
+            });
+            console.log('✅ HIJO 4: Notificación de inicialización enviada al padre');
+        } catch (error) {
+            console.warn('⚠️ HIJO 4: No se pudo notificar al padre:', error);
+            // Continuar a pesar del error de notificación
+        }
+        
+        console.log(`✅ HIJO 4: Inicialización completada - Modo: aventura, Controles: Deshabilitados`);
     } catch (error) {
+        console.error('❌ HIJO 4: Error crítico durante la inicialización:', error);
+        
+        // Asegurarse de que los retos estén deshabilitados en caso de error
         disableControls('error_inicializacion');
-        mostrarErrorInicializacion(error);
+        
+        // Notificar el error al padre si es posible
         if (window.Mensajeria?.enviarMensajeConReintenos) {
             try {
                 await window.Mensajeria.enviarMensajeConReintenos(
@@ -2845,7 +2966,7 @@ window.addEventListener("DOMContentLoaded", async () => {
                     {
                         tipo: 'error_inicializacion',
                         mensaje: error.message,
-                        stack: error.stack,
+                        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
                         timestamp: Date.now()
                     },
                     { maxRetries: 2, retryDelay: 500 }
@@ -2854,6 +2975,9 @@ window.addEventListener("DOMContentLoaded", async () => {
                 console.error('❌ HIJO 4: No se pudo notificar el error al padre:', e);
             }
         }
+        
+        // Mostrar mensaje de error al usuario
+        mostrarErrorInicializacion(error);
     }
 });
 </script>
