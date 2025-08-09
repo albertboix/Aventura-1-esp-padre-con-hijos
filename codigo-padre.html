@@ -2854,10 +2854,11 @@ async function manejarErrorHijo2(data) {
     // Actualizar estado global con el error
     await actualizarEstadoGlobal({
         error: {
-            codigo,
-            mensaje,
-            origen: 'hijo2',
-            timestamp: timestamp || Date.now()
+            codigo: codigo || 'ERROR_DESCONOCIDO',
+            mensaje: mensaje || 'Error desconocido',
+            stack: stack || '',
+            timestamp: timestamp || Date.now(),
+            origen: 'hijo2'
         },
         ultimaAccion: 'error',
         timestamp: Date.now()
@@ -2906,7 +2907,7 @@ async function manejarMensajeHijo3(type, data, event = null) {
                 await manejarSolicitudEstado(data);
                 break;
                 
-            case 'cambiarTiempo':
+            case 'cambioTiempo':
                 await manejarCambioTiempo(data);
                 break;
                 
@@ -2958,237 +2959,7 @@ async function manejarMensajeHijo3(type, data, event = null) {
     }
 }
 
-/**
- * Maneja el evento de inicio de reproducción de audio
- * @param {Object} data - Datos del audio
- * @returns {Promise<void>}
- */
-async function manejarAudioIniciado(data) {
-    const logPrefix = '🔊 PADRE: Audio iniciado:';
-    
-    if (!data?.audioId) {
-        console.warn(`${logPrefix} Datos de audio incompletos:`, data);
-        return;
-    }
-    
-    console.log(`${logPrefix} ${data.audioId}`);
-    
-    // Actualizar el estado global
-    await actualizarEstadoGlobal({
-        ultimaAccion: 'audio_iniciado',
-        audioActual: data.audioId,
-        estadoReproduccion: 'reproduciendo',
-        timestamp: Date.now()
-    });
-    
-    // Notificar a otros componentes si es necesario
-    if (data.paradaId) {
-        await actualizarEstadoGlobal({
-            paradaActual: data.paradaId
-        });
-    }
-}
-
-/**
- * Maneja el evento de finalización de audio
- * @param {Object} data - Datos del audio
- * @returns {Promise<void>}
- */
-async function manejarAudioTerminado(data) {
-    const logPrefix = '🔊 PADRE: Audio terminado:';
-    
-    if (!data?.audioId) {
-        console.warn(`${logPrefix} Datos de audio incompletos:`, data);
-        return;
-    }
-    
-    console.log(`${logPrefix} ${data.audioId}`);
-    
-    // Actualizar el estado global
-    await actualizarEstadoGlobal({
-        ultimaAccion: 'audio_terminado',
-        audioAnterior: data.audioId,
-        estadoReproduccion: 'detenido',
-        timestamp: Date.now()
-    });
-    
-    // Si es un audio de parada con retos, mostrarlos
-    const puntoActual = estadoGlobal.puntoActual;
-    if (puntoActual?.retos?.length > 0) {
-        const primerReto = puntoActual.retos[0];
-        await enviarMensaje('hijo4', 'mostrarReto', { 
-            reto: primerReto,
-            esPrimero: true,
-            esUltimo: puntoActual.retos.length === 1
-        });
-    } else {
-        avanzarSiguientePunto();
-    }
-}
-
-/**
- * Maneja el cambio de volumen del reproductor de audio
- * @param {Object} data - Datos del cambio de volumen
- * @returns {Promise<void>}
- */
-async function manejarCambioVolumen(data) {
-    const logPrefix = '🔊 PADRE: Cambio de volumen:';
-    
-    if (typeof data?.volumen !== 'number') {
-        console.warn(`${logPrefix} Volumen no especificado o inválido:`, data);
-        return;
-    }
-    
-    console.log(`${logPrefix} ${data.volumen * 100}%`);
-    
-    // Actualizar el estado global
-    await actualizarEstadoGlobal({
-        volumen: data.volumen,
-        timestamp: Date.now()
-    });
-}
-
-/**
- * Maneja la solicitud de estado del reproductor
- * @param {Object} data - Datos de la solicitud
- * @returns {Promise<void>}
- */
-async function manejarSolicitudEstado(data) {
-    const logPrefix = '🔊 PADRE: Solicitud de estado recibida:';
-    console.log(logPrefix, data);
-    
-    // Enviar el estado actual al hijo3
-    await enviarMensaje('hijo3', 'estadoActual', {
-        volumen: estadoGlobal.volumen || 0.7,
-        modo: estadoGlobal.modo || 'aventura',
-        audioActual: estadoGlobal.audioActual || null,
-        estadoReproduccion: estadoGlobal.estadoReproduccion || 'detenido',
-        timestamp: Date.now()
-    });
-}
-
-/**
- * Maneja el cambio de tiempo de reproducción
- * @param {Object} data - Datos del cambio de tiempo
- * @returns {Promise<void>}
- */
-async function manejarCambioTiempo(data) {
-    const logPrefix = '🔊 PADRE: Cambio de tiempo:';
-    
-    if (typeof data?.tiempo !== 'number') {
-        console.warn(`${logPrefix} Tiempo no especificado o inválido:`, data);
-        return;
-    }
-    
-    console.log(`${logPrefix} ${data.tiempo} segundos`);
-    
-    // Actualizar el estado global si es necesario
-    await actualizarEstadoGlobal({
-        tiempoReproduccion: data.tiempo,
-        timestamp: Date.now()
-    });
-}
-
-/**
- * Maneja el cambio de modo desde el hijo3
- * @param {Object} data - Datos del cambio de modo
- * @returns {Promise<void>}
- */
-async function manejarCambioModoHijo3(data) {
-    const logPrefix = '🔊 PADRE: Cambio de modo desde hijo3:';
-    
-    if (!data?.modo) {
-        console.warn(`${logPrefix} Modo no especificado:`, data);
-        return;
-    }
-    
-    console.log(`${logPrefix} ${data.modo}`);
-    
-    // Actualizar el estado global
-    await actualizarEstadoGlobal({
-        modo: data.modo,
-        timestamp: Date.now()
-    });
-    
-    // Asegurarse de que los iframes estén en el estado correcto
-    await actualizarEstadoIframesHijos(data.modo);
-}
-
-/**
- * Maneja la sincronización de estado con el hijo3
- * @param {Object} data - Datos de sincronización
- * @returns {Promise<void>}
- */
-async function manejarSincronizacionEstadoHijo3(data) {
-    const logPrefix = '🔊 PADRE: Sincronización de estado con hijo3:';
-    console.log(logPrefix, data);
-    
-    // Enviar el estado actual al hijo3
-    await enviarMensaje('hijo3', 'estadoSincronizado', {
-        ...estadoGlobal,
-        timestamp: Date.now()
-    });
-}
-
-/**
- * Maneja los errores reportados por el hijo3
- * @param {Object} data - Datos del error
- * @returns {Promise<void>}
- */
-async function manejarErrorHijo3(data) {
-    const logPrefix = '🔊 PADRE: Error reportado por hijo3:';
-    
-    if (!data?.mensaje) {
-        console.error(`${logPrefix} Error sin mensaje:`, data);
-        return;
-    }
-    
-    console.error(`${logPrefix} ${data.codigo || 'ERROR_DESCONOCIDO'}: ${data.mensaje}`);
-    
-    if (data.stack) {
-        console.error('Stack trace:', data.stack);
-    }
-    
-    // Mostrar notificación al usuario si es necesario
-    if (data.mostrarAlUsuario) {
-        mostrarMensajeInfoParada(`Error de audio: ${data.mensaje}`, true);
-    }
-    
-    // Actualizar el estado global
-    await actualizarEstadoGlobal({
-        ultimoError: {
-            origen: 'hijo3',
-            codigo: data.codigo || 'ERROR_DESCONOCIDO',
-            mensaje: data.mensaje,
-            timestamp: Date.now()
-        },
-        estadoReproduccion: 'error'
-    });
-}
-
-/**
- * Maneja las actualizaciones de estado de reproducción
- * @param {Object} data - Datos del estado de reproducción
- * @returns {Promise<void>}
- */
-async function manejarEstadoReproduccion(data) {
-    const logPrefix = '🔊 PADRE: Estado de reproducción actualizado:';
-    
-    if (!data?.estado) {
-        console.warn(`${logPrefix} Estado no especificado:`, data);
-        return;
-    }
-    
-    console.log(`${logPrefix} ${data.estado}`, data);
-    
-    // Actualizar el estado global
-    await actualizarEstadoGlobal({
-        estadoReproduccion: data.estado,
-        tiempoActual: data.tiempoActual || 0,
-        duracion: data.duracion || 0,
-        timestamp: Date.now()
-    });
-}
+// ================== MANEJADORES PARA HIJO4 (RETOS Y PREGUNTAS) ==================
 
 /**
  * Maneja los mensajes recibidos del iframe hijo4 (retos y preguntas)
@@ -3283,12 +3054,6 @@ async function manejarMensajeHijo4(type, data, event = null) {
         }
     }
 }
-
-/**
- * Maneja el inicio de un reto
- * @param {Object} data - Datos del reto
- * @returns {Promise<void>}
- */
 async function manejarRetoIniciado(data) {
     const logPrefix = '🎯 PADRE: Reto iniciado:';
     
@@ -3347,8 +3112,9 @@ async function manejarRetoCompletado(data) {
         timestamp: Date.now()
     });
     
-    // Manejar la lógica de finalización del reto
-    manejarRetoCompletado(data.retoId);
+    // Lógica de finalización del reto
+    console.log(`✅ Reto ${data.retoId} completado exitosamente`);
+    // Aquí iría la lógica adicional para cuando se completa un reto
 }
 
 /**
