@@ -3546,189 +3546,506 @@ function avanzarSiguientePunto() {
         console.log('🏁 PADRE: Fin del recorrido');
     }
 }
-            
-            try {
-                switch(data.type) {
-                    case 'hijo4Ready':
-                    case 'retos-hijo-listo':
-                        console.log('✅ PADRE: Hijo 4 (Retos) listo y operativo');
-                        // Confirmar recepción y sincronizar estado actual
-                        const respuesta = {
-                            type: 'sincronizarEstado',
-                            origen: 'padre',
-                            destino: 'hijo4',
-                            timestamp: Date.now(),
-                            estado: {
-                                modo: estadoGlobal.modo || 'aventura',
-                                retoActivo: estadoGlobal.datosCompartidos?.reto?.activo || false,
-                                retoCompletado: estadoGlobal.datosCompartidos?.reto?.completado || false,
-                                paradaActual: estadoGlobal.puntoActual?.id || null,
-                                puntoActual: estadoGlobal.puntoActual || null
-                            }
-                        };
-                        
-                        iframe.contentWindow.postMessage(respuesta, '*');
-                        console.log('🔄 PADRE: Estado sincronizado con hijo4', respuesta.estado);
-                        break;
-                        
-                    case 'retoIniciado':
-                        console.log('🎯 PADRE: Reto iniciado:', data.retoId);
-                        // Actualizar estado global
-                        const nuevoEstado = {
-                            reto: {
-                                activo: true,
-                                completado: false,
-                                id: data.retoId,
-                                timestamp: Date.now()
-                            },
-                            // Pausar la reproducción de audio cuando se inicia un reto
-                            reproduciendoAudio: false
-                        };
-                        
-                        actualizarEstadoGlobal(nuevoEstado);
-                        
-                        // Notificar al hijo3 (audio) que debe pausar la reproducción
-                        const hijo3 = document.getElementById('hijo3');
-                        if (hijo3 && hijo3.contentWindow) {
-                            hijo3.contentWindow.postMessage({
-                                type: 'pausarReproduccion',
-                                motivo: 'reto_iniciado',
-                                retoId: data.retoId,
-                                timestamp: Date.now()
-                            }, '*');
-                            console.log('⏸️ PADRE: Solicitada pausa de reproducción por inicio de reto');
-                        }
-                        break;
-                        
-                    case 'retoCompletado':
-                        console.log('🏆 PADRE: Reto completado:', data.retoId);
-                        
-                        // Verificar si el reto completado tiene un puzzle asociado
-                        const puzzleAsociado = RETO_PUZZLE_MAP[data.retoId];
-                        
-                        // Actualizar estado global
-                        actualizarEstadoGlobal({
-                            reto: {
-                                activo: false,
-                                completado: true,
-                                id: data.retoId,
-                                timestamp: Date.now(),
-                                puzzleAsociado: puzzleAsociado || null
-                            }
-                        });
-                        
-                        // Ocultar el iframe del reto
-                        const iframeHijo4 = document.getElementById('hijo4');
-                        if (iframeHijo4) {
-                            iframeHijo4.style.display = 'none';
-                            console.log('👋 PADRE: Iframe de retos oculto');
-                        }
-                        
-                        // Notificar al hijo3 (audio) que puede reanudar la reproducción
-                        const hijo3Audio = document.getElementById('hijo3');
-                        if (hijo3Audio?.contentWindow) {
-                            hijo3Audio.contentWindow.postMessage({
-                                type: 'reanudarReproduccion',
-                                motivo: 'reto_completado',
-                                retoId: data.retoId,
-                                timestamp: Date.now()
-                            }, '*');
-                            console.log('▶️ PADRE: Solicitada reanudación de reproducción');
-                        }
-                        
-                        // Si hay un puzzle asociado, mostrarlo después de un breve retraso
-                        if (puzzleAsociado) {
-                            console.log(`🧩 PADRE: Mostrando puzzle asociado: ${puzzleAsociado}`);
-                            
-                            // Mostrar el puzzle después de un breve retraso
-                            setTimeout(() => {
-                                // Aquí iría la lógica para mostrar el puzzle
-                                // Por ahora, solo lo registramos en consola
-                                console.log(`🔍 PADRE: Mostrando puzzle ${puzzleAsociado}...`);
-                                
-                                // Notificar al hijo4 para que muestre el puzzle
-                                if (iframeHijo4 && iframeHijo4.contentWindow) {
-                                    iframeHijo4.contentWindow.postMessage({
-                                        type: 'mostrarPuzzle',
-                                        puzzleId: puzzleAsociado,
-                                        retoId: data.retoId
-                                    }, '*');
-                                    
-                                    // Mostrar el iframe del reto/puzzle
-                                    iframeHijo4.style.display = 'block';
-                                    console.log(`🔄 PADRE: Solicitado mostrar puzzle ${puzzleAsociado}`);
-                                }
-                            }, 1000);
-                        } else {
-                            // Si no hay puzzle asociado, continuar con el siguiente punto
-                            if (typeof avanzarSiguientePunto === 'function') {
-                                console.log('🔄 PADRE: No hay puzzle asociado, continuando con el siguiente punto');
-                                avanzarSiguientePunto();
-                            }
-                        }
-                        break;
-                        
-                    case 'cerrarReto':
-                        console.log('🚪 PADRE: Cerrando reto sin completar');
-                        // Actualizar estado global
-                        actualizarEstadoGlobal({
-                            reto: {
-                                activo: false,
-                                completado: false,
-                                id: null,
-                                timestamp: Date.now()
-                            }
-                        });
-                        break;
-                        
-                    case 'solicitarSincronizacion':
-                        console.log('🔄 PADRE: Sincronización solicitada por hijo4');
-                        // Enviar estado actual al hijo 4
-                        iframe.contentWindow.postMessage({
-                            type: 'sincronizarEstado',
-                            origen: 'padre',
-                            destino: 'hijo4',
-                            timestamp: Date.now(),
-                            estado: {
-                                modo: estadoGlobal.modo || 'aventura',
-                                retoActivo: estadoGlobal.datosCompartidos?.reto?.activo || false,
-                                retoCompletado: estadoGlobal.datosCompartidos?.reto?.completado || false,
-                                paradaActual: estadoGlobal.puntoActual?.id || null,
-                                puntoActual: estadoGlobal.puntoActual || null
-                            }
+
+/**
+ * Maneja los mensajes recibidos del iframe hijo4 (retos y preguntas)
+ * @param {string} type - Tipo de mensaje recibido
+ * @param {Object} data - Datos del mensaje
+ * @param {Object} [event=null] - Evento original (opcional)
+ * @returns {Promise<void>}
+ */
+async function manejarMensajeHijo4(type, data, event = null) {
+    const logPrefix = '👥 PADRE (hijo4)';
+    console.group(`${logPrefix} Mensaje recibido:`, type);
+    
+    try {
+        if (!data) {
+            throw new Error('Datos del mensaje no proporcionados');
+        }
+
+        switch (type) {
+            case 'retoCompletado': {
+                if (!data.retoId) {
+                    throw new Error('ID de reto no proporcionado');
+                }
+                
+                console.log('🏆 PADRE: Reto completado:', data.retoId);
+                
+                // Verificar si el reto completado tiene un puzzle asociado
+                const puzzleAsociado = window.RETO_PUZZLE_MAP?.[data.retoId];
+                
+                // Actualizar estado global
+                await actualizarEstadoGlobal({
+                    reto: {
+                        activo: false,
+                        completado: true,
+                        id: data.retoId,
+                        timestamp: Date.now(),
+                        puzzleAsociado: puzzleAsociado || null
+                    }
+                });
+                
+                // Ocultar el iframe del reto
+                const iframeHijo4 = document.getElementById('hijo4');
+                if (iframeHijo4) {
+                    iframeHijo4.style.display = 'none';
+                    console.log('👋 PADRE: Iframe de retos oculto');
+                }
+                
+                // Notificar al hijo3 (audio) que puede reanudar la reproducción
+                const hijo3Audio = document.getElementById('hijo3');
+                if (hijo3Audio?.contentWindow) {
+                    try {
+                        hijo3Audio.contentWindow.postMessage({
+                            type: 'reanudarReproduccion',
+                            motivo: 'reto_completado',
+                            retoId: data.retoId,
+                            timestamp: Date.now()
                         }, '*');
-                        break;
+                        console.log('▶️ PADRE: Solicitada reanudación de reproducción');
+                    } catch (error) {
+                        console.error('Error al notificar al reproductor de audio:', error);
+                    }
+                }
+                
+                // Si hay un puzzle asociado, mostrarlo después de un breve retraso
+                if (puzzleAsociado) {
+                    console.log(`🧩 PADRE: Mostrando puzzle asociado: ${puzzleAsociado}`);
+                    
+                    // Mostrar el puzzle después de un breve retraso
+                    setTimeout(() => {
+                        try {
+                            console.log(`🔍 PADRE: Mostrando puzzle ${puzzleAsociado}...`);
+                            // Aquí iría la lógica para mostrar el puzzle
+                            // Por ejemplo: window.mostrarPuzzle(puzzleAsociado);
+                        } catch (error) {
+                            console.error('Error al mostrar el puzzle:', error);
+                        }
+                    }, 500); // Pequeño retraso para mejor experiencia de usuario
+                }
+                if (iframeHijo4 && iframeHijo4.contentWindow) {
+                    try {
+                        iframeHijo4.contentWindow.postMessage({
+                            type: 'mostrarPuzzle',
+                            puzzleId: puzzleAsociado,
+                            retoId: data.retoId,
+                            timestamp: Date.now()
+                        }, '*');
+                        console.log(`🧩 PADRE: Mostrando puzzle ${puzzleAsociado} para reto ${data.retoId}`);
+                    } catch (error) {
+                        console.error('Error al enviar mensaje a iframe hijo4:', error);
+                    }
+                }
+                
+                // Si no hay puzzle asociado, continuar con el siguiente punto
+                if (!puzzleAsociado && typeof avanzarSiguientePunto === 'function') {
+                    console.log('🔄 PADRE: No hay puzzle asociado, continuando con el siguiente punto');
+                    try {
+                        await avanzarSiguientePunto();
+                    } catch (error) {
+                        console.error('Error al avanzar al siguiente punto:', error);
+                    }
+                }
+                break;
+                
+            case 'cerrarReto': {
+                const logPrefix = '🚪 PADRE: [cerrarReto]';
+                console.group(`${logPrefix} Iniciando cierre de reto`);
+                
+                try {
+                    // 1. Validación de entrada
+                    if (!data || typeof data !== 'object') {
+                        throw new Error('Datos de cierre de reto no proporcionados');
+                    }
+                    
+                    const retoId = data.retoId || 'desconocido';
+                    const timestamp = Date.now();
+                    console.log(`${logPrefix} Cerrando reto ${retoId} sin completar`);
+                    
+                    // 2. Validar que el reto existe y está activo en el estado global
+                    const retoActual = window.estadoGlobal?.reto;
+                    if (!retoActual || !retoActual.activo) {
+                        console.warn(`${logPrefix} Intento de cerrar reto ${retoId} que no está activo o no existe`);
+                    }
+                    
+                    // 3. Actualizar estado global
+                    console.log(`${logPrefix} Actualizando estado global...`);
+                    await actualizarEstadoGlobal({
+                        reto: {
+                            activo: false,
+                            completado: false,
+                            id: retoId,
+                            timestamp: timestamp,
+                            cerradoPorUsuario: true,
+                            motivoCierre: data.motivo || 'usuario',
+                            ultimaAccion: 'cierre_manual',
+                            metadata: {
+                                ...(data.metadata || {}),
+                                timestampCierre: timestamp,
+                                desde: 'hijo4'
+                            }
+                        },
+                        // Limpiar cualquier dato de reto pendiente
+                        retoPendiente: null,
+                        retoActivo: false
+                    });
+                    
+                    // 4. Ocultar el iframe del reto
+                    console.log(`${logPrefix} Ocultando iframe de retos...`);
+                    const iframeReto = document.getElementById('hijo4');
+                    if (iframeReto) {
+                        iframeReto.style.display = 'none';
+                        console.log(`${logPrefix} Iframe de retos ocultado correctamente`);
                         
-                    case 'cambioModo':
-                        console.log(`🔄 PADRE: Hijo4 notifica cambio de modo a ${data.modo}`);
-                        // Actualizar estado global y sincronizar con otros hijos
-                        actualizarEstadoGlobal({
-                            modo: data.modo,
-                            ultimaActualizacion: Date.now()
+                        // Limpiar cualquier estado interno del iframe
+                        try {
+                            iframeReto.contentWindow.postMessage({
+                                type: 'limpiarEstado',
+                                motivo: 'cierre_manual',
+                                timestamp: timestamp
+                            }, '*');
+                        } catch (e) {
+                            console.warn(`${logPrefix} No se pudo limpiar el estado del iframe:`, e);
+                        }
+                    } else {
+                        console.warn(`${logPrefix} No se encontró el iframe de retos para ocultar`);
+                    }
+                    
+                    // 5. Reanudar la reproducción de audio si es necesario
+                    console.log(`${logPrefix} Reanudando reproducción de audio...`);
+                    const audioPlayer = document.getElementById('hijo3');
+                    if (audioPlayer?.contentWindow) {
+                        try {
+                            const mensajeAudio = {
+                                type: 'reanudarReproduccion',
+                                motivo: 'reto_cerrado_por_usuario',
+                                retoId: retoId,
+                                timestamp: timestamp,
+                                metadata: {
+                                    desde: 'hijo4',
+                                    accion: 'cierre_manual'
+                                }
+                            };
+                            
+                            audioPlayer.contentWindow.postMessage(mensajeAudio, '*');
+                            console.log(`${logPrefix} Notificación de reanudación de audio enviada:`, mensajeAudio);
+                        } catch (audioError) {
+                            console.error(`${logPrefix} Error al notificar al reproductor de audio:`, audioError);
+                        }
+                    } else {
+                        console.warn(`${logPrefix} No se encontró el reproductor de audio para notificar`);
+                    }
+                    
+                    // 6. Notificar al remitente que el cierre se procesó correctamente
+                    console.log(`${logPrefix} Enviando confirmación de cierre...`);
+                    if (event?.source) {
+                        const confirmacion = {
+                            type: 'confirmacionCierreReto',
+                            retoId: retoId,
+                            timestamp: timestamp,
+                            exito: true,
+                            metadata: {
+                                estadoAnterior: retoActual,
+                                accion: 'cierre_manual',
+                                desde: 'hijo4'
+                            }
+                        };
+                        
+                        try {
+                            event.source.postMessage(confirmacion, event.origin);
+                            console.log(`${logPrefix} Confirmación de cierre enviada:`, confirmacion);
+                            
+                            // Notificar a otros componentes sobre el cierre del reto
+                            enviarMensajeATodosLosHijos('retoCerrado', {
+                                retoId: retoId,
+                                timestamp: timestamp,
+                                exito: true,
+                                motivo: data.motivo || 'usuario',
+                                metadata: {
+                                    desde: 'hijo4',
+                                    accion: 'cierre_manual',
+                                    origen: 'hijo4'
+                                }
+                            }, ['hijo4']); // Excluir al propio hijo4 para evitar bucle
+                            
+                        } catch (postError) {
+                            console.error(`${logPrefix} Error al confirmar cierre de reto:`, postError);
+                            
+                            // Intentar notificar del error de manera segura
+                            try {
+                                event.source.postMessage({
+                                    type: 'error',
+                                    error: 'Error al confirmar cierre de reto',
+                                    detalles: postError.message,
+                                    timestamp: Date.now(),
+                                    originalType: 'cerrarReto',
+                                    retoId: retoId
+                                }, event.origin);
+                            } catch (e) {
+                                console.error(`${logPrefix} Error al notificar error de confirmación:`, e);
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error(`${logPrefix} Error al procesar cierre de reto:`, error);
+                    
+                    // 7. Manejo de errores global
+                    try {
+                        // Notificar al remitente sobre el error
+                        if (event?.source) {
+                            const mensajeError = {
+                                type: 'error',
+                                error: error.message || 'Error al procesar cierre de reto',
+                                timestamp: Date.now(),
+                                originalType: 'cerrarReto',
+                                retoId: data?.retoId || 'desconocido',
+                                stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+                                metadata: {
+                                    paso: 'procesamiento_cierre_reto',
+                                    desde: 'hijo4',
+                                    accion: 'manejo_error'
+                                }
+                            };
+                            
+                            event.source.postMessage(mensajeError, event.origin);
+                            console.error(`${logPrefix} Notificado error al remitente:`, mensajeError);
+                        }
+                        
+                        // Notificar a otros componentes sobre el error
+                        enviarMensajeATodosLosHijos('errorProcesamiento', {
+                            tipo: 'cierre_reto_fallido',
+                            error: error.message,
+                            timestamp: Date.now(),
+                            metadata: {
+                                desde: 'hijo4',
+                                accion: 'notificacion_error_global',
+                                retoId: data?.retoId || 'desconocido'
+                            }
                         });
                         
-                        // Notificar al hijo3 (audio) sobre el cambio de modo
-                        const hijo3Modo = document.getElementById('hijo3');
-                        if (hijo3Modo && hijo3Modo.contentWindow) {
-                            hijo3Modo.contentWindow.postMessage({
+                        // Mostrar error en la interfaz de usuario
+                        if (typeof mostrarErrorEnInterfaz === 'function') {
+                            mostrarErrorEnInterfaz(
+                                `Error al cerrar el reto: ${error.message || 'Error desconocido'}`,
+                                null,
+                                {
+                                    tiempo: 10000,
+                                    tipo: 'error',
+                                    cerrarManual: true
+                                }
+                            );
+                        }
+                    } catch (errorAnidado) {
+                        // Manejo de errores en el bloque catch principal
+                        console.error(`${logPrefix} Error crítico en el manejo de errores:`, errorAnidado);
+                        
+                        // Intentar registrar el error de alguna manera segura
+                        try {
+                            // Usar el servicio de registro de errores si está disponible
+                            if (window.errorLogService) {
+                                window.errorLogService.logError({
+                                    tipo: 'error_manejo_errores',
+                                    errorOriginal: error,
+                                    errorManejo: errorAnidado,
+                                    timestamp: Date.now(),
+                                    contexto: 'cierre_reto',
+                                    retoId: data?.retoId || 'desconocido'
+                                });
+                            }
+                        } catch (e) {
+                            // Último recurso: registrar en la consola
+                            console.error(`${logPrefix} Error al registrar el error:`, e);
+                        }
+                    } finally {
+                        // 8. Limpieza final y registro
+                        try {
+                            // Registrar el cierre del reto en el historial
+                            if (window.estadoGlobal?.historial) {
+                                window.estadoGlobal.historial.cierresReto = window.estadoGlobal.historial.cierresReto || [];
+                                window.estadoGlobal.historial.cierresReto.push({
+                                    retoId: data?.retoId || 'desconocido',
+                                    timestamp: Date.now(),
+                                    exito: !error, // false si hubo un error
+                                    motivo: data?.motivo || 'usuario',
+                                    metadata: {
+                                        desde: 'hijo4',
+                                        accion: 'cierre_reto',
+                                        error: error ? error.message : null,
+                                        stack: error?.stack
+                                    }
+                                });
+                            }
+                            
+                            // Liberar recursos si es necesario
+                            if (window.recursosTemporales?.retoActivo) {
+                                try {
+                                    window.recursosTemporales.liberarRecursos('reto');
+                                } catch (e) {
+                                    console.warn(`${logPrefix} Error al liberar recursos:`, e);
+                                }
+                            }
+                            
+                            // Cerrar el grupo de consola
+                            console.groupEnd();
+                            
+                            // Registrar métrica de rendimiento
+                            if (window.performance && typeof window.performance.measure === 'function') {
+                                try {
+                                    const fin = performance.now();
+                                    window.performance.measure(
+                                        'cierreReto',
+                                        `inicio_cierre_reto_${retoId}`,
+                                        'marca_fin_cierre_reto'
+                                    );
+                                    console.debug(`${logPrefix} Tiempo de cierre: ${fin - inicio}ms`);
+                                } catch (e) {
+                                    console.warn(`${logPrefix} Error al medir rendimiento:`, e);
+                                }
+                            }
+                            
+                            console.log(`${logPrefix} Proceso de cierre de reto finalizado`);
+                        } catch (finalError) {
+                            console.error(`${logPrefix} Error en la limpieza final:`, finalError);
+                            
+                            // Asegurarse de que el grupo de consola se cierre incluso si hay errores
+                            try {
+                                console.groupEnd();
+                            } catch (e) {
+                                // Ignorar errores al cerrar el grupo
+                            }
+                    }
+                }
+                break;
+            }
+                        
+            case 'solicitarSincronizacion': {
+                console.log('🔄 PADRE: Sincronización solicitada por hijo4');
+                
+                try {
+                    const iframeHijo4 = document.getElementById('hijo4');
+                    if (!iframeHijo4?.contentWindow) {
+                        throw new Error('Iframe hijo4 no disponible para sincronización');
+                    }
+                    
+                    const estadoSincronizacion = {
+                        type: 'sincronizarEstado',
+                        origen: 'padre',
+                        destino: 'hijo4',
+                        timestamp: Date.now(),
+                        estado: {
+                            modo: estadoGlobal.modo || 'aventura',
+                            retoActivo: estadoGlobal.datosCompartidos?.reto?.activo || false,
+                            retoCompletado: estadoGlobal.datosCompartidos?.reto?.completado || false,
+                            retoId: estadoGlobal.datosCompartidos?.reto?.id || null,
+                            paradaActual: estadoGlobal.puntoActual?.id || null,
+                            puntoActual: estadoGlobal.puntoActual || null,
+                            timestamp: Date.now()
+                        }
+                    };
+                    
+                    console.log('📤 PADRE: Enviando estado de sincronización:', estadoSincronizacion);
+                    iframeHijo4.contentWindow.postMessage(estadoSincronizacion, '*');
+                    
+                } catch (error) {
+                    console.error('❌ PADRE: Error al procesar solicitud de sincronización:', error);
+                    
+                    // Notificar error al remitente si es posible
+                    if (event?.source) {
+                        try {
+                            event.source.postMessage({
+                                type: 'error',
+                                error: error.message || 'Error al sincronizar estado',
+                                timestamp: Date.now(),
+                                originalType: 'solicitarSincronizacion'
+                            }, event.origin);
+                        } catch (postError) {
+                            console.error('Error al notificar error de sincronización:', postError);
+                        }
+                    }
+                }
+                break;
+            }
+                        
+            case 'cambioModo': {
+                console.log(`🔄 PADRE: Hijo4 notifica cambio de modo a ${data?.modo || 'desconocido'}`);
+                
+                try {
+                    // Validar datos del mensaje
+                    if (!data || typeof data !== 'object' || !data.modo) {
+                        throw new Error('Datos de cambio de modo no válidos');
+                    }
+                    
+                    const nuevoModo = data.modo;
+                    const timestamp = Date.now();
+                    
+                    // Validar que el modo sea uno de los permitidos
+                    const modosPermitidos = ['casa', 'aventura'];
+                    if (!modosPermitidos.includes(nuevoModo)) {
+                        throw new Error(`Modo no válido: ${nuevoModo}`);
+                    }
+                    
+                    // Actualizar estado global
+                    console.log(`🔄 PADRE: Actualizando estado global a modo ${nuevoModo}`);
+                    await actualizarEstadoGlobal({
+                        modo: nuevoModo,
+                        ultimaActualizacion: timestamp,
+                        // Actualizar también en datosCompartidos si es necesario
+                        datosCompartidos: {
+                            ...estadoGlobal.datosCompartidos,
+                            modo: nuevoModo,
+                            ultimaActualizacion: timestamp
+                        }
+                    });
+                    
+                    // Notificar al hijo3 (audio) sobre el cambio de modo
+                    const hijo3Modo = document.getElementById('hijo3');
+                    if (hijo3Modo?.contentWindow) {
+                        try {
+                            const mensajeCambioModo = {
                                 type: 'cambioModo',
-                                modo: data.modo,
-                                timestamp: Date.now()
-                            }, '*');
-                            console.log(`📤 PADRE: Notificado cambio de modo a hijo3: ${data.modo}`);
+                                modo: nuevoModo,
+                                timestamp: timestamp,
+                                origen: 'hijo4',
+                                forzar: data.forzar || false
+                            };
+                            
+                            console.log(`📤 PADRE: Notificando cambio de modo a hijo3:`, mensajeCambioModo);
+                            hijo3Modo.contentWindow.postMessage(mensajeCambioModo, '*');
+                        } catch (audioError) {
+                            console.error('Error al notificar cambio de modo a hijo3:', audioError);
                         }
-                        break;
-                        
-                    case 'puzzleCompletado':
-                        console.log('🏅 PADRE: Puzzle completado:', data.puzzleId);
-                        
-                        // Ocultar el iframe del puzzle
-                        const iframePuzzle = document.getElementById('hijo4');
-                        if (iframePuzzle) {
-                            iframePuzzle.style.display = 'none';
-                            console.log('👋 PADRE: Iframe de puzzle oculto');
+                    }
+                    
+                    // Notificar al remitente que el cambio de modo se procesó correctamente
+                    if (event?.source) {
+                        try {
+                            event.source.postMessage({
+                                type: 'confirmacionCambioModo',
+                                modo: nuevoModo,
+                                timestamp: timestamp,
+                                exito: true
+                            }, event.origin);
+                        } catch (postError) {
+                            console.error('Error al confirmar cambio de modo:', postError);
                         }
-                        
+                    }
+                    
+                } catch (error) {
+                    console.error('❌ PADRE: Error al procesar cambio de modo:', error);
+                    
+                    // Notificar error al remitente si es posible
+                    if (event?.source) {
+                        try {
+                            event.source.postMessage({
+                                type: 'error',
+                                error: error.message || 'Error al cambiar el modo',
+                                timestamp: Date.now(),
+                                originalType: 'cambioModo',
+                                modoOriginal: data?.modo
+                            }, event.origin);
+                        } catch (postError) {
+                            console.error('Error al notificar error de cambio de modo:', postError);
+                        }
                         // Actualizar estado global
                         actualizarEstadoGlobal({
                             reto: {
@@ -4553,10 +4870,10 @@ function avanzarSiguientePunto() {
             }
         }
         
-        // Hacer que las funciones estén disponibles globalmente
-        window.enableControls = enableControls;
-        window.disableControls = disableControls;
-        window.manejarCambioModo = manejarCambioModo;
+        // Hacer las funciones accesibles globalmente (solo una vez)
+        if (!window.enableControls) window.enableControls = enableControls;
+        if (!window.disableControls) window.disableControls = disableControls;
+        if (!window.manejarCambioModo) window.manejarCambioModo = manejarCambioModo;
         window.actualizarEstadoGlobal = actualizarEstadoGlobal;
         window.enviarMensaje = enviarMensaje;
         window.manejarMensajeHijo2 = manejarMensajeHijo2;
