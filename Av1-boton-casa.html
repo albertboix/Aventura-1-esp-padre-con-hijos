@@ -194,7 +194,7 @@
         
         try {
           // Usar el sistema de mensajería con reintentos
-          await window.Mensajeria.enviarMensajeConReintenos(
+          await window.Mensajeria.enviarMensaje(
             'padre',
             TIPOS_MENSAJE.CAMBIO_ESTADO,
             mensaje.datos,
@@ -441,7 +441,7 @@
           
           // Enviar la respuesta
           if (window.Mensajeria) {
-            await window.Mensajeria.enviarMensajeConReintenos(
+            await window.Mensajeria.enviarMensaje(
               mensaje.origen || 'padre',
               'respuesta_estado',
               datosRespuesta,
@@ -469,7 +469,7 @@
           // Intentar notificar el error
           try {
             if (window.Mensajeria) {
-              await window.Mensajeria.enviarMensajeConReintenos(
+              await window.Mensajeria.enviarMensaje(
                 mensaje.origen || 'padre',
                 'error_solicitud_estado',
                 {
@@ -579,7 +579,7 @@
           // Notificar el error sin reintentos para evitar bucles
           try {
             if (window.Mensajeria) {
-              await window.Mensajeria.enviarMensajeConReintenos(
+              await window.Mensajeria.enviarMensaje(
                 mensaje.origen || 'padre',
                 'error_procesamiento_confirmacion',
                 {
@@ -605,7 +605,7 @@
         
         if (window.Mensajeria) {
           try {
-            await window.Mensajeria.enviarMensajeConReintenos(
+            await window.Mensajeria.enviarMensaje(
               'padre',
               'error',
               {
@@ -1295,7 +1295,7 @@
         // Notificar al padre
         if (window.Mensajeria) {
           // Usar el sistema de mensajería si está disponible
-          await Mensajeria.enviarMensajeConReintenos(
+          await Mensajeria.enviarMensaje(
             'padre',
             'sistema:controles_habilitados',
             { 
@@ -1361,7 +1361,7 @@
         // Notificar al padre
         if (window.Mensajeria) {
           // Usar el sistema de mensajería si está disponible
-          await Mensajeria.enviarMensajeConReintenos(
+          await Mensajeria.enviarMensaje(
             'padre',
             'sistema:controles_deshabilitados',
             { 
@@ -1718,7 +1718,7 @@
       // Notificar al padre del cambio de modo usando Mensajeria API
       const modo = gpsOn ? 'aventura' : 'casa';
       if (window.Mensajeria) {
-        Mensajeria.enviarMensajeConReintenos(
+        Mensajeria.enviarMensaje(
           'padre',
           'cambioModo',
           {
@@ -2164,144 +2164,9 @@
       inicializarAplicacion();
     }
     
-    // ================== MANEJO DE MENSAJES ==================
-    
-    /**
-     * Envía un mensaje al iframe padre con manejo de errores y reintentos
-     * @param {string} tipo - Tipo de mensaje
-     * @param {Object} datos - Datos a enviar
-     * @param {Object} [opciones] - Opciones adicionales
-     * @param {number} [opciones.reintentos=3] - Número de reintentos en caso de fallo
-     * @param {number} [opciones.tiempoEspera=1000] - Tiempo de espera entre reintentos en ms
-     * @param {boolean} [opciones.esencial=true] - Si es true, se reintentará incluso si falla
-     * @returns {Promise<Object>} Respuesta del padre
-     */
-    async function enviarMensajeAlPadre(tipo, datos = {}, opciones = {}) {
-      const ID_TRANSACCION = `msg-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-      const config = {
-        reintentos: opciones.reintentos ?? 3,
-        tiempoEspera: opciones.tiempoEspera ?? 1000,
-        esencial: opciones.esencial ?? true
-      };
-      
-      const log = (nivel, mensaje, datos = {}) => {
-        console[nivel](`[${CONFIG.IFRAME_ID}] [${ID_TRANSACCION}] ${mensaje}`, datos);
-      };
-      
-      log('debug', 'Enviando mensaje al padre', { 
-        tipo, 
-        datos,
-        config
-      });
-      
-      let ultimoError = null;
-      
-      for (let intento = 1; intento <= config.reintentos; intento++) {
-        try {
-          if (intento > 1) {
-            log('info', `Reintentando mensaje (${intento}/${config.reintentos})`);
-            await new Promise(resolve => setTimeout(resolve, config.tiempoEspera * (intento - 1)));
-          }
-          
-          const mensaje = {
-            tipo,
-            origen: CONFIG.IFRAME_ID,
-            idTransaccion: ID_TRANSACCION,
-            timestamp: new Date().toISOString(),
-            datos: {
-              ...datos,
-              intento,
-              totalReintentos: config.reintentos
-            }
-          };
-          
-          // Usar Mensajeria si está disponible, si no usar postMessage directo
-          if (window.Mensajeria) {
-            const respuesta = await window.Mensajeria.enviarMensajeConReintenos(
-              'padre',
-              tipo,
-              mensaje.datos,
-              {
-                reintentos: config.reintentos,
-                tiempoEspera: config.tiempoEspera
-              }
-            );
-            
-            log('debug', 'Mensaje enviado a través de Mensajeria', { respuesta });
-            return respuesta;
-          } else if (window.parent) {
-            // Fallback a postMessage si Mensajeria no está disponible
-            return new Promise((resolve, reject) => {
-              const handleRespuesta = (event) => {
-                if (event.data?.idTransaccion === ID_TRANSACCION) {
-                  window.removeEventListener('message', handleRespuesta);
-                  
-                  if (event.data.estado === 'error') {
-                    const error = new Error(event.data.mensaje || 'Error en la respuesta del padre');
-                    error.datos = event.data;
-                    reject(error);
-                  } else {
-                    resolve(event.data);
-                  }
-                }
-              };
-              
-              window.addEventListener('message', handleRespuesta);
-              
-              // Establecer timeout para la respuesta
-              setTimeout(() => {
-                window.removeEventListener('message', handleRespuesta);
-                reject(new Error(`Timeout al esperar respuesta para mensaje ${tipo}`));
-              }, 10000); // 10 segundos de timeout
-              
-              // Enviar el mensaje
-              window.parent.postMessage(mensaje, '*');
-              log('debug', 'Mensaje enviado a través de postMessage', mensaje);
-            });
-          } else {
-            throw new Error('No hay forma de comunicarse con el padre');
-          }
-          
-        } catch (error) {
-          ultimoError = error;
-          log('warn', `Error al enviar mensaje (intento ${intento}/${config.reintentos})`, {
-            error: error.message,
-            stack: error.stack
-          });
-          
-          // Si no es el último intento y es un error recuperable, continuar
-          if (intento < config.reintentos && 
-              error.name !== 'TypeError' && 
-              !error.message.includes('No hay forma de comunicarse')) {
-            continue;
-          }
-          
-          // Si es un error crítico o es el último intento, lanzar el error
-          if (config.esencial || intento === config.reintentos) {
-            const errorFinal = new Error(`No se pudo enviar el mensaje después de ${intento} intentos: ${error.message}`);
-            errorFinal.codigo = 'ERROR_ENVIO_MENSAJE';
-            errorFinal.intentos = intento;
-            errorFinal.errorOriginal = error;
-            
-            log('error', 'Error crítico al enviar mensaje', {
-              error: errorFinal.message,
-              stack: errorFinal.stack,
-              intentos: intento
-            });
-            
-            // Notificar al usuario si es un error crítico
-            if (config.esencial) {
-              mostrarError(`Error de comunicación: ${error.message}`);
-            }
-            
-            throw errorFinal;
-          }
-        }
-      }
-      
-      // Este punto no debería alcanzarse, pero por si acaso
-      throw ultimoError || new Error('Error desconocido al enviar mensaje');
-    }
+    // ================== FUNCIÓN DE MENSAJERÍA DUPLICADA ELIMINADA ==================
+    // Función enviarMensajeAlPadre eliminada para evitar duplicación.
+    // La comunicación se realiza a través del sistema centralizado en mensajeria.js
     
     /**
      * Maneja el cambio de modo de la aplicación
@@ -2865,7 +2730,7 @@
       
       // Notificar al padre usando mensajería
       if (window.Mensajeria) {
-        Mensajeria.enviarMensajeConReintenos(
+        Mensajeria.enviarMensaje(
           'padre', 
           'sistema:inicializacion', 
           { 
