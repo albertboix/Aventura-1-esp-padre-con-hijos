@@ -7,54 +7,137 @@
 import { Mensajeria, TIPOS_MENSAJE } from './mensajeria.js';
 
 // Estado del módulo
-let mapa;
+let mapa = null;
 const marcadoresParadas = new Map();
 let paradasCargadas = new Map();
+let manejadorActualizacionParada = null;
+let estaInicializado = false;
 
 /**
  * Inicializa el mapa y configura los manejadores de mensajes
+ * @returns {boolean} true si la inicialización fue exitosa
  */
 export function inicializarMapa() {
     try {
+        if (estaInicializado) {
+            console.warn('El mapa ya está inicializado');
+            return true;
+        }
+
         // Verificar que exista el contenedor del mapa
         const contenedorMapa = document.getElementById('mapa');
         if (!contenedorMapa) {
             console.error('No se encontró el elemento con id="mapa"');
-            return;
+            return false;
+        }
+
+        // Verificar que Leaflet esté disponible
+        if (typeof L === 'undefined') {
+            console.error('Error: Leaflet no está cargado');
+            return false;
         }
 
         // Inicializar el mapa de Leaflet
         mapa = L.map('mapa').setView([39.4699, -0.3763], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 19,
+            minZoom: 10
         }).addTo(mapa);
 
         console.log('Mapa inicializado correctamente');
         
+        // Configurar eventos del mapa
+        configurarEventosMapa();
+        
         // Registrar manejadores de mensajes
-        registrarManejadores();
+        if (!registrarManejadores()) {
+            console.error('Error al registrar manejadores de mensajes');
+            return false;
+        }
         
         // Cargar paradas iniciales
         cargarParadasIniciales();
         
+        estaInicializado = true;
+        return true;
+        
     } catch (error) {
         console.error('Error al inicializar el mapa:', error);
+        return false;
     }
 }
 
 /**
+ * Configura los eventos del mapa
+ */
+function configurarEventosMapa() {
+    if (!mapa) return;
+
+    // Evento de zoom
+    mapa.on('zoomend', () => {
+        console.log('Nivel de zoom actualizado:', mapa.getZoom());
+    });
+
+    // Evento de movimiento del mapa
+    mapa.on('moveend', () => {
+        const center = mapa.getCenter();
+        console.log('Mapa movido a:', center);
+        // Opcional: Cargar paradas visibles en la vista actual
+        // cargarParadasEnVista(center, mapa.getZoom());
+    });
+
+    // Manejar clics en el mapa
+    mapa.on('click', (e) => {
+        console.log('Clic en coordenadas:', e.latlng);
+    });
+}
+
+/**
  * Registra los manejadores de mensajes
+ * @returns {boolean} true si se registraron correctamente
  */
 function registrarManejadores() {
-    // Manejar actualizaciones de paradas
-    Mensajeria.registrarControlador(TIPOS_MENSAJE.DATOS.ACTUALIZACION_PARADA, (mensaje) => {
-        const { paradaId, datos } = mensaje.datos;
-        if (datos) {
-            actualizarMarcadorParada(paradaId, datos);
+    try {
+        // Limpiar manejadores anteriores si existen
+        if (manejadorActualizacionParada) {
+            Mensajeria.removerControlador(TIPOS_MENSAJE.DATOS.ACTUALIZACION_PARADA, manejadorActualizacionParada);
         }
-    });
-    
-    console.log('Manejadores de mensajes registrados');
+
+        // Manejar actualizaciones de paradas
+        manejadorActualizacionParada = (mensaje) => {
+            try {
+                const { paradaId, datos } = mensaje.datos || {};
+                
+                if (!paradaId) {
+                    console.error('Mensaje de actualización sin ID de parada:', mensaje);
+                    return;
+                }
+                
+                if (datos) {
+                    console.log(`Actualizando marcador para parada ${paradaId}`);
+                    actualizarMarcadorParada(paradaId, datos);
+                } else {
+                    console.warn(`Mensaje sin datos para parada ${paradaId}`);
+                }
+            } catch (error) {
+                console.error('Error procesando actualización de parada:', error, mensaje);
+            }
+        };
+
+        // Registrar el manejador
+        Mensajeria.registrarControlador(
+            TIPOS_MENSAJE.DATOS.ACTUALIZACION_PARADA, 
+            manejadorActualizacionParada
+        );
+        
+        console.log('Manejadores de mensajes registrados correctamente');
+        return true;
+        
+    } catch (error) {
+        console.error('Error al registrar manejadores:', error);
+        return false;
+    }
 }
 
 /**
@@ -135,14 +218,62 @@ function actualizarMarcadorParada(paradaId, datosParada) {
     paradasCargadas.set(paradaId, datosParada);
 }
 
-// Inicializar el mapa cuando el DOM esté listo
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', inicializarMapa);
-} else {
-    setTimeout(inicializarMapa, 0);
+/**
+ * Limpia los recursos del módulo
+ */
+export function limpiarRecursos() {
+    try {
+        // Limpiar manejadores de mensajes
+        if (manejadorActualizacionParada) {
+            Mensajeria.removerControlador(TIPOS_MENSAJE.DATOS.ACTUALIZACION_PARADA, manejadorActualizacionParada);
+            manejadorActualizacionParada = null;
+        }
+        
+        // Limpiar el mapa
+        if (mapa) {
+            mapa.off(); // Remover todos los manejadores de eventos
+            mapa.remove();
+            mapa = null;
+        }
+        
+        // Limpiar colecciones
+        marcadoresParadas.clear();
+        paradasCargadas.clear();
+        
+        estaInicializado = false;
+        console.log('Recursos del mapa liberados correctamente');
+        
+    } catch (error) {
+        console.error('Error al limpiar recursos del mapa:', error);
+    }
 }
+
+// Inicializar el mapa cuando el DOM esté listo
+function inicializar() {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', inicializarMapa);
+    } else {
+        // Usar un pequeño retraso para asegurar que todo esté listo
+        setTimeout(() => {
+            if (!inicializarMapa()) {
+                console.error('No se pudo inicializar el mapa correctamente');
+            }
+        }, 100);
+    }
+}
+
+// Iniciar la aplicación
+inicializar();
+
+// Manejar recarga de la página
+window.addEventListener('beforeunload', () => {
+    limpiarRecursos();
+});
 
 // Exportar las funciones que necesiten ser accesibles desde otros módulos
 export default {
-    inicializarMapa
+    inicializarMapa,
+    limpiarRecursos,
+    actualizarMarcadorParada,
+    cargarDatosParada
 };
