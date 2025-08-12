@@ -178,6 +178,41 @@
             color: #666;
         }
         
+        .btn-modo {
+            background-color: #f0f0f0;
+            border: 1px solid #ccc;
+            padding: 8px 15px;
+            margin: 0 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-modo.active {
+            background-color: #2196F3;
+            color: white;
+            border-color: #1976D2;
+        }
+        
+        .btn-nav {
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+        }
+        
+        .btn-nav:hover {
+            background-color: #1976D2;
+            transform: translateY(-2px);
+        }
+        
         .btn-navegar {
             background-color: #2196F3;
             color: white;
@@ -259,6 +294,9 @@
         }
     </style>
     
+    <!-- Font Awesome para iconos -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
@@ -273,6 +311,27 @@
 <body>
     <!-- Contenedor del mapa -->
     <div id="mapa" style="width: 100%; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1;"></div>
+    
+    <!-- Logo de la aplicación -->
+    <img id="logo-aventura" src="https://valenciavguides.github.io/Aventura-1-esp-padre-con-hijos/fotos_Av1/LOGO%20LETRAS%20FINAL%20transparente%20recorte.png" 
+         alt="Logo" 
+         style="position: fixed; top: -32px; left: 50%; transform: translateX(-50%); z-index: 3000; width: 360px; height: 140px;" />
+    
+    <!-- Controles de modo -->
+    <div id="modo-controls" style="position: fixed; top: 100px; left: 20px; z-index: 3000; background: rgba(255, 255, 255, 0.9); padding: 10px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2);">
+        <button id="modo-casa" class="btn-modo active" data-modo="casa">Modo Casa</button>
+        <button id="modo-aventura" class="btn-modo" data-modo="aventura">Modo Aventura</button>
+    </div>
+    
+    <!-- Botones de navegación -->
+    <div id="nav-buttons" style="position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 3000; display: flex; gap: 10px;">
+        <button id="btn-mapa" class="btn-nav" title="Abrir Mapa">
+            <i class="fas fa-map"></i> Mapa
+        </button>
+        <button id="btn-brujula" class="btn-nav" title="Abrir Brújula">
+            <i class="fas fa-compass"></i> Brújula
+        </button>
+    </div>
 
     <!-- Logo de la aplicación -->
     <img id="logo-aventura" 
@@ -300,23 +359,503 @@
         import { Mensajeria, TIPOS_MENSAJE } from './mensajeria.js';
         
         // Variables globales
-        let estadoGlobal = {
-            mapa: null,
-            modo: 'inactivo',
-            paradaActual: null,
-            tramoActual: null,
+        
+        // URLs de los iframes hijos
+        const HIJOS_URLS = {
+            audio: 'Av1_audio_esp.html',
+            coordenadas: 'Av1-botones-coordenadas.html',
+            retos: 'Av1-esp-retos-preguntas.html',
+            casa: 'Av1-boton-casa.html'
+        };
+        
+        // Estado de los iframes
+        const iframes = {
+            audio: null,
+            coordenadas: null,
+            retos: null,
+            casa: null
+        };
+        
+        // Elementos del DOM
+        const domElements = {};
+        
+        // Inicializar elementos del DOM
+        function initDOMElements() {
+            domElements.modoCasa = document.getElementById('modo-casa');
+            domElements.modoAventura = document.getElementById('modo-aventura');
+            domElements.btnMapa = document.getElementById('btn-mapa');
+            domElements.btnBrujula = document.getElementById('btn-brujula');
+            domElements.mapa = document.getElementById('mapa');
+            domElements.logo = document.getElementById('logo-aventura');
+            
+            // Crear iframes dinámicamente
+            createIframes();
+        }
+        
+        // Crear iframes dinámicamente
+        function createIframes() {
+            // Iframe de audio
+            iframes.audio = createIframe('hijo-audio', HIJOS_URLS.audio, {
+                position: 'fixed',
+                bottom: '20px',
+                right: '20px',
+                width: '300px',
+                height: '100px',
+                zIndex: '2000',
+                border: 'none',
+                borderRadius: '10px',
+                boxShadow: '0 2px 10px rgba(0,0,0,0.2)'
+            });
+            
+            // Iframe de coordenadas
+            iframes.coordenadas = createIframe('hijo-coordenadas', HIJOS_URLS.coordenadas, {
+                position: 'fixed',
+                bottom: '20px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: '90%',
+                maxWidth: '500px',
+                height: '80px',
+                zIndex: '2000',
+                border: 'none',
+                borderRadius: '10px',
+                boxShadow: '0 2px 10px rgba(0,0,0,0.2)'
+            });
+            
+            // Iframe de retos
+            iframes.retos = createIframe('hijo-retos', HIJOS_URLS.retos, {
+                position: 'fixed',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: '90%',
+                maxWidth: '600px',
+                height: '70vh',
+                maxHeight: '600px',
+                zIndex: '3000',
+                border: 'none',
+                borderRadius: '10px',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+                display: 'none' // Inicialmente oculto
+            });
+            
+            // Iframe de casa
+            iframes.casa = createIframe('hijo-casa', HIJOS_URLS.casa, {
+                position: 'fixed',
+                top: '20px',
+                right: '20px',
+                width: '50px',
+                height: '50px',
+                zIndex: '3000',
+                border: 'none',
+                borderRadius: '50%',
+                overflow: 'hidden',
+                boxShadow: '0 2px 10px rgba(0,0,0,0.2)'
+            });
+        }
+        
+        // Función auxiliar para crear iframes
+        function createIframe(id, src, styles) {
+            const iframe = document.createElement('iframe');
+            iframe.id = id;
+            iframe.src = src;
+            iframe.allow = 'geolocation';
+            
+            // Aplicar estilos
+            Object.assign(iframe.style, styles);
+            
+            // Agregar al body
+            document.body.appendChild(iframe);
+            
+            return iframe;
+        }
+        
+        // Inicializar manejadores de eventos
+        function initEventListeners() {
+            // Manejadores de modo
+            domElements.modoCasa?.addEventListener('click', () => cambiarModo('casa'));
+            domElements.modoAventura?.addEventListener('click', () => cambiarModo('aventura'));
+            
+            // Manejadores de botones de navegación
+            domElements.btnMapa?.addEventListener('click', abrirMapa);
+            domElements.btnBrujula?.addEventListener('click', abrirBrujula);
+            
+            // Manejador de mensajes de los iframes hijos
+            window.addEventListener('message', manejarMensajeHijo);
+        }
+        
+        // Cambiar entre modos
+        function cambiarModo(modo) {
+            if (estadoGlobal.modo === modo) return;
+            
+            // Actualizar estado
+            estadoGlobal.modo = modo;
+            
+            // Actualizar interfaz
+            if (modo === 'casa') {
+                domElements.modoCasa.classList.add('active');
+                domElements.modoAventura.classList.remove('active');
+                // Ocultar elementos específicos de aventura
+                if (iframes.coordenadas) iframes.coordenadas.style.display = 'none';
+            } else {
+                domElements.modoAventura.classList.add('active');
+                domElements.modoCasa.classList.remove('active');
+                // Mostrar elementos específicos de aventura
+                if (iframes.coordenadas) iframes.coordenadas.style.display = 'block';
+            }
+            
+            // Notificar a los hijos del cambio de modo
+            enviarMensajeATodos('sistema:cambioModo', { modo });
+            
+            console.log(`Modo cambiado a: ${modo}`);
+        }
+        
+        // Abrir mapa en nueva pestaña
+        function abrirMapa() {
+            window.open('mapa.html', '_blank');
+        }
+        
+        // Abrir brújula en nueva pestaña
+        function abrirBrujula() {
+            window.open('brujula.html', '_blank');
+        }
+        
+        // Enviar mensaje a todos los iframes hijos
+        function enviarMensajeATodos(tipo, datos = {}) {
+            Object.values(iframes).forEach(iframe => {
+                if (iframe && iframe.contentWindow) {
+                    iframe.contentWindow.postMessage({ tipo, datos }, '*');
+                }
+            });
+        }
+        
+        // ================== CONSTANTES ==================
+        const ERROR_TIMEOUT = 5000; // 5 segundos de timeout para operaciones asíncronas
+        const NOTIFICATION_DURATION = 5000; // 5 segundos para mostrar notificaciones
+        const MONITOR_INTERVAL = 30000; // 30 segundos para el intervalo de monitoreo
+        const INACTIVITY_THRESHOLD = 30000; // 30 segundos de inactividad
+        const MAX_RETRY_ATTEMPTS = 3; // Número máximo de reintentos
+        const RETRY_DELAY = 1000; // 1 segundo entre reintentos
+        
+        // ================== MANEJADORES DE ESTADO ==================
+        
+        /**
+         * Maneja el inicio de un reto
+         * @param {Object} datos - Datos del reto iniciado
+         * @throws {Error} Si los datos del reto no son válidos
+         */
+        function manejarRetoIniciado(datos) {
+            const { retoId, paradaId } = datos;
+            console.log(`🏁 Reto iniciado: ${retoId} en parada ${paradaId}`);
+            
+            // Actualizar estado global
+            estadoGlobal.retoActivo = {
+                id: retoId,
+                paradaId,
+                inicio: new Date(),
+                completado: false
+            };
+            
+            // Notificar a otros componentes
+            enviarMensajeATodos('reto:estado', {
+                retoId,
+                paradaId,
+                estado: 'iniciado',
+                timestamp: new Date().toISOString()
+            });
+            
+            // Mostrar indicador de reto activo en la interfaz
+            mostrarMensajeInterfaz({
+                tipo: 'info',
+                titulo: 'Reto Iniciado',
+                mensaje: `Has comenzado el reto en la parada ${paradaId}`,
+                duracion: 5000
+            });
+        }
+        
+        /**
+         * Maneja la finalización de un reto
+         * @param {Object} datos - Datos del reto completado
+         */
+        /**
+         * Maneja la finalización de un reto
+         * @param {Object} datos - Datos del reto completado
+         * @throws {Error} Si los datos del reto no son válidos
+         */
+        /**
+         * Maneja la finalización de un reto
+         * @param {Object} mensaje - Mensaje con los datos del reto completado
+         * @throws {Error} Si los datos del reto no son válidos
+         */
+        function manejarRetoCompletado(mensaje) {
+            if (!mensaje || typeof mensaje !== 'object' || !mensaje.datos) {
+                throw new Error('Mensaje de reto completado no válido');
+            }
+            
+            const { datos } = mensaje;
+            if (typeof datos !== 'object') {
+                throw new Error('Datos de reto no válidos');
+            }
+            const { retoId, paradaId, exito, puntos } = datos;
+            const tiempoTranscurrido = estadoGlobal.retoActivo 
+                ? (new Date() - estadoGlobal.retoActivo.inicio) / 1000 
+                : null;
+            
+            console.log(`✅ Reto completado: ${retoId} en parada ${paradaId} - Éxito: ${exito}, Puntos: ${puntos || 0}`);
+            
+            // Actualizar estado global
+            if (estadoGlobal.retoActivo) {
+                estadoGlobal.retoActivo.completado = true;
+                estadoGlobal.retoActivo.exito = exito;
+                estadoGlobal.retoActivo.puntos = puntos || 0;
+                estadoGlobal.retoActivo.fin = new Date();
+                estadoGlobal.retoActivo.tiempo = tiempoTranscurrido;
+                
+                // Registrar en el historial
+                estadoGlobal.historialRetos = estadoGlobal.historialRetos || [];
+                estadoGlobal.historialRetos.push({...estadoGlobal.retoActivo});
+                
+                // Actualizar estadísticas
+                if (exito && puntos) {
+                    estadoGlobal.estadisticas = estadoGlobal.estadisticas || {};
+                    estadoGlobal.estadisticas.puntosTotales = (estadoGlobal.estadisticas.puntosTotales || 0) + puntos;
+                    estadoGlobal.estadisticas.retosCompletados = (estadoGlobal.estadisticas.retosCompletados || 0) + 1;
+                }
+            }
+            
+            // Notificar a otros componentes
+            enviarMensajeATodos('reto:estado', {
+                retoId,
+                paradaId,
+                estado: 'completado',
+                exito,
+                puntos: puntos || 0,
+                tiempo: tiempoTranscurrido,
+                timestamp: new Date().toISOString()
+            });
+            
+            // Mostrar resultado en la interfaz
+            const mensaje = exito 
+                ? `¡Reto completado con éxito! +${puntos} puntos`
+                : 'El reto no se pudo completar';
+                
+            mostrarMensajeInterfaz({
+                tipo: exito ? 'exito' : 'error',
+                titulo: exito ? '¡Éxito!' : 'Inténtalo de nuevo',
+                mensaje: mensaje,
+                duracion: 5000
+            });
+        }
+        
+        /**
+         * Maneja la reproducción de audio
+         * @param {Object} datos - Datos del audio a reproducir
+         */
+        function manejarReproducirAudio(datos) {
+            const { audioId, volumen = 1, loop = false } = datos;
+            console.log(`🔊 Reproduciendo audio: ${audioId}`);
+            
+            // Aquí iría la lógica para reproducir el audio
+            // Por ejemplo, podrías tener un reproductor de audio en el padre
+            // o delegar la reproducción a un iframe específico
+            
+            // Notificar a otros componentes
+            enviarMensajeATodos('audio:estado', {
+                audioId,
+                estado: 'reproduciendo',
+                timestamp: new Date().toISOString()
+            });
+            
+            // Actualizar estado
+            estadoGlobal.audioActual = {
+                id: audioId,
+                inicio: new Date(),
+                volumen,
+                loop,
+                pausado: false
+            };
+        }
+        
+        /**
+         * Muestra un mensaje en la interfaz de usuario
+         * @param {Object} datos - Datos del mensaje a mostrar
+         */
+        /**
+         * Muestra un mensaje en la interfaz de usuario y lo elimina después de la duración especificada
+         * @param {Object} datos - Datos del mensaje a mostrar
+         * @param {string} [datos.tipo=info] - Tipo de mensaje (info, exito, error)
+         * @param {string} [datos.titulo=''] - Título del mensaje
+         * @param {string} [datos.mensaje=''] - Contenido del mensaje
+         * @param {number} [datos.duracion=3000] - Duración en milisegundos
+         */
+        function mostrarMensajeInterfaz(datos) {
+            if (!datos || typeof datos !== 'object') {
+                console.error('Datos de mensaje no válidos');
+                return;
+            }
+            
+            const { 
+                tipo = 'info', 
+                titulo = '', 
+                mensaje = '', 
+                duracion = NOTIFICATION_DURATION 
+            } = datos;
+            
+            console.log(`💬 [${tipo.toUpperCase()}] ${titulo}: ${mensaje}`);
+            
+            // Crear elemento de notificación
+            const notificacion = document.createElement('div');
+            notificacion.className = `notificacion notificacion-${tipo}`;
+            notificacion.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 15px 20px;
+                background: ${tipo === 'error' ? '#f44336' : tipo === 'exito' ? '#4CAF50' : '#2196F3'};
+                color: white;
+                border-radius: 4px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+                z-index: 5000;
+                max-width: 300px;
+                transform: translateX(120%);
+                transition: transform 0.3s ease;
+            `;
+            
+            if (titulo) {
+                const tituloEl = document.createElement('div');
+                tituloEl.style.fontWeight = 'bold';
+                tituloEl.style.marginBottom = '5px';
+                tituloEl.textContent = titulo;
+                notificacion.appendChild(tituloEl);
+            }
+            
+            if (mensaje) {
+                const mensajeEl = document.createElement('div');
+                mensajeEl.textContent = mensaje;
+                notificacion.appendChild(mensajeEl);
+            }
+            
+            document.body.appendChild(notificacion);
+            
+            // Animar entrada
+            setTimeout(() => {
+                notificacion.style.transform = 'translateX(0)';
+            }, 10);
+            
+            // Eliminar después de la duración especificada
+            const removeNotification = () => {
+                notificacion.style.transform = 'translateX(120%)';
+                const removeElement = () => {
+                    if (notificacion.parentNode) {
+                        notificacion.removeEventListener('transitionend', removeElement);
+                        notificacion.parentNode.removeChild(notificacion);
+                    }
+                };
+                notificacion.addEventListener('transitionend', removeElement);
+            };
+            
+            // Usar requestAnimationFrame para mejor rendimiento
+            requestAnimationFrame(() => {
+                setTimeout(removeNotification, duracion);
+            });
+        }
+        
+        // Manejador de mensajes de los iframes hijos
+        function manejarMensajeHijo(event) {
+            const { tipo, datos } = event.data || {};
+            
+            // Validar origen del mensaje
+            const iframe = Object.values(iframes).find(
+                iframe => iframe && iframe.contentWindow === event.source
+            );
+            
+            if (!iframe) return; // Mensaje de origen desconocido
+            
+            console.log(`Mensaje recibido de iframe ${iframe.id}:`, { tipo, datos });
+            
+            // Manejar diferentes tipos de mensajes
+            switch (tipo) {
+                case 'sistema:listo':
+                    // El iframe hijo está listo
+                    manejarHijoListo(iframe.id);
+                    break;
+                case 'navegacion:solicitudParada':
+                    // El iframe hijo solicita información de una parada
+                    manejarSolicitudParada(datos);
+                    break;
+                case 'navegacion:llegadaDestino':
+                    // El iframe hijo notifica llegada a un destino
+                    manejarLlegadaDestino(datos);
+                    break;
+                case 'reto:iniciado':
+                    // Un reto ha sido iniciado
+                    manejarRetoIniciado(datos);
+                    break;
+                case 'reto:completado':
+                    // Un reto ha sido completado
+                    manejarRetoCompletado(datos);
+                    break;
+                case 'audio:reproducir':
+                    // Reproducir un audio específico
+                    manejarReproducirAudio(datos);
+                    break;
+                case 'ui:mostrarMensaje':
+                    // Mostrar un mensaje en la interfaz
+                    mostrarMensajeInterfaz(datos);
+                    break;
+                // Agregar más manejadores según sea necesario
+            }
+        }
+        // Estado global de la aplicación
+        // ================== ESTADO GLOBAL MEJORADO ==================
+        const estadoGlobal = {
+            // Estado de la aplicación
+            modo: 'casa',
             gpsActivo: false,
+            paradaActual: 0,
+            tramoActual: 0,
+            
+            // Gestión de hijos
+            hijosListos: new Set(),
+            hijosConectados: new Map(), // Mapa de estado de conexión de hijos
+            
+            // Componentes
+            mapa: null,
             audioReproduciendo: false,
             retoActivo: null,
+            
+            // Datos
+            coordenadasParadas: new Map(),
+            marcadores: new Map(),
+            rutas: new Map(),
+            
+            // Estado del sistema
+            errores: [],
+            ultimaActualizacion: null,
+            version: '2.0.0',
+            
+            // Rendimiento
+            metricas: {
+                mensajesEnviados: 0,
+                mensajesRecibidos: 0,
+                ultimaComprobacion: Date.now()
+            },
+            
+            // Configuración
             config: {
-                debug: true,
                 maxReintentos: 3,
-                tiempoEsperaInicial: 1000
+                tiempoEsperaInicial: 1000,
+                debug: true,
+                tiempoEsperaHijos: 10000, // 10 segundos para que los hijos se conecten
+                intervaloMonitoreo: 30000, // Verificar estado de hijos cada 30 segundos
+                maxReintentosConexion: 3
             },
             coordenadasParadas: new Map(),
             marcadores: new Map(),
             rutas: new Map(),
             hijosConectados: new Map(),
+            grupoMarcadores: null,
+            intervaloMonitoreo: null,
             metricas: {
                 mensajesEnviados: 0,
                 mensajesRecibidos: 0,
@@ -330,18 +869,6 @@
         loadingEl.className = 'loading';
         loadingEl.textContent = 'Cargando mapa...';
         document.body.appendChild(loadingEl);
-        
-        // Estado global
-        const estadoGlobal = {
-            mapa: null,
-            modo: 'inactivo',
-            gpsActivo: false,
-            config: {
-                debug: true,
-                maxReintentos: 3,
-                tiempoEsperaInicial: 1000
-            }
-        };
         
         // ================== CONFIGURACIÓN GLOBAL ==================
         const CONFIG = {
@@ -617,127 +1144,222 @@
         /**
          * Crea los marcadores iniciales para todas las paradas
          */
-        function crearMarcadoresIniciales() {
-            if (!estadoGlobal.mapa) {
-                console.warn('No se pueden crear marcadores: el mapa no está inicializado');
-                return;
-            }
-            
-            // Inicializar el grupo de marcadores si no existe
-            if (!estadoGlobal.grupoMarcadores) {
-                estadoGlobal.grupoMarcadores = L.layerGroup().addTo(estadoGlobal.mapa);
-            } else {
-                // Limpiar marcadores existentes
-                estadoGlobal.grupoMarcadores.clearLayers();
-            }
-            
-            // Inicializar el mapa de marcadores si no existe
-            if (!estadoGlobal.marcadoresParadas) {
-                estadoGlobal.marcadoresParadas = new Map();
-            } else {
-                estadoGlobal.marcadoresParadas.clear();
-            }
-            
-            // Contadores para estadísticas
-            let marcadoresCreados = 0;
-            let errores = 0;
-            
-            // Recorrer todas las paradas y crear marcadores
-            AVENTURA_PARADAS.forEach(parada => {
-                // Solo procesar paradas e inicio, no tramos
-                if (parada.tipo !== 'parada' && parada.tipo !== 'inicio') {
-                    return;
-                }
-                
+        /**
+         * Crea los marcadores iniciales para todas las paradas
+         * @returns {Promise<boolean>} True si se crearon los marcadores correctamente
+         */
+        /**
+         * Crea los marcadores iniciales para todas las paradas
+         * @returns {Promise<boolean>} True si se crearon los marcadores correctamente
+         */
+        async function crearMarcadoresIniciales() {
+            return new Promise((resolve) => {
                 try {
-                    const marcador = crearMarcadorParada(parada);
-                    if (marcador) {
-                        estadoGlobal.marcadoresParadas.set(parada.parada_id, marcador);
-                        marcadoresCreados++;
+                    if (!estadoGlobal || !estadoGlobal.mapa) {
+                        console.warn('No se pueden crear marcadores: el mapa no está inicializado');
+                        resolve(false);
+                        return;
+                    }
+                    
+                    // Verificar si existen las coordenadas de las paradas
+                    if (!estadoGlobal.coordenadasParadas || estadoGlobal.coordenadasParadas.size === 0) {
+                        console.warn('No hay coordenadas disponibles para crear los marcadores');
+                        resolve(false);
+                        return;
+                    }
+                    
+                    try {
+                        // Inicializar el grupo de marcadores si no existe
+                        if (!estadoGlobal.grupoMarcadores) {
+                            estadoGlobal.grupoMarcadores = L.layerGroup().addTo(estadoGlobal.mapa);
+                        } else {
+                            // Limpiar marcadores existentes
+                            estadoGlobal.grupoMarcadores.clearLayers();
+                        }
+                        
+                        // Inicializar el mapa de marcadores si no existe
+                        if (!estadoGlobal.marcadoresParadas) {
+                            estadoGlobal.marcadoresParadas = new Map();
+                        } else {
+                            estadoGlobal.marcadoresParadas.clear();
+                        }
+                        
+                        // Contadores para estadísticas
+                        let marcadoresCreados = 0;
+                        let errores = 0;
+                        
+                        // Recorrer todas las paradas y crear marcadores
+                        AVENTURA_PARADAS.forEach(parada => {
+                            // Solo procesar paradas e inicio, no tramos
+                            if (parada.tipo !== 'parada' && parada.tipo !== 'inicio') {
+                                return;
+                            }
+                            
+                            try {
+                                const marcador = crearMarcadorParada(parada);
+                                if (marcador) {
+                                    estadoGlobal.marcadoresParadas.set(parada.parada_id, marcador);
+                                    marcadoresCreados++;
+                                }
+                            } catch (error) {
+                                console.error(`Error al crear marcador para ${parada.parada_id}:`, error);
+                                errores++;
+                            }
+                        });
+                        
+                        console.log(`✅ ${marcadoresCreados} marcadores creados, ${errores} errores`);
+                        resolve(marcadoresCreados > 0);
+                    } catch (error) {
+                        console.error('Error al crear marcadores iniciales:', error);
+                        resolve(false);
                     }
                 } catch (error) {
-                    console.error(`Error al crear marcador para ${parada.parada_id}:`, error);
-                    errores++;
+                    console.error('Error inesperado en crearMarcadoresIniciales:', error);
+                    resolve(false);
                 }
             });
-            
-            console.log(`✅ ${marcadoresCreados} marcadores creados, ${errores} errores`);
         }
         
         /**
          * Crea un marcador para una parada específica
          * @param {Object} parada - Objeto con los datos de la parada
-         * @returns {L.Marker} Marcador de Leaflet
+         * @returns {L.Marker|null} Marcador de Leaflet o null si no se pudo crear
          */
         function crearMarcadorParada(parada) {
-            const paradaId = parada.parada_id;
-            const coords = estadoGlobal.coordenadasParadas.get(paradaId);
+            try {
+                // Validar parámetros de entrada
+                if (!parada || typeof parada !== 'object') {
+                    console.error('Error: El parámetro parada no es un objeto válido');
+                    return null;
+                }
+
+                const paradaId = parada.parada_id;
+                
+                // Validar ID de parada
+                if (!paradaId || typeof paradaId !== 'string') {
+                    console.error('Error: ID de parada no válido:', paradaId);
+                    return null;
+                }
+                
+                // Obtener coordenadas
+                if (!estadoGlobal.coordenadasParadas || !(estadoGlobal.coordenadasParadas instanceof Map)) {
+                    console.error('Error: El mapa de coordenadas no está inicializado');
+                    return null;
+                }
+                
+                const coords = estadoGlobal.coordenadasParadas.get(paradaId);
+                
+                // Validar coordenadas
+                if (!Array.isArray(coords) || coords.length !== 2 || 
+                    typeof coords[0] !== 'number' || typeof coords[1] !== 'number') {
+                    console.error(`Coordenadas no válidas para la parada ${paradaId}:`, coords);
+                    return null;
+                }
+                
+                // Determinar la clase CSS según el tipo de parada
+                const esInicio = parada.tipo === 'inicio';
+                const claseIcono = esInicio ? 'marcador-inicio' : 'marcador-parada';
+                const numeroParada = paradaId.replace('P-', '');
+                
+                // Validar número de parada
+                if (!/^\d+$/.test(numeroParada) && !esInicio) {
+                    console.error('Número de parada no válido:', numeroParada);
+                    return null;
+                }
+                
+                // Crear icono personalizado
+                let icono;
+                try {
+                    icono = L.divIcon({
+                        className: `marcador ${claseIcono}`,
+                        html: `<div class="marcador-contenido">${numeroParada}</div>`,
+                        iconSize: esInicio ? [36, 36] : [32, 32],
+                        iconAnchor: esInicio ? [18, 36] : [16, 32],
+                        popupAnchor: [0, -32]
+                    });
+                } catch (error) {
+                    console.error('Error al crear el icono del marcador:', error);
+                    // Usar un marcador predeterminado en caso de error
+                    icono = L.icon({
+                        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+                        iconSize: [25, 41],
+                        iconAnchor: [12, 41],
+                        popupAnchor: [1, -34]
+                    });
+                }
+                
+                // Crear marcador
+                let marcador;
+                try {
+                    marcador = L.marker(coords, { 
+                        icon: icono,
+                        title: `Parada ${numeroParada}${esInicio ? ' (Inicio)' : ''}`,
+                        alt: `Marcador de ${esInicio ? 'inicio' : 'parada'} ${numeroParada}`,
+                        zIndexOffset: esInicio ? 1000 : 500,
+                        riseOnHover: true
+                    });
+                } catch (error) {
+                    console.error('Error al crear el marcador:', error);
+                    return null;
+                }
+                
+                // Configurar popup
+                try {
+                    const popupContent = `
+                        <div class="popup-parada">
+                            <h4>${esInicio ? 'Punto de Inicio' : 'Parada ' + numeroParada}</h4>
+                            <p>ID: ${paradaId}</p>
+                            ${parada.reto_id ? `<p><strong>Reto:</strong> ${parada.reto_id}</p>` : ''}
+                            <button class="btn-navegar" data-parada="${paradaId}">
+                                Navegar aquí
+                            </button>
+                        </div>
+                    `;
             
-            if (!coords) {
-                throw new Error(`Coordenadas no encontradas para la parada ${paradaId}`);
+                    // Añadir popup con contenido HTML
+                    marcador.bindPopup(popupContent, {
+                        maxWidth: 250,
+                        minWidth: 180,
+                        className: 'popup-parada-estilo',
+                        closeButton: true,
+                        autoClose: false,
+                        closeOnClick: false
+                    });
+                    
+                    // Manejar eventos del marcador
+                    marcador.on('click', function(e) {
+                        console.log(`Marcador de ${paradaId} clickeado`);
+                        // Centrar el mapa en el marcador con zoom
+                        estadoGlobal.mapa.setView(coords, 18);
+                    });
+                    
+                    // Añadir al grupo de marcadores
+                    if (estadoGlobal.grupoMarcadores) {
+                        marcador.addTo(estadoGlobal.grupoMarcadores);
+                    } else {
+                        console.error('Error: grupoMarcadores no está inicializado');
+                        return null;
+                    }
+                    
+                    return marcador;
+                } catch (error) {
+                    console.error('Error al configurar el marcador:', error);
+                    return null;
+                }
+            } catch (error) {
+                console.error('Error al crear el marcador:', error);
+                return null;
             }
-            
-            // Determinar la clase CSS según el tipo de parada
-            const esInicio = parada.tipo === 'inicio';
-            const claseIcono = esInicio ? 'marcador-inicio' : 'marcador-parada';
-            const numeroParada = paradaId.replace('P-', '');
-            
-            // Crear icono personalizado
-            const icono = L.divIcon({
-                className: `marcador ${claseIcono}`,
-                html: `<div class="marcador-contenido">${numeroParada}</div>`,
-                iconSize: esInicio ? [36, 36] : [32, 32],
-                iconAnchor: esInicio ? [18, 36] : [16, 32],
-                popupAnchor: [0, -32]
-            });
-            
-            // Crear marcador
-            const marcador = L.marker(coords, { 
-                icon: icono,
-                title: `Parada ${numeroParada}${esInicio ? ' (Inicio)' : ''}`,
-                alt: `Marcador de ${esInicio ? 'inicio' : 'parada'} ${numeroParada}`,
-                zIndexOffset: esInicio ? 1000 : 500, // Asegurar que el inicio esté por encima
-                riseOnHover: true
-            });
-            
-            // Configurar popup
-            const popupContent = `
-                <div class="popup-parada">
-                    <h4>${esInicio ? 'Punto de Inicio' : 'Parada ' + numeroParada}</h4>
-                    <p>ID: ${paradaId}</p>
-                    ${parada.reto_id ? `<p><strong>Reto:</strong> ${parada.reto_id}</p>` : ''}
-                    <button class="btn-navegar" data-parada="${paradaId}">
-                        Navegar aquí
-                    </button>
-                </div>
-            `;
-            
-            // Añadir popup con contenido HTML
-            marcador.bindPopup(popupContent, {
-                maxWidth: 250,
-                minWidth: 180,
-                className: 'popup-parada-estilo',
-                closeButton: true,
-                autoClose: false,
-                closeOnClick: false
-            });
-            
-            // Manejar eventos del marcador
-            marcador.on('click', function(e) {
-                console.log(`Marcador de ${paradaId} clickeado`);
-                // Centrar el mapa en el marcador con zoom
-                estadoGlobal.mapa.setView(coords, 18);
-            });
-            
-            // Añadir al grupo de marcadores
-            marcador.addTo(estadoGlobal.grupoMarcadores);
-            
-            return marcador;
         }
         
         /**
          * Muestra u oculta los marcadores de las paradas
          * @param {boolean} mostrar - Indica si mostrar u ocultar los marcadores
+         */
+        /**
+         * Muestra u oculta los marcadores de las paradas
+         * @param {boolean} [mostrar=true] - Indica si mostrar u ocultar los marcadores
+         * @returns {void}
          */
         function mostrarMarcadoresParadas(mostrar = true) {
             if (!estadoGlobal.grupoMarcadores) return;
@@ -928,11 +1550,20 @@
         /**
          * Inicializa el monitoreo de los componentes hijos
          */
+        /**
+         * Inicializa el monitoreo periódico de los componentes hijos
+         * @returns {number} ID del intervalo para poder limpiarlo después
+         */
         function inicializarMonitoreoHijos() {
             console.log('🔍 Iniciando monitoreo de componentes hijos...');
             
+            // Limpiar intervalo existente si lo hay
+            if (estadoGlobal.intervaloMonitoreo) {
+                clearInterval(estadoGlobal.intervaloMonitoreo);
+            }
+            
             // Configurar el monitoreo periódico
-            estadoGlobal.intervaloMonitoreo = setInterval(verificarEstadoHijos, 
+            return setInterval(verificarEstadoHijos, 
                 estadoGlobal.configuracion.intervaloMonitoreo);
                 
             // Configurar un temporizador para detectar hijos que no responden
@@ -1005,11 +1636,43 @@
          * @param {Object} datos - Datos del mensaje
          * @returns {Promise} Promesa que se resuelve cuando se envía el mensaje
          */
-        function enviarMensajeHijo(hijoId, tipo, datos) {
+        /**
+         * Envía un mensaje a un componente hijo con timeout
+         * @param {string} hijoId - ID del componente hijo
+         * @param {string} tipo - Tipo de mensaje
+         * @param {Object} [datos={}] - Datos del mensaje
+         * @returns {Promise<Object>} Respuesta del hijo
+         * @throws {Error} Si el mensaje falla o se excede el tiempo de espera
+         */
+        function enviarMensajeHijo(hijoId, tipo, datos = {}) {
+            if (!hijoId || !tipo) {
+                return Promise.reject(new Error('ID de hijo y tipo son requeridos'));
+            }
+            
             return new Promise((resolve, reject) => {
+                // Configurar timeout
+                const timeoutId = setTimeout(() => {
+                    reject(new Error(`Timeout al enviar mensaje a ${hijoId}`));
+                }, ERROR_TIMEOUT);
+                
                 try {
+                try {
+                    // Limpiar el timeout cuando se resuelva
+                    const limpiar = () => clearTimeout(timeoutId);
+                    
                     // Verificar si el hijo está en la lista de conocidos
                     const hijo = HIJOS_SISTEMA.find(h => h.id === hijoId);
+                    
+                    // Configurar manejo de resolución/rechazo con limpieza
+                    const resolver = (respuesta) => {
+                        limpiar();
+                        resolve(respuesta);
+                    };
+                    
+                    const rechazador = (error) => {
+                        limpiar();
+                        reject(error);
+                    };
                     if (!hijo) {
                         throw new Error(`Componente hijo desconocido: ${hijoId}`);
                     }
@@ -1065,6 +1728,10 @@
             // Obtener los tipos de mensaje que el hijo debería manejar
             const tiposMensajeHijo = MENSAJES_POR_TIPO[hijo.tipo] || [];
             
+            // Verificar si el tipo de mensaje está en la lista de mensajes que el hijo maneja
+            return tiposMensajeHijo.includes(tipoMensaje);
+        }
+        
             // Verificar si el tipo de mensaje está en la lista de mensajes que el hijo maneja
             return tiposMensajeHijo.some(tipo => tipo === tipoMensaje);
         }
@@ -1230,9 +1897,21 @@
          * Inicializa el mapa de Leaflet
          * @returns {Promise<L.Map>} Instancia del mapa de Leaflet
          */
+        /**
+         * Inicializa el mapa Leaflet
+         * @returns {Promise<L.Map>} Instancia del mapa
+         * @throws {Error} Si no se puede cargar Leaflet o inicializar el mapa
+         */
         async function inicializarMapa() {
             return new Promise((resolve, reject) => {
                 try {
+                    // Verificar si el contenedor del mapa existe
+                    const mapaContainer = document.getElementById('mapa');
+                    if (!mapaContainer) {
+                        throw new Error('No se encontró el contenedor del mapa');
+                    }
+                    
+                    // Verificar si Leaflet está cargado
                     if (typeof L === 'undefined') {
                         throw new Error('La biblioteca Leaflet no está cargada correctamente');
                     }
@@ -1246,7 +1925,10 @@
                         throw new Error('No se encontró el contenedor del mapa');
                     }
                     
+                    // Asegurarse de que el contenedor del mapa sea visible
                     mapContainer.style.display = 'block';
+                    mapContainer.style.width = '100%';
+                    mapContainer.style.height = '100%';
                     
                     // Crear instancia del mapa
                     const mapa = L.map('mapa', {
@@ -1259,7 +1941,8 @@
                         rotate: false,
                         touchRotate: false,
                         bearing: 0,
-                        preferCanvas: true
+                        preferCanvas: true,
+                        tap: false // Desactivar tap para evitar conflictos con dispositivos táctiles
                     });
                     
                     // Añadir capa base de OpenStreetMap
@@ -1274,8 +1957,11 @@
                         position: 'topright'
                     }).addTo(mapa);
                     
+                    // Inicializar el estado global del mapa
+                    estadoGlobal.mapa = mapa;
+                    
                     // Manejar la carga del mapa
-                    mapa.whenReady(() => {
+                    mapa.whenReady(async () => {
                         console.log('✅ Mapa cargado correctamente');
                         
                         // Forzar un redimensionamiento para asegurar que el mapa se renderice correctamente
@@ -1285,14 +1971,21 @@
                             try {
                                 // Inicializar coordenadas y crear marcadores
                                 if (typeof inicializarCoordenadasParadas === 'function') {
-                                    inicializarCoordenadasParadas();
+                                    // Esperar a que se carguen las coordenadas antes de crear los marcadores
+                                    inicializarCoordenadasParadas()
+                                        .then(() => {
+                                            if (typeof crearMarcadoresIniciales === 'function') {
+                                                crearMarcadoresIniciales();
+                                            }
+                                            resolve(mapa);
+                                        })
+                                        .catch(error => {
+                                            console.error('Error al inicializar coordenadas:', error);
+                                            reject(error);
+                                        });
+                                } else {
+                                    resolve(mapa);
                                 }
-                                
-                                if (typeof crearMarcadoresIniciales === 'function') {
-                                    crearMarcadoresIniciales();
-                                }
-                                
-                                resolve(mapa);
                             } catch (error) {
                                 console.error('Error durante la inicialización del mapa:', error);
                                 reject(error);
@@ -1443,12 +2136,104 @@
          * Maneja los mensajes entrantes de los componentes hijos
          * @param {MessageEvent} event - Evento de mensaje
          */
+        /**
+         * Maneja los mensajes entrantes de los iframes hijos
+         * @param {MessageEvent} event - Evento de mensaje
+         */
+        /**
+         * Maneja los mensajes entrantes de los iframes hijos
+         * @param {MessageEvent} event - Evento de mensaje
+         */
         function manejarMensajeHijo(event) {
             const mensaje = event.data;
+            let origen = null;
             
-            // Validar que el mensaje tenga la estructura esperada
-            if (!mensaje || typeof mensaje !== 'object' || !mensaje.tipo) {
-                return;
+            try {
+                // Validar el origen del mensaje para seguridad
+                const origenesPermitidos = HIJOS_SISTEMA.map(h => h.url).filter(Boolean);
+                if (!origenesPermitidos.includes(event.origin)) {
+                    console.warn('Mensaje de origen no permitido:', event.origin);
+                    return;
+                }
+                
+                // Validar que el mensaje tenga la estructura esperada
+                if (!mensaje || typeof mensaje !== 'object' || !mensaje.tipo) {
+                    console.warn('Mensaje no válido recibido:', mensaje);
+                    return;
+                }
+                
+                origen = mensaje.origen;
+                
+                // Registrar la comunicación
+                const ahora = Date.now();
+                
+                // Actualizar el estado del hijo
+                if (origen) {
+                    const estadoHijo = estadoGlobal.hijosConectados.get(origen) || {
+                        id: origen,
+                        tipo: 'desconocido',
+                        estado: 'activo',
+                        ultimaComunicacion: ahora,
+                        errores: [],
+                        version: mensaje.version || '1.0.0',
+                        capacidades: mensaje.capacidades || []
+                    };
+                    
+                    // Actualizar información del estado
+                    estadoHijo.ultimaComunicacion = ahora;
+                    estadoHijo.estado = 'activo';
+                    
+                    // Actualizar versión y capacidades si están presentes en el mensaje
+                    if (mensaje.version) estadoHijo.version = mensaje.version;
+                    if (mensaje.capacidades) estadoHijo.capacidades = mensaje.capacidades;
+                    
+                    estadoGlobal.hijosConectados.set(origen, estadoHijo);
+                    
+                    // Registrar el mensaje en el historial de comunicación
+                    if (!estadoHijo.historial) estadoHijo.historial = [];
+                    estadoHijo.historial.push({
+                        timestamp: ahora,
+                        tipo: mensaje.tipo,
+                        datos: mensaje.datos
+                    });
+                    
+                    // Mantener un límite en el historial
+                    if (estadoHijo.historial.length > 50) {
+                        estadoHijo.historial.shift();
+                    }
+                }
+                
+                // Registrar el mensaje recibido
+                estadoGlobal.metricas.mensajesRecibidos++;
+                
+                // Procesar el mensaje según su tipo
+                const manejador = manejadoresMensajes[mensaje.tipo];
+                if (manejador && typeof manejador === 'function') {
+                    console.log(`📨 [${mensaje.tipo}] de ${origen || 'origen desconocido'}:`, mensaje.datos || 'Sin datos');
+                    manejador(mensaje);
+                } else {
+                    console.warn(`⚠️ No se encontró manejador para el tipo de mensaje: ${mensaje.tipo}`, mensaje);
+                }
+            } catch (error) {
+                console.error('Error al procesar mensaje:', error);
+                mostrarMensajeInterfaz({
+                    tipo: 'error',
+                    titulo: 'Error',
+                    mensaje: 'Error al procesar mensaje: ' + (error.message || 'Error desconocido')
+                });
+                
+                // Registrar el error en el estado del hijo si es posible
+                if (origen) {
+                    const estadoHijo = estadoGlobal.hijosConectados.get(origen) || { errores: [] };
+                    estadoHijo.errores = estadoHijo.errores || [];
+                    estadoHijo.errores.push({
+                        timestamp: new Date().toISOString(),
+                        tipo: 'procesamiento_mensaje',
+                        mensaje: error.message || 'Error desconocido',
+                        stack: error.stack
+                    });
+                    estadoGlobal.hijosConectados.set(origen, estadoHijo);
+                }
             }
             
             // Registrar la comunicación
@@ -1527,11 +2312,22 @@
         /**
          * Inicia el monitoreo del estado de los componentes hijos
          */
+        let intervaloMonitoreo = null;
+        
+        /**
+         * Inicia el monitoreo de los componentes hijos
+         */
         function iniciarMonitoreoHijos() {
+            // Limpiar intervalo existente si lo hay
+            if (intervaloMonitoreo) {
+                clearInterval(intervaloMonitoreo);
+            }
+            
             // Verificar estado de los hijos periódicamente
-            setInterval(() => {
-                const ahora = Date.now();
-                const umbralInactividad = 30000; // 30 segundos sin comunicación
+            estadoGlobal.intervaloMonitoreo = setInterval(() => {
+                try {
+                    const ahora = Date.now();
+                    const umbralInactividad = INACTIVITY_THRESHOLD; // Usar constante definida
                 
                 estadoGlobal.hijosConectados.forEach((hijo, id) => {
                     const tiempoInactivo = ahora - (hijo.ultimaComunicacion || ahora);
@@ -1713,11 +2509,30 @@
         /**
          * Función principal de inicialización
          */
+        /**
+         * Inicializa la aplicación
+         * @returns {Promise<void>}
+         */
         async function inicializar() {
             try {
                 console.log('🚀 Inicializando sistema padre...');
                 
-                // 1. Inicializar el mapa
+                // Registrar manejador de errores global
+                window.onerror = function(mensaje, fuente, linea, columna, error) {
+                    console.error('Error no capturado:', { mensaje, fuente, linea, columna, error });
+                    mostrarMensajeInterfaz({
+                        tipo: 'error',
+                        titulo: 'Error en la aplicación',
+                        mensaje: 'Se ha producido un error inesperado. Por favor, recarga la página.'
+                    });
+                    return true; // Evita que el error se propague
+                };
+                
+                // 1. Inicializar elementos del DOM
+                initDOMElements();
+                initEventListeners();
+                
+                // 2. Inicializar el mapa
                 console.log('🌍 Inicializando mapa...');
                 try {
                     estadoGlobal.mapa = await inicializarMapa();
@@ -1777,29 +2592,30 @@
                 }
             }
                 
-                // Inicializar el estado global
-                estadoGlobal = {
-                    modo: 'casa',
-                    gpsActivo: false,
-                    paradaActual: 'P-0',
-                    tramoActual: 'TR-1',
-                    hijosListos: new Set(),
-                    hijosConectados: new Map(),
-                    ultimoMensajeRecibido: new Map(),
-                    mapa: null,
-                    audioReproduciendo: false,
-                    retoActivo: null,
-                    inicializado: false,
-                    marcadoresParadas: new Map(),
-                    marcadoresUsuario: new Map(),
-                    rutasActivas: new Map(),
-                    errores: [],
-                    ultimaSincronizacion: null,
-                    configuracion: {
-                        tiempoEsperaHijos: 10000,
-                        intervaloMonitoreo: 30000,
-                        maxReintentosConexion: 3
-                    }
+                // Inicializar el estado global (ya está definido al inicio del módulo)
+                estadoGlobal.modo = 'inactivo';
+                estadoGlobal.ultimaActualizacion = Date.now();
+                estadoGlobal.intentosReconexion = 0;
+                estadoGlobal.maxIntentosReconexion = MAX_RETRY_ATTEMPTS;
+                estadoGlobal.gpsActivo = false;
+                estadoGlobal.paradaActual = 'P-0';
+                estadoGlobal.tramoActual = 'TR-1';
+                estadoGlobal.hijosListos = new Set();
+                estadoGlobal.hijosConectados = new Map();
+                estadoGlobal.ultimoMensajeRecibido = new Map();
+                estadoGlobal.mapa = null;
+                estadoGlobal.audioReproduciendo = false;
+                estadoGlobal.retoActivo = null;
+                estadoGlobal.inicializado = false;
+                estadoGlobal.marcadoresParadas = new Map();
+                estadoGlobal.marcadoresUsuario = new Map();
+                estadoGlobal.rutasActivas = new Map();
+                estadoGlobal.errores = [];
+                estadoGlobal.ultimaSincronizacion = null;
+                estadoGlobal.configuracion = {
+                    tiempoEsperaHijos: 10000,
+                    intervaloMonitoreo: 30000,
+                    maxReintentosConexion: 3
                 };
                 
                 // 1. Inicializar el mapa
@@ -2417,10 +3233,35 @@
         document.body.appendChild(loadingEl);
 
         // Función para manejar errores de inicialización
-        function manejarErrorInicializacion(error) {
-            console.error('Error de inicialización:', error);
-            loadingEl.textContent = `Error: ${error.message || 'Error desconocido'}`;
-            loadingEl.style.backgroundColor = '#f44336';
+        /**
+         * Maneja errores durante la inicialización
+         * @param {Error} error - Error que ocurrió
+         * @param {number} [intento=1] - Número de intento actual
+         */
+        async function manejarErrorInicializacion(error, intento = 1) {
+            console.error(`Error de inicialización (intento ${intento}):`, error);
+            
+            // Mostrar mensaje de error
+            const mensajeError = `Error: ${error.message || 'Error desconocido'}`;
+            
+            if (loadingEl) {
+                loadingEl.textContent = mensajeError;
+                loadingEl.style.backgroundColor = '#f44336';
+            }
+            
+            // Intentar reconectar si no hemos superado el número máximo de intentos
+            if (intento < MAX_RETRY_ATTEMPTS) {
+                console.log(`Reintentando en ${RETRY_DELAY}ms...`);
+                await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+                return inicializar().catch(err => manejarErrorInicializacion(err, intento + 1));
+            }
+            
+            // Si llegamos aquí, hemos agotado los intentos
+            mostrarMensajeInterfaz({
+                tipo: 'error',
+                titulo: 'Error de inicialización',
+                mensaje: 'No se pudo inicializar la aplicación. Por favor, recarga la página.'
+            });
             
             // Añadir botón de reintento
             const reintentarBtn = document.createElement('button');
@@ -2435,13 +3276,9 @@
             loadingEl.appendChild(reintentarBtn);
         }
 
-        // Iniciar la aplicación cuando el DOM esté listo
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initApp);
-        } else {
-            initApp();
-        }
-
+        /**
+         * Inicializa la aplicación principal
+         */
         async function initApp() {
             console.log('🚀 Iniciando aplicación...');
             const loadingEl = document.createElement('div');
@@ -2467,7 +3304,7 @@
                 loadingEl.textContent = 'Error al iniciar: ' + (error.message || 'Error desconocido');
                 loadingEl.style.background = '#f44336';
                 
-                // Add retry button
+                // Añadir botón de reintento
                 const retryBtn = document.createElement('button');
                 retryBtn.textContent = 'Reintentar';
                 retryBtn.style.marginTop = '10px';
@@ -2479,6 +3316,13 @@
                 loadingEl.appendChild(document.createElement('br'));
                 loadingEl.appendChild(retryBtn);
             }
+        }
+
+        // Iniciar la aplicación cuando el DOM esté listo
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initApp);
+        } else {
+            initApp();
         }
 
     </script>
