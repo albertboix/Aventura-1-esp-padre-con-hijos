@@ -6,6 +6,10 @@
     <title>Aventura 1 - Padre</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin=""></script>
+    <script type="module" src="./mensajeria.js"></script>
 
     <style>
         html, body {
@@ -200,7 +204,13 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-    <script>
+    <script type="module">
+        // Importar el módulo de mensajería
+        import { Mensajeria, TIPOS_MENSAJE, inicializarMensajeria, enviarMensaje, registrarControlador } from './mensajeria.js';
+
+        // Inicializar el sistema de mensajería
+        await inicializarMensajeria({ iframeId: 'padre' });
+
         // ================== ARRAY DE 40 PARADAS (METADATOS) ==================
         // Este array contiene solo el nombre y datos de audio/reto/foto/video.
         // Las coordenadas (lat/lng) se gestionan en Av1-botones-coordenadas.html (Hijo 2).
@@ -378,169 +388,282 @@
             mostrarMensajeInfoParada('No se pudo cargar la imagen.', true);
         });
 
-        // ================== ESCUCHA MENSAJES DE LOS HIJOS ==================
-        window.addEventListener('message', (event) => {
-            const data = event.data;
+        // ================== MANEJADORES DE MENSAJES ==================
+        // Registrar manejadores para los diferentes tipos de mensajes
+        
+        // Manejador para mensajes del sistema
+        registrarControlador(TIPOS_MENSAJE.SISTEMA.INICIALIZACION, (mensaje) => {
+            console.log('Sistema inicializado:', mensaje);
+        });
 
-            // HIJO 4: Retos/preguntas (ocultar ventana de retos)
-            if (data && data.type === 'ocultarReto') {
-                ocultarHijo4();
+        // Manejador para mensajes de audio
+        registrarControlador(TIPOS_MENSAJE.AUDIO.FINALIZADO, (mensaje) => {
+            mostrarMensajeInfoParada(`Audio finalizado en Parada ${window.paradaActual + 1}: ${PARADAS[window.paradaActual]?.nombre || ''}`);
+            mostrarRetoEnHijo4(PARADAS[window.paradaActual]?.reto || null);
+        });
+
+        // Manejador para mensajes de retos
+        registrarControlador(TIPOS_MENSAJE.RETOS.CERRAR, () => {
+            ocultarHijo4();
+        });
+
+        registrarControlador(TIPOS_MENSAJE.RETOS.COMPLETADO, () => {
+            avanzarRuta();
+        });
+
+        // Manejador para mensajes de navegación
+        registrarControlador(TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, (mensaje) => {
+            const { paradaId } = mensaje.datos || {};
+            if (paradaId !== undefined) {
+                window.paradaActual = paradaId;
+                avanzarAParada(paradaId);
+                mostrarMensajeInfoParada(`¡Has llegado a la Parada ${window.paradaActual + 1}: ${PARADAS[window.paradaActual]?.nombre || ''}!`);
             }
-            // --- Lógica para cerrar otros menús de botones ---
-            if (data && data.type === 'closeOtherMenus' && data.except) {
+        });
+
+        // Manejador para mensajes de UI
+        registrarControlador(TIPOS_MENSAJE.UI.MOSTRAR_IMAGEN, (mensaje) => {
+            const paradaData = PARADAS.find(p => p.parada === mensaje.datos.paradaId);
+            if (paradaData) mostrarImagenParada(paradaData);
+        });
+
+        registrarControlador(TIPOS_MENSAJE.UI.MOSTRAR_VIDEO, (mensaje) => {
+            const paradaData = PARADAS.find(p => p.parada === mensaje.datos.paradaId);
+            if (paradaData) mostrarVideoParada(paradaData);
+        });
+
+        // Manejador para mensajes de GPS
+        registrarControlador(TIPOS_MENSAJE.GPS.ACTUALIZAR, (mensaje) => {
+            const { lat, lng } = mensaje.datos;
+            if (!map) {
+                console.error("Mapa no inicializado aún.");
+                return;
+            }
+            
+            if (userLocationMarker) {
+                userLocationMarker.setLatLng([lat, lng]);
+            } else {
+                userLocationMarker = L.marker([lat, lng], {
+                    icon: L.icon({
+                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                        iconSize: [25, 41],
+                        iconAnchor: [12, 41],
+                        popupAnchor: [1, -34],
+                        shadowSize: [41, 41]
+                    })
+                }).addTo(map);
+            }
+            map.setView([lat, lng], map.getZoom());
+        });
+
+        // Manejador para mensajes de rutas
+        registrarControlador('mostrar-ruta-con-chinchetas', (mensaje) => {
+            mostrarRutaEnMapa(mensaje.datos.ruta, mensaje.datos.origen, mensaje.datos.destino);
+        });
+
+        // Manejador para mensajes de StreetView
+        // Manejador para mensajes de rutas
+        // Manejador para mensajes de rutas
+        registrarControlador('mostrar-ruta-con-chinchetas', (mensaje) => {
+            mostrarRutaEnMapa(mensaje.datos.ruta, mensaje.datos.origen, mensaje.datos.destino);
+        });
+
+        // Manejador para mensajes de mapa GPS
+        registrarControlador('mostrar-mapa-gps', (mensaje) => {
+            mostrarRutaEnMapa(mensaje.datos.ruta, mensaje.datos.origen, mensaje.datos.destino);
+        });
+
+        // Manejador para mensajes de estado del GPS
+        registrarControlador(TIPOS_MENSAJE.GPS.ESTADO, (mensaje) => {
+            const gpsOn = mensaje.datos.activo;
+            const iframe = document.getElementById('hijo5-casa');
+            if (iframe) {
+                if (gpsOn) {
+                    iframe.style.width = '80px';
+                } else {
+                    iframe.style.width = '220px';
+                }
+            }
+            
+            if (!gpsOn) {
+                // MODO CASA: activar botones audio (hijo3), foto/video (hijo2), desactivar GPS visualmente (hijo2)
+                const hijo3 = document.getElementById('hijo3');
+                if (hijo3 && hijo3.contentWindow) {
+                    hijo3.contentWindow.postMessage({ type: 'activarBotonesAudio', color: 'green' }, '*');
+                    hijo3.contentWindow.postMessage({ type: 'setAudioParada', index: window.paradaActual }, '*');
+                }
+                const hijo2 = document.getElementById('hijo2');
+                if (hijo2 && hijo2.contentWindow) {
+                    hijo2.contentWindow.postMessage({ type: 'activarBotonesFotoVideo', color: 'green' }, '*');
+                    hijo2.contentWindow.postMessage({ type: 'gpsOff' }, '*');
+                    hijo2.contentWindow.postMessage({ type: 'mostrarFotoVideo', index: window.paradaActual }, '*');
+                }
+                const hijo4 = document.getElementById('hijo4');
+                if (hijo4 && hijo4.contentWindow && PARADAS[window.paradaActual]) {
+                    hijo4.contentWindow.postMessage({ type: 'mostrarRetoIndex', index: PARADAS[window.paradaActual].reto }, '*');
+                }
+                mostrarParadaActual();
+                activarTodosLosBotones();
+                activarModoCasa();
+            } else {
+                mostrarMensajeInfoParada('GPS activado. Modo aventura.');
+                iniciarAventura();
+                borrarParadaEnMapa();
+            }
+        });
+
+        // Manejador para actualización de ubicación en el mapa
+        registrarControlador('actualizarUbicacionMapa', (mensaje) => {
+            if (!map) {
+                console.error("Mapa no inicializado aún.");
+                return;
+            }
+            const { lat, lng } = mensaje.datos;
+            if (userLocationMarker) {
+                userLocationMarker.setLatLng([lat, lng]);
+            } else {
+                // Icono azul para el usuario
+                userLocationMarker = L.marker([lat, lng], {
+                    icon: L.icon({
+                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                        iconSize: [25, 41],
+                        iconAnchor: [12, 41],
+                        popupAnchor: [1, -34],
+                        shadowSize: [41, 41]
+                    })
+                }).addTo(map);
+            }
+            map.setView([lat, lng], map.getZoom());
+        });
+
+        // Manejador para confirmación de llegada a parada
+        registrarControlador('ya-estoy-aqui', (mensaje) => {
+            const paradaId = mensaje.datos.parada;
+            if (paradaId !== undefined) {
+                window.paradaActual = paradaId;
+                avanzarAParada(paradaId);
+                mostrarMensajeInfoParada(`¡Has llegado a la Parada ${window.paradaActual + 1}: ${PARADAS[window.paradaActual]?.nombre || ''}!`);
+            }
+        });
+
+        // Manejador para pausar audio
+        registrarControlador('pauseAudioFromBoton', () => {
+            const hijo3 = document.getElementById('hijo3');
+            if (hijo3 && hijo3.contentWindow) {
+                hijo3.contentWindow.postMessage({ type: 'pauseAudio' }, '*');
+            }
+        });
+
+        // Manejador para mostrar imagen de parada
+        registrarControlador('mostrar-imagen', (mensaje) => {
+            if (mensaje.datos && mensaje.datos.info) {
+                mostrarImagenParada(mensaje.datos.info);
+            }
+        });
+
+        // Manejador para mostrar video de parada
+        registrarControlador('mostrar-video', (mensaje) => {
+            if (mensaje.datos && mensaje.datos.info) {
+                mostrarVideoParada(mensaje.datos.info);
+            }
+        });
+
+        // Manejador para cerrar menús
+        registrarControlador('closeOtherMenus', (mensaje) => {
+            if (mensaje.datos && mensaje.datos.except) {
                 const ids = ['hijo1-hamburguesa', 'hijo1-opciones', 'hijo1-mapa'];
                 ids.forEach(id => {
                     if (
-                        (id === 'hijo1-hamburguesa' && data.except !== 'hamburguesa') ||
-                        (id === 'hijo1-opciones' && data.except !== 'mas-opciones') ||
-                        (id === 'hijo1-mapa' && data.except !== 'mapa')
+                        (id === 'hijo1-hamburguesa' && mensaje.datos.except !== 'hamburguesa') ||
+                        (id === 'hijo1-opciones' && mensaje.datos.except !== 'mas-opciones') ||
+                        (id === 'hijo1-mapa' && mensaje.datos.except !== 'mapa')
                     ) {
                         const iframe = document.getElementById(id);
                         if (iframe && iframe.contentWindow) {
                             iframe.contentWindow.postMessage({
                                 type: 'closeOtherMenus',
-                                except: data.except
+                                except: mensaje.datos.except
                             }, '*');
                         }
                     }
                 });
             }
-            // HIJO 1: Botones y subfunciones
-            if (data && data.type === 'pauseAudioFromBoton') {
-                document.getElementById('hijo3')?.contentWindow.postMessage({ type: 'pauseAudio' }, '*');
+        });
+        // Manejador para notificación de audio finalizado
+        registrarControlador('audioFinalizado', () => {
+            mostrarMensajeInfoParada(`Audio finalizado en Parada ${window.paradaActual + 1}: ${PARADAS[window.paradaActual]?.nombre || ''}`);
+            mostrarRetoEnHijo4(PARADAS[window.paradaActual] ? PARADAS[window.paradaActual].reto : null);
+        });
+
+        // Manejador para reto interactivo completado
+        registrarControlador('reto-interactivo-completado', () => {
+            avanzarRuta();
+        });
+
+        // Manejador para cuando se muestra la respuesta del reto
+        registrarControlador('reto-respuesta-mostrada', () => {
+            // El usuario ha pedido ver la respuesta, puedes decidir si avanzar o esperar acción manual
+        });
+
+        // Manejador para selección de parada
+        registrarControlador('seleccionParada', (mensaje) => {
+            // Actualizar paradaActual correctamente
+            window.paradaActual = mensaje.datos.index;
+            const paradaConCoordenadas = {
+                lat: mensaje.datos.lat,
+                lng: mensaje.datos.lng,
+                nombre: PARADAS[mensaje.datos.index]?.nombre || 'Parada seleccionada'
+            };
+            mostrarParadaEnMapa(mensaje.datos.index, paradaConCoordenadas);
+            mostrarParadaActual();
+            
+            // Activar botones audio y foto/video en verde al seleccionar parada en modo casa
+            const hijo3 = document.getElementById('hijo3');
+            if (hijo3 && hijo3.contentWindow) {
+                hijo3.contentWindow.postMessage({ 
+                    type: 'activarBotonesAudio', 
+                    color: 'green' 
+                }, '*');
+                hijo3.contentWindow.postMessage({ 
+                    type: 'setAudioParada', 
+                    index: mensaje.datos.index 
+                }, '*');
             }
-            // HIJO 2: Coordenadas (GPS)
-            if (data && data.tipo === 'mostrar-ruta-con-chinchetas') {
-                mostrarRutaEnMapa(data.ruta, data.origen, data.destino);
+            
+            const hijo2 = document.getElementById('hijo2');
+            if (hijo2 && hijo2.contentWindow) {
+                hijo2.contentWindow.postMessage({ 
+                    type: 'activarBotonesFotoVideo', 
+                    color: 'green' 
+                }, '*');
+                hijo2.contentWindow.postMessage({ 
+                    type: 'mostrarFotoVideo', 
+                    index: mensaje.datos.index 
+                }, '*');
             }
-            if (data && data.tipo === 'mostrar-mapa-gps') {
-                mostrarRutaEnMapa(data.ruta, data.origen, data.destino);
+            
+            const hijo4 = document.getElementById('hijo4');
+            if (hijo4 && hijo4.contentWindow && PARADAS[mensaje.datos.index]) {
+                hijo4.contentWindow.postMessage({ 
+                    type: 'mostrarRetoIndex', 
+                    index: PARADAS[mensaje.datos.index].reto 
+                }, '*');
             }
-            if (data && data.tipo === 'mostrar-zoom-streetview') {
-                // Implementación básica, se podría expandir con API de StreetView
-                alert('Mostrar StreetView de: ' + (data.info && data.info.nombre ? data.info.nombre : ''));
-            }
-            if (data && data.tipo === 'mostrar-imagen') {
-                // data.info debería ser el objeto de PARADAS completo de la parada
-                mostrarImagenParada(data.info);
-            }
-            if (data && data.tipo === 'mostrar-video') { // NUEVO: Manejo de mensajes de video
-                // data.info debería ser el objeto de PARADAS completo de la parada
-                mostrarVideoParada(data.info);
-            }
-            if (data && data.type === 'actualizarUbicacionMapa') { // NUEVO: Mensaje para actualizar ubicación del usuario
-                if (!map) {
-                    console.error("Mapa no inicializado aún.");
-                    return;
-                }
-                const { lat, lng } = data; // Asume que lat y lng vienen en el mensaje
-                if (userLocationMarker) {
-                    userLocationMarker.setLatLng([lat, lng]);
-                } else {
-                    // Icono azul para el usuario
-                    userLocationMarker = L.marker([lat, lng], {
-                        icon: L.icon({
-                            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
-                            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-                            iconSize: [25, 41],
-                            iconAnchor: [12, 41],
-                            popupAnchor: [1, -34],
-                            shadowSize: [41, 41]
-                        })
-                    }).addTo(map);
-                }
-                map.setView([lat, lng], map.getZoom()); // Mantiene el zoom actual, o ajusta si es necesario
-            }
-            if (data && data.tipo === 'ya-estoy-aqui') {
-                // Cuando el GPS confirma que has llegado a una parada
-                window.paradaActual = data.parada;
-                avanzarAParada(data.parada);
-                mostrarMensajeInfoParada(`¡Has llegado a la Parada ${window.paradaActual + 1}: ${PARADAS[window.paradaActual]?.nombre || ''}!`);
-            }
-            // HIJO 3: Audio
-            if (data && data.type === 'audioFinalizado') {
-                mostrarMensajeInfoParada(`Audio finalizado en Parada ${window.paradaActual + 1}: ${PARADAS[window.paradaActual]?.nombre || ''}`);
-                mostrarRetoEnHijo4(PARADAS[window.paradaActual] ? PARADAS[window.paradaActual].reto : null);
-            }
-            // HIJO 4: Retos/preguntas
-            if (data && data.type === 'reto-interactivo-completado') {
-                avanzarRuta();
-            }
-            if (data && data.type === 'reto-respuesta-mostrada') {
-                // El usuario ha pedido ver la respuesta, puedes decidir si avanzar o esperar acción manual
-            }
-            // HIJO 5: GPS Casa (modo off)
-            if (data && data.type === 'gpsStatus') {
-                const gpsOn = data.on;
-                const iframe = document.getElementById('hijo5-casa');
-                if (iframe) {
-                    if (gpsOn) {
-                        iframe.style.width = '80px';
-                    } else {
-                        iframe.style.width = '220px';
-                    }
-                }
-                if (!gpsOn) {
-                    // MODO CASA: activar botones audio (hijo3), foto/video (hijo2), desactivar GPS visualmente (hijo2)
-                    const hijo3 = document.getElementById('hijo3');
-                    if (hijo3 && hijo3.contentWindow) {
-                        hijo3.contentWindow.postMessage({ type: 'activarBotonesAudio', color: 'green' }, '*');
-                        hijo3.contentWindow.postMessage({ type: 'setAudioParada', index: window.paradaActual }, '*');
-                    }
-                    const hijo2 = document.getElementById('hijo2');
-                    if (hijo2 && hijo2.contentWindow) {
-                        hijo2.contentWindow.postMessage({ type: 'activarBotonesFotoVideo', color: 'green' }, '*');
-                        hijo2.contentWindow.postMessage({ type: 'gpsOff' }, '*');
-                        hijo2.contentWindow.postMessage({ type: 'mostrarFotoVideo', index: window.paradaActual }, '*');
-                    }
-                    const hijo4 = document.getElementById('hijo4');
-                    if (hijo4 && hijo4.contentWindow && PARADAS[window.paradaActual]) {
-                        hijo4.contentWindow.postMessage({ type: 'mostrarRetoIndex', index: PARADAS[window.paradaActual].reto }, '*');
-                    }
-                    mostrarParadaActual();
-                    activarTodosLosBotones();
-                    activarModoCasa();
-                } else {
-                    mostrarMensajeInfoParada('GPS activado. Modo aventura.');
-                    iniciarAventura();
-                    borrarParadaEnMapa();
-                }
-            }
-            if (data && data.type === 'seleccionParada') {
-                // Actualizar paradaActual correctamente
-                window.paradaActual = data.index;
-                const paradaConCoordenadas = {
-                    lat: data.lat,
-                    lng: data.lng,
-                    nombre: PARADAS[data.index]?.nombre || 'Parada seleccionada'
-                };
-                mostrarParadaEnMapa(data.index, paradaConCoordenadas);
-                mostrarParadaActual();
-                // Activar botones audio y foto/video en verde al seleccionar parada en modo casa
-                const hijo3 = document.getElementById('hijo3');
-                if (hijo3 && hijo3.contentWindow) {
-                    hijo3.contentWindow.postMessage({ type: 'activarBotonesAudio', color: 'green' }, '*');
-                    hijo3.contentWindow.postMessage({ type: 'setAudioParada', index: data.index }, '*');
-                }
-                const hijo2 = document.getElementById('hijo2');
-                if (hijo2 && hijo2.contentWindow) {
-                    hijo2.contentWindow.postMessage({ type: 'activarBotonesFotoVideo', color: 'green' }, '*');
-                    hijo2.contentWindow.postMessage({ type: 'mostrarFotoVideo', index: data.index }, '*');
-                }
-                const hijo4 = document.getElementById('hijo4');
-                if (hijo4 && hijo4.contentWindow && PARADAS[data.index]) {
-                    hijo4.contentWindow.postMessage({ type: 'mostrarRetoIndex', index: PARADAS[data.index].reto }, '*');
-                }
-                activarTodosLosBotones();
-            }
-            if (data && data.type === 'cerrarParadas') {
-                borrarParadaEnMapa();
-                ocultarInfoParada(); // Oculta la info de la parada al cerrar el menú de paradas
-            }
-            // NUEVO: Mensaje para cerrar el visor de medios
-            if (data && data.type === 'cerrarMedia') {
-                closeMediaOverlay();
-            }
+            
+            activarTodosLosBotones();
+        });
+
+        // Manejador para cerrar paradas
+        registrarControlador('cerrarParadas', () => {
+            borrarParadaEnMapa();
+            ocultarInfoParada();
+        });
+
+        // Manejador para cerrar el visor de medios
+        registrarControlador('cerrarMedia', () => {
+            closeMediaOverlay();
         });
 
         // ================== INICIALIZACIÓN Y FUNCIONES PRINCIPALES ==================
