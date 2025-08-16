@@ -4,7 +4,7 @@
  */
 
 // Importar la mensajería
-import { Mensajeria, TIPOS_MENSAJE, enviarMensaje } from '../mensajeria.js';
+import { Mensajeria, TIPOS_MENSAJE, enviarMensaje } from '../Aventura-1-esp-padre-con-hijos/js/mensajeria.js';
 
 // Estado del módulo
 let mapa = null;
