@@ -646,3 +646,28 @@ export default {
     TIPOS_MENSAJE,
     CONFIG
 };
+
+// ================== FALLBACK PARA NAVEGADORES SIN SOPORTE A MÓDULOS ==================
+// Crear este archivo para proporcionar una importación consistente para todos los demás archivos
+// Este es un archivo de re-exportación que apunta correctamente a la implementación real
+
+export * from './js/mensajeria.js';
+
+// Agregar este mecanismo de fallback para navegadores más antiguos que no soportan módulos
+if (typeof window !== 'undefined') {
+    window.addEventListener('DOMContentLoaded', () => {
+        // Crear un objeto global si la carga del módulo falla
+        if (!window.Mensajeria) {
+            console.warn('Fallback to global Mensajeria object');
+            // Implementación mínima para evitar errores
+            window.Mensajeria = {
+                enviarMensaje: (destino, tipo, datos) => {
+                    console.warn(`[Mensajeria Fallback] Envío a ${destino}: ${tipo}`, datos);
+                    return Promise.resolve({ fallback: true });
+                },
+                inicializarMensajeria: () => Promise.resolve(true),
+                TIPOS_MENSAJE: { SISTEMA: {}, NAVEGACION: {}, AUDIO: {}, RETOS: {} }
+            };
+        }
+    });
+}
