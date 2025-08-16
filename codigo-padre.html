@@ -1,7 +1,1204 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+    <meta charset="UTF-8" /><!DOCTYPE html>
+<html lang="es">
+<head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Aventura 1 - Padre</title>
+
+    <!-- Fix 1: Load Leaflet properly with correct integrity -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin=""></script>
+    <script type="module" src="./Aventura-1-esp-padre-con-hijos/js/mensajeria.js"></script>
+
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden; /* Evita scroll no deseado */
+        }
+        /* ================== VARIABLES GLOBALES ================== */
+        :root {
+            --iframe-hijo4-width: 60vw;
+            --iframe-hijo4-height: 40vh;
+            --iframe-hijo4-top: 10vh;
+            --iframe-hijo4-left: 50%;
+            --iframe-hijo4-translate-x: -50%;
+            --iframe-hijo4-z: 2000;
+            --logo-width: 210px; /* Adjusted for the logo size plus some padding */
+        }
+
+        /* Estilos para el logo y su fondo */
+        #logo-aventura {
+            position: fixed;
+            top: -13px; /* Positioned at -13px from the top edge as requested */
+            left: 50%;
+            transform: translateX(-50%);
+            width: 190px; /* Exact 190px width as requested */
+            height: 140px; /* Exact 140px height as requested */
+            z-index: 3000;
+            object-fit: contain; /* Ensures the logo maintains its aspect ratio */
+        }
+
+        #fondo-blanco {
+            position: fixed;
+            top: -24px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: var(--logo-width);
+            height: 150px; /* Adjusted to accommodate the 140px logo height */
+            z-index: 2999;
+            background: white;
+            border: none;
+            margin: 0;
+            padding: 0;
+            border-bottom-left-radius: 24px;
+            border-bottom-right-radius: 24px;
+        }
+
+        /* Asegurar que el mapa sea visible */
+        #mapa {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1; /* El mapa debe tener el z-index más bajo */
+            pointer-events: auto; /* Asegurar que el mapa reciba eventos */
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background: transparent; /* MUY IMPORTANTE: Para que el mapa se vea a través del body */
+        }
+        /* Estilo base para todos los iframes, si no se sobreescribe */
+        iframe {
+            background: transparent; /* Asegura que los iframes no tapen el mapa con un fondo opaco */
+        }
+
+        /* ================== VARIABLES Y ESTILO HIJO 4 (RETOS) ================== */
+        :root {
+            --iframe-hijo4-width: 60vw;
+            --iframe-hijo4-height: 40vh;
+            --iframe-hijo4-top: 10vh;
+            --iframe-hijo4-left: 50%;
+            --iframe-hijo4-translate-x: -50%;
+            --iframe-hijo4-z: 2000;
+        }
+        #hijo4 {
+            position: fixed;
+            top: var(--iframe-hijo4-top);
+            left: var(--iframe-hijo4-left);
+            width: var(--iframe-hijo4-width);
+            height: var(--iframe-hijo4-height);
+            transform: translateX(var(--iframe-hijo4-translate-x));
+            z-index: var(--iframe-hijo4-z);
+            border: 2px solid red; /* Borde consistente */
+            background: transparent;
+            pointer-events: auto;
+            display: none; /* Oculto por defecto, se muestra por JS */
+        }
+
+        /* ESTILO ACTUALIZADO PARA info-parada */
+        #info-parada {
+            font-weight:bold;
+            margin:0;
+            padding: 7px 12px;
+            background-color: rgba(255,255,255,0.9);
+            border-radius: 7px;
+            position: fixed;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1201;
+            display: none;
+            color: #333;
+            font-family: sans-serif;
+            text-align: center;
+            /* Justo encima de hijo2 (que está bottom:151px; height:165px) */
+            bottom: 325px;
+            min-width: 220px;
+            max-width: 90vw;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+        }
+        #info-parada.error {
+            background-color: #ffeaea;
+            color: #b30000;
+            border: 1.5px solid #b30000;
+            animation: shake 0.3s;
+        }
+        @keyframes shake {
+            0% { transform: translateX(-50%) translateY(0); }
+            25% { transform: translateX(-50%) translateY(-3px); }
+            50% { transform: translateX(-50%) translateY(3px); }
+            75% { transform: translateX(-50%) translateY(-3px); }
+            100% { transform: translateX(-50%) translateY(0); }
+        }
+
+        /* ================== ESTILO PARA VIDEO E IMAGEN (NUEVO) ================== */
+        #media-overlay {
+            display: none; /* Oculto por defecto, se cambia a 'flex' para mostrar */
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 4000; /* Alto z-index para estar por encima de todo */
+            /* display: flex; REMOVED from CSS, controlled by JS */
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(5px); /* Efecto de desenfoque */
+        }
+
+        #media-container {
+            max-width: 90%;
+            max-height: 90%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            background: transparent;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+            padding: 10px;
+        }
+
+        #close-media {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #ff5252;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 35px;
+            height: 35px;
+            font-size: 1.2em;
+            cursor: pointer;
+            z-index: 4001;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        #parada-video, #parada-imagen {
+            max-width: 100%;
+            max-height: calc(100vh - 80px); /* Ajusta para dejar espacio al botón de cerrar */
+            display: none; /* Oculto por defecto */
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Debug info for map loading -->
+    <div id="map-debug" style="position: fixed; top: 10px; left: 10px; background: rgba(255,255,255,0.8); padding: 5px; border-radius: 5px; z-index: 5000; font-size: 12px;">
+        Cargando mapa...
+    </div>
+    
+    <script>
+        // Simple debug function to track map loading status
+        function updateMapDebug(status) {
+            const debug = document.getElementById('map-debug');
+            if (debug) {
+                debug.textContent = `Mapa: ${status} - ${new Date().toLocaleTimeString()}`;
+                
+                // Auto-hide after 10 seconds
+                setTimeout(() => {
+                    debug.style.opacity = '0';
+                    setTimeout(() => debug.style.display = 'none', 1000);
+                }, 10000);
+            }
+        }
+        
+        // Check if Leaflet is available
+        if (typeof L === 'undefined') {
+            updateMapDebug('ERROR: Leaflet no disponible');
+        } else {
+            updateMapDebug('Leaflet cargado, inicializando...');
+            
+            // Remove debug when map initializes
+            document.addEventListener('mapInitialized', () => {
+                updateMapDebug('Inicializado correctamente');
+            });
+        }
+    </script>
+    
+    <!-- Eliminar los estilos inline y usar las clases CSS -->
+    <iframe id="fondo-blanco" tabindex="-1" aria-hidden="true"></iframe>
+    <img id="logo-aventura" src="fotos_Av1/LOGO LETRAS FINAL transparente recorte.png" alt="Logo" />
+
+    <div id="mapa"></div>
+
+    <div id="info-parada"></div>
+
+    <iframe id="hijo1-hamburguesa" src="botones-y-subfunciones-hamburguesa.html" style="position:fixed; left:1vw; bottom:0vw; height: 265px; width:57px; z-index:1005; border: transparent; background:transparent; pointer-events:auto;"></iframe>
+    <iframe id="hijo1-opciones" src="botones-y-subfunciones-opciones.html" style="position:fixed; right:1vw; bottom:0vw; height: 265px; width:57px; z-index:1005; border: transparent; background:transparent; pointer-events:auto;"></iframe>
+    <!-- <iframe id="hijo1-mapa" src="botones-y-subfunciones-mapa.html" style="position:fixed; right:1vw; top:20vw; height: 200px; width:57px; z-index:1005; border: transparent; background:transparent; pointer-events:auto;"></iframe> -->
+    <iframe id="hijo5-casa" src="Av1-boton-casa.html" style="position:fixed; left:10px; top:10px; height:350px; width:100px; z-index:1005; border: transparent; background:transparent; pointer-events:auto; transition:width 0.3s;"></iframe>
+
+    <iframe id="hijo3" src="Av1_audio_esp.html"
+            style="position:fixed;
+                   bottom:-6px; /* ACTUALIZADO: 3px más cerca del borde inferior */
+                   left:50%;
+                   transform:translateX(-50%);
+                   height:165px; /* CORREGIDO: Altura igual que hijo2 para mantener simetría */
+                   width:310px;
+                   z-index:1000;
+                   border: transparent;
+                   /* Eliminado: background:rgba(0, 0, 255, 0.5); */
+                   display:block;
+                   pointer-events:auto;"></iframe>
+
+    <iframe id="hijo2" src="Av1-botones-coordenadas.html"
+            style="position:fixed;
+                   bottom:151px; /* ACTUALIZADO: Posicionado a 154px del borde inferior */
+                   left:50%;
+                   transform:translateX(-50%);
+                   height:165px; /* YA ESTABA a 140px, se mantiene */
+                   width:310px;
+                   z-index:1001;
+                   border:transparent;
+                   /* Eliminado: background:rgba(255, 255, 0, 0.5); */
+                   pointer-events:auto;"
+            allow="geolocation"></iframe>
+
+    <iframe id="hijo4" src="Av1-esp-retos-preguntas.html"></iframe>
+
+    <div id="media-overlay">
+        <div id="media-container">
+            <button id="close-media">X</button>
+            <video id="parada-video" controls></video>
+            <img id="parada-imagen">
+        </div>
+    </div>
+
+    <script type="module">
+        // Import mensajeria.js from the new location
+        import { Mensajeria, TIPOS_MENSAJE, inicializarMensajeria, enviarMensaje, registrarControlador } from './Aventura-1-esp-padre-con-hijos/js/mensajeria.js';
+
+        // Configuración mejorada del sistema de mensajería
+        const CONFIG = {
+            ID_PADRE: 'padre',
+            TIMEOUT_MENSAJES: 10000,
+            MAX_REINTENTOS: 3,
+            DELAY_REINTENTO: 1000,
+            HIJOS: {
+                HAMBURGUESA: { id: 'hijo1-hamburguesa', nombre: 'Hamburguesa' },
+                COORDENADAS: { id: 'hijo2', nombre: 'Coordenadas' },
+                AUDIO: { id: 'hijo3', nombre: 'Audio' },
+                RETOS: { id: 'hijo4', nombre: 'Retos' },
+                CASA: { id: 'hijo5-casa', nombre: 'Casa' }
+            },
+            LOG_LEVEL: 'info' // 'debug', 'info', 'warn', 'error'
+        };
+        
+        // Estado centralizado de la aplicación
+        const estadoApp = {
+            modoCasa: false,
+            paradaActual: 0,
+            hijosMensajeriaInicializados: {},
+            estadoGPS: 'inactivo',
+            ultimaUbicacion: null,
+            estadoControles: {}
+        };
+
+        // ================== ARRAY DE PARADAS Y TRAMOS ==================
+        // Este array contiene paradas y tramos con sus metadatos.
+        // Las coordenadas (lat/lng) se gestionan en Av1-botones-coordenadas.html (Hijo 2).
+        const AVENTURA_PARADAS = [
+            // Parada 0 – INICIO (Torres de Serranos start) reto 2 (223, 226, 228, 229)
+            { padreid: "padre-P-0", tipo: "inicio", parada_id: 'P-0', audio_id: "audio-P-0", reto_id: "R-2" },
+            // tramo 1 (Torres de Serranos → Plaza de la crida) (2, 126,)
+            { padreid: "padre-TR-1", tipo: "tramo", tramo_id: 'TR-1', audio_id: "audio-TR-1" },
+            // Parada 1 - Plaza de la crida (Puente de Serranos) Reto 3 (233) //
+            { padreid: "padre-P-1", tipo: "parada", parada_id: 'P-1', audio_id: "audio-P-1", reto_id: "R-3" },
+            // tramo 2 (Plaza de la crida → Calle Muro de Santa Ana) (81) //
+            { padreid: "padre-TR-2", tipo: "tramo", tramo_id: 'TR-2', audio_id: "audio-TR-2" },
+            // Parada 2 (Calle Muro de Santa Ana) Reto 4 (68) //
+            { padreid: "padre-P-2", tipo: "parada", parada_id: 'P-2', audio_id: "audio-P-2", reto_id: "R-4" },
+            // tramo 3 (Calle Muro de Santa Ana → Palacio de los Borgia) (52) //
+            { padreid: "padre-TR-3", tipo: "tramo", tramo_id: 'TR-3', audio_id: "audio-TR-3" },
+            // Parada 3 (Iglesia de San Lorenzo) Reto 5 (686, 682-B, 462, 683, 684) //
+            { padreid: "padre-P-3", tipo: "parada", parada_id: 'P-3', audio_id: "audio-P-3", reto_id: "R-5" },
+            // tramo 4 (Iglesia de San Lorenzo → Plaza de la Virgen) (465-B) //
+            { padreid: "padre-TR-4", tipo: "tramo", tramo_id: 'TR-4', audio_id: "audio-TR-4" },
+            // Parada 4 (Plaza de la Virgen) Reto 6 (466, 467) //
+            { padreid: "padre-P-4", tipo: "parada", parada_id: 'P-4', audio_id: "audio-P-4", reto_id: "R-6" },
+            // Parada 5 (Plaza de la Virgen) Reto 7, 8 Puzzle plaza de la virgen (468)  //
+            { 
+                padreid: "padre-P-5",
+                tipo: "parada", 
+                parada_id: 'P-5', 
+                audio_id: "audio-P-5", 
+                retos: [
+                    { tipo: "reto", id: "R-7" },
+                    { tipo: "puzzle", id: "PZ-8" }
+                ] 
+            },
+            // tramo 5 (Plaza de la Virgen → Plaza de la Almoína) (477-B, 479, 141, 83, 8-C) //
+            { padreid: "padre-TR-5", tipo: "tramo", tramo_id: 'TR-5', audio_id: "audio-TR-5" },
+            // Parada 6 (Panel cerámico muro Catedral) Reto 9 (434, 440, 441, 442) //
+            { padreid: "padre-P-6", tipo: "parada", parada_id: 'P-6', audio_id: "audio-P-6", reto_id: "R-9" },
+            // Parada 7 (Capilla exterior catedral) Reto 10 (443, 444, 445) //
+            { padreid: "padre-P-7", tipo: "parada", parada_id: 'P-7', audio_id: "audio-P-7", reto_id: "R-10" },
+            // Parada 8 (Capilla exterior catedral) Reto 11 (445) //
+            { padreid: "padre-P-8", tipo: "parada", parada_id: 'P-8', audio_id: "audio-P-8", reto_id: "R-11" },
+            // Parada 9 (Arco Novo Catedral y Puerta Negra Basílica) (446, 355, 447, 11-B, 451, 452) //
+            { padreid: "padre-P-9", tipo: "parada", parada_id: 'P-9', audio_id: "audio-P-9" },
+            // Parada 10 (Casa del Punt de Gantxo) Reto 12 (51-C, 454, 455, 455-B, 456, 148) //
+            { padreid: "padre-P-10", tipo: "parada", parada_id: 'P-10', audio_id: "audio-P-10", reto_id: "R-12"  },
+            // tramo 6 (Plaza de la Almoína (casa del punt de Gantxo) → Plaza Decimo Junio Bruto) (457, 10-B)//
+            { padreid: "padre-TR-6", tipo: "tramo", tramo_id: 'TR-6', audio_id: "audio-TR-6" },
+            // Parada 11 (Museo arqueológico La Almoína) Reto 13 (458) //
+            { padreid: "padre-P-11", tipo: "parada", parada_id: 'P-11', audio_id: "audio-P-11", reto_id: "R-13" },
+            // Parada 12 (Museo arqueológico La Almoína 2) (459, 460, 461) //
+            { padreid: "padre-P-12", tipo: "parada", parada_id: 'P-12', audio_id: "audio-P-12" },
+            // Parada 13 (Vista de la Catedral, Cimborrio) Reto 14 (8-C, 464) //
+            { padreid: "padre-P-13", tipo: "parada", parada_id: 'P-13', audio_id: "audio-P-13", reto_id: "R-14" },
+            // tramo 7 (Museo arqueológico La Almoína → Palacio Arzobispal) (85) //
+            { padreid: "padre-TR-7", tipo: "tramo", tramo_id: 'TR-7', audio_id: "audio-TR-7" },
+            // Parada 14 (Palacio Arzobispal y Puerta Románica de la Catedral) Reto 15 (673, 86, 426-B, 141, 437, 438) //
+            { padreid: "padre-P-14", tipo: "parada", parada_id: 'P-14', audio_id: "audio-P-14", reto_id: "R-15" },
+            // Parada 15 (Puerta Románica de la Catedral) (439) //
+            { padreid: "padre-P-15", tipo: "parada", parada_id: 'P-15', audio_id: "audio-P-15" },
+            // tramo 8 (Puerta Románica de la Catedral → Plaza del Ayuntamiento) (125) //
+            { padreid: "padre-TR-8", tipo: "tramo", tramo_id: 'TR-8', audio_id: "audio-TR-8" },
+            // Parada 16 (Plaza del Ayuntamiento) (13-B, 263, 332, 14-C) //
+            { padreid: "padre-P-16", tipo: "parada", parada_id: 'P-16', audio_id: "audio-P-16" },
+            // tramo 9 (Plaza del Ayuntamiento → Edificio del Ayuntamiento) (334, 335) //
+            { padreid: "padre-TR-9", tipo: "tramo", tramo_id: 'TR-9', audio_id: "audio-TR-9" },
+            // Parada 17 (Edificio del Ayuntamiento) Reto 16 (336, 337, 338) //
+            { padreid: "padre-P-17", tipo: "parada", parada_id: 'P-17', audio_id: "audio-P-17", reto_id: "R-16" },
+            // Parada 18 (Edificio del Ayuntamiento, leyenda del murciélago) (339, 340, 341, 54) //
+            { padreid: "padre-P-18", tipo: "parada", parada_id: 'P-18', audio_id: "audio-P-18" },
+            // tramo 10 (Edificio del Ayuntamiento → Estación del Norte) (87, 15-C) //
+            { padreid: "padre-TR-10", tipo: "tramo", tramo_id: 'TR-10', audio_id: "audio-TR-10" },
+            // Parada 19 (Estación del Norte) Reto 17, 18 Puzzle Estación del Norte (326) //
+            { 
+                padreid: "padre-P-19",
+                tipo: "parada", 
+                parada_id: 'P-19', 
+                audio_id: "audio-P-19", 
+                retos: [
+                    { tipo: "reto", id: "R-17" },
+                    { tipo: "puzzle", id: "PZ-18" }
+                ] 
+            },
+            // tramo 11 (Estación del Norte → Plaza de Toros) (20-C, 323-B, 88) //
+            { padreid: "padre-TR-11", tipo: "tramo", tramo_id: 'TR-11', audio_id: "audio-TR-11" },
+            // Tramo 12 (Plaza de Toros → Casa estilo Árabe) (89, 3-D) //
+            { padreid: "padre-TR-12", tipo: "tramo", tramo_id: 'TR-12', audio_id: "audio-TR-12" },
+            // Parada 20 (Casa estilo Árabe) Reto 19 (99) //
+            { padreid: "padre-P-20", tipo: "parada", parada_id: 'P-20', audio_id: "audio-P-20", reto_id: "R-19" },
+            // Parada 21 (Casa estilo Árabe, mitad Aventura) (100) //
+            { padreid: "padre-P-21", tipo: "parada", parada_id: 'P-21', audio_id: "audio-P-21" },
+            // tramo 13 (Casa estilo Árabe → Palacio de Comunicaciones) (21-B) //
+            { padreid: "padre-TR-13", tipo: "tramo", tramo_id: 'TR-13', audio_id: "audio-TR-13" },
+            // Parada 22 (Palacio de Comunicaciones) Reto 20 y Reto 21 (700, 343, 344) //
+            { padreid: "padre-P-22", tipo: "parada", parada_id: 'P-22', audio_id: "audio-P-22", retos: ["R-20", "R-21"] },
+            // Parada 23 (Edificio Suay) Reto 21 (693, 693-B) //
+            { padreid: "padre-P-23", tipo: "parada", parada_id: 'P-23', audio_id: "audio-P-23", reto_id: "R-21" },
+            // tramo 14 (Palacio de Comunicaciones, edificio Suay → Banco de València) (345, 347, 348, 22, 109) //
+            { padreid: "padre-TR-14", tipo: "tramo", tramo_id: 'TR-14', audio_id: "audio-TR-14" },
+            // Parada 24 (Banco de Valencia) Reto 22 (349, 350) //
+            { padreid: "padre-P-24", tipo: "parada", parada_id: 'P-24', audio_id: "audio-P-24", reto_id: "R-22" },
+            // tramo 15 (Banco de València → Palacio del Marqués de Dos Aguas) (351, 23-B, 352, 354) //
+            { padreid: "padre-TR-15", tipo: "tramo", tramo_id: 'TR-15', audio_id: "audio-TR-15" },
+            // Parada 25 (Palacio del Marqués de Dos Aguas) (356, 357)//
+            { padreid: "padre-P-25", tipo: "parada", parada_id: 'P-25', audio_id: "audio-P-25" },
+            // tramo 16 (Palacio del Marqués → Mercado Central) (358, 359-B, 101) //
+            { padreid: "padre-TR-16", tipo: "tramo", tramo_id: 'TR-16', audio_id: "audio-TR-16" },
+            // Parada 26 (Mercado central) Reto23 (701, 24-D, 361, 362, 363, 364) //
+            { padreid: "padre-P-26", tipo: "parada", parada_id: 'P-26', audio_id: "audio-P-26", reto_id: "R-23" },
+            // tramo 17 (Mercado Central → Iglesia de los Santos Juanes) (274, 27-C) //
+            { padreid: "padre-TR-17", tipo: "tramo", tramo_id: 'TR-17', audio_id: "audio-TR-17" },
+            // Parada 27 (Iglesia de los Santos Juanes) Reto 24) (365, 366) //
+            { padreid: "padre-P-27", tipo: "parada", parada_id: 'P-27', audio_id: "audio-P-27", reto_id: "R-24" },
+            // Parada 28 (Iglesia de los Santos Juanes reto 25) (367) //
+            { padreid: "padre-P-28", tipo: "parada", parada_id: 'P-28', audio_id: "audio-P-28", reto_id: "R-25" },
+            // tramo 18 (Iglesia Santos Juanes → Lonja de València) (368, 369, 28, 370, 371, 372, 373, 374, 375, 376, 377) //
+            { padreid: "padre-TR-18", tipo: "tramo", tramo_id: 'TR-18', audio_id: "audio-TR-18" },
+            // Parada 29 (Lonja Puerta de Los Pecados barquero) Reto 27 (378, 379) //
+            { padreid: "padre-P-29", tipo: "parada", parada_id: 'P-29', audio_id: "audio-P-29", reto_id: "R-27" },
+            // Parada 30 (Lonja Puerta de Los Pecados árbol muerto) Reto 28 (380, 381) //
+            { padreid: "padre-P-30", tipo: "parada", parada_id: 'P-30', audio_id: "audio-P-30", reto_id: "R-28" },
+            // tramo 19 (Lonja Gárgolas) (383) //
+            { padreid: "padre-TR-19", tipo: "tramo", tramo_id: 'TR-19', audio_id: "audio-TR-19" },
+            // Parada 31 (Lonja Gárgolas ángel vasija) Reto 29 (384) //
+            { padreid: "padre-P-31", tipo: "parada", parada_id: 'P-31', audio_id: "audio-P-31", reto_id: "R-29" },
+            // Parada 32 (Lonja Gárgolas barbudo y león) Reto 30 (385) //
+            { padreid: "padre-P-32", tipo: "parada", parada_id: 'P-32', audio_id: "audio-P-32", reto_id: "R-30" },
+            // Parada 33 (Lonja Gárgolas fornicador ventana) Reto 31, Puzzle 26 ) (386) //
+            { padreid: "padre-P-33", tipo: "parada", parada_id: 'P-33', audio_id: "audio-P-33", retos: [ { tipo: "reto", id: "R-31" }, { tipo: "puzzle", id: "PZ-26" } ] },
+            // tramo 20 (Lonja → Plaza del Doctor Collado) (388, 389, 390, 391, 392) //
+            { padreid: "padre-TR-20", tipo: "tramo", tramo_id: 'TR-20', audio_id: "audio-TR-20" },
+            // tramo 21 (Plaza del Doctor Collado → Plaza del Negrito) (333, 397, 41, 398, 198, 671, 522, 32-C) //
+            { padreid: "padre-TR-21", tipo: "tramo", tramo_id: 'TR-21', audio_id: "audio-TR-21" },
+            // Parada 34 (Fuente del Negrito) Reto 32 (382, 501) //
+            { padreid: "padre-P-34", tipo: "parada", parada_id: 'P-34', audio_id: "audio-P-34", reto_id: "R-32" },
+            // tramo 22 (Plaza del Negrito → Calle Caballeros) (33-B, 486, 480-B) //
+            { padreid: "padre-TR-22", tipo: "tramo", tramo_id: 'TR-22', audio_id: "audio-TR-22" },
+            // Parada 35 (Palau de la Generalitat) (481-B, 482-B, 2-D) //
+            { padreid: "padre-P-35", tipo: "parada", parada_id: 'P-35', audio_id: "audio-P-35" },
+            // tramo 23 (Palacio de la Generalitat → Calle de los Serranos - FINAL)  //
+            { padreid: "padre-TR-23", tipo: "tramo", tramo_id: 'TR-23', audio_id: "audio-TR-23" },
+            // Parada 36 (Torres de Serranos Final) //
+            { padreid: "padre-P-36", tipo: "parada", parada_id: 'P-36', audio_id: "audio-P-36" }
+        ];
+
+        let paradaActual = 0; // Índice de la parada actual
+
+        // Inicializar el sistema de mensajería con manejo de errores
+        async function iniciarSistemaMensajeria() {
+            try {
+                console.log(`[${CONFIG.ID_PADRE}] Iniciando sistema de mensajería...`);
+                
+                // Inicializar el sistema de mensajería centralizado
+                await inicializarMensajeria({ 
+                    iframeId: CONFIG.ID_PADRE,
+                    timeout: CONFIG.TIMEOUT_MENSAJES,
+                    logLevel: CONFIG.LOG_LEVEL
+                });
+                
+                console.log(`[${CONFIG.ID_PADRE}] Sistema de mensajería inicializado correctamente`);
+                
+                // Registrar controladores de mensajes con el nuevo sistema estructurado
+                registrarControladoresTotales();
+                
+                // Exponer el array de paradas a window para que sea accesible por comunicaciones externas
+                window.AVENTURA_PARADAS = AVENTURA_PARADAS;
+                
+                // Notificar a los hijos que el sistema de mensajería está listo
+                await notificarInicializacionAHijos()
+                    .catch(error => console.warn(`[${CONFIG.ID_PADRE}] Error al notificar inicialización:`, error));
+                
+                return true;
+            } catch (error) {
+                console.error(`[${CONFIG.ID_PADRE}] Error al inicializar sistema de mensajería:`, error);
+                
+                // Programar reintento
+                setTimeout(() => {
+                    console.log(`[${CONFIG.ID_PADRE}] Reintentando inicialización del sistema de mensajería...`);
+                    iniciarSistemaMensajeria();
+                }, CONFIG.DELAY_REINTENTO);
+                
+                return false;
+            }
+        }
+        
+        // Función para notificar a todos los hijos sobre la inicialización
+        async function notificarInicializacionAHijos() {
+            const hijos = Object.values(CONFIG.HIJOS);
+            const promesas = [];
+            
+            for (const hijo of hijos) {
+                promesas.push(
+                    enviarMensaje(hijo.id, TIPOS_MENSAJE.SISTEMA.INICIALIZACION, {
+                        padre: CONFIG.ID_PADRE,
+                        timestamp: Date.now(),
+                        modoCasa: estadoApp.modoCasa,
+                        paradaActual: estadoApp.paradaActual,
+                        aventuraParadas: AVENTURA_PARADAS // Enviamos el array completo de paradas
+                    }, {
+                        maxRetries: CONFIG.MAX_REINTENTOS,
+                        retryDelay: CONFIG.DELAY_REINTENTO,
+                        timeout: CONFIG.TIMEOUT_MENSAJES
+                    }).catch(error => {
+                        console.warn(`[${CONFIG.ID_PADRE}] No se pudo notificar a ${hijo.nombre}:`, error.message);
+                        return null;
+                    })
+                );
+            }
+            
+            const resultados = await Promise.allSettled(promesas);
+            const exitosos = resultados.filter(r => r.status === 'fulfilled' && r.value !== null).length;
+            
+            console.log(`[${CONFIG.ID_PADRE}] Notificación de inicialización: ${exitosos}/${hijos.length} hijos notificados`);
+            return exitosos;
+        }
+
+        // Mostrar mensaje contextual in
+        function mostrarMensajeInfoParada(mensaje, esError = false) {
+            const info = document.getElementById('info-parada');
+            if (info) {
+                info.textContent = mensaje;
+                info.style.display = 'block';
+                if (esError) {
+                    info.classList.add('error');
+                } else {
+                    info.classList.remove('error');
+                }
+            }
+        }
+
+        // Mostrar la parada actual (nombre y número)
+        function mostrarParadaActual() {
+            const parada = obtenerParadaActual();
+            if (parada) {
+                const indiceParada = extraerNumeroParada(parada.parada_id);
+                const nombreParada = obtenerNombreParada(parada);
+                mostrarMensajeInfoParada(`Parada ${indiceParada}: ${nombreParada}`);
+            }
+        }
+
+        // Función auxiliar para obtener la parada actual del nuevo formato
+        function obtenerParadaActual() {
+            // Filtrar solo las paradas (no tramos) y obtener la que corresponde al índice actual
+            const paradasFiltradas = AVENTURA_PARADAS.filter(item => 
+                item.tipo === "parada" || item.tipo === "inicio");
+            
+            return paradasFiltradas[paradaActual] || null;
+        }
+
+        // Función para extraer el número de parada del parada_id
+        function extraerNumeroParada(parada_id) {
+            // Extraer el número después del guion en P-X
+            const match = parada_id.match(/P-(\d+)/);
+            return match ? parseInt(match[1]) + 1 : paradaActual + 1;
+        }
+
+        // Función para obtener el nombre de una parada
+        function obtenerNombreParada(parada) {
+            // Extraer nombre del comentario basado en el índice de la parada
+            // Este es un mapeo temporal - idealmente, el campo nombre debería estar en el nuevo array
+            const comentarios = [
+                "Torres de Serranos (start)",
+                "Plaza de la crida (Puente de Serranos)",
+                "Calle Muro de Santa Ana",
+                "Iglesia de San Lorenzo",
+                "Plaza de la Virgen",
+                "Plaza de la Virgen",
+                "Panel cerámico muro Catedral",
+                "Capilla exterior catedral",
+                "Capilla exterior catedral",
+                "Arco Novo Catedral y Puerta Negra Basílica",
+                "Casa del Punt de Gantxo",
+                "Museo arqueológico La Almoína",
+                "Museo arqueológico La Almoína 2",
+                "Vista de la Catedral, Cimborrio",
+                "Palacio Arzobispal y Puerta Románica de la Catedral",
+                "Puerta Románica de la Catedral",
+                "Plaza del Ayuntamiento",
+                "Edificio del Ayuntamiento",
+                "Edificio del Ayuntamiento, leyenda del murciélago",
+                "Estación del Norte",
+                "Casa estilo Árabe",
+                "Casa estilo Árabe, mitad Aventura",
+                "Palacio de Comunicaciones",
+                "Edificio Suay",
+                "Banco de Valencia",
+                "Palacio del Marqués de Dos Aguas",
+                "Mercado central",
+                "Iglesia de los Santos Juanes",
+                "Iglesia de los Santos Juanes",
+                "Lonja Puerta de Los Pecados barquero",
+                "Lonja Puerta de Los Pecados árbol muerto",
+                "Lonja Gárgolas ángel vasija",
+                "Lonja Gárgolas barbudo y león",
+                "Lonja Gárgolas fornicador ventana",
+                "Fuente del Negrito",
+                "Palau de la Generalitat",
+                "Torres de Serranos Final"
+            ];
+            
+            const indice = extraerNumeroParada(parada.parada_id) - 1;
+            return indice < comentarios.length ? comentarios[indice] : `Parada ${indice + 1}`;
+        }
+
+        // Ocultar la información de la parada
+        function ocultarInfoParada() {
+            const info = document.getElementById('info-parada');
+            if (info) {
+                info.style.display = 'none';
+            }
+        }
+
+        // ================== CONTROL DE VISIBILIDAD HIJO 4 ==================
+        const iframeHijo4 = document.getElementById('hijo4');
+        function mostrarRetoEnHijo4(index) {
+            // Asegúrate de que el índice sea válido
+            if (index !== null && index !== undefined) {
+                const parada = obtenerParadaActual();
+                
+                if (parada) {
+                    let retoId = null;
+                    
+                    // Verificar si la parada tiene reto_id o retos[]
+                    if (parada.reto_id) {
+                        retoId = parada.reto_id;
+                    } else if (Array.isArray(parada.retos) && parada.retos.length > 0) {
+                        // Si hay múltiples retos, tomar el primero por defecto
+                        retoId = parada.retos[0].id || parada.retos[0];
+                    }
+                    
+                    if (retoId) {
+                        // Usar el nuevo sistema de mensajería
+                        enviarMensaje(CONFIG.HIJOS.RETOS.id, TIPOS_MENSAJE.RETOS.MOSTRAR, {
+                            index: retoId
+                        });
+                        iframeHijo4.style.display = 'block';
+                        ocultarInfoParada(); // Oculta la info de la parada cuando se muestra un reto
+                    } else {
+                        console.warn("Esta parada no tiene retos asociados.");
+                    }
+                } else {
+                    console.warn("No se encontró la parada actual.");
+                }
+            } else {
+                console.warn("Índice de reto no válido.");
+            }
+        }
+        
+        // ================== CONTROL DE VISIBILIDAD DE MEDIOS (VIDEO/IMAGEN) ==================
+        const mediaOverlay = document.getElementById('media-overlay');
+        const paradaVideo = document.getElementById('parada-video');
+        const paradaImagen = document.getElementById('parada-imagen');
+
+        function mostrarVideoParada(paradaData) {
+            // Adaptar para usar el nuevo formato de datos
+            // Como el nuevo formato no incluye explícitamente campos de video,
+            // mantenemos la compatibilidad construyendo las rutas de los recursos
+            if (paradaData) {
+                const videoPath = `videos/${paradaData.audio_id.replace('audio', 'video')}.mp4`;
+                paradaVideo.src = videoPath;
+                paradaVideo.style.display = 'block';
+                paradaImagen.style.display = 'none';
+                mediaOverlay.style.display = 'flex';
+                paradaVideo.play();
+                
+                const indiceParada = extraerNumeroParada(paradaData.parada_id);
+                const nombreParada = obtenerNombreParada(paradaData);
+                mostrarMensajeInfoParada(`Mostrando video de Parada ${indiceParada}: ${nombreParada}`);
+            }
+        }
+
+        function mostrarImagenParada(paradaData) {
+            // Adaptar para usar el nuevo formato de datos
+            if (paradaData) {
+                const imagenPath = `imagenes/${paradaData.audio_id.replace('audio', 'img')}.jpg`;
+                paradaImagen.src = imagenPath;
+                paradaImagen.style.display = 'block';
+                paradaVideo.style.display = 'none';
+                mediaOverlay.style.display = 'flex';
+                
+                const indiceParada = extraerNumeroParada(paradaData.parada_id);
+                const nombreParada = obtenerNombreParada(paradaData);
+                mostrarMensajeInfoParada(`Mostrando imagen de Parada ${indiceParada}: ${nombreParada}`);
+            }
+        }
+
+        // Implementaciones de los manejadores de mensajes
+        function manejarCambioParada(mensaje) {
+            const nuevaParada = parseInt(mensaje.datos?.parada);
+            if (!isNaN(nuevaParada) && nuevaParada >= 0) {
+                estadoApp.paradaActual = nuevaParada;
+                window.paradaActual = nuevaParada; // Mantener compatibilidad
+                mostrarParadaActual();
+                
+                // Obtener la parada actual en el nuevo formato
+                const parada = obtenerParadaActual();
+                if (!parada) {
+                    console.warn(`No se encontró la parada con índice ${nuevaParada}`);
+                    return;
+                }
+                
+                // Notificar a todos los hijos del cambio con datos enriquecidos
+                Object.values(CONFIG.HIJOS).forEach(hijo => {
+                    enviarMensaje(hijo.id, TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, {
+                        parada: nuevaParada,
+                        parada_id: parada.parada_id,
+                        audio_id: parada.audio_id,
+                        reto_id: parada.reto_id,
+                        retos: parada.retos,
+                        nombre: obtenerNombreParada(parada),
+                        timestamp: Date.now()
+                    });
+                });
+                
+                // Enviar información específica a cada hijo
+                enviarInfoAudioAHijo3();
+                enviarInfoRetoAHijo4();
+                
+                // Avanzar a la parada seleccionada
+                avanzarAParada(nuevaParada);
+            }
+        }
+
+        function manejarAudioFinalizado(mensaje) {
+            console.log('Audio finalizado:', mensaje);
+            const parada = obtenerParadaActual();
+            if (parada) {
+                const indiceParada = extraerNumeroParada(parada.parada_id);
+                const nombreParada = obtenerNombreParada(parada);
+                mostrarMensajeInfoParada(`Audio finalizado en Parada ${indiceParada}: ${nombreParada}`);
+                
+                // Determinar el reto a mostrar
+                if (parada.reto_id) {
+                    mostrarRetoEnHijo4(parada.reto_id);
+                } else if (Array.isArray(parada.retos) && parada.retos.length > 0) {
+                    mostrarRetoEnHijo4(parada.retos[0].id || parada.retos[0]);
+                }
+            }
+        }
+
+        function manejarSeleccionParada(mensaje) {
+            // Actualizar paradaActual correctamente
+            window.paradaActual = mensaje.datos.index;
+            estadoApp.paradaActual = mensaje.datos.index;
+            
+            // Obtener la parada del nuevo formato
+            const parada = obtenerParadaActual();
+            if (!parada) {
+                console.warn(`No se encontró la parada con índice ${mensaje.datos.index}`);
+                return;
+            }
+            
+            const paradaConCoordenadas = {
+                lat: mensaje.datos.lat,
+                lng: mensaje.datos.lng,
+                nombre: obtenerNombreParada(parada)
+            };
+            mostrarParadaEnMapa(mensaje.datos.index, paradaConCoordenadas);
+            mostrarParadaActual();
+            
+            // Activar controles relacionados con la parada seleccionada
+            enviarMensaje(CONFIG.HIJOS.AUDIO.id, TIPOS_MENSAJE.MODO.HABILITAR_CONTROLES, {
+                paradaActual: mensaje.datos.index,
+                audio_id: parada.audio_id
+            });
+            
+            enviarMensaje(CONFIG.HIJOS.COORDENADAS.id, TIPOS_MENSAJE.MODO.HABILITAR_CONTROLES, {
+                paradaActual: mensaje.datos.index
+            });
+            
+            // Determinar reto a mostrar
+            if (parada.reto_id) {
+                enviarMensaje(CONFIG.HIJOS.RETOS.id, TIPOS_MENSAJE.RETOS.ABRIR, {
+                    index: parada.reto_id
+                });
+            } else if (Array.isArray(parada.retos) && parada.retos.length > 0) {
+                enviarMensaje(CONFIG.HIJOS.RETOS.id, TIPOS_MENSAJE.RETOS.ABRIR, {
+                    index: parada.retos[0].id || parada.retos[0]
+                });
+            }
+            
+            activarTodosLosBotones();
+        }
+
+        function iniciarAventura() {
+            window.paradaActual = 0; // Se inicializa la primera parada (índice 0)
+            estadoApp.paradaActual = 0;
+            
+            // Obtener la parada inicial
+            const paradaInicial = AVENTURA_PARADAS.find(item => item.tipo === "inicio") || AVENTURA_PARADAS[0];
+            
+            // Notificar a hijo de coordenadas para iniciar navegación
+            enviarMensaje(CONFIG.HIJOS.COORDENADAS.id, TIPOS_MENSAJE.NAVEGACION.ESTABLECER_DESTINO, {
+                tipo: 'iniciar-gps-a-parada',
+                parada_id: paradaInicial.parada_id,
+                paradaDestinoNombre: obtenerNombreParada(paradaInicial)
+            });
+            
+            ocultarInfoParada(); // Oculta la info si ya estaba visible al iniciar la aventura
+        }
+        
+        function avanzarRuta() {
+            // Se llama después de completar un reto
+            ocultarInfoParada(); // Oculta la info de la parada después de completar un reto
+            window.paradaActual++;
+            estadoApp.paradaActual++;
+            
+            // Obtener la siguiente parada (solo "parada", no "tramo")
+            const paradasFiltradas = AVENTURA_PARADAS.filter(item => 
+                item.tipo === "parada" || item.tipo === "inicio");
+            
+            if (estadoApp.paradaActual < paradasFiltradas.length - 1) {
+                const paradaActual = paradasFiltradas[estadoApp.paradaActual];
+                const paradaSiguiente = paradasFiltradas[estadoApp.paradaActual + 1];
+                
+                enviarMensaje(CONFIG.HIJOS.COORDENADAS.id, TIPOS_MENSAJE.NAVEGACION.ESTABLECER_DESTINO, {
+                    tipo: 'navegar-de-a-b',
+                    origen: paradaActual.parada_id,
+                    destino: paradaSiguiente.parada_id
+                });
+            } else {
+                console.log('¡Has completado todas las paradas de la aventura!');
+                mostrarMensajeInfoParada('¡Has completado todas las paradas de la aventura!');
+            }
+        }
+        
+        // ================== REGISTRO Y MANEJO DE CONTROLADORES DE MENSAJE ==================
+        // Registrar todos los controladores de mensajes estructurados
+        function registrarControladoresTotales() {
+            // Controladores de sistema
+            registrarControladorSeguro(TIPOS_MENSAJE.SISTEMA.INICIALIZACION, manejarInicializacion);
+            
+            // Controladores de navegación
+            registrarControladorSeguro(TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, manejarCambioParada);
+            
+            // Controladores de audio
+            registrarControladorSeguro(TIPOS_MENSAJE.AUDIO.REPRODUCIR, manejarReproducirAudio);
+            registrarControladorSeguro(TIPOS_MENSAJE.AUDIO.PAUSAR, manejarPausarAudio);
+            registrarControladorSeguro(TIPOS_MENSAJE.AUDIO.FINALIZADO, manejarAudioFinalizado);
+            
+            // Controladores de retos
+            registrarControladorSeguro(TIPOS_MENSAJE.RETOS.MOSTRAR, manejarMostrarReto);
+            registrarControladorSeguro(TIPOS_MENSAJE.RETOS.OCULTAR, manejarOcultarReto);
+            registrarControladorSeguro(TIPOS_MENSAJE.RETOS.COMPLETADO, manejarRetoCompletado);
+            
+            // Controladores de modo
+            registrarControladorSeguro(TIPOS_MENSAJE.MODO.ACTIVAR, manejarModoActivar);
+            registrarControladorSeguro(TIPOS_MENSAJE.MODO.DESACTIVAR, manejarModoDesactivar);
+            
+            // Controladores de error
+            registrarControladorSeguro(TIPOS_MENSAJE.ERROR, manejarError);
+
+            // Controladores de datos
+            registrarControladorSeguro(TIPOS_MENSAJE.DATOS.SOLICITAR_CONSTANTES, manejarSolicitudConstantes);
+            registrarControladorSeguro(TIPOS_MENSAJE.DATOS.SOLICITAR_PARADA, manejarSolicitudParada);
+            registrarControladorSeguro(TIPOS_MENSAJE.DATOS.SOLICITAR_COORDENADAS, manejarSolicitudCoordenadas);
+            registrarControladorSeguro(TIPOS_MENSAJE.DATOS.SOLICITAR_ESTADO, manejarSolicitudEstado);
+            registrarControladorSeguro(TIPOS_MENSAJE.DATOS.SOLICITAR_ARRAY_PARADAS, manejarSolicitudArrayParadas);
+            
+            // Verificar que todos los manejadores requeridos estén registrados
+            verificarManejadoresRequeridos();
+            
+            console.log(`[${CONFIG.ID_PADRE}] Controladores de mensajes registrados correctamente`);
+        }
+
+        // ================== MANEJO DE RETOS ==================
+        /**
+         * Maneja el evento cuando el usuario completa un reto
+         * @param {Object} mensaje - El mensaje recibido
+         */
+        function manejarRetoCompletado(mensaje) {
+            try {
+                const { datos, origen } = mensaje;
+                if (!datos) {
+                    console.error(`[${CONFIG.ID_PADRE}] Error: Datos faltantes en mensaje de reto completado`);
+                    return { exito: false, error: 'Datos faltantes' };
+                }
+                
+                console.log(`[${CONFIG.ID_PADRE}] Reto completado: ${datos.retoId || datos.id}`);
+                
+                // Ocultar interfaz de reto
+                manejarOcultarReto({});
+                
+                // Notificar al hijo de audio para reproducir sonido de éxito
+                enviarMensaje(CONFIG.HIJOS.AUDIO.id, TIPOS_MENSAJE.AUDIO.REPRODUCIR, {
+                    tipo: 'efecto',
+                    nombre: 'exito'
+                }).catch(e => console.warn('Error al solicitar efecto de sonido:', e));
+                
+                // Actualizar estado global para rastrear retos completados
+                if (!estadoApp.retosCompletados) {
+                    estadoApp.retosCompletados = new Set();
+                }
+                estadoApp.retosCompletados.add(datos.retoId || datos.id);
+                
+                // Avanzar a la siguiente parada
+                setTimeout(() => {
+                    avanzarRuta();
+                }, 2000);
+                
+                // Devolver confirmación al componente hijo
+                return { exito: true, mensaje: 'Reto registrado correctamente' };
+            } catch (error) {
+                console.error(`[${CONFIG.ID_PADRE}] Error al manejar reto completado:`, error);
+                return { exito: false, error: error.message };
+            }
+        }
+
+        /**
+         * Maneja la solicitud de mostrar un reto
+         * @param {Object} mensaje - El mensaje recibido
+         */
+        function manejarMostrarReto(mensaje) {
+            try {
+                const { datos, origen } = mensaje;
+                console.log(`[${CONFIG.ID_PADRE}] Solicitud para mostrar reto:`, datos);
+                
+                const iframeHijo4 = document.getElementById('hijo4');
+                if (iframeHijo4) {
+                    iframeHijo4.style.display = 'block';
+                    
+                    // Notificar a otros componentes que se está mostrando un reto
+                    Object.values(CONFIG.HIJOS).forEach(hijo => {
+                        if (hijo.id !== CONFIG.HIJOS.RETOS.id && hijo.id !== origen) {
+                            enviarMensaje(hijo.id, TIPOS_MENSAJE.RETOS.MOSTRAR, {
+                                retoId: datos.index,
+                                timestamp: Date.now()
+                            }).catch(e => console.warn(`Error al notificar a ${hijo.nombre}:`, e));
+                        }
+                    });
+                    
+                    ocultarInfoParada();
+                    return { exito: true };
+                } else {
+                    console.error(`[${CONFIG.ID_PADRE}] No se encontró el iframe de retos`);
+                    return { exito: false, error: 'No se encontró el iframe de retos' };
+                }
+            } catch (error) {
+                console.error(`[${CONFIG.ID_PADRE}] Error al mostrar reto:`, error);
+                return { exito: false, error: error.message };
+            }
+        }
+
+        /**
+         * Maneja la solicitud de ocultar un reto
+         * @param {Object} mensaje - El mensaje recibido
+         */
+        function manejarOcultarReto(mensaje) {
+            try {
+                console.log(`[${CONFIG.ID_PADRE}] Ocultando interfaz de reto`);
+                
+                const iframeHijo4 = document.getElementById('hijo4');
+                if (iframeHijo4) {
+                    iframeHijo4.style.display = 'none';
+                    
+                    // Notificar a otros componentes que se ocultó el reto
+                    Object.values(CONFIG.HIJOS).forEach(hijo => {
+                        if (hijo.id !== CONFIG.HIJOS.RETOS.id && hijo.id !== mensaje.origen) {
+                            enviarMensaje(hijo.id, TIPOS_MENSAJE.RETOS.OCULTAR, {
+                                timestamp: Date.now()
+                            }).catch(e => {});
+                        }
+                    });
+                    
+                    mostrarParadaActual(); // Volver a mostrar la información de la parada
+                    return { exito: true };
+                } else {
+                    console.error(`[${CONFIG.ID_PADRE}] No se encontró el iframe de retos`);
+                    return { exito: false, error: 'No se encontró el iframe de retos' };
+                }
+            } catch (error) {
+                console.error(`[${CONFIG.ID_PADRE}] Error al ocultar reto:`, error);
+                return { exito: false, error: error.message };
+            }
+        }
+
+        // ================== VERIFICACIÓN DE MANEJADORES DE MENSAJES ==================
+        /**
+         * Verifica que todos los manejadores de mensajes requeridos estén registrados
+         * @returns {boolean} True si todos los manejadores están registrados
+         */
+        function verificarManejadoresRequeridos() {
+            const manejadoresRequeridos = [
+                TIPOS_MENSAJE.RETOS.MOSTRAR,
+                TIPOS_MENSAJE.RETOS.OCULTAR,
+                TIPOS_MENSAJE.RETOS.COMPLETADO,
+                TIPOS_MENSAJE.AUDIO.FINALIZADO,
+                TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA,
+                TIPOS_MENSAJE.DATOS.SOLICITAR_ARRAY_PARADAS
+            ];
+            
+            const faltantes = [];
+            
+            manejadoresRequeridos.forEach(tipo => {
+                // Verificar si hay una función manejadora para este tipo
+                const nombreFuncion = `manejar${tipo.split(':')[1].charAt(0).toUpperCase() + tipo.split(':')[1].slice(1)}`;
+                if (typeof window[nombreFuncion] !== 'function') {
+                    faltantes.push({ tipo, nombreFuncion });
+                }
+            });
+            
+            if (faltantes.length > 0) {
+                console.warn(`[${CONFIG.ID_PADRE}] Faltan manejadores para:`, faltantes);
+                return false;
+            }
+            
+            console.log(`[${CONFIG.ID_PADRE}] Verificación de manejadores completada: todos los manejadores requeridos están registrados`);
+            return true;
+        }
+
+        // ================== REGISTRO DE CONTROLADORES CON MANEJO DE ERRORES ==================
+        /**
+         * Registra un controlador de mensajes con manejo de errores
+         * @param {string} tipo - El tipo de mensaje
+         * @param {Function} manejador - La función manejadora
+         */
+        function registrarControladorSeguro(tipo, manejador) {
+            if (!tipo || typeof manejador !== 'function') {
+                console.error(`[${CONFIG.ID_PADRE}] Error al registrar controlador: tipo o manejador inválidos`);
+                return;
+            }
+            
+            // Crear una función wrapper que maneja errores
+            const manejadorSeguro = (mensaje) => manejarMensajeSeguro(manejador, mensaje);
+            
+            // Registrar el controlador con el wrapper
+            registrarControlador(tipo, manejadorSeguro);
+            
+            console.log(`[${CONFIG.ID_PADRE}] Controlador registrado para: ${tipo}`);
+        }
+
+        /**
+         * Maneja un mensaje de forma segura capturando cualquier excepción
+         * @param {Function} handler - El manejador de mensajes
+         * @param {Object} mensaje - El mensaje a manejar
+         * @returns {Object} - La respuesta del manejador o un objeto de error
+         */
+        function manejarMensajeSeguro(handler, mensaje) {
+            try {
+                return handler(mensaje);
+            } catch (error) {
+                console.error(`Error al manejar mensaje ${mensaje.tipo}:`, error);
+                return {
+                    exito: false,
+                    error: error.message,
+                    origen: 'error_manejo_mensaje'
+                };
+            }
+        }
+
+        // ================== INICIALIZACIÓN DEL MAPA ==================
+        /**
+         * Inicializa el mapa de Leaflet
+         */
+        function inicializarMapa() {
+            console.log('[MAPA] Inicializando mapa...');
+            
+            try {
+                // Get the map container
+                const mapContainer = document.getElementById('mapa');
+                if (!mapContainer) {
+                    console.error('[MAPA] No se encontró el contenedor del mapa (id="mapa")');
+                    return null;
+                }
+                
+                // Ensure the map container has proper dimensions
+                mapContainer.style.width = '100%';
+                mapContainer.style.height = '100%';
+                mapContainer.style.display = 'block';
+                
+                // Check if Leaflet is available
+                if (!L) {
+                    console.error('[MAPA] Error: Leaflet no está disponible (objeto L)');
+                    return null;
+                }
+                
+                console.log('[MAPA] Creando instancia del mapa...');
+                
+                // Create map instance
+                const map = L.map('mapa', {
+                    center: [39.4697, -0.3774], // Valencia coordinates
+                    zoom: 15,
+                    zoomControl: true
+                });
+                
+                // Add OpenStreetMap tile layer
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                    maxZoom: 19
+                }).addTo(map);
+                
+                // Save reference to map
+                window.mapa = map;
+                
+                console.log('[MAPA] Mapa inicializado correctamente');
+                
+                // Force map to recalculate size
+                setTimeout(() => {
+                    map.invalidateSize();
+                    console.log('[MAPA] Tamaño del mapa actualizado');
+                    
+                    // Dispatch event to notify map is initialized
+                    document.dispatchEvent(new Event('mapInitialized'));
+                }, 300);
+                
+                return map;
+            } catch (error) {
+                console.error('[MAPA] Error al inicializar el mapa:', error);
+                document.getElementById('map-debug').textContent = `Error: ${error.message}`;
+                return null;
+            }
+        }
+
+        // Fix 4: Ensure the map is initialized when the page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            // Corregir paradas incompletas
+            if (typeof corregirParadasIncompletas === 'function') {
+                corregirParadasIncompletas();
+            }
+            
+            // Exponer el array de paradas a window para que sea accesible por comunicaciones externas
+            window.AVENTURA_PARADAS = AVENTURA_PARADAS;
+            
+            console.log('[PADRE] Llamando a inicializarMapa()...');
+            // Initialize map with error handling
+            try {
+                const mapaInstance = inicializarMapa();
+                if (!mapaInstance) {
+                    console.error('[PADRE] Error: inicializarMapa() no devolvió una instancia de mapa');
+                    document.getElementById('map-debug').textContent = 'Error: No se pudo inicializar el mapa';
+                } else {
+                    console.log('[PADRE] Mapa inicializado con éxito');
+                    document.getElementById('map-debug').textContent = 'Mapa cargado correctamente';
+                    
+                    // Auto-hide debug after 5 seconds
+                    setTimeout(() => {
+                        const debugEl = document.getElementById('map-debug');
+                        if (debugEl) {
+                            debugEl.style.opacity = '0';
+                            setTimeout(() => debugEl.style.display = 'none', 1000);
+                        }
+                    }, 5000);
+                }
+            } catch (error) {
+                console.error('[PADRE] Error al inicializar el mapa:', error);
+                document.getElementById('map-debug').textContent = `Error crítico: ${error.message}`;
+            }
+            
+            // Notificar a todos los hijos que tenemos el array de paradas listo
+            Object.values(CONFIG.HIJOS).forEach(hijo => {
+                enviarMensaje(hijo.id, TIPOS_MENSAJE.DATOS.ARRAY_PARADAS_ACTUALIZADO, {
+                    timestamp: Date.now(),
+                    totalParadas: AVENTURA_PARADAS.length,
+                    hash: calcularHashArray(AVENTURA_PARADAS)
+                }).catch(e => console.warn(`Error al notificar array de paradas a ${hijo.nombre}:`, e));
+            });
+            
+            // Verificar estado inicial de modo casa
+            setTimeout(() => {
+                if (typeof manejarCambioModoDesdeCasa === 'function') {
+                    manejarCambioModoDesdeCasa();
+                }
+            }, 1500); // Dar tiempo a que hijo5-casa se inicialice
+        });
+        
+        // Iniciar el sistema de mensajería
+        iniciarSistemaMensajeria();
+    </script>
+</body>
+</html>
+                    timestamp: Date.now(),
+                    totalParadas: AVENTURA_PARADAS.length,
+                    hash: calcularHashArray(AVENTURA_PARADAS)
+                }).catch(e => console.warn(`Error al notificar array de paradas a ${hijo.nombre}:`, e));
+            });
+            
+            // Verificar estado inicial de modo casa
+            setTimeout(() => {
+                if (typeof manejarCambioModoDesdeCasa === 'function') {
+                    manejarCambioModoDesdeCasa();
+                }
+            }, 1500); // Dar tiempo a que hijo5-casa se inicialice
+        });
+        
+        // Iniciar el sistema de mensajería
+        iniciarSistemaMensajeria();
+    </script>
+</body>
+</html>
+
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Aventura 1 - Padre</title>
 
