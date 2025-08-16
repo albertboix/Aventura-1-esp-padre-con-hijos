@@ -248,6 +248,14 @@
     </audio>
 
     <script type="module">
+        // Importar el módulo de mensajería
+        import { 
+            inicializarMensajeria, 
+            enviarMensaje, 
+            registrarControlador,
+            TIPOS_MENSAJE 
+        } from './Aventura-1-esp-padre-con-hijos/js/mensajeria.js';
+        
         // Constantes y variables globales
         let audioPlayer;
         let playPauseBtn;
@@ -278,6 +286,26 @@
                 console.log(`[${IFRAME_ID}] Reproductor de audio inicializado`);
             } catch (error) {
                 console.error(`[${IFRAME_ID}] Error al inicializar el reproductor de audio:`, error);
+            }
+        });
+
+        // Inicializar la mensajería cuando se cargue el componente
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                await inicializarMensajeria({
+                    iframeId: IFRAME_ID,
+                    logLevel: 1, // INFO
+                    debug: true
+                });
+                console.log(`[${IFRAME_ID}] Sistema de mensajería inicializado correctamente`);
+                
+                // Registrar manejadores de mensajes
+                registrarControlador('audio', manejarMensajeAudio);
+                
+                // ...existing code...
+                
+            } catch (error) {
+                console.error(`[${IFRAME_ID}] Error al inicializar mensajería:`, error);
             }
         });
 
@@ -450,209 +478,197 @@
             }
         }
 
-        // Notificar el estado actual al padre
+        // Notificar el estado actual al padre usando el módulo de mensajería
         function notificarEstado(accion, datos = {}) {
-            if (window.parent && window.parent !== window) {
-                return new Promise((resolve, reject) => {
-                    try {
-                        window.parent.postMessage({
-                            tipo: 'audio',
-                            datos: { accion, ...datos }
-                        }, '*');
-                        resolve();
-                    } catch (error) {
-                        console.error('Error al notificar estado:', error);
-                        reject(error);
-                    }
+            if (window.Mensajeria) {
+                return enviarMensaje('padre', 'audio:estado', { 
+                    accion, 
+                    ...datos, 
+                    origen: IFRAME_ID,
+                    timestamp: new Date().toISOString()
+                }).catch(error => {
+                    console.error(`[${IFRAME_ID}] Error al notificar estado:`, error);
+                    return Promise.reject(error);
                 });
+            } else {
+                // Fallback al método anterior
+                if (window.parent && window.parent !== window) {
+                    return new Promise((resolve, reject) => {
+                        try {
+                            window.parent.postMessage({
+                                tipo: 'audio',
+                                datos: { accion, ...datos }
+                            }, '*');
+                            resolve();
+                        } catch (error) {
+                            console.error(`[${IFRAME_ID}] Error al enviar mensaje al padre:`, error);
+                            reject(error);
+                        }
+                    });
+                }
+                return Promise.resolve(); // No hay padre
             }
-            return Promise.resolve();
         }
 
-        // Notificar un error
-        function notificarError(tipo, detalles = {}) {
-            console.error(`[${IFRAME_ID}] Error:`, tipo, detalles);
-            return notificarEstado('error', { tipo, ...detalles });
+        // Notificar un error al padre
+        function notificarError(tipo, datos = {}) {
+            if (window.Mensajeria) {
+                return enviarMensaje('padre', 'error', { 
+                    tipo, 
+                    ...datos, 
+                    origen: IFRAME_ID,
+                    timestamp: new Date().toISOString()
+                }).catch(error => {
+                    console.error(`[${IFRAME_ID}] Error al notificar error:`, error);
+                    return Promise.reject(error);
+                });
+            } else {
+                // Fallback al método anterior
+                if (window.parent && window.parent !== window) {
+                    return new Promise((resolve, reject) => {
+                        try {
+                            window.parent.postMessage({
+                                tipo: 'error',
+                                datos: { tipo, ...datos }
+                            }, '*');
+                            resolve();
+                        } catch (error) {
+                            console.error(`[${IFRAME_ID}] Error al enviar mensaje de error al padre:`, error);
+                            reject(error);
+                        }
+                    });
+                }
+                return Promise.resolve(); // No hay padre
+            }
         }
 
-        // API pública para controlar el reproductor
-        window.reproductorAudio = {
-            // Reproducir un archivo de audio
-            reproducir: async (archivo) => {
-                try {
-                    if (archivo) {
-                        audioPlayer.src = archivo;
-                        await audioPlayer.play();
-                        return true;
-                    }
-                    return false;
-                } catch (error) {
-                    console.error('Error al reproducir audio:', error);
-                    notificarError('reproducir', { error: error.message });
-                    throw error;
-                }
-            },
-            
-            // Pausar la reproducción
-            pausar: () => {
-                try {
-                    audioPlayer.pause();
-                    return true;
-                } catch (error) {
-                    console.error('Error al pausar audio:', error);
-                    notificarError('pausar', { error: error.message });
-                    throw error;
-                }
-            },
-            
-            // Detener la reproducción
-            detener: () => {
-                try {
-                    audioPlayer.pause();
-                    audioPlayer.currentTime = 0;
-                    isPlaying = false;
-                    updatePlayPauseButton();
-                    return true;
-                } catch (error) {
-                    console.error('Error al detener audio:', error);
-                    notificarError('detener', { error: error.message });
-                    throw error;
-                }
-            },
-            
-            // Establecer el tiempo de reproducción
-            establecerTiempo: (tiempo) => {
-                try {
-                    if (typeof tiempo === 'number') {
-                        audioPlayer.currentTime = tiempo;
-                        return true;
-                    }
-                    return false;
-                } catch (error) {
-                    console.error('Error al establecer tiempo:', error);
-                    notificarError('tiempo', { 
-                        error: error.message, 
-                        tiempoSolicitado: tiempo,
-                        tiempoActual: audioPlayer.currentTime
-                    });
-                    throw error;
-                }
-            },
-            
-            // Habilitar o deshabilitar controles
-            habilitarControles: (habilitar) => {
-                controlsDisabled = !habilitar;
-                playPauseBtn.disabled = controlsDisabled;
-                retosBtn.disabled = controlsDisabled;
-                return true;
-            },
-            
-            // Cambiar entre modos de interfaz
-            cambiarModo: (modo) => {
-                const esModoCasa = modo === 'casa';
-                document.body.classList.toggle('modo-casa', esModoCasa);
-                document.body.classList.toggle('modo-aventura', !esModoCasa);
-                
-                // Notificar el cambio de modo
-                notificarEstado('modo_cambiado', {
-                    modo: esModoCasa ? 'casa' : 'aventura'
-                }).catch(console.error);
-                
-                return true;
-            },
-            
-            // Obtener el estado actual del reproductor
-            obtenerEstado: () => {
-                return {
-                    reproduciendo: !audioPlayer.paused,
-                    tiempoActual: audioPlayer.currentTime,
-                    duracion: audioPlayer.duration,
-                    volumen: audioPlayer.volume,
-                    silenciado: audioPlayer.muted,
-                    controlesHabilitados: !controlsDisabled
-                };
-            },
-            
-            // Establecer el volumen
-            establecerVolumen: async (volumen) => {
-                try {
-                    if (typeof volumen === 'number' && volumen >= 0 && volumen <= 1) {
-                        audioPlayer.volume = volumen;
-                        return true;
-                    }
-                    return false;
-                } catch (error) {
-                    console.error('Error al establecer volumen:', error);
-                    notificarError('volumen', { 
-                        error: error.message,
-                        volumenSolicitado: volumen,
-                        volumenActual: audioPlayer.volume
-                    });
-                    throw error;
-                }
-            }
-        };
-
-        // Manejar mensajes entrantes
-        function manejarMensajeAudio(mensaje) {
-            const { accion, parametros = {} } = mensaje.datos || {};
-            console.log(`[${IFRAME_ID}] Mensaje de audio recibido:`, { accion, parametros });
+        // Manejador de mensajes de audio
+        async function manejarMensajeAudio(mensaje) {
+            const { accion, url, tiempo, volumen, habilitar, deshabilitar } = mensaje.datos || {};
             
             try {
+                console.log(`[${IFRAME_ID}] Mensaje de audio recibido:`, mensaje);
+                
                 switch (accion) {
+                    case 'cargar':
+                        if (url) {
+                            audioPlayer.src = url;
+                            audioPlayer.load();
+                            return { estado: 'ok', mensaje: 'Audio cargado correctamente' };
+                        }
+                        return { estado: 'error', mensaje: 'URL no proporcionada' };
+                        
                     case 'reproducir':
-                        return window.reproductorAudio.reproducir(parametros.archivo);
+                        try {
+                            await audioPlayer.play();
+                            return { estado: 'ok', mensaje: 'Reproducción iniciada' };
+                        } catch (error) {
+                            console.error(`[${IFRAME_ID}] Error al reproducir:`, error);
+                            return { estado: 'error', mensaje: error.message };
+                        }
+                        
                     case 'pausar':
-                        return window.reproductorAudio.pausar();
+                        audioPlayer.pause();
+                        return { estado: 'ok', mensaje: 'Audio pausado' };
+                        
                     case 'detener':
-                        return window.reproductorAudio.detener();
-                    case 'establecer_volumen':
-                        return window.reproductorAudio.establecerVolumen(parametros.volumen);
-                    case 'solicitar_estado':
-                        return Promise.resolve(window.reproductorAudio.obtenerEstado());
+                        audioPlayer.pause();
+                        audioPlayer.currentTime = 0;
+                        return { estado: 'ok', mensaje: 'Audio detenido' };
+                        
+                    case 'saltar':
+                        if (typeof tiempo === 'number') {
+                            audioPlayer.currentTime = tiempo;
+                            return { estado: 'ok', mensaje: 'Tiempo actualizado' };
+                        }
+                        return { estado: 'error', mensaje: 'Tiempo no válido' };
+                        
+                    case 'volumen':
+                        if (typeof volumen === 'number' && volumen >= 0 && volumen <= 1) {
+                            audioPlayer.volume = volumen;
+                            return { estado: 'ok', mensaje: 'Volumen actualizado' };
+                        }
+                        return { estado: 'error', mensaje: 'Volumen no válido' };
+                        
                     case 'habilitar_controles':
-                        return Promise.resolve(window.reproductorAudio.habilitarControles(true));
+                        controlsDisabled = false;
+                        playPauseBtn.disabled = false;
+                        retosBtn.disabled = false;
+                        return { estado: 'ok', mensaje: 'Controles habilitados' };
+                        
                     case 'deshabilitar_controles':
-                        return Promise.resolve(window.reproductorAudio.habilitarControles(false));
-                    case 'cambiar_modo':
-                        return Promise.resolve(window.reproductorAudio.cambiarModo(parametros.modo));
+                        controlsDisabled = true;
+                        playPauseBtn.disabled = true;
+                        retosBtn.disabled = true;
+                        return { estado: 'ok', mensaje: 'Controles deshabilitados' };
+                        
+                    case 'obtener_estado':
+                        return {
+                            estado: 'ok',
+                            datos: {
+                                reproduciendo: !audioPlayer.paused,
+                                tiempo: audioPlayer.currentTime,
+                                duracion: audioPlayer.duration || 0,
+                                volumen: audioPlayer.volume,
+                                controlesHabilitados: !controlsDisabled,
+                                src: audioPlayer.src || '',
+                                muted: audioPlayer.muted
+                            }
+                        };
+                        
                     default:
-                        console.warn(`[${IFRAME_ID}] Acción no reconocida:`, accion);
-                        return Promise.reject(new Error(`Acción no reconocida: ${accion}`));
+                        return { estado: 'error', mensaje: `Acción desconocida: ${accion}` };
                 }
             } catch (error) {
-                console.error(`[${IFRAME_ID}] Error al procesar mensaje:`, error);
-                return Promise.reject(error);
+                console.error(`[${IFRAME_ID}] Error al procesar mensaje de audio:`, error);
+                return { estado: 'error', mensaje: error.message };
             }
         }
 
-        // Escuchar mensajes del padre
-        window.addEventListener('message', (event) => {
-            // Verificar el origen del mensaje si es necesario
-            // if (event.origin !== 'https://origen-permitido.com') return;
-            
-            const { tipo, datos } = event.data || {};
-            
-            if (tipo === 'audio') {
-                manejarMensajeAudio({ datos })
-                    .catch(error => {
-                        console.error('Error al manejar mensaje de audio:', error);
-                    });
+        // Función para habilitar o deshabilitar los controles
+        function setControlsEnabled(enabled) {
+            controlsDisabled = !enabled;
+            playPauseBtn.disabled = !enabled;
+            retosBtn.disabled = !enabled;
+        }
+
+        // Función para cambiar entre modo casa y aventura
+        function cambiarModo(modo) {
+            if (modo === 'casa') {
+                document.body.classList.remove('modo-aventura');
+                document.body.classList.add('modo-casa');
+                audioPlayer.pause();
+            } else if (modo === 'aventura') {
+                document.body.classList.remove('modo-casa');
+                document.body.classList.add('modo-aventura');
+            }
+        }
+
+        // Registrar el manejador de mensajes de ventana
+        window.addEventListener('message', event => {
+            try {
+                const { tipo, datos } = event.data || {};
+                
+                if (tipo === 'audio') {
+                    manejarMensajeAudio({ datos }).catch(console.error);
+                } else if (tipo === 'cambio_modo') {
+                    cambiarModo(datos?.modo);
+                }
+            } catch (error) {
+                console.error(`[${IFRAME_ID}] Error al procesar mensaje de ventana:`, error);
             }
         });
 
-        // Inicializar el reproductor cuando el script se cargue
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initializePlayer);
-        } else {
-            setTimeout(initializePlayer, 0);
-        }
-
-        function initializePlayer() {
-            // Notificar que el reproductor está listo
-            notificarEstado('reproductor_listo');
-            console.log(`[${IFRAME_ID}] Reproductor de audio inicializado`);
-        }
+        // Notificar que el componente está listo
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                notificarEstado('componente_listo', {
+                    id: IFRAME_ID,
+                    tipo: 'audio',
+                    capacidades: ['reproducir', 'pausar', 'saltar', 'volumen']
+                }).catch(console.error);
+            }, 500);
+        });
     </script>
 </body>
 </html>
