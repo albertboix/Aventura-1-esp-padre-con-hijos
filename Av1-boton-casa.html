@@ -1,2812 +1,673 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <script type="module">
-      // ================== CONFIGURACIÓN ==================
-      const CONFIG = {
-        IFRAME_ID: 'hijo5-casa',
-        LOG_LEVEL: 2, // 0: debug, 1: info, 2: warn, 3: error, 4: none
-        DEBUG: true,
-        REINTENTOS: {
-          MAXIMOS: 3,
-          TIEMPO_ESPERA: 1000,
-          FACTOR: 2
-        },
-        ESTADO_INICIAL: {
-          modo: 'casa',
-          controlesHabilitados: true,
-          puntoActual: null,
-          gpsActivo: false,
-          tramoActual: null,
-          ultimoError: null
-        }
-      };
+/**
+ * SISTEMA DE MENSAJERÍA CENTRALIZADA
+ * Versión 3.0 - Comunicación bidireccional padre-hijos unificada
+ * Soporta múltiples iframes y manejo de errores robusto
+ */
 
-      // Tipos de mensajes específicos de este componente
-      let TIPOS_MENSAJE = {
-        // Valores por defecto en caso de que falle la importación
-        SISTEMA: {
-          INICIALIZACION: 'sistema:inicializacion',
-          CAMBIO_MODO: 'sistema:cambio_modo',
-          CONFIRMACION: 'sistema:confirmacion',
-          ACTUALIZAR_ESTADO: 'sistema:actualizar_estado',
-          SOLICITAR_ESTADO: 'sistema:solicitar_estado',
-          LISTO: 'sistema:listo'
-        },
-        // Mensajes específicos del componente
-        CAMBIO_PUNTO: 'hijo5:cambio_punto',
-        ACTUALIZAR_ESTADO: 'hijo5:actualizar_estado',
-        NOTIFICAR_PUNTO: 'hijo5:notificar_punto'
-      };
-      
-      // Intentar importar las constantes de mensajería
-      (async () => {
-        try {
-          const mod = await import('./mensajeria.js');
-          if (mod && mod.TIPOS_MENSAJE) {
-            TIPOS_MENSAJE = { ...TIPOS_MENSAJE, ...mod.TIPOS_MENSAJE };
-            console.log(`[${CONFIG.IFRAME_ID}] Constantes de mensajería actualizadas:`, TIPOS_MENSAJE);
-          }
-        } catch (e) {
-          console.warn('[hijo5] No se pudieron cargar las constantes de mensajería, usando valores por defecto', e);
-        }
-      })();
-
-      /**
-       * Inicializa la mensajería y registra los manejadores de mensajes
-       * @returns {Promise<boolean>} True si la inicialización fue exitosa
-       */
-      async function inicializarMensajeria() {
-        try {
-            // Define CONFIG at the beginning of the function
-            const CONFIG = {
-                IFRAME_ID: 'boton-casa',
-                // Add other config properties as needed
-            };
-            
-            console.log(`[${CONFIG.IFRAME_ID}] Cargando módulo de mensajería...`);
-            
-            try {
-                const { 
-                    Mensajeria, 
-                    TIPOS_MENSAJE, 
-                    inicializarMensajeria, 
-                    enviarMensaje, 
-                    registrarControlador 
-                } = await import('./mensajeria.js');
-                
-                // Store in window for backward compatibility (to be removed later)
-                window.Mensajeria = { 
-                    Mensajeria, 
-                    TIPOS_MENSAJE, 
-                    inicializarMensajeria, 
-                    enviarMensaje, 
-                    registrarControlador 
-                };
-                
-                console.log(`[${CONFIG.IFRAME_ID}] Módulo de mensajería cargado correctamente`);
-                return { 
-                    Mensajeria, 
-                    TIPOS_MENSAJE, 
-                    inicializarMensajeria, 
-                    enviarMensaje, 
-                    registrarControlador 
-                };
-            } catch (importError) {
-                console.error(`[${CONFIG.IFRAME_ID}] Error al cargar el módulo de mensajería:`, importError);
-                throw new Error(`Error al cargar el módulo de mensajería: ${importError.message}`);
-            }
-            
-            if (!window.Mensajeria) {
-                throw new Error('El módulo de mensajería se cargó pero es undefined');
-            }
-            
-            if (typeof window.Mensajeria.inicializarMensajeria !== 'function') {
-                console.error('Métodos disponibles en Mensajeria:', Object.keys(window.Mensajeria).join(', '));
-                throw new Error('La función inicializarMensajeria no está disponible en el módulo');
-            }
-            
-            // Configurar la mensajería
-            console.log(`[${CONFIG.IFRAME_ID}] Inicializando mensajería con configuración:`, {
-                iframeId: CONFIG.IFRAME_ID,
-                logLevel: CONFIG.LOG_LEVEL,
-                debug: CONFIG.DEBUG,
-                reintentos: {
-                max: CONFIG.REINTENTOS.MAXIMOS,
-                delay: CONFIG.REINTENTOS.TIEMPO_ESPERA,
-                factor: CONFIG.REINTENTOS.FACTOR
-                }
-            });
-
-            try {
-                await window.Mensajeria.inicializarMensajeria({
-                iframeId: CONFIG.IFRAME_ID,
-                logLevel: CONFIG.LOG_LEVEL,
-                debug: CONFIG.DEBUG,
-                reintentos: {
-                    max: CONFIG.REINTENTOS.MAXIMOS,
-                    delay: CONFIG.REINTENTOS.TIEMPO_ESPERA,
-                    factor: CONFIG.REINTENTOS.FACTOR
-                }
-                });
-                console.log(`[${CONFIG.IFRAME_ID}] Mensajería inicializada correctamente`);
-            } catch (initError) {
-                console.error(`[${CONFIG.IFRAME_ID}] Error al inicializar la mensajería:`, initError);
-                throw new Error(`Error al inicializar la mensajería: ${initError.message}`);
-            }
-            
-            // Asegurarse de que las funciones globales estén disponibles
-            if (window.Mensajeria) {
-                // Hacer que las funciones estén disponibles globalmente
-                window.enableControls = window.Mensajeria.enableControls || function() {
-                console.warn('enableControls no está disponible en Mensajeria');
-                return Promise.resolve(false);
-                };
-                
-                window.disableControls = window.Mensajeria.disableControls || function() {
-                console.warn('disableControls no está disponible en Mensajeria');
-                return Promise.resolve(false);
-                };
-            }
-            
-            try {
-                // Registrar manejadores de mensajes
-                console.log(`[${CONFIG.IFRAME_ID}] Registrando manejadores de mensajes...`);
-                await registrarManejadores();
-                
-                // Notificar al padre que estamos listos
-                console.log(`[${CONFIG.IFRAME_ID}] Notificando al padre...`);
-                await notificarEstado('inicializado');
-                
-                console.log(`[${CONFIG.IFRAME_ID}] Inicialización completada exitosamente`);
-                return true;
-            } catch (handlerError) {
-                console.error(`[${CONFIG.IFRAME_ID}] Error al registrar manejadores:`, handlerError);
-                throw new Error(`Error al registrar manejadores: ${handlerError.message}`);
-            }
-            
-        } catch (error) {
-            const errorMsg = `Error al inicializar la mensajería: ${error.message}`;
-            console.error(`[${CONFIG.IFRAME_ID}] ${errorMsg}`, error);
-            mostrarError(errorMsg);
-            return false;
-        }
-      }
-      
-      /**
-       * Registra los manejadores de mensajes para este componente
-       * @returns {Promise<void>}
-       */
-      async function registrarManejadores() {
-        if (!window.Mensajeria) {
-          throw new Error('Mensajería no disponible para registrar manejadores');
-        }
-        
-        try {
-          // Registrar manejadores de mensajes del sistema
-          const manejadoresSistema = [
-            { tipo: TIPOS_MENSAJE.SISTEMA.INICIALIZACION, manejador: manejarInicializacion },
-            { tipo: TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejador: manejarCambioModo },
-            { tipo: TIPOS_MENSAJE.SISTEMA.CONFIRMACION, manejador: manejarConfirmacion },
-            { tipo: TIPOS_MENSAJE.SISTEMA.ACTUALIZAR_ESTADO, manejador: manejarActualizacionEstado },
-            { tipo: TIPOS_MENSAJE.SISTEMA.SOLICITAR_ESTADO, manejador: manejarSolicitudEstado }
-          ];
-          
-          // Registrar todos los manejadores
-          for (const { tipo, manejador } of manejadoresSistema) {
-            if (typeof manejador === 'function') {
-              window.Mensajeria.registrarControlador(tipo, manejador);
-              console.log(`[${CONFIG.IFRAME_ID}] Manejador registrado para: ${tipo}`);
-            }
-          }
-          
-          console.log(`[${CONFIG.IFRAME_ID}] Todos los manejadores de mensajes registrados`);
-          return true;
-          
-        } catch (error) {
-          console.error(`[${CONFIG.IFRAME_ID}] Error al registrar manejadores:`, error);
-          throw error; // Relanzar para que el llamador pueda manejarlo
-        }
-      }
-      
-      /**
-       * Notifica el estado actual al iframe padre
-       * @param {string} accion - Acción que generó el cambio de estado
-       * @param {Object} [datosAdicionales={}] - Datos adicionales a incluir en la notificación
-       * @returns {Promise<boolean>} True si la notificación se envió correctamente
-       */
-      async function notificarEstado(accion, datosAdicionales = {}) {
-        if (!window.Mensajeria) {
-          console.warn(`[${CONFIG.IFRAME_ID}] Mensajería no disponible para notificar estado`);
-          return false;
-        }
-        
-        const timestamp = new Date().toISOString();
-        const mensaje = {
-          tipo: TIPOS_MENSAJE.SISTEMA.ACTUALIZAR_ESTADO,
-          origen: CONFIG.IFRAME_ID,
-          accion,
-          datos: {
-            ...datosAdicionales,
-            timestamp,
-            modo: estadoApp.modo,
-            gpsActivo: estadoApp.gpsActivo,
-            controlesHabilitados: estadoApp.controlesHabilitados,
-            puntoActual: estadoApp.puntoActual,
-            tramoActual: estadoApp.tramoActual
-          }
-        };
-        
-        try {
-          // Usar el sistema de mensajería con reintentos
-          await window.Mensajeria.enviarMensaje(
-            'padre',
-            TIPOS_MENSAJE.SISTEMA.ACTUALIZAR_ESTADO,
-            mensaje.datos,
-            { 
-              maxRetries: CONFIG.REINTENTOS.MAXIMOS,
-              retryDelay: CONFIG.REINTENTOS.TIEMPO_ESPERA
-            }
-          );
-          
-          console.log(`[${CONFIG.IFRAME_ID}] Estado notificado: ${accion}`, mensaje.datos);
-          return true;
-          
-        } catch (error) {
-          const errorMsg = `Error al notificar estado (${accion}): ${error.message}`;
-          console.error(`[${CONFIG.IFRAME_ID}] ${errorMsg}`, error);
-          mostrarError(errorMsg);
-          return false;
-        }
-      }
-      
-      // Manejador de inicialización
-      async function manejarInicializacion(mensaje) {
-        console.log(`[${CONFIG.IFRAME_ID}] Inicialización solicitada:`, mensaje);
-        
-        try {
-          // Actualizar el estado con los datos recibidos
-          if (mensaje.datos) {
-            const { modo, controlesHabilitados, puntoActual, gpsActivo, tramoActual } = mensaje.datos;
-            
-            if (modo) estadoApp.modo = modo;
-            if (typeof controlesHabilitados === 'boolean') {
-              estadoApp.controlesHabilitados = controlesHabilitados;
-            }
-            if (puntoActual) estadoApp.puntoActual = puntoActual;
-            if (typeof gpsActivo === 'boolean') estadoApp.gpsActivo = gpsActivo;
-            if (tramoActual !== undefined) estadoApp.tramoActual = tramoActual;
-          }
-          
-          // Actualizar la interfaz de usuario según el estado actual
-          actualizarInterfaz();
-          
-          // Notificar que la inicialización fue exitosa
-          await notificarEstado('inicializado');
-          return true;
-          
-        } catch (error) {
-          const errorMsg = `Error en inicialización: ${error.message}`;
-          console.error(`[${CONFIG.IFRAME_ID}] ${errorMsg}`, error);
-          mostrarError(errorMsg);
-          return false;
-        }
-      }
-      
-      /**
-       * Maneja las actualizaciones de estado recibidas
-       * @param {Object} mensaje - Mensaje con la actualización de estado
-       * @returns {Promise<boolean>} True si la actualización se procesó correctamente
-       */
-      async function manejarActualizacionEstado(mensaje) {
-        console.log(`[${CONFIG.IFRAME_ID}] Actualización de estado recibida:`, mensaje);
-        
-        try {
-          if (!mensaje.datos) {
-            throw new Error('Datos de actualización no proporcionados');
-          }
-          
-          const { 
-            modo, 
-            gpsActivo, 
-            controlesHabilitados, 
-            puntoActual, 
-            tramoActual,
-            motivo = 'actualizacion_estado'
-          } = mensaje.datos;
-          
-          // Actualizar el estado según los datos recibidos
-          let cambios = [];
-          
-          if (modo && estadoApp.modo !== modo) {
-            estadoApp.modo = modo;
-            cambios.push(`modo: ${modo}`);
-          }
-          
-          if (typeof gpsActivo === 'boolean' && estadoApp.gpsActivo !== gpsActivo) {
-            estadoApp.gpsActivo = gpsActivo;
-            cambios.push(`gpsActivo: ${gpsActivo}`);
-          }
-          
-          if (typeof controlesHabilitados === 'boolean' && 
-              estadoApp.controlesHabilitados !== controlesHabilitados) {
-            estadoApp.controlesHabilitados = controlesHabilitados;
-            cambios.push(`controles: ${controlesHabilitados ? 'habilitados' : 'deshabilitados'}`);
-          }
-          
-          if (puntoActual !== undefined && JSON.stringify(estadoApp.puntoActual) !== JSON.stringify(puntoActual)) {
-            estadoApp.puntoActual = puntoActual;
-            cambios.push('punto actual actualizado');
-          }
-          
-          if (tramoActual !== undefined && estadoApp.tramoActual !== tramoActual) {
-            estadoApp.tramoActual = tramoActual;
-            cambios.push(`tramo actual: ${tramoActual}`);
-          }
-          
-          // Si hubo cambios, actualizar la interfaz
-          if (cambios.length > 0) {
-            console.log(`[${CONFIG.IFRAME_ID}] Estado actualizado: ${cambios.join(', ')}`);
-            actualizarInterfaz();
-          }
-          
-          return true;
-          
-        } catch (error) {
-          const errorMsg = `Error al actualizar estado: ${error.message}`;
-          console.error(`[${CONFIG.IFRAME_ID}] ${errorMsg}`, error);
-          mostrarError(errorMsg);
-          return false;
-        }
-      }
-      
-      // Manejador de cambio de modo
-      async function manejarCambioModo(mensaje = {}) {
-        console.log('[hijo5] Recibido mensaje de cambio de modo:', mensaje);
-        
-        try {
-          // Manejar diferentes formatos de mensaje
-          const datos = mensaje.datos || {};
-          const nuevoModo = datos.modo || datos.nuevoModo || 'casa';
-          const motivo = datos.motivo || 'desconocido';
-          const forzar = datos.forzar || false;
-          
-          if (!nuevoModo) {
-            throw new Error('No se especificó el modo en el mensaje');
-          }
-          
-          // Validar el modo
-          if (nuevoModo !== 'casa' && nuevoModo !== 'aventura') {
-            throw new Error(`Modo no válido: ${nuevoModo}`);
-          }
-          
-          const modoAnterior = estadoApp.modo;
-          if (modoAnterior === nuevoModo && !forzar) {
-            console.log(`[hijo5] Ya se encuentra en modo ${nuevoModo}, ignorando cambio`);
-            return { exito: true, mensaje: 'Ya está en el modo solicitado' };
-          }
-          
-          console.log(`[hijo5] Cambiando de modo: ${modoAnterior} -> ${nuevoModo}`);
-          estadoApp.modo = nuevoModo;
-          
-          // 1. Actualizar el estado
-          // 2. Ajustes específicos según el modo
-          if (nuevoModo === 'casa') {
-            // Desactivar GPS al cambiar a modo casa
-            estadoApp.gpsActivo = false;
-            console.log(`[${CONFIG.IFRAME_ID}] GPS desactivado al cambiar a modo casa`);
-          }
-          
-          // 3. Actualizar la interfaz
-          actualizarInterfaz();
-          
-          // 4. Notificar el cambio si es necesario
-          // Notificar al padre del cambio exitoso
-          if (window.Mensajeria) {
-            try {
-              await window.Mensajeria.enviarMensaje(
-                'padre',
-                TIPOS_MENSAJE.SISTEMA.CONFIRMACION,
-                {
-                  tipo: 'cambio_modo',
-                  id: mensaje.id || Date.now().toString(),
-                  exito: true,
-                  datos: {
-                    modoAnterior,
-                    modoNuevo: nuevoModo,
-                    motivo,
-                    timestamp: new Date().toISOString()
-                  }
-                },
-                { 
-                  maxRetries: 3,
-                  retryDelay: 1000,
-                  timeout: 5000
-                }
-              );
-              console.log(`[${CONFIG.IFRAME_ID}] Confirmación de cambio de modo enviada al padre`);
-            } catch (error) {
-              console.error('[hijo5] Error al enviar confirmación al padre:', error);
-              // Continuar a pesar del error de confirmación
-            }
-          } else {
-            console.warn(`[${CONFIG.IFRAME_ID}] No se pudo enviar confirmación: Mensajería no disponible`);
-          }
-          
-          console.log(`[${CONFIG.IFRAME_ID}] Modo cambiado exitosamente a ${nuevoModo}`);
-          return true;
-          
-        } catch (error) {
-          const errorMsg = `Error al cambiar el modo: ${error.message}`;
-          console.error(`[${CONFIG.IFRAME_ID}] ${errorMsg}`, error);
-          
-          // Notificar el error
-          try {
-            await notificarEstado('error_cambio_modo', {
-              error: error.message,
-              motivo: mensaje.datos?.motivo || 'desconocido',
-              modoAnterior: estadoApp.modo,
-              modoIntentado: mensaje.datos?.modo
-            });
-          } catch (notifyError) {
-            console.error(`[${CONFIG.IFRAME_ID}] Error al notificar error de cambio de modo:`, notifyError);
-          }
-          
-          return false;
-        }
-      }
-      
-      /**
-       * Maneja las solicitudes de estado de la aplicación
-       * @param {Object} mensaje - Mensaje de solicitud de estado
-       * @param {string} [mensaje.datos.solicitud] - Tipo de información solicitada
-       * @param {string} [mensaje.datos.idSolicitud] - ID opcional para seguimiento
-       * @returns {Promise<boolean>} True si se manejó la solicitud correctamente
-       */
-      async function manejarSolicitudEstado(mensaje = {}) {
-        const { solicitud = 'completo', idSolicitud } = mensaje.datos || {};
-        const idMensaje = idSolicitud || `solicitud_${Date.now()}`;
-        
-        console.log(`[${CONFIG.IFRAME_ID}] Solicitud de estado recibida (${solicitud})`, { 
-          idSolicitud: idMensaje,
-          origen: mensaje.origen 
-        });
-        
-        try {
-          // Preparar la respuesta según el tipo de solicitud
-          let datosRespuesta = {
-            idSolicitud: idMensaje,
-            timestamp: new Date().toISOString(),
-            origen: CONFIG.IFRAME_ID,
-            estado: {
-              modo: estadoApp.modo,
-              gpsActivo: estadoApp.gpsActivo,
-              controlesHabilitados: estadoApp.controlesHabilitados,
-              puntoActual: estadoApp.puntoActual,
-              tramoActual: estadoApp.tramoActual,
-              ultimoError: estadoApp.ultimoError,
-              version: '1.0.0' // Versión del formato de respuesta
-            }
-          };
-          
-          // Filtrar respuesta según lo solicitado
-          if (solicitud !== 'completo') {
-            if (solicitud === 'basico') {
-              // Solo información básica
-              datosRespuesta.estado = {
-                modo: estadoApp.modo,
-                gpsActivo: estadoApp.gpsActivo,
-                controlesHabilitados: estadoApp.controlesHabilitados
-              };
-            } else if (solicitud === 'punto_actual' && estadoApp.puntoActual) {
-              // Solo información del punto actual
-              datosRespuesta.estado = {
-                puntoActual: estadoApp.puntoActual,
-                tramoActual: estadoApp.tramoActual
-              };
-            }
-          }
-          
-          // Enviar la respuesta
-          if (window.Mensajeria) {
-            await window.Mensajeria.enviarMensaje(
-              mensaje.origen || 'padre',
-              'respuesta_estado',
-              datosRespuesta,
-              { 
-                maxRetries: CONFIG.REINTENTOS.MAXIMOS,
-                retryDelay: CONFIG.REINTENTOS.TIEMPO_ESPERA
-              }
-            );
-            
-            console.log(`[${CONFIG.IFRAME_ID}] Estado enviado (${solicitud})`, { 
-              idSolicitud: idMensaje,
-              destino: mensaje.origen || 'padre'
-            });
-          } else {
-            console.warn(`[${CONFIG.IFRAME_ID}] No se pudo enviar el estado: Mensajería no disponible`);
-            return false;
-          }
-          
-          return true;
-          
-        } catch (error) {
-          const errorMsg = `Error al procesar solicitud de estado (${solicitud}): ${error.message}`;
-          console.error(`[${CONFIG.IFRAME_ID}] ${errorMsg}`, error);
-          
-          // Intentar notificar el error
-          try {
-            if (window.Mensajeria) {
-              await window.Mensajeria.enviarMensaje(
-                mensaje.origen || 'padre',
-                'error_solicitud_estado',
-                {
-                  idSolicitud: idMensaje,
-                  error: error.message,
-                  timestamp: new Date().toISOString()
-                },
-                { maxRetries: 1 } // Solo un intento para errores
-              );
-            }
-          } catch (notifyError) {
-            console.error(`[${CONFIG.IFRAME_ID}] Error al notificar error de estado:`, notifyError);
-          }
-          
-          return false;
-        }
-      }
-      
-      /**
-       * Maneja las confirmaciones de operaciones enviadas previamente
-       * @param {Object} mensaje - Mensaje de confirmación
-       * @param {string} mensaje.tipo - Tipo de operación confirmada
-       * @param {string} mensaje.id - ID único de la operación
-       * @param {boolean} mensaje.exito - Indica si la operación fue exitosa
-       * @param {Object} [mensaje.datos] - Datos adicionales de la confirmación
-       * @param {string} [mensaje.mensaje] - Mensaje descriptivo
-       * @returns {Promise<boolean>} True si se manejó la confirmación correctamente
-       */
-      async function manejarConfirmacion(mensaje = {}) {
-        const { tipo, id, exito, datos = {}, mensaje: mensajeTexto } = mensaje.datos || {};
-        const idOperacion = id || 'desconocido';
-        
-        // Log detallado de la confirmación
-        console.log(`[${CONFIG.IFRAME_ID}] Confirmación recibida`, {
-          tipo: tipo || 'sin_tipo',
-          id: idOperacion,
-          exito: exito === true,
-          origen: mensaje.origen || 'desconocido',
-          timestamp: new Date().toISOString()
-        });
-        
-        try {
-          // Manejar la confirmación según el tipo de operación
-          if (exito) {
-            // Operación exitosa
-            console.log(`[${CONFIG.IFRAME_ID}] Operación '${tipo}' (${idOperacion}) confirmada con éxito`);
-            
-            // Aquí podrías agregar lógica específica para cada tipo de operación
-            switch (tipo) {
-              case 'cambio_modo':
-                console.log(`[${CONFIG.IFRAME_ID}] Modo cambiado exitosamente a: ${datos.modoNuevo}`);
-                break;
-                
-              case 'actualizacion_estado':
-                // Actualizar el estado local si es necesario
-                if (datos.estado) {
-                  console.log(`[${CONFIG.IFRAME_ID}] Estado sincronizado:`, datos.estado);
-                }
-                break;
-                
-              default:
-                // No se requiere acción específica para otros tipos
-                break;
-            }
-            
-            // Notificar a la interfaz de usuario si es necesario
-            actualizarInterfaz();
-            
-          } else {
-            // Operación fallida
-            const errorMsg = datos?.error || mensajeTexto || 'Error desconocido';
-            console.error(`[${CONFIG.IFRAME_ID}] Error en operación '${tipo}' (${idOperacion}):`, errorMsg);
-            
-            // Mostrar notificación de error al usuario
-            mostrarError(`Error en ${tipo || 'operación'}: ${errorMsg}`);
-            
-            // Revertir cambios si es necesario según el tipo de operación
-            switch (tipo) {
-              case 'cambio_modo':
-                // Revertir al modo anterior si el cambio falló
-                if (datos.modoAnterior) {
-                  console.warn(`[${CONFIG.IFRAME_ID}] Revertiendo a modo anterior: ${datos.modoAnterior}`);
-                  estadoApp.modo = datos.modoAnterior;
-                  actualizarInterfaz();
-                }
-                break;
-                
-              // Agregar más casos según sea necesario
-            }
-            
-            // Registrar el error en el estado
-            estadoApp.ultimoError = {
-              tipo,
-              id: idOperacion,
-              mensaje: errorMsg,
-              timestamp: new Date().toISOString(),
-              datos
-            };
-          }
-          
-          return true;
-          
-        } catch (error) {
-          // Manejar errores en el procesamiento de la confirmación
-          console.error(`[${CONFIG.IFRAME_ID}] Error al procesar confirmación:`, error);
-          
-          // Notificar el error sin reintentos para evitar bucles
-          try {
-            if (window.Mensajeria) {
-              await window.Mensajeria.enviarMensaje(
-                mensaje.origen || 'padre',
-                'error_procesamiento_confirmacion',
-                {
-                  idConfirmacion: idOperacion,
-                  tipo,
-                  error: error.message,
-                  timestamp: new Date().toISOString()
-                },
-                { maxRetries: 1 } // Solo un intento para errores
-              );
-            }
-          } catch (notifyError) {
-            console.error(`[${CONFIG.IFRAME_ID}] Error al notificar error de confirmación:`, notifyError);
-          }
-          
-          return false;
-        }
-      }
-      
-      // Función para notificar errores
-      async function notificarError(tipo, error) {
-        console.error(`[${CONFIG.IFRAME_ID}] Error (${tipo}):`, error);
-        
-        if (window.Mensajeria) {
-          try {
-            await window.Mensajeria.enviarMensaje(
-              'padre',
-              'error',
-              {
-                tipo,
-                mensaje: error.message,
-                stack: error.stack,
-                timestamp: Date.now(),
-                origen: CONFIG.IFRAME_ID
-              },
-              CONFIG.REINTENTOS
-            );
-          } catch (e) {
-            console.error(`[${CONFIG.IFRAME_ID}] Error al notificar error:`, e);
-          }
-        }
-      }
-      
-      // Sincronizar estado con el padre
-      async function sincronizarEstado(estado) {
-        if (!estado) return;
-        
-        console.log(`[${CONFIG.IFRAME_ID}] Sincronizando estado:`, estado);
-        
-        // Actualizar estado local
-        if (estado.modo) {
-          estadoApp.modo = estado.modo;
-        }
-        
-        if (typeof estado.controlesHabilitados !== 'undefined') {
-          estadoApp.controlesHabilitados = estado.controlesHabilitados;
-        }
-        
-        if (estado.puntoActual) {
-          estadoApp.puntoActual = estado.puntoActual;
-        }
-        
-        // Aplicar cambios en la interfaz
-        actualizarInterfaz();
-      }
-      
-      // La función actualizarInterfaz ha sido movida más abajo para mantener todo el código relacionado junto
-      
-      // Incluir aquí las funciones existentes como actualizarBotonGPS, etc.
-      // ...
-      
-      // Función para mostrar errores en la interfaz
-      function mostrarError(mensaje) {
-        // Implementar lógica para mostrar errores al usuario
-        console.error(mensaje);
-        
-        // Mostrar mensaje de error en la interfaz si es necesario
-        const errorContainer = document.getElementById('error-container');
-        if (errorContainer) {
-          errorContainer.textContent = mensaje;
-          errorContainer.style.display = 'block';
-          
-          // Ocultar después de 5 segundos
-          setTimeout(() => {
-            errorContainer.style.display = 'none';
-          }, 5000);
-        }
-      }
-      
-      // Función para habilitar controles
-      async function habilitarControles(modo) {
-        console.log(`[${CONFIG.IFRAME_ID}] Habilitando controles para modo: ${modo}`);
-        estadoApp.controlesHabilitados = true;
-        
-        // Aquí iría la lógica para habilitar controles específicos
-        const gpsBtn = document.getElementById('gps-casa-btn');
-        if (gpsBtn) {
-          gpsBtn.disabled = false;
-        }
-        
-        return true;
-      }
-      
-      // Función para deshabilitar controles
-      async function deshabilitarControles(razon) {
-        console.log(`[${CONFIG.IFRAME_ID}] Deshabilitando controles. Razón: ${razon}`);
-        estadoApp.controlesHabilitados = false;
-        
-        // Aquí iría la lógica para deshabilitar controles específicos
-        const gpsBtn = document.getElementById('gps-casa-btn');
-        if (gpsBtn) {
-          gpsBtn.disabled = true;
-        }
-        
-        return true;
-      }
-      
-      /**
-       * Actualiza la interfaz de usuario según el estado actual de la aplicación
-       * @returns {void}
-       */
-      function actualizarInterfaz() {
-        try {
-          const { modo, gpsActivo, controlesHabilitados, puntoActual, tramoActual } = estadoApp;
-          
-          // 1. Actualizar el botón GPS
-          const gpsBtn = document.getElementById('gps-casa-btn');
-          if (gpsBtn) {
-            // Actualizar clases según el modo
-            gpsBtn.classList.toggle('modo-casa', modo === 'casa');
-            gpsBtn.classList.toggle('modo-aventura', modo === 'aventura');
-            
-            // Actualizar estado activo/inactivo
-            gpsBtn.classList.toggle('activo', gpsActivo);
-            gpsBtn.title = gpsActivo ? 'GPS Activado' : 'GPS Desactivado';
-            
-            // Actualizar estado habilitado/deshabilitado
-            gpsBtn.disabled = !controlesHabilitados;
-          }
-          
-          // 2. Actualizar indicadores de estado
-          const actualizarIndicador = (id, texto, clase = '') => {
-            const elemento = document.getElementById(id);
-            if (elemento) {
-              if (texto !== undefined) elemento.textContent = texto;
-              if (clase) elemento.className = clase;
-            }
-          };
-          
-          // Indicador de modo
-          actualizarIndicador(
-            'indicador-modo',
-            `Modo: ${modo || 'no definido'}`,
-            `modo-indicador modo-${modo || 'desconocido'}`
-          );
-          
-          // Indicador de GPS
-          actualizarIndicador(
-            'estado-gps',
-            `GPS: ${gpsActivo ? 'Activo' : 'Inactivo'}`,
-            `estado-gps ${gpsActivo ? 'activo' : 'inactivo'}`
-          );
-          
-          // Indicador de punto/tramo actual
-          if (puntoActual) {
-            const esParada = puntoActual.tipo === 'parada' || puntoActual.parada !== undefined;
-            const textoPunto = esParada 
-              ? `Parada: ${puntoActual.nombre || puntoActual.id || 'Desconocida'}`
-              : `Tramo: ${puntoActual.nombre || puntoActual.id || 'Desconocido'}`;
-            
-            actualizarIndicador('punto-actual', textoPunto, 'punto-actual');
-          } else {
-            actualizarIndicador('punto-actual', 'Ningún punto seleccionado', 'punto-actual');
-          }
-          
-          // 3. Actualizar clases del body para estilos contextuales
-          document.body.classList.toggle('controles-deshabilitados', !controlesHabilitados);
-          document.body.classList.toggle('gps-activo', gpsActivo);
-          document.body.classList.toggle(`modo-${modo}`, !!modo);
-          
-          // 4. Actualizar controles interactivos
-          const controles = document.querySelectorAll('button, .control-interactivo');
-          controles.forEach(control => {
-            // No modificar controles marcados como siempre habilitados
-            if (control.hasAttribute('data-siempre-habilitado')) return;
-            
-            // Actualizar estado habilitado/deshabilitado
-            control.disabled = !controlesHabilitados;
-            control.classList.toggle('deshabilitado', !controlesHabilitados);
-          });
-          
-          console.log(`[${CONFIG.IFRAME_ID}] Interfaz actualizada`, {
-            modo,
-            gpsActivo,
-            controlesHabilitados,
-            puntoActual: puntoActual ? puntoActual.id || puntoActual.nombre : 'ninguno'
-          });
-          
-        } catch (error) {
-          console.error(`[${CONFIG.IFRAME_ID}] Error al actualizar la interfaz:`, error);
-        }
-      }
-      
-      // Inicializar cuando el DOM esté listo
-      document.addEventListener('DOMContentLoaded', async () => {
-        try {
-          // Inicializar la mensajería
-          const exito = await inicializarMensajeria();
-          
-          if (!exito) {
-            throw new Error('No se pudo inicializar el sistema de mensajería');
-          }
-          
-          console.log(`[${CONFIG.IFRAME_ID}] Aplicación inicializada correctamente`);
-          
-          // Configurar el botón GPS
-          const gpsBtn = document.getElementById('gps-casa-btn');
-          if (gpsBtn) {
-            gpsBtn.addEventListener('click', async (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              
-              // Cambiar el modo
-              const nuevoModo = estadoApp.modo === 'casa' ? 'aventura' : 'casa';
-              await manejarCambioModo({
-                datos: { modo: nuevoModo, motivo: 'click_usuario' }
-              });
-            });
-          }
-          
-          // Asegurarse de que la interfaz esté actualizada
-          actualizarInterfaz();
-          
-        } catch (error) {
-          console.error(`[${CONFIG.IFRAME_ID}] Error en la inicialización:`, error);
-          mostrarError('Error al inicializar la aplicación. Por favor, recarga la página.');
-        }
-      });
-    </script>
-  </head>
-  <body>
-    <style>
-    /* Contenedor principal */
-    #zona-boton-casa {
-      position: relative;
-      width: 100%;
-      height: 60px;
+// ================== TIPOS DE MENSAJE UNIFICADOS EXTENDIDOS ==================
+export const TIPOS_MENSAJE = {
+    // Sistema
+    SISTEMA: {
+        INICIALIZACION: 'sistema:inicializacion',
+        CAMBIO_MODO: 'sistema:cambio_modo',
+        LISTO: 'sistema:listo',
+        ERROR: 'sistema:error',
+        CONFIRMACION: 'sistema:confirmacion',
+        SINCRONIZAR: 'sistema:sincronizar',
+        CONTROLES_HABILITADOS: 'sistema:controles_habilitados',
+        CONTROLES_DESHABILITADOS: 'sistema:controles_deshabilitados'
+    },
+    // Datos (NUEVO - Para comunicación bidireccional)
+    DATOS: {
+        SOLICITAR_CONSTANTES: 'datos:solicitar_constantes',
+        CONSTANTES: 'datos:constantes',
+        SOLICITAR_PARADA: 'datos:solicitar_parada',
+        RESPUESTA_PARADA: 'datos:respuesta_parada',
+        SOLICITAR_COORDENADAS: 'datos:solicitar_coordenadas',
+        RESPUESTA_COORDENADAS: 'datos:respuesta_coordenadas',
+        SOLICITAR_ESTADO: 'datos:solicitar_estado',
+        RESPUESTA_ESTADO: 'datos:respuesta_estado'
+    },
+    // Navegación
+    NAVEGACION: {
+        CAMBIO_PARADA: 'navegacion:cambio_parada',
+        CAMBIO_TRAMO: 'navegacion:cambio_tramo',
+        GPS_ESTADO: 'navegacion:gps_estado',
+        ESTADO: 'navegacion:estado',
+        SOLICITAR_DESTINO: 'navegacion:solicitar_destino',
+        ESTABLECER_DESTINO: 'navegacion:establecer_destino',
+        LLEGADA_DETECTADA: 'navegacion:llegada_detectada'
+    },
+    // Audio
+    AUDIO: {
+        REPRODUCIR: 'audio:reproducir',
+        PAUSAR: 'audio:pausar',
+        DETENER: 'audio:detener',
+        FINALIZADO: 'audio:finalizado',
+        COMANDO: 'audio:comando',
+        ESTADO: 'audio:estado'
+    },
+    // Retos
+    RETOS: {
+        ABRIR: 'retos:abrir',
+        CERRAR: 'retos:cerrar',
+        MOSTRAR: 'retos:mostrar',
+        COMPLETADO: 'retos:completado',
+        VALIDAR: 'retos:validar',
+        ESTADO: 'retos:estado'
+    },
+    // GPS
+    GPS: {
+        ACTUALIZAR: 'gps:actualizar',
+        COMANDO: 'gps:comando',
+        ESTADO: 'gps:estado'
+    },
+    // UI
+    UI: {
+        ACTUALIZAR: 'ui:actualizar',
+        MOSTRAR_IMAGEN: 'ui:mostrar_imagen',
+        MOSTRAR_VIDEO: 'ui:mostrar_video',
+        CERRAR_MEDIA: 'ui:cerrar_media'
+    },
+    // Modo específicos
+    MODO: {
+        CAMBIAR: 'modo:cambiar',
+        HABILITAR_CONTROLES: 'modo:habilitar_controles',
+        DESHABILITAR_CONTROLES: 'modo:deshabilitar_controles'
     }
-    
-    /* Botón GPS: medidas y estilos del primer código */
-    #gps-casa-btn {
-      position: absolute;
-      top: 5px;
-      left: 5px;
-      width: 50px;
-      height: 50px;
-      min-width: 50px;
-      min-height: 50px;
-      border-radius: 4px;
-      border: 1px solid #fff;
-      color: white;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
-      transition: all 0.3s ease;
-      padding: 0;
-      margin: 0 0 0 10px;
-      position: relative;
-      z-index: 10002;
-      cursor: pointer;
-      font-size: 16px;
-      /* Estado inicial (OFF) */
-      background-color: #f44336;
-      border-color: #d32f2f;
+};
+
+// ================== CONFIGURACIÓN GLOBAL ==================
+const CONFIG = {
+    DEBUG: true,
+    TIMEOUT: 5000,
+    MAX_RETRIES: 3,
+    LOG_LEVELS: {
+        DEBUG: 0,
+        INFO: 1,
+        WARN: 2,
+        ERROR: 3,
+        NONE: 4
     }
-    
-    /* Estado ON - Verde */
-    #gps-casa-btn.on {
-      background-color: #4CAF50 !important;
-      border-color: #45a049 !important;
-    }
-    
-    /* Estado OFF - Rojo */
-    #gps-casa-btn.off {
-      background-color: #f44336 !important;
-      border-color: #d32f2f !important;
-    }
-    #gps-casa-btn:hover {
-      opacity: 0.9;
-      transform: scale(1.05);
-    }
-    #gps-casa-btn:active {
-      transform: scale(0.95);
-    }
-    .button-content {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      width: 100%;
-      height: 100%;
-      line-height: 1;
-    }
-    .satellite-emoji {
-      font-size: 35px;
-      line-height: 1;
-      margin-bottom: 2px;
-      display: block;
-    }
-    .gps-label {
-      font-size: 20px;
-      font-weight: bold;
-      line-height: 1;
-      margin: 0;
-      padding: 0;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    /* Ventana de paradas: estética y medidas del segundo código */
-    #paradas-window {
-      position: absolute;
-      top: 0;
-      left: 75px; 
-      background: rgba(255, 255, 255, 0.95);
-      border-radius: 20px;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-      display: none; /* Se controla desde JavaScript */
-      padding: 0;
-      border: 1px solid #e0e0e0;
-      max-width: 300px;
-      min-width: 250px;
-      z-index: 10003;
-      height: 60px; /* Altura total: 50px botón + 10px margen inferior */
-      overflow: visible;
-      padding-bottom: 1px; /* 1px de espacio debajo de la barra */
-      /* Asegurar que no haya transiciones que interfieran */
-      transition: none !important;
-      /* Asegurar que no haya estilos en línea que sobrescriban */
-      opacity: 1 !important;
-      visibility: visible !important;
-    }
-    /* Clase para mostrar/ocultar la ventana */
-    #paradas-window.visible {
-      display: flex !important;
-    }
-    #paradas-window.hidden {
-      display: none !important;
-    }
-    #paradas-list {
-      display: flex;
-      flex-direction: row;
-      flex-wrap: nowrap;
-      padding: 8px 12px;
-      margin: 0;
-      overflow-x: auto;
-      overflow-y: hidden;
-      height: 100%;
-      box-sizing: border-box;
-      align-items: center;
-      white-space: nowrap;
-      -webkit-overflow-scrolling: touch;
-      gap: 8px;
-      scrollbar-width: thin;
-      scrollbar-color: #888 #f1f1f1;
-      align-content: center;
-    }
-    
-    /* Estilo para la barra de desplazamiento en WebKit (Chrome, Safari) */
-    #paradas-list::-webkit-scrollbar {
-      height: 5px;
-    }
-    
-    #paradas-list::-webkit-scrollbar-track {
-      background: #f1f1f1;
-      border-radius: 3px;
-    }
-    
-    #paradas-list::-webkit-scrollbar-thumb {
-      background: #888;
-      border-radius: 3px;
-    }
-    
-    #paradas-list::-webkit-scrollbar-thumb:hover {
-      background: #555;
-    }
-    
-    /* Hide scrollbar for Webkit browsers */
-    #paradas-list::-webkit-scrollbar {
-      display: none;
-    }
-    .parada-tramo-btn {
-      background: white;
-      border: 1px solid #e0e0e0;
-      border-radius: 6px;
-      padding: 4px 8px;
-      margin: 0 2px;
-      cursor: pointer;
-      font-size: 14px;
-      display: inline-block;
-      height: 50px;
-      white-space: nowrap;
-      width: auto;
-      min-width: max-content;
-    }
-    
-    .btn-content {
-      display: inline-block;
-      white-space: nowrap;
-    }
-    
-    .btn-icon {
-      margin-right: 4px;
-    }
-    .parada-btn {
-      background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
-      color: white;
-      min-width: max-content;
-      padding: 4px 8px;
-      border: none !important;
-    }
-    .tramo-btn {
-      background: linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%);
-      color: white;
-      border: none !important;
-    }
-    .inicio-btn {
-      background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%);
-      color: white;
-      border: none !important;
-    }
-    .parada-tramo-btn.actual {
-      border: 2px solid #ffd700 !important;
-      box-shadow: 0 0 0 2px #ffd700, 0 0 15px rgba(255, 215, 0, 0.7) !important;
-      transform: scale(1.05);
-      font-weight: bold;
-      z-index: 2;
-      position: relative;
-    }
-    .btn-icon {
-      font-size: 1.5em;
-      flex-shrink: 0;
-    }
-    .btn-title {
-      font-weight: 600;
-      white-space: nowrap;
-      font-size: 0.95em;
-      margin-bottom: 2px;
-    }
-    .btn-desc {
-      font-size: 0.85em;
-      opacity: 0.9;
-      white-space: normal;
-      overflow: visible;
-      text-overflow: clip;
-      max-width: 130px;
-      font-weight: 500;
-      line-height: 1.2;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      line-clamp: 2; /* Standard property */
-      -webkit-box-orient: vertical;
-      text-align: left;
-      position: relative;
-    }
-    
-    /* Fallback for Firefox */
-    @supports (-moz-appearance: none) {
-      .btn-desc {
-        display: -moz-box;
-        -moz-box-orient: vertical;
-      }
-    }
-    
-    /* Estilos para la ventana de paradas */
-    #paradas-window {
-      position: absolute;
-      top: 0;
-      left: 60px; /* Alinear con el borde derecho del botón */
-      width: 300px; /* Ancho fijo para la ventana */
-      background: white;
-      border: 1px solid #ddd;
-      border-radius: 0 4px 4px 0;
-      box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
-      z-index: 1000;
-      max-height: 400px;
-      overflow-y: auto;
-      display: none; /* Inicialmente oculto */
-    }
-    
-    #paradas-list {
-      padding: 10px;
-    }
-    
-    /* Asegurar que el contenedor principal tenga posición relativa */
-    #zona-boton-casa {
-      position: relative;
-      display: inline-block;
-    }
-    
-    .parada-tramo-btn {
-      display: block;
-      width: 100%;
-      padding: 10px;
-      margin: 5px 0;
-      text-align: left;
-      border: 1px solid #eee;
-      border-radius: 4px;
-      background-color: white;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-    
-    .parada-tramo-btn:hover {
-      background-color: #f5f5f5;
-    }
-    
-    .parada-btn {
-      border-left: 4px solid #4CAF50;
-    }
-    
-    .tramo-btn {
-      border-left: 4px solid #2196F3;
-    }
-    
-    .inicio-btn {
-      border-left: 4px solid #FF9800;
-    }
-    
-    .actual {
-      font-weight: bold;
-      background-color: #e3f2fd;
-    }
-    
-    .badge {
-      float: right;
-      background-color: #4CAF50;
-      color: white;
-      padding: 2px 6px;
-      border-radius: 10px;
-      font-size: 0.8em;
-    }
-  </style>
-</head>
-<body>
-  <div id="zona-boton-casa">
-    <button id="gps-casa-btn" class="on" title="Activar GPS">
-      <div class="button-content">
-        <span class="satellite-emoji">📡</span>
-        <span class="gps-label">ON</span>
-      </div>
-    </button>
-    <div id="paradas-container" class="paradas-container">
-      <!-- Las paradas y tramos se agregarán aquí dinámicamente -->
-    </div>
-    <div id="paradas-window">
-      <div id="paradas-list"></div>
-    </div>
-  </div>
-  <script>
-    // Manejador de errores global
-    window.onerror = function(message, source, lineno, colno, error) {
-      console.error('Error global detectado:', {
-          mensaje: message,
-          fuente: source,
-          linea: lineno,
-          columna: colno,
-          error: error
-      });
-      
-      // Log the error stack if available
-      if (error && error.stack) {
-          console.error('Stack trace:', error.stack);
-      }
-      
-      return true; // Prevent default error handling
-    };
+};
 
-    // ================== DECLARACIONES INICIALES ==================
-    // Estado global de la aplicación
-    let estadoApp = {};
+// ================== ESTADO GLOBAL ==================
+let sistemaInicializado = false;
+let manejadores = new Map();
+let configuracionActual = { ...CONFIG };
+let mensajesPendientes = new Map();
+let timeouts = new Map();
 
-    // Configuración global
-    const CONFIG = {
-      IFRAME_ID: 'hijo5-casa',
-      LOG_LEVEL: 2, // 0: debug, 1: info, 2: warn, 3: error, 4: none
-      DEBUG: true,
-      LOG_PREFIX: '[hijo5-casa]',
-      REINTENTOS: {
-        MAXIMOS: 3,
-        TIEMPO_ESPERA: 1000,
-        FACTOR: 2
-      },
-      ESTADO_INICIAL: {
-        modo: 'casa',
-        tramoActual: -1,
-        watchId: null,
-        controlesHabilitados: true,
-        motivoDeshabilitado: '',
-        gpsActivo: false
-      }
-    };
-
-    // Inicializar el estado de la aplicación
-    function inicializarEstadoApp() {
-      // Inicializar estado con valores por defecto
-      estadoApp = { 
-        ...CONFIG.ESTADO_INICIAL,
-        ultimoError: null  // Asegurar que ultimoError esté siempre definido
-      };
-      
-      // Cargar estado guardado
-      try {
-        const savedState = localStorage.getItem('gpsState');
-        if (savedState) {
-          const parsedState = JSON.parse(savedState);
-          Object.assign(estadoApp, parsedState);
-        }
-      } catch (e) {
-        console.error('Error al cargar el estado del GPS:', e);
-      }
-    }
-
-    // Inicializar el estado al cargar la página
-    inicializarEstadoApp();
-    
-    // Función para guardar el estado actual
-    function guardarEstado() {
-      try {
-        localStorage.setItem('gpsState', JSON.stringify({
-          gpsActivo: estadoApp.gpsActivo,
-          modo: estadoApp.modo,
-          controlesHabilitados: estadoApp.controlesHabilitados,
-          tramoActual: estadoApp.tramoActual
-        }));
-      } catch (e) {
-        console.error('Error al guardar el estado del GPS:', e);
-      }
-    }
-      
-    // Inicializar el estado de la aplicación
-    inicializarEstadoApp();
-
-    // ================== FUNCIONES DE CONTROL ==================
-
-    // ================== FUNCIONES DE UTILIDAD ==================
-
-    /**
-     * Registra un mensaje en la consola si el modo debug está activado
-     * @param {string} mensaje - Mensaje a registrar
-     * @param {string} [tipo='log'] - Tipo de log (log, warn, error, info)
-     */
-    function log(mensaje, tipo = 'log') {
-      if (!CONFIG.DEBUG) return;
-      const prefijo = `${CONFIG.LOG_PREFIX} [${new Date().toISOString()}]`;
-      if (typeof console[tipo] === 'function') {
-        console[tipo](`${prefijo} ${mensaje}`);
-      } else {
-        console.log(`${prefijo} [${tipo.toUpperCase()}] ${mensaje}`);
-      }
-    }
-
-    /**
-     * Muestra un mensaje de error en la interfaz
-     * @param {string} mensaje - Mensaje de error a mostrar
-     */
-    function mostrarError(mensaje) {
-      log(`ERROR: ${mensaje}`, 'error');
-      // Aquí podrías implementar lógica para mostrar el error en la UI
-    }
-
-    // ================== FUNCIONES DE CONTROL ==================
-
-    /**
-     * Habilita los controles de la aplicación
-     * @param {string} [modo=CONFIG.defaultMode] - Modo de operación ('casa' o 'aventura')
-     * @param {Object} opciones - Opciones adicionales
-     * @param {string} [opciones.motivo='sin_especificar'] - Razón del cambio
-     * @param {boolean} [opciones.forzar=false] - Forzar la operación
-     * @returns {boolean} - True si se realizó el cambio, false si ya estaba en el estado solicitado
-     */
-    async function enableControls(modo = CONFIG.defaultMode, { motivo = 'sin_especificar', forzar = false } = {}) {
-      // Validar modo
-      if (modo !== 'casa' && modo !== 'aventura') {
-        const errorMsg = `[${CONFIG.IFRAME_ID}] Modo no válido: ${modo}`;
-        console.error(errorMsg);
-        throw new Error(errorMsg);
-      }
-
-      // Si ya están habilitados y no se fuerza el cambio
-      if (estadoApp.controlesHabilitados && !forzar) {
-        console.log(`[${CONFIG.IFRAME_ID}] Los controles ya están habilitados en modo ${modo}`, { motivo });
-        return false;
-      }
-
-      try {
-        // Actualizar estado
-        estadoApp.controlesHabilitados = true;
-        estadoApp.motivoDeshabilitado = '';
-        estadoApp.modo = modo;
-
-        // Actualizar interfaz
-        const gpsBtn = document.getElementById('gps-casa-btn');
-        if (gpsBtn) {
-          gpsBtn.disabled = false;
-          gpsBtn.classList.toggle('on', modo === 'aventura');
-          gpsBtn.classList.toggle('off', modo !== 'aventura');
-          gpsBtn.title = modo === 'aventura' ? 'GPS Activado' : 'GPS Desactivado';
-        }
-
-        // Actualizar la interfaz
-        actualizarBotonGPS();
-
-        // Notificar el cambio de estado
-        console.log(`[${CONFIG.IFRAME_ID}] Controles habilitados en modo ${modo}`, { motivo });
-
-        // Notificar al padre
-        if (window.Mensajeria) {
-          // Usar el sistema de mensajería si está disponible
-          await Mensajeria.enviarMensaje(
-            'padre',
-            'sistema:controles_habilitados',
-            { 
-              modo, 
-              motivo,
-              timestamp: new Date().toISOString(),
-              origen: CONFIG.IFRAME_ID
-            }
-          ).catch(console.error);
-        } else {
-          // Fallback a postMessage si Mensajeria no está disponible
-          window.parent?.postMessage({
-            tipo: 'sistema:controles_habilitados',
-            datos: {
-              modo,
-              motivo,
-              timestamp: new Date().toISOString(),
-              origen: CONFIG.IFRAME_ID
-            }
-          }, '*');
-        }
-
-        return true;
-      } catch (error) {
-        console.error(`[${CONFIG.IFRAME_ID}] Error al habilitar controles:`, error);
-        throw error;
-      }
-    }
-
-    /**
-     * Deshabilita los controles de la aplicación
-     * @param {string} motivo - Razón por la que se deshabilitan los controles
-     * @param {Object} [opciones] - Opciones adicionales
-     * @param {boolean} [opciones.forzar=false] - Forzar la operación aunque ya estén deshabilitados
-     * @returns {Promise<boolean>} - True si se deshabilitaron los controles, false si ya estaban deshabilitados
-     */
-    async function disableControls(motivo = 'sin_especificar', { forzar = false } = {}) {
-      if (!estadoApp.controlesHabilitados && !forzar) {
-        console.log(`[${CONFIG.IFRAME_ID}] Los controles ya están deshabilitados`, { 
-          motivo: estadoApp.motivoDeshabilitado 
-        });
-        return false;
-      }
-
-      try {
-        // Actualizar estado
-        estadoApp.controlesHabilitados = false;
-        estadoApp.motivoDeshabilitado = motivo;
-
-        // Actualizar interfaz
-        const gpsBtn = document.getElementById('gps-casa-btn');
-        if (gpsBtn) {
-          gpsBtn.disabled = true;
-          gpsBtn.title = `Controles deshabilitados: ${motivo}`;
-        }
-
-        // Actualizar la interfaz
-        actualizarBotonGPS();
-
-        // Notificar el cambio de estado
-        console.log(`[${CONFIG.IFRAME_ID}] Controles deshabilitados`, { motivo });
-        
-        // Notificar al padre
-        if (window.Mensajeria) {
-          // Usar el sistema de mensajería si está disponible
-          await Mensajeria.enviarMensaje(
-            'padre',
-            'sistema:controles_deshabilitados',
-            { 
-              motivo,
-              timestamp: new Date().toISOString(),
-              origen: CONFIG.IFRAME_ID
-            }
-          ).catch(console.error);
-        } else {
-          // Fallback a postMessage si Mensajeria no está disponible
-          window.parent?.postMessage({
-            tipo: 'sistema:controles_deshabilitados',
-            datos: {
-              motivo,
-              timestamp: new Date().toISOString(),
-              origen: CONFIG.IFRAME_ID
-            }
-          }, '*');
-        }
-
-        return true;
-      } catch (error) {
-        console.error(`[${CONFIG.IFRAME_ID}] Error al deshabilitar controles:`, error);
-        throw error;
-      }
-    }
-
-    // Array completo de paradas y tramos con referencias al padre
-    const puntosRuta = [
-      { tipo: "inicio", parada: 0, padreId: "padre-P-0", nombre: "Torres de Serranos (start)" },
-      { tipo: "tramo", tramo: 1, padreId: "padre-TR-1", nombre: "Torres de Serranos → Plaza de la crida (Puente de Serranos)" },
-      { tipo: "parada", parada: 1, padreId: "padre-P-1", nombre: "Plaza de la crida (Puente de Serranos)" },
-      { tipo: "tramo", tramo: 2, padreId: "padre-TR-2", nombre: "Plaza de la crida → Calle Muro de Santa Ana" },
-      { tipo: "parada", parada: 2, padreId: "padre-P-2", nombre: "Calle Muro de Santa Ana" },
-      { tipo: "tramo", tramo: 3, padreId: "padre-TR-3", nombre: "Calle Muro de Santa Ana → Palacio de los Borgia" },
-      { tipo: "parada", parada: 3, padreId: "padre-P-3", nombre: "Iglesia de San Lorenzo" },
-      { tipo: "tramo", tramo: 4, padreId: "padre-TR-4", nombre: "Iglesia de San Lorenzo → Plaza de la Virgen" },
-      { tipo: "parada", parada: 4, padreId: "padre-P-4", nombre: "Plaza de la Virgen Reto 6" },
-      { tipo: "parada", parada: 5, padreId: "padre-P-5", nombre: "Plaza de la Virgen Reto 7" },
-      { tipo: "tramo", tramo: 5, padreId: "padre-TR-5", nombre: "Plaza de la Virgen → Plaza de la Almoína" },
-      { tipo: "parada", parada: 6, padreId: "padre-P-6", nombre: "Panel cerámico muro Catedral" },
-      { tipo: "parada", parada: 7, padreId: "padre-P-7", nombre: "Capilla exterior catedral Reto 10" },
-      { tipo: "parada", parada: 8, padreId: "padre-P-8", nombre: "Capilla exterior catedral Reto 11" },
-      { tipo: "parada", parada: 9, padreId: "padre-P-9", nombre: "Arco Novo Catedral y Puerta Negra Basílica" },
-      { tipo: "parada", parada: 10, padreId: "padre-P-10", nombre: "Casa del Punt de Gantxo" },
-      { tipo: "tramo", tramo: 6, padreId: "padre-TR-6", nombre: "Plaza de la Almoína → Plaza Decimo Junio Bruto (Museo Arqueológico de la Almoína)" },
-      { tipo: "parada", parada: 11, padreId: "padre-P-11", nombre: "Museo arqueológico La Almoína" },
-      { tipo: "parada", parada: 12, padreId: "padre-P-12", nombre: "Museo arqueológico La Almoína" },
-      { tipo: "parada", parada: 13, padreId: "padre-P-13", nombre: "Vista de la Catedral, Cimborrio" },
-      { tipo: "tramo", tramo: 7, padreId: "padre-TR-7", nombre: "Museo arqueológico La Almoína → Palacio Arzobispal" },
-      { tipo: "parada", parada: 14, padreId: "padre-P-14", nombre: "Palacio Arzobispal y Puerta Románica de la Catedral" },
-      { tipo: "parada", parada: 15, padreId: "padre-P-15", nombre: "Puerta Románica de la Catedral" },
-      { tipo: "tramo", tramo: 8, padreId: "padre-TR-8", nombre: "Puerta Románica de la Catedral → Plaza del Ayuntamiento" },
-      { tipo: "parada", parada: 16, padreId: "padre-P-16", nombre: "Plaza del Ayuntamiento" },
-      { tipo: "tramo", tramo: 9, padreId: "padre-TR-9", nombre: "Plaza del Ayuntamiento → Edificio del Ayuntamiento de València" },
-      { tipo: "parada", parada: 17, padreId: "padre-P-17", nombre: "Edificio del Ayuntamiento" },
-      { tipo: "parada", parada: 18, padreId: "padre-P-18", nombre: "Edificio del Ayuntamiento" },
-      { tipo: "tramo", tramo: 10, padreId: "padre-TR-10", nombre: "Edificio del Ayuntamiento → Estación del Norte" },
-      { tipo: "parada", parada: 19, padreId: "padre-P-19", nombre: "Estación del Norte" },
-      { tipo: "tramo", tramo: 11, padreId: "padre-TR-11", nombre: "Estación del Norte → Plaza de Toros de València" },
-      { tipo: "tramo", tramo: 12, padreId: "padre-TR-12", nombre: "Plaza de Toros → Casa estilo Árabe" },
-      { tipo: "parada", parada: 20, padreId: "padre-P-20", nombre: "Casa estilo Árabe" },
-      { tipo: "parada", parada: 21, padreId: "padre-P-21", nombre: "Casa estilo Árabe, mitad Aventura" },
-      { tipo: "tramo", tramo: 13, padreId: "padre-TR-13", nombre: "Casa estilo Árabe → Palacio de Comunicaciones (Correos)" },
-      { tipo: "parada", parada: 22, padreId: "padre-P-22", nombre: "Palacio de Comunicaciones: Correos" },
-      { tipo: "parada", parada: 23, padreId: "padre-P-23", nombre: "Edificio Suay" },
-      { tipo: "tramo", tramo: 14, padreId: "padre-TR-14", nombre: "Palacio de Comunicaciones → Banco de València" },
-      { tipo: "parada", parada: 24, padreId: "padre-P-24", nombre: "Banco de Valencia" },
-      { tipo: "tramo", tramo: 15, padreId: "padre-TR-15", nombre: "Banco de València → Palacio del Marqués de Dos Aguas (Museo Nacional de Cerámica)" },
-      { tipo: "parada", parada: 25, padreId: "padre-P-25", nombre: "Palacio del Marqués de Dos Aguas (Museo Nacional de Cerámica)" },
-      { tipo: "tramo", tramo: 16, padreId: "padre-TR-16", nombre: "Palacio del Marqués → Mercado Central" },
-      { tipo: "parada", parada: 26, padreId: "padre-P-26", nombre: "Mercado central" },
-      { tipo: "tramo", tramo: 17, padreId: "padre-TR-17", nombre: "Mercado Central → Lonja de la Seda" },
-      { tipo: "parada", parada: 27, padreId: "padre-P-27", nombre: "Lonja de la Seda" },
-      { tipo: "tramo", tramo: 18, padreId: "padre-TR-18", nombre: "Lonja de la Seda → Plaza Redonda" },
-      { tipo: "parada", parada: 28, padreId: "padre-P-28", nombre: "Plaza Redonda" },
-      { tipo: "tramo", tramo: 19, padreId: "padre-TR-19", nombre: "Plaza Redonda → Iglesia de los Santos Juanes" },
-      { tipo: "parada", parada: 29, padreId: "padre-P-29", nombre: "Iglesia de los Santos Juanes" },
-      { tipo: "tramo", tramo: 20, padreId: "padre-TR-20", nombre: "Iglesia de los Santos Juanes → Mercado Central" },
-      { tipo: "tramo", tramo: 21, padreId: "padre-TR-21", nombre: "Mercado Central → Palacio de la Generalitat" },
-      { tipo: "parada", parada: 30, padreId: "padre-P-30", nombre: "Palau de la Generalitat" },
-      { tipo: "tramo", tramo: 22, padreId: "padre-TR-22", nombre: "Palacio de la Generalitat → Torres de Serranos (Final)" },
-      { tipo: "parada", parada: 31, padreId: "padre-P-31", nombre: "Torres de Serranos (Final)" }
-    ];
-
-    // ================== FUNCIONES DE INTERFAZ ==================
-
-    function renderParadasYTramos() {
-      try {
-        const container = document.getElementById('paradas-list');
-        if (!container) {
-          console.log('No se encontró el contenedor de paradas');
-          return;
-        }
-
-        // Limpiar contenedor
-        container.innerHTML = '';
-
-        // Crear elementos para cada punto de la ruta
-        puntosRuta.forEach((punto) => {
-          const btn = document.createElement('button');
-          btn.className = 'parada-tramo-btn';
-
-          const esParada = punto.tipo === 'parada' || punto.tipo === 'inicio';
-          const esInicio = punto.tipo === 'inicio';
-          const esActual = (esParada && punto.parada === paradaActual) || 
-                         (!esParada && punto.tramo === tramoActual);
-
-          if (esActual) btn.classList.add('actual');
-          if (esParada) btn.classList.add('parada-btn');
-          if (esInicio) btn.classList.add('inicio-btn');
-          if (!esParada) btn.classList.add('tramo-btn');
-
-          const numero = esParada ? punto.parada : punto.tramo;
-          const icono = esParada ? (esInicio ? '🏁' : '📍') : '🛣️';
-          const titulo = esParada ? (esInicio ? 'Inicio' : `Parada ${numero}`) : `Tramo ${numero}`;
-
-          // Crear estructura del botón
-          btn.innerHTML = `
-            <div class="btn-content">
-              <span class="btn-icon">${icono}</span>
-              <span class="btn-title">${titulo}: ${punto.nombre}</span>
-            </div>
-          `;
-
-          btn.onclick = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-
-            if (esParada) {
-              paradaActual = punto.parada;
-              tramoActual = -1;
-            } else {
-              tramoActual = punto.tramo;
-              paradaActual = -1;
-            }
-
-            renderParadasYTramos();
-
-            // Notificar al padre sobre la selección
-            if (window.parent) {
-              const mensaje = {
-                type: 'PUNTO_SELECCIONADO',
-                origen: 'hijo5-casa',
-                punto: {
-                  tipo: esParada ? 'parada' : 'tramo',
-                  id: esParada ? `P-${punto.parada}` : `TR-${punto.tramo}`,
-                  numero: esParada ? punto.parada : punto.tramo,
-                  nombre: punto.nombre,
-                  datos: punto
-                },
-                modo: 'casa',
-                timestamp: Date.now()
-              };
-
-              console.log('Enviando mensaje al padre:', mensaje);
-              window.parent.postMessage(mensaje, '*');
-            }
-          };
-
-          container.appendChild(btn);
-        });
-
-        console.log('Paradas y tramos renderizados correctamente');
-      } catch (error) {
-        console.error('Error al renderizar paradas y tramos:', error);
-      }
-    }
-
-    /**
-     * Maneja la selección de un punto (parada o tramo)
-     * @param {Object} punto - Punto seleccionado
-     * @param {boolean} esParada - Indica si es una parada o un tramo
-     * @param {Event} [event] - Objeto de evento del clic (opcional)
-     */
-    function manejarSeleccionPunto(punto, esParada, event) {
-      try {
-        // Prevenir el comportamiento por defecto del botón
-        if (event) {
-          event.preventDefault();
-          event.stopPropagation();
-        }
-
-        // Solo procesar la selección si estamos en modo GPS OFF (Modo Casa)
-        if (gpsActivo) {
-          console.log('Selección ignorada: El GPS está activo (Modo Aventura)');
-          return;
-        }
-
-        // Notificar al padre sobre la selección
-        if (window.parent) {
-          const mensaje = {
-            type: 'PUNTO_SELECCIONADO',
-            origen: 'hijo5-casa',
-            punto: {
-              tipo: esParada ? 'parada' : 'tramo',
-              id: esParada ? `P-${punto.parada}` : `TR-${punto.tramo}`,
-              numero: esParada ? punto.parada : punto.tramo,
-              nombre: punto.nombre
-            },
-            modo: 'casa',
-            timestamp: Date.now()
-          };
-
-          console.log('Notificando al padre:', mensaje);
-          window.parent.postMessage(mensaje, '*');
-        }
-
-      } catch (error) {
-        console.error('Error al manejar selección de punto:', error);
-      }
-    }
-
-    /**
-     * Envía un mensaje de cambio de parada
-     * @param {Object} punto - Punto de parada seleccionado
-     */
-    function enviarMensajeCambioParada(punto) {
-      const mensaje = {
-        tipo: 'cambiarParada',
-        origen: 'hijo5-casa',
-        parada: {
-          id: `P-${punto.parada}`,
-          numero: punto.parada,
-          nombre: punto.nombre
-        },
-        modo: estadoApp.modo,
-        gpsActivo: estadoApp.gpsActivo,
-        timestamp: Date.now()
-      };
-
-      enviarMensaje(mensaje);
-    }
-
-    /**
-     * Envía un mensaje de cambio de tramo
-     * @param {Object} punto - Punto de tramo seleccionado
-     */
-    function enviarMensajeCambioTramo(punto) {
-      const mensaje = {
-        tipo: 'cambiarTramo',
-        origen: 'hijo5-casa',
-        tramo: {
-          id: `TR-${punto.tramo}`,
-          numero: punto.tramo,
-          nombre: punto.nombre
-        },
-        modo: estadoApp.modo,
-        gpsActivo: estadoApp.gpsActivo,
-        timestamp: Date.now()
-      };
-
-      enviarMensaje(mensaje);
-    }
-
-    /**
-     * Envía una notificación de punto actual
-     * @param {Object} punto - Punto actual
-     * @param {boolean} esParada - Indica si es una parada o un tramo
-     */
-    function enviarNotificacionPuntoActual(punto, esParada) {
-      const mensaje = {
-        tipo: 'actualizarPuntoActual',
-        origen: 'hijo5-casa',
-        puntoActual: {
-          tipo: esParada ? 'parada' : 'tramo',
-          id: esParada ? `P-${punto.parada}` : `TR-${punto.tramo}`,
-          numero: esParada ? punto.parada : punto.tramo,
-          nombre: punto.nombre
-        },
-        modo: estadoApp.modo,
-        gpsActivo: estadoApp.gpsActivo,
-        timestamp: Date.now()
-      };
-
-      enviarMensaje(mensaje);
-    }
-
-    // Función para actualizar el estado visual del botón GPS
-    function actualizarBotonGPS() {
-      const gpsBtn = document.getElementById('gps-casa-btn');
-      const paradasWindow = document.getElementById('paradas-window');
-      
-      if (!gpsBtn) {
-        console.error(`[${CONFIG.IFRAME_ID}] No se encontró el botón GPS`);
+/**
+ * Inicializa el sistema de mensajería
+ */
+export async function inicializarMensajeria(config = {}) {
+    if (sistemaInicializado) {
+        console.warn('Sistema de mensajería ya inicializado');
         return;
-      }
-      
-      const label = gpsBtn.querySelector('.gps-label');
-      const estaActivo = estadoApp.gpsActivo;
-      
-      console.log(`[${CONFIG.IFRAME_ID}] Actualizando botón GPS. Estado:`, 
-        estaActivo ? 'ACTIVO' : 'INACTIVO', 
-        { 
-          modo: estadoApp.modo, 
-          controlesHabilitados: estadoApp.controlesHabilitados,
-          motivoDeshabilitado: estadoApp.motivoDeshabilitado || 'n/a'
-        }
-      );
-      
-      // Eliminar estilos en línea que puedan estar sobrescribiendo las clases
-      gpsBtn.removeAttribute('style');
-      
-      // Actualizar estado visual del botón
-      if (estaActivo) {
-        gpsBtn.classList.add('on');
-        gpsBtn.classList.remove('off');
-        gpsBtn.style.backgroundColor = '#4CAF50';
-        gpsBtn.style.borderColor = '#45a049';
-        gpsBtn.title = 'GPS Activado';
-      } else {
-        gpsBtn.classList.add('off');
-        gpsBtn.classList.remove('on');
-        gpsBtn.style.backgroundColor = '#f44336';
-        gpsBtn.style.borderColor = '#d32f2f';
-        gpsBtn.title = 'GPS Desactivado';
-      }
-      
-      // Actualizar etiqueta
-      if (label) {
-        label.textContent = estaActivo ? 'ON' : 'OFF';
-        console.log(`[${CONFIG.IFRAME_ID}] Texto del botón actualizado a:`, label.textContent);
-      }
-      
-      // Actualizar estado de habilitación
-      gpsBtn.disabled = !estadoApp.controlesHabilitados;
-      if (!estadoApp.controlesHabilitados) {
-        gpsBtn.title = `Controles deshabilitados: ${estadoApp.motivoDeshabilitado || 'sin especificar'}`;
-      }
-      
-      const nuevoTitulo = gpsOn ? 'Desactivar GPS (Modo Aventura)' : 'Activar GPS (Modo Casa)';
-      gpsBtn.setAttribute('title', nuevoTitulo);
-      console.log('Título del botón actualizado a:', nuevoTitulo);
-      
-      if (paradasWindow) {
-        const mostrarParadas = !gpsOn;
-        
-        // Usar clases para controlar la visibilidad
-        if (mostrarParadas) {
-          paradasWindow.classList.remove('hidden');
-          paradasWindow.classList.add('visible');
-          paradasWindow.style.display = 'block';
-        } else {
-          paradasWindow.classList.remove('visible');
-          paradasWindow.classList.add('hidden');
-          paradasWindow.style.display = 'none';
-        }
-        
-        console.log('Ventana de paradas:', mostrarParadas ? 'visible' : 'oculta');
-      } else {
-        console.error('No se encontró el elemento paradas-window');
-      }
-
-      // Notificar al padre del cambio de modo usando Mensajeria API
-      const modo = gpsOn ? 'aventura' : 'casa';
-      if (window.Mensajeria) {
-        Mensajeria.enviarMensaje(
-          'padre',
-          'cambioModo',
-          {
-            modo: modo,
-            gpsActivo: gpsOn,
-            mensaje: gpsOn ? 'Modo aventura activado' : 'Modo casa activado',
-            timestamp: Date.now()
-          }
-        ).catch(error => {
-          console.error('Error al enviar mensaje de cambio de modo:', error);
-        });
-        console.log(`🏠 HIJO5: Notificado cambio de modo a ${modo} usando Mensajeria`);
-      }
-
-      // Persistencia en localStorage
-      try {
-        localStorage.setItem('gpsState', JSON.stringify(gpsOn));
-      } catch (e) {
-        console.error('Error al guardar el estado del GPS:', e);
-      }
-    }
-
-      
-      // Configurar el manejador de clic
-      gpsBtn.onclick = function(e) {
-        e.stopPropagation(); // Evitar la propagación del evento
-        console.log('Clic en el botón GPS. Estado actual:', gpsOn ? 'ON' : 'OFF');
-        
-        // Cambiar el estado
-        gpsOn = !gpsOn;
-        modoCasa = !gpsOn;
-        gpsActivo = gpsOn; // Mantener sincronizado con gpsOn
-        
-        console.log('Nuevo estado GPS:', gpsOn ? 'ON' : 'OFF');
-        console.log('Modo casa:', modoCasa ? 'Sí' : 'No');
-        
-        // Actualizar la interfaz
-        actualizarBotonGPS();
-        
-        // Si estamos en modo casa, renderizar las paradas
-        if (!gpsOn) {
-          console.log('Renderizando paradas...');
-          renderParadasYTramos();
-        } else {
-          // Si estamos en modo aventura, detener el seguimiento GPS si existe
-          if (watchId !== null) {
-            navigator.geolocation.clearWatch(watchId);
-            watchId = null;
-          }
-        }
-      };
-      
-      // Configurar el estado inicial
-      try {
-        const savedState = localStorage.getItem('gpsState');
-        if (savedState !== null) {
-          gpsOn = JSON.parse(savedState);
-          modoCasa = !gpsOn;
-          gpsActivo = gpsOn; // Asegurar que gpsActivo esté sincronizado
-        }
-      } catch (e) {
-        console.error('Error al cargar el estado del GPS:', e);
-      }
-      
-      console.log('Configurando estado inicial. gpsOn:', gpsOn, 'modoCasa:', modoCasa);
-      
-      // Asegurar que el estado inicial se refleje en la interfaz
-      actualizarBotonGPS();
-      
-      // Si estamos en modo casa, cargar las paradas
-      if (modoCasa) {
-        console.log('Estado inicial: Modo casa. Renderizando paradas...');
-        renderParadasYTramos();
-      }
-      
-      // Función para inicializar la aplicación
-      function inicializarAplicacion() {
-        // Cargar el estado guardado o usar el valor por defecto
-        try {
-          const savedState = localStorage.getItem('gpsState');
-          if (savedState !== null) {
-            gpsOn = JSON.parse(savedState);
-            modoCasa = !gpsOn;
-            gpsActivo = gpsOn; // Asegurar que gpsActivo esté sincronizado
-          }
-        } catch (e) {
-          console.error('Error al cargar el estado del GPS:', e);
-        }
-        
-        // Inicializar la interfaz
-        actualizarBotonGPS();
-        if (!gpsOn) renderParadasYTramos();
-        
-        // Notificar que el componente está listo
-        const modoInicial = gpsOn ? 'aventura' : 'casa';
-        if (window.parent) {
-          // Notificación inicial
-          window.parent.postMessage({
-            type: 'cambioModo',
-            origen: 'hijo5-casa',
-            datos: {
-              modo: modoInicial,
-              gpsActivo: gpsOn,
-              mensaje: 'Componente listo',
-              esInicial: true
-            },
-            timestamp: Date.now()
-          }, '*');
-          
-          // Notificación de compatibilidad
-          window.parent.postMessage({
-            type: 'HIJO5_LISTO',
-            origen: 'hijo5-casa',
-            gpsActivo: gpsOn,
-            timestamp: Date.now()
-          }, '*');
-          
-          console.log(`🏠 HIJO5: Componente listo en modo ${modoInicial}`);
-        }
-      }
-      
-      // Configurar manejador de clics fuera de la ventana
-      document.addEventListener('click', function(e) {
-        const gpsBtn = document.getElementById('gps-casa-btn');
-        const paradasWindow = document.getElementById('paradas-window');
-        
-        if (paradasWindow && gpsBtn && 
-            e.target !== gpsBtn && 
-            !gpsBtn.contains(e.target) && 
-            !paradasWindow.contains(e.target)) {
-          // Solo ocultar si el GPS está activo
-          if (gpsActivo) {
-            paradasWindow.style.display = 'none';
-          }
-        }
-      });
-      
-      // Inicializar la aplicación cuando el DOM esté listo
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', inicializarAplicacion);
-      } else {
-        inicializarAplicacion();
-      }
-
-    // ================== FUNCIONES DE GPS ==================
-    
-    /**
-     * Función vacía ya que el seguimiento GPS lo maneja otro componente
-     */
-    function iniciarSeguimientoGPS() {
-      console.log('GPS activado - El seguimiento lo maneja otro componente');
-      // No hacemos nada aquí, otro componente maneja el seguimiento GPS
     }
     
-    /**
-     * Función vacía ya que el seguimiento GPS lo maneja otro componente
-     */
-    function detenerSeguimientoGPS() {
-      console.log('GPS desactivado - El seguimiento lo maneja otro componente');
-      // No hacemos nada aquí, otro componente maneja el seguimiento GPS
+    configuracionActual = { ...CONFIG, ...config };
+    sistemaInicializado = true;
+    
+    // Configurar manejador global de mensajes
+    window.addEventListener('message', manejarMensajeEntrante);
+    
+    log('INFO', '✅ Sistema de mensajería inicializado', configuracionActual);
+    return true;
+}
+
+/**
+ * Registra un controlador para un tipo de mensaje
+ */
+export function registrarControlador(tipo, manejador) {
+    if (typeof manejador !== 'function') {
+        throw new Error(`Manejador para ${tipo} debe ser una función`);
     }
     
-    // ================== MANEJADORES DE EVENTOS ==================
+    manejadores.set(tipo, manejador);
+    log('DEBUG', `📝 Controlador registrado para: ${tipo}`);
+}
+
+/**
+ * Envía un mensaje centralizado
+ */
+export async function enviarMensaje(destino, tipo, datos = {}, opciones = {}) {
+    const opcionesFinales = {
+        timeout: configuracionActual.TIMEOUT,
+        maxRetries: configuracionActual.MAX_RETRIES,
+        esperarRespuesta: false,
+        ...opciones
+    };
     
-    /**
-     * Maneja el clic en el botón GPS
-     */
-    function manejarClicGPS(e) {
-      if (e) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
-      
-      // Cambiar el estado del GPS
-      estadoApp.gpsActivo = !estadoApp.gpsActivo;
-      estadoApp.modo = estadoApp.gpsActivo ? 'aventura' : 'casa';
-      
-      // Actualizar la interfaz
-      actualizarBotonGPS();
-      
-      // Mostrar/ocultar la ventana de paradas
-      const paradasWindow = document.getElementById('paradas-window');
-      if (paradasWindow) {
-        if (gpsActivo) {
-          paradasWindow.style.display = 'none';
-        } else {
-          paradasWindow.style.display = 'block';
-          renderParadasYTramos();
-        }
-      }
-      
-      // Notificar el cambio de estado
-      if (window.parent) {
-        window.parent.postMessage({
-          type: 'cambioModo',
-          origen: 'hijo5-casa',
-          datos: {
-            modo: gpsActivo ? 'aventura' : 'casa',
-            gpsActivo: gpsActivo,
-            mensaje: gpsActivo ? 'Modo aventura activado' : 'Modo casa activado',
-            timestamp: Date.now()
-          }
-        }, '*');
-      }
-      
-      // Guardar el estado
-      try {
-        localStorage.setItem('gpsState', JSON.stringify(gpsActivo));
-      } catch (e) {
-        console.error('Error al guardar el estado del GPS:', e);
-      }
-    }
+    const mensaje = {
+        tipo,
+        datos,
+        destino,
+        origen: configuracionActual.iframeId || 'desconocido',
+        timestamp: new Date().toISOString(),
+        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        opciones: opcionesFinales
+    };
     
-    // ================== MANEJADOR DE INICIALIZACIÓN ==================
-    
-    /**
-     * Maneja el mensaje de inicialización del padre
-     * @param {Object} mensaje - Mensaje de inicialización
-     * @returns {Promise<Object>} Respuesta de inicialización
-     */
-    async function manejarInicializacion(mensaje) {
-      const ID_TRANSACCION = `init-${Date.now()}`;
-      const log = (nivel, mensaje, datos = {}) => {
-        console[nivel](`[${CONFIG.IFRAME_ID}] [${ID_TRANSACCION}] ${mensaje}`, datos);
-      };
-      
-      log('info', 'Manejando inicialización', { 
-        origen: mensaje?.origen,
-        version: '1.0.0',
-        timestamp: new Date().toISOString()
-      });
-      
-      try {
-        // 1. Validar mensaje de inicialización
-        if (!mensaje?.datos) {
-          throw new Error('Mensaje de inicialización sin datos');
-        }
-        
-        // 2. Aplicar configuración inicial
-        const { 
-          modo = 'casa', 
-          controlesHabilitados = false,
-          configuracion = {}
-        } = mensaje.datos;
-        
-        log('debug', 'Configuración recibida', { 
-          modo, 
-          controlesHabilitados,
-          configuracion
-        });
-        
-        // 3. Validar modo
-        if (!['aventura', 'casa'].includes(modo)) {
-          throw new Error(`Modo no válido: ${modo}. Debe ser 'aventura' o 'casa'`);
-        }
-        
-        // 4. Actualizar estado de la aplicación
-        estadoApp.modo = modo;
-        estadoApp.controlesHabilitados = !!controlesHabilitados;
-        estadoApp.ultimaActualizacion = new Date().toISOString();
-        estadoApp.configuracion = {
-          ...estadoApp.configuracion,
-          ...configuracion,
-          version: '1.0.0',
-          timestamp: estadoApp.ultimaActualizacion
-        };
-        
-        // 5. Inicializar componentes
-        await inicializarComponentes();
-        
-        // 6. Confirmar inicialización
-        const respuesta = {
-          estado: 'ok',
-          mensaje: 'Sistema de botón casa inicializado correctamente',
-          timestamp: estadoApp.ultimaActualizacion,
-          configuracion: {
-            controlesHabilitados: estadoApp.controlesHabilitados,
-            modo: estadoApp.modo,
-            version: '1.0.0'
-          },
-          soporte: [
-            'cambiar_modo',
-            'habilitar_controles',
-            'deshabilitar_controles',
-            'actualizar_estado'
-          ]
-        };
-        
-        log('info', 'Inicialización completada con éxito', { 
-          modo: estadoApp.modo,
-          controlesHabilitados: estadoApp.controlesHabilitados,
-          timestamp: estadoApp.ultimaActualizacion
-        });
-        
-        return respuesta;
-        
-      } catch (error) {
-        const errorInfo = {
-          mensaje: error.message,
-          stack: error.stack,
-          tipo: error.name || 'Error',
-          codigo: error.code || 'ERROR_INICIALIZACION',
-          timestamp: new Date().toISOString(),
-          idTransaccion: ID_TRANSACCION
-        };
-        
-        log('error', 'Error en manejarInicializacion', errorInfo);
-        
-        // Notificar al padre del error
-        try {
-          await enviarMensajeAlPadre('error_inicializacion', {
-            ...errorInfo,
-            origen: CONFIG.IFRAME_ID,
-            tipoMensaje: 'inicializacion',
-            datosOriginales: mensaje?.datos || {}
-          });
-        } catch (notifyError) {
-          log('error', 'No se pudo notificar el error al padre', {
-            error: notifyError.message,
-            stack: notifyError.stack
-          });
-        }
-        
+    try {
+        await enviarMensajeInterno(mensaje, opcionesFinales);
+        log('DEBUG', `📤 Mensaje enviado: ${tipo} -> ${destino}`, mensaje);
+        return mensaje.id;
+    } catch (error) {
+        log('ERROR', `❌ Error enviando mensaje ${tipo} a ${destino}:`, error);
         throw error;
-      }
     }
-    
-    // ================== INICIALIZACIÓN ==================
-    
-    /**
-     * Inicializa los componentes de la aplicación
-     * @returns {Promise<void>}
-     */
-    async function inicializarComponentes() {
-      const ID_TRANSACCION = `init-comp-${Date.now()}`;
-      const log = (nivel, mensaje, datos = {}) => {
-        console[nivel](`[${CONFIG.IFRAME_ID}] [${ID_TRANSACCION}] ${mensaje}`, datos);
-      };
-      
-      try {
-        log('info', 'Inicializando componentes');
-        
-        // 1. Configurar manejadores de eventos
-        const gpsBtn = document.getElementById('gps-casa-btn');
-        if (gpsBtn) {
-          gpsBtn.removeEventListener('click', manejarClicGPS);
-          gpsBtn.addEventListener('click', manejarClicGPS);
-          log('debug', 'Manejador de clic GPS configurado');
-        } else {
-          log('warn', 'No se encontró el botón GPS');
-        }
-        
-        // 2. Configurar manejador de clics fuera de la ventana
-        document.removeEventListener('click', manejarClicFuera);
-        document.addEventListener('click', manejarClicFuera);
-        
-        // 3. Inicializar el seguimiento GPS si está activo
-        if (estadoApp.gpsActivo) {
-          log('debug', 'Iniciando seguimiento GPS');
-          await iniciarSeguimientoGPS();
-        }
-        
-        // 4. Actualizar la interfaz
-        actualizarInterfaz();
-        
-        log('info', 'Componentes inicializados correctamente');
-        
-      } catch (error) {
-        log('error', 'Error al inicializar componentes', {
-          error: error.message,
-          stack: error.stack
-        });
-        throw error;
-      }
-    }
-    
-    /**
-     * Maneja los clics fuera de la ventana de paradas
-     * @param {Event} e - Evento de clic
-     */
-    function manejarClicFuera(e) {
-      const paradasWindow = document.getElementById('paradas-window');
-      const gpsBtn = document.getElementById('gps-casa-btn');
-      
-      if (paradasWindow && 
-          e.target !== gpsBtn && 
-          !gpsBtn?.contains(e.target) && 
-          e.target !== paradasWindow && 
-          !paradasWindow.contains(e.target)) {
-        paradasWindow.style.display = 'none';
-      }
-    }
-    
-    /**
-     * Inicializa la aplicación
-     */
-    async function inicializarAplicacion() {
-      const ID_TRANSACCION = `app-init-${Date.now()}`;
-      const log = (nivel, mensaje, datos = {}) => {
-        console[nivel](`[${CONFIG.IFRAME_ID}] [${ID_TRANSACCION}] ${mensaje}`, datos);
-      };
-      
-      try {
-        log('info', 'Iniciando inicialización de la aplicación');
-        
-        // 1. Inicializar componentes
-        await inicializarComponentes();
-        
-        // 2. Notificar al padre que estamos listos
-        await enviarMensajeAlPadre('componente_listo', {
-          tipo: 'boton-casa',
-          version: '1.0.0',
-          modo: estadoApp.modo,
-          gpsActivo: estadoApp.gpsActivo,
-          controlesHabilitados: estadoApp.controlesHabilitados,
-          soporte: ['cambiar_modo', 'actualizar_estado']
-        });
-        
-        log('info', 'Aplicación inicializada correctamente', {
-          modo: estadoApp.modo,
-          gpsActivo: estadoApp.gpsActivo,
-          controlesHabilitados: estadoApp.controlesHabilitados
-        });
-        
-      } catch (error) {
-        log('error', 'Error al inicializar la aplicación', {
-          error: error.message,
-          stack: error.stack
-        });
-        
-        // Mostrar error en la interfaz
-        mostrarError('Error al inicializar la aplicación: ' + error.message);
-        
-        // Re-lanzar el error para que pueda ser manejado por el sistema
-        throw error;
-      }
-    }
-    
-    // Inicializar la aplicación cuando el DOM esté listo
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', inicializarAplicacion);
-    } else {
-      inicializarAplicacion();
-    }
-    
-    // ================== FUNCIÓN DE MENSAJERÍA DUPLICADA ELIMINADA ==================
-    // Función enviarMensajeAlPadre eliminada para evitar duplicación.
-    // La comunicación se realiza a través del sistema centralizado en mensajeria.js
-    
-    /**
-     * Maneja el cambio de modo de la aplicación
-     * @param {string} modo - Nuevo modo ('casa' o 'aventura')
-     * @param {boolean} [habilitar=true] - Si se deben habilitar los controles
-     * @param {Object} opciones - Opciones adicionales
-     * @param {string} [opciones.motivo='cambio_modo'] - Razón del cambio
-     * @param {boolean} [opciones.forzar=false] - Forzar el cambio
-     * @param {boolean} [opciones.notificarPadre=true] - Si se debe notificar al padre del cambio
-     * @param {boolean} [opciones.actualizarInterfaz=true] - Si se debe actualizar la interfaz
-     * @returns {Promise<Object>} - Resultado de la operación con estado, mensaje y datos relevantes
-     */
-    async function manejarCambioModo(modo, habilitar = true, { 
-      motivo = 'cambio_modo', 
-      forzar = false, 
-      notificarPadre = true,
-      actualizarInterfaz = true
-    } = {}) {
-      // Generar un ID único para esta transacción
-      const ID_TRANSACCION = `cambio-mod-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-      
-      // Función de utilidad para registrar mensajes de log
-      const log = (nivel, mensaje, datos = {}) => {
-        const timestamp = new Date().toISOString();
-        const prefijo = `[${timestamp}] [${CONFIG.IFRAME_ID}] [${ID_TRANSACCION}]`;
-        const mensajeCompleto = `${prefijo} ${mensaje}`;
-        
-        // Registrar en consola
-        if (CONFIG.DEBUG || nivel === 'error' || nivel === 'warn') {
-          console[nivel](mensajeCompleto, datos);
-        }
-        
-        // Opcional: Registrar en un array de logs para depuración
-        if (!window._logs) window._logs = [];
-        window._logs.push({ nivel, mensaje, datos, timestamp, id: ID_TRANSACCION });
-        if (window._logs.length > 100) window._logs.shift(); // Limitar el tamaño
-      };
-      
-      try {
-        log('info', `Iniciando cambio de modo a ${modo}`, { 
-          habilitar, 
-          motivo, 
-          forzar,
-          notificarPadre,
-          estadoActual: { ...estadoApp }
-        });
-        
-        // Validar el modo
-        if (modo !== 'casa' && modo !== 'aventura') {
-          const errorMsg = `[${CONFIG.IFRAME_ID}] Modo no válido: ${modo}`;
-          console.error(errorMsg);
-          throw new Error(errorMsg);
-        }
-        
-        // Obtener el estado actual
-        const modoAnterior = estadoApp.modo;
-        const gpsAnterior = estadoApp.gpsActivo;
-        const nuevoEstadoGPS = (modo === 'aventura');
-        
-        // Verificar si es necesario hacer algún cambio
-        if (modoAnterior === modo && !forzar) {
-          log('debug', 'El modo no ha cambiado y no se forzó el cambio');
-          return {
-            estado: 'ok',
-            mensaje: 'El modo no ha cambiado',
-            modo,
-            modoAnterior,
-            gpsActivo: estadoApp.gpsActivo,
-            gpsAnterior,
-            cambiado: false,
-            timestamp: new Date().toISOString(),
-            idTransaccion: ID_TRANSACCION
-          };
-        }
-        
-        // Actualizar el estado de la aplicación
-        estadoApp.modo = modo;
-        estadoApp.gpsActivo = nuevoEstadoGPS;
-        estadoApp.ultimaActualizacion = new Date().toISOString();
-        
-        // 1. Actualizar controles si es necesario
-        try {
-          if (habilitar) {
-            log('debug', 'Habilitando controles...');
-            await enableControls(modo, { 
-              motivo: `${motivo} (cambio a modo ${modo})`,
+}
 
-              forzar 
-            });
-            log('debug', 'Controles habilitados exitosamente');
-          } else {
-            log('debug', 'Deshabilitando controles...');
-            await disableControls(`${motivo} (cambio a modo ${modo})`, { forzar });
-            log('debug', 'Controles deshabilitados exitosamente');
-          }
-        } catch (error) {
-          log('error', 'Error al actualizar controles', { 
-            error: error.message,
-            stack: error.stack,
-            motivo,
-            habilitar
-          });
-          
-          // Si no es un error crítico, continuar
-          if (!forzar) throw error;
-          
-          log('warn', 'Continuando a pesar del error (modo forzado)');
-        }
-        
-        // 2. Notificar al padre si es necesario
-        if (notificarPadre) {
-          try {
-            log('debug', 'Notificando cambio de modo al padre...');
-            await enviarMensajeAlPadre('sistema:configuracion', { 
-              modo, 
-              habilitado: habilitar, 
-              motivo: `cambio_modo:${motivo}`,
-              timestamp: estadoApp.ultimaActualizacion,
-              idTransaccion: ID_TRANSACCION,
-              desdeHijo: CONFIG.IFRAME_ID
-            }, { 
-              reintentos: 3, 
-              tiempoEspera: 1000,
-              esencial: true
-            });
-            log('debug', 'Notificación al padre completada');
-          } catch (error) {
-            log('error', 'Error al notificar el cambio de modo al padre', {
-              error: error.message,
-              stack: error.stack,
-              motivo
-            });
+/**
+ * Envía mensaje interno con reintentos
+ */
+async function enviarMensajeInterno(mensaje, opciones, intento = 1) {
+    try {
+        if (mensaje.destino === 'padre') {
+            window.parent.postMessage(mensaje, '*');
+        } else {
+            // Buscar iframe por ID
+            const iframe = document.getElementById(mensaje.destino) || 
+                          document.querySelector(`iframe[src*="${mensaje.destino}"]`);
             
-            // Si es crítico, revertir el cambio
-            if (forzar) {
-              log('warn', 'Continuando a pesar del error (modo forzado)');
+            if (iframe && iframe.contentWindow) {
+                iframe.contentWindow.postMessage(mensaje, '*');
             } else {
-              // Revertir cambios en caso de error
-              estadoApp.modo = modoAnterior;
-              estadoApp.gpsActivo = gpsAnterior;
-              throw error;
+                throw new Error(`Iframe ${mensaje.destino} no encontrado`);
             }
-          }
         }
         
-        // 3. Actualizar la interfaz si es necesario
-        if (actualizarInterfaz) {
-          try {
-            log('debug', 'Actualizando interfaz...');
-            actualizarBotonGPS();
-            
-            if (!estadoApp.gpsActivo) {
-              renderParadasYTramos();
-            }
-            
-            // Forzar actualización de la interfaz
-            actualizarInterfaz();
-            log('debug', 'Interfaz actualizada');
-          } catch (error) {
-            log('error', 'Error al actualizar la interfaz', {
-              error: error.message,
-              stack: error.stack
+        // Configurar timeout si se espera respuesta
+        if (opciones.esperarRespuesta) {
+            return new Promise((resolve, reject) => {
+                const timeoutId = setTimeout(() => {
+                    mensajesPendientes.delete(mensaje.id);
+                    reject(new Error(`Timeout esperando respuesta de ${mensaje.destino}`));
+                }, opciones.timeout);
+                
+                mensajesPendientes.set(mensaje.id, { resolve, reject });
+                timeouts.set(mensaje.id, timeoutId);
             });
-            // No lanzar el error, ya que el cambio de modo fue exitoso
-          }
         }
         
-        // 4. Preparar resultado exitoso
-        const resultado = {
-          estado: 'ok',
-          mensaje: `Modo cambiado a ${modo} exitosamente`,
-          modo,
-          modoAnterior,
-          gpsActivo: estadoApp.gpsActivo,
-          gpsAnterior,
-          habilitado: habilitar,
-          motivo,
-          cambiado: true,
-          timestamp: estadoApp.ultimaActualizacion,
-          idTransaccion: ID_TRANSACCION
-        };
+        return mensaje.id;
         
-        log('info', 'Cambio de modo completado exitosamente', resultado);
-        return resultado;
-        
-      } catch (error) {
-        const errorInfo = {
-          mensaje: error.message,
-          stack: error.stack,
-          tipo: error.name || 'Error',
-          codigo: error.code || 'ERROR_CAMBIO_MODO',
-          timestamp: new Date().toISOString(),
-          idTransaccion: ID_TRANSACCION,
-          modoSolicitado: modo,
-          habilitar,
-          motivo,
-          forzar
-        };
-        
-        log('error', 'Error en manejarCambioModo', errorInfo);
-        
-        // Notificar al padre del error
-        if (notificarPadre) {
-          try {
-            await enviarMensajeAlPadre('error_cambio_modo', {
-              ...errorInfo,
-              origen: CONFIG.IFRAME_ID,
-              tipoMensaje: 'cambio_modo'
-            }, { reintentos: 1 });
-          } catch (notifyError) {
-            log('error', 'No se pudo notificar el error al padre', {
-              error: notifyError.message,
-              stack: notifyError.stack
-            });
-          }
+    } catch (error) {
+        if (intento < opciones.maxRetries) {
+            log('WARN', `⚠️ Reintento ${intento}/${opciones.maxRetries} para ${mensaje.tipo}`);
+            await new Promise(resolve => setTimeout(resolve, 1000 * intento));
+            return enviarMensajeInterno(mensaje, opciones, intento + 1);
         }
+        throw error;
+    }
+}
+
+/**
+ * Manejador centralizado de mensajes entrantes
+ */
+async function manejarMensajeEntrante(event) {
+    if (!event.data || typeof event.data !== 'object') return;
+    
+    const { tipo, datos, origen, id, respuestaA } = event.data;
+    
+    // Manejar respuestas a mensajes pendientes
+    if (respuestaA && mensajesPendientes.has(respuestaA)) {
+        const { resolve } = mensajesPendientes.get(respuestaA);
+        const timeoutId = timeouts.get(respuestaA);
         
-        // Lanzar un error más detallado
-        const errorFinal = new Error(`Error al cambiar a modo ${modo}: ${error.message}`);
-        Object.assign(errorFinal, errorInfo);
-        throw errorFinal;
-      }
+        if (timeoutId) clearTimeout(timeoutId);
+        mensajesPendientes.delete(respuestaA);
+        timeouts.delete(respuestaA);
+        
+        resolve(event.data);
+        return;
     }
     
-    /**
-     * Maneja los mensajes entrantes a través de Mensajeria.js
-     * @param {Object} mensaje - Objeto de mensaje recibido
-     * @param {string} tipo - Tipo de mensaje
-     * @param {Object} datos - Datos del mensaje
-     * @param {string} origen - Origen del mensaje
-     * @returns {Promise<Object>} - Resultado del procesamiento del mensaje
-     */
-    async function manejarMensaje({ tipo, datos, origen }) {
-      const ID_TRANSACCION = `msg-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-      const log = (nivel, mensaje, datos = {}) => {
-        console[nivel](`[${CONFIG.IFRAME_ID}] [${ID_TRANSACCION}] ${mensaje}`, datos);
-      };
-      
-      try {
-        log('debug', `Mensaje recibido - Tipo: ${tipo}`, { 
-          origen,
-          datos,
-          timestamp: new Date().toISOString()
-        });
-        
-        // Verificar si es un mensaje de inicialización
-        if (tipo === 'inicializacion' || tipo === 'sistema:inicializacion') {
-          log('info', 'Mensaje de inicialización recibido', { origen });
-          return await manejarInicializacion({ datos, origen });
-        }
-        
-        // Procesar otros tipos de mensajes
-        switch (tipo) {
-          case 'sistema:configuracion':
-            log('info', 'Actualizando configuración del sistema', { datos });
-            if (datos?.estado) {
-              estadoApp.modo = datos.estado.modo || 'casa';
-              estadoApp.gpsActivo = estadoApp.modo === 'aventura';
-              
-              if (datos.estado.puntoActual) {
-                estadoApp.tramoActual = datos.estado.puntoActual.numero;
-              }
-              
-              actualizarBotonGPS();
-              actualizarInterfaz();
-              
-              if (!estadoApp.gpsActivo) {
-                renderParadasYTramos();
-              }
-              
-              return { 
-                estado: 'ok', 
-                mensaje: 'Configuración actualizada',
-                modo: estadoApp.modo,
-                gpsActivo: estadoApp.gpsActivo
-              };
+    // Procesar mensaje normal
+    if (manejadores.has(tipo)) {
+        try {
+            const resultado = await manejadores.get(tipo)({
+                tipo,
+                datos,
+                origen,
+                id,
+                evento: event
+            });
+            
+            log('DEBUG', `📥 Mensaje procesado: ${tipo} de ${origen}`, datos);
+            
+            // Enviar confirmación si se requiere
+            if (event.data.opciones?.esperarRespuesta) {
+                await enviarConfirmacion(origen, id, true, resultado);
             }
+            
+        } catch (error) {
+            log('ERROR', `❌ Error procesando mensaje ${tipo} de ${origen}:`, error);
+            
+            // Enviar error como respuesta si se esperaba
+            if (event.data.opciones?.esperarRespuesta) {
+                await enviarConfirmacion(origen, id, false, { error: error.message });
+            }
+        }
+    } else {
+        log('WARN', `⚠️ No hay manejador para mensaje tipo: ${tipo}`);
+    }
+}
+
+/**
+ * Envía confirmación de mensaje
+ */
+async function enviarConfirmacion(destino, mensajeId, exito, datos = {}) {
+    const confirmacion = {
+        tipo: TIPOS_MENSAJE.SISTEMA.CONFIRMACION,
+        datos: { exito, ...datos },
+        destino,
+        origen: configuracionActual.iframeId || 'desconocido',
+        respuestaA: mensajeId,
+        timestamp: new Date().toISOString()
+    };
+    
+    if (destino === 'padre') {
+        window.parent.postMessage(confirmacion, '*');
+    } else {
+        const iframe = document.getElementById(destino);
+        if (iframe && iframe.contentWindow) {
+            iframe.contentWindow.postMessage(confirmacion, '*');
+        }
+    }
+}
+
+/**
+ * Funciones de utilidad para logging
+ */
+function log(nivel, mensaje, datos = null) {
+    const nivelNum = configuracionActual.LOG_LEVELS[nivel] || 1;
+    const nivelActual = configuracionActual.logLevel || configuracionActual.LOG_LEVELS.INFO;
+    
+    if (nivelNum < nivelActual) return;
+    
+    const timestamp = new Date().toISOString();
+    const contexto = configuracionActual.iframeId || 'SISTEMA';
+    
+    if (datos) {
+        console[nivel.toLowerCase()](`[${timestamp}] [${contexto}] ${mensaje}`, datos);
+    } else {
+        console[nivel.toLowerCase()](`[${timestamp}] [${contexto}] ${mensaje}`);
+    }
+}
+
+/**
+ * Funciones de alto nivel para operaciones comunes
+ */
+export async function cambiarModoGlobal(nuevoModo, opciones = {}) {
+    return enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, {
+        modo: nuevoModo,
+        ...opciones
+    }, { esperarRespuesta: true });
+}
+
+export async function habilitarControles(modo = 'casa', destinos = ['todos']) {
+    if (destinos.includes('todos')) {
+        return enviarMensajeATodos(TIPOS_MENSAJE.MODO.HABILITAR_CONTROLES, { modo });
+    } else {
+        const promesas = destinos.map(destino => 
+            enviarMensaje(destino, TIPOS_MENSAJE.MODO.HABILITAR_CONTROLES, { modo })
+        );
+        return Promise.allSettled(promesas);
+    }
+}
+
+export async function deshabilitarControles(motivo = 'desconocido', destinos = ['todos']) {
+    if (destinos.includes('todos')) {
+        return enviarMensajeATodos(TIPOS_MENSAJE.MODO.DESHABILITAR_CONTROLES, { motivo });
+    } else {
+        const promesas = destinos.map(destino => 
+            enviarMensaje(destino, TIPOS_MENSAJE.MODO.DESHABILITAR_CONTROLES, { motivo })
+        );
+        return Promise.allSettled(promesas);
+    }
+}
+
+export async function enviarMensajeATodos(tipo, datos = {}, opciones = {}) {
+    const destinosComunes = [
+        'Av1_audio_esp',
+        'Av1-botones-coordenadas', 
+        'Av1-esp-retos-preguntas',
+        'Av1-boton-casa'
+    ];
+    
+    const promesas = destinosComunes.map(destino => 
+        enviarMensaje(destino, tipo, datos, opciones).catch(error => ({
+            destino,
+            error: error.message
+        }))
+    );
+    
+    const resultados = await Promise.allSettled(promesas);
+    
+    const exitosos = resultados.filter(r => r.status === 'fulfilled').length;
+    const fallidos = resultados.length - exitosos;
+    
+    log('INFO', `📊 Mensaje múltiple: ${exitosos} exitosos, ${fallidos} fallidos`);
+    
+    return { exitosos, fallidos, resultados };
+}
+
+// ================== FUNCIONES DE UTILIDAD PARA HIJOS ==================
+
+/**
+ * Solicita las constantes del padre (para usar en hijos)
+ */
+export async function solicitarConstantesPadre(tiempoEspera = 5000) {
+    return new Promise((resolve, reject) => {
+        // Enviar solicitud al padre
+        window.parent.postMessage({
+            tipo: TIPOS_MENSAJE.DATOS.SOLICITAR_CONSTANTES,
+            datos: {},
+            origen: configuracionActual.iframeId || 'hijo',
+            destino: 'padre',
+            timestamp: new Date().toISOString()
+        }, '*');
+
+        // Configurar listener temporal para la respuesta
+        const timeoutId = setTimeout(() => {
+            window.removeEventListener('message', manejarRespuestaConstantes);
+            reject(new Error('Timeout al solicitar constantes del padre'));
+        }, tiempoEspera);
+
+        function manejarRespuestaConstantes(event) {
+            if (event.data?.tipo === TIPOS_MENSAJE.DATOS.CONSTANTES) {
+                clearTimeout(timeoutId);
+                window.removeEventListener('message', manejarRespuestaConstantes);
+                resolve(event.data.datos);
+            }
+        }
+
+        window.addEventListener('message', manejarRespuestaConstantes);
+    });
+}
+
+/**
+ * Solicita datos de una parada específica al padre
+ */
+export async function solicitarDatosParada(paradaId, tiempoEspera = 3000) {
+    return new Promise((resolve, reject) => {
+        window.parent.postMessage({
+            tipo: TIPOS_MENSAJE.DATOS.SOLICITAR_PARADA,
+            datos: { paradaId },
+            origen: configuracionActual.iframeId || 'hijo',
+            destino: 'padre',
+            timestamp: new Date().toISOString()
+        }, '*');
+
+        const timeoutId = setTimeout(() => {
+            window.removeEventListener('message', manejarRespuestaParada);
+            reject(new Error(`Timeout al solicitar datos de parada ${paradaId}`));
+        }, tiempoEspera);
+
+        function manejarRespuestaParada(event) {
+            if (event.data?.tipo === TIPOS_MENSAJE.DATOS.RESPUESTA_PARADA && 
+                event.data?.datos?.paradaId === paradaId) {
+                clearTimeout(timeoutId);
+                window.removeEventListener('message', manejarRespuestaParada);
+                resolve(event.data.datos);
+            }
+        }
+
+        window.addEventListener('message', manejarRespuestaParada);
+    });
+}
+
+/**
+ * Solicita coordenadas al padre
+ */
+export async function solicitarCoordenadas(paradaId = null, tiempoEspera = 3000) {
+    return new Promise((resolve, reject) => {
+        window.parent.postMessage({
+            tipo: TIPOS_MENSAJE.DATOS.SOLICITAR_COORDENADAS,
+            datos: { paradaId },
+            origen: configuracionActual.iframeId || 'hijo',
+            destino: 'padre',
+            timestamp: new Date().toISOString()
+        }, '*');
+
+        const timeoutId = setTimeout(() => {
+            window.removeEventListener('message', manejarRespuestaCoordenadas);
+            reject(new Error('Timeout al solicitar coordenadas'));
+        }, tiempoEspera);
+
+        function manejarRespuestaCoordenadas(event) {
+            if (event.data?.tipo === TIPOS_MENSAJE.DATOS.RESPUESTA_COORDENADAS) {
+                clearTimeout(timeoutId);
+                window.removeEventListener('message', manejarRespuestaCoordenadas);
+                resolve(event.data.datos);
+            }
+        }
+
+        window.addEventListener('message', manejarRespuestaCoordenadas);
+    });
+}
+
+/**
+ * Notifica al padre que el hijo está listo con sus capacidades
+ */
+export async function notificarHijoListo(componente, capacidades = [], version = '1.0') {
+    return enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.LISTO, {
+        componente,
+        capacidades,
+        version,
+        timestamp: new Date().toISOString()
+    }, { esperarRespuesta: true });
+}
+
+// ================== MANEJADORES CENTRALIZADOS PARA SOLICITUDES DE DATOS ==================
+
+/**
+ * Manejador centralizado para solicitudes de datos del padre
+ */
+async function manejarSolicitudDatos(event) {
+    if (!event.data || typeof event.data !== 'object') return;
+    
+    const { tipo, datos, origen, id } = event.data;
+    
+    // Solo procesar si somos el padre y recibimos solicitudes de datos
+    if (window.location !== window.parent.location) return; // Somos iframe, no padre
+    
+    switch (tipo) {
+        case TIPOS_MENSAJE.DATOS.SOLICITAR_CONSTANTES:
+            await responderConstantes(origen, id);
             break;
             
-          case 'sistema:gps_estado':
-            log('info', 'Actualizando estado del GPS', { activo: datos?.activo });
-            if (typeof datos?.activo !== 'undefined') {
-              estadoApp.gpsActivo = !!datos.activo;
-              actualizarBotonGPS();
-              
-              const paradasWindow = document.getElementById('paradas-window');
-              if (estadoApp.gpsActivo && paradasWindow) {
-                paradasWindow.style.display = 'none';
-              } else if (!estadoApp.gpsActivo) {
-                renderParadasYTramos();
-              }
-              
-              return { 
-                estado: 'ok', 
-                gpsActivo: estadoApp.gpsActivo,
-                timestamp: new Date().toISOString()
-              };
-            }
-            return { 
-              estado: 'error', 
-              mensaje: 'Datos de estado GPS no válidos',
-              recibido: datos
-            };
+        case TIPOS_MENSAJE.DATOS.SOLICITAR_PARADA:
+        case 'DATOS.SOLICITAR_PARADA':
+            await responderDatosParada(origen, id, datos.paradaId);
+            break;
             
-          case 'navegacion:cambio_parada':
-            log('info', 'Cambiando parada', { parada: datos?.parada });
-            if (typeof datos?.parada !== 'undefined') {
-              estadoApp.tramoActual = datos.parada;
-              renderParadasYTramos();
-              return { 
-                estado: 'ok', 
-                tramoActual: estadoApp.tramoActual,
-                timestamp: new Date().toISOString()
-              };
-            }
-            return { 
-              estado: 'error', 
-              mensaje: 'Número de parada no válido',
-              recibido: datos
-            };
+        case TIPOS_MENSAJE.DATOS.SOLICITAR_COORDENADAS:
+            await responderCoordenadas(origen, id, datos.paradaId);
+            break;
             
-          case 'navegacion:cambio_tramo':
-            log('info', 'Cambiando tramo', { tramo: datos?.tramo });
-            if (typeof datos?.tramo !== 'undefined') {
-              estadoApp.tramoActual = datos.tramo;
-              renderParadasYTramos();
-              return { 
-                estado: 'ok', 
-                tramoActual: estadoApp.tramoActual,
-                timestamp: new Date().toISOString()
-              };
-            }
-            return { 
-              estado: 'error', 
-              mensaje: 'Número de tramo no válido',
-              recibido: datos
-            };
-            
-          // Manejo de mensajes de cambio de modo para compatibilidad
-          case 'cambiarModo':
-          case 'cambio_modo': // Añadido para compatibilidad
-            log('info', 'Cambiando modo', { modo: datos?.modo, datos });
-            if (datos?.modo === 'casa' || datos?.modo === 'aventura') {
-              try {
-                // Llamar a manejarCambioModo con parámetros completos
-                const resultado = await manejarCambioModo(datos.modo, true, {
-                  motivo: datos.motivo || 'cambio_modo',
-                  forzar: datos.forzar || false,
-                  notificarPadre: datos.notificarPadre !== false
-                });
-                
-                // Actualizar el estado local
-                estadoApp.modo = datos.modo;
-                estadoApp.gpsActivo = datos.modo === 'aventura';
-                
-                // Actualizar la interfaz
-                actualizarBotonGPS();
-                if (!estadoApp.gpsActivo) {
-                  renderParadasYTramos();
-                }
-                
-                log('info', 'Cambio de modo completado', resultado);
-                return { 
-                  estado: 'ok', 
-                  modo: estadoApp.modo,
-                  gpsActivo: estadoApp.gpsActivo,
-                  timestamp: new Date().toISOString(),
-                  ...resultado
-                };
-              } catch (error) {
-                log('error', 'Error al cambiar el modo', {
-                  error: error.message,
-                  stack: error.stack,
-                  datos
-                });
-                return { 
-                  estado: 'error', 
-                  mensaje: `Error al cambiar el modo: ${error.message}`,
-                  error: error.toString(),
-                  timestamp: new Date().toISOString()
-                };
-              }
-            }
-            return { 
-              estado: 'error', 
-              mensaje: 'Modo no válido. Debe ser "casa" o "aventura"',
-              recibido: datos?.modo,
-              timestamp: new Date().toISOString()
-            };
-            
-          case 'cambiarParada':
-            log('info', 'Cambiando parada (compatibilidad)', { parada: datos?.parada });
-            if (typeof datos?.parada === 'number') {
-              estadoApp.tramoActual = datos.parada;
-              renderParadasYTramos();
-              return { 
-                estado: 'ok', 
-                tramoActual: estadoApp.tramoActual,
-                timestamp: new Date().toISOString()
-              };
-            }
-            return { 
-              estado: 'error', 
-              mensaje: 'Número de parada no válido',
-              recibido: datos?.parada
-            };
-            
-          case 'cambiarTramo':
-            log('info', 'Cambiando tramo (compatibilidad)', { tramo: datos?.tramo });
-            if (typeof datos?.tramo === 'number') {
-              estadoApp.tramoActual = datos.tramo;
-              renderParadasYTramos();
-              return { 
-                estado: 'ok', 
-                tramoActual: estadoApp.tramoActual,
-                timestamp: new Date().toISOString()
-              };
-            }
-            return { 
-              estado: 'error', 
-              mensaje: 'Número de tramo no válido',
-              recibido: datos?.tramo
-            };
-            
-          case 'SET_GPS_STATE':
-            log('info', 'Estableciendo estado GPS (compatibilidad)', { activo: datos?.gpsActivo });
-            if (typeof datos?.gpsActivo !== 'undefined') {
-              estadoApp.gpsActivo = !!datos.gpsActivo;
-              actualizarBotonGPS();
-              if (!estadoApp.gpsActivo) {
-                renderParadasYTramos();
-              }
-              return { 
-                estado: 'ok', 
-                gpsActivo: estadoApp.gpsActivo,
-                timestamp: new Date().toISOString()
-              };
-            }
-            return { 
-              estado: 'error', 
-              mensaje: 'Estado GPS no válido',
-              recibido: datos?.gpsActivo
-            };
-            
-          case 'sincronizarEstado':
-            log('info', 'Sincronizando estado', { estado: datos?.estado });
-            if (datos?.estado) {
-              estadoApp.modo = datos.estado.modo || 'casa';
-              estadoApp.gpsActivo = estadoApp.modo === 'aventura';
-              
-              if (datos.estado.puntoActual) {
-                estadoApp.tramoActual = datos.estado.puntoActual.numero;
-              }
-              
-              actualizarBotonGPS();
-              if (!estadoApp.gpsActivo) {
-                renderParadasYTramos();
-              }
-              
-              return { 
-                estado: 'ok', 
-                modo: estadoApp.modo,
-                gpsActivo: estadoApp.gpsActivo,
-                tramoActual: estadoApp.tramoActual,
-                timestamp: new Date().toISOString()
-              };
-            }
-            return { 
-              estado: 'error', 
-              mensaje: 'Datos de sincronización no válidos',
-              recibido: datos?.estado
-            };
-            
-          default:
-            log('warn', `Tipo de mensaje no manejado: ${tipo}`, { datos, origen });
-            return { 
-              estado: 'error', 
-              mensaje: 'Tipo de mensaje no reconocido',
-              tipo,
-              timestamp: new Date().toISOString()
-            };
-        }
-      } catch (error) {
-        const errorInfo = {
-          mensaje: error.message,
-          stack: error.stack,
-          tipo: error.name || 'Error',
-          codigo: error.code || 'ERROR_MANEJO_MENSAJE',
-          timestamp: new Date().toISOString(),
-          idTransaccion: ID_TRANSACCION,
-          tipoMensaje: tipo,
-          origen,
-          datosOriginales: datos || {}
-        };
-        
-        log('error', 'Error crítico en manejo de mensaje', errorInfo);
-        
-        // Notificar al padre del error
-        try {
-          await enviarMensajeAlPadre('error_mensaje', {
-            ...errorInfo,
-            origen: CONFIG.IFRAME_ID,
-            tipoMensaje: tipo,
-            datosOriginales: datos || {}
-          }, { reintentos: 2, tiempoEspera: 500 });
-        } catch (notifyError) {
-          log('error', 'No se pudo notificar el error al padre', {
-            error: notifyError.message,
-            stack: notifyError.stack
-          });
-        }
-        
-        // Devolver un objeto de error consistente
-        return { 
-          estado: 'error',
-          mensaje: 'Error al procesar el mensaje',
-          error: errorInfo,
-          timestamp: new Date().toISOString()
-        };
-      }
+        case TIPOS_MENSAJE.RETOS.ABRIR:
+            await responderReto(origen, id, datos.paradaId);
+            break;
+    }
+}
+
+/**
+ * Responde con las constantes del sistema
+ */
+async function responderConstantes(destino, mensajeId) {
+    if (typeof window.AVENTURA_PARADAS === 'undefined' || 
+        typeof window.coordenadasParadas === 'undefined') {
+        console.warn('⚠️ Constantes del padre no disponibles aún');
+        return;
     }
     
-    // Registrar manejador de mensajes usando Mensajeria API
-    if (window.Mensajeria) {
-      Mensajeria.registrarControlador('mensaje', manejarMensaje);
-      console.log('Manejador de mensajes registrado con Mensajeria API');
+    const constantes = {
+        AVENTURA_PARADAS: window.AVENTURA_PARADAS,
+        COORDENADAS_PARADAS: Array.from(window.coordenadasParadas.entries()),
+        paradaActual: window.paradaActual || 0,
+        timestamp: new Date().toISOString()
+    };
+    
+    // Enviar directamente al hijo que lo solicita
+    const iframe = document.getElementById(destino);
+    if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage({
+            tipo: TIPOS_MENSAJE.DATOS.CONSTANTES,
+            datos: constantes,
+            origen: 'padre',
+            destino: destino,
+            respuestaA: mensajeId
+        }, '*');
     }
+}
 
-    // Inicialización avanzada
-    (function init() {
-      try {
-        // Inicializar mensajería
-        if (window.Mensajeria) {
-          Mensajeria.inicializarMensajeria({
-            iframeId: 'hijo5-casa',
-            logLevel: 1, // INFO
-            debug: true
-          });
+/**
+ * Responde con datos de una parada específica usando las funciones del padre
+ */
+async function responderDatosParada(destino, mensajeId, paradaId) {
+    console.log(`🎯 Padre: Procesando solicitud de datos para parada ${paradaId} de ${destino}`);
+    
+    if (typeof window.padreFunciones?.obtenerDatosParada !== 'function') {
+        console.warn('⚠️ Función obtenerDatosParada del padre no disponible');
+        return;
+    }
+    
+    try {
+        const datosParada = window.padreFunciones.obtenerDatosParada(paradaId);
+        
+        // Enviar respuesta directamente al hijo
+        const iframe = document.getElementById(destino);
+        if (iframe && iframe.contentWindow) {
+            iframe.contentWindow.postMessage({
+                tipo: TIPOS_MENSAJE.NAVEGACION.ESTADO,
+                datos: { 
+                    accion: 'datos_parada',
+                    parada: datosParada,
+                    paradaId 
+                },
+                origen: 'padre',
+                destino: destino,
+                respuestaA: mensajeId
+            }, '*');
+            
+            console.log(`✅ Padre: Datos de parada ${paradaId} enviados a ${destino}`);
         }
+    } catch (error) {
+        console.error(`❌ Padre: Error enviando datos de parada ${paradaId} a ${destino}:`, error);
+    }
+}
 
-        const savedState = localStorage.getItem('gpsState');
-        if (savedState !== null) {
-          gpsActivo = JSON.parse(savedState);
+/**
+ * Responde con datos de reto usando las funciones del padre
+ */
+async function responderReto(destino, mensajeId, paradaId) {
+    console.log(`🎯 Padre: Procesando solicitud de reto para parada ${paradaId} de ${destino}`);
+    
+    if (typeof window.padreFunciones?.obtenerRetoParaParada !== 'function') {
+        console.warn('⚠️ Función obtenerRetoParaParada del padre no disponible');
+        return;
+    }
+    
+    try {
+        const retoData = window.padreFunciones.obtenerRetoParaParada(paradaId);
+        
+        // Enviar respuesta directamente al hijo
+        const iframe = document.getElementById(destino);
+        if (iframe && iframe.contentWindow) {
+            iframe.contentWindow.postMessage({
+                tipo: TIPOS_MENSAJE.RETOS.MOSTRAR,
+                datos: { 
+                    reto: retoData,
+                    paradaId 
+                },
+                origen: 'padre',
+                destino: destino,
+                respuestaA: mensajeId
+            }, '*');
+            
+            console.log(`✅ Padre: Reto de parada ${paradaId} enviado a ${destino}`);
         }
-      } catch (e) {
-        console.error('Error en inicialización:', e);
-      }
-      
-      actualizarBotonGPS();
-      if (!gpsActivo) renderParadasYTramos();
-      
-      // Notificar al padre usando mensajería
-      if (window.Mensajeria) {
-        Mensajeria.enviarMensaje(
-          'padre', 
-          'sistema:inicializacion', 
-          { 
-            gpsActivo: gpsActivo,
-            modo: gpsActivo ? 'aventura' : 'casa',
-            timestamp: Date.now()
-          }
-        ).then(() => {
-          console.log('Notificación de inicialización enviada correctamente');
-        }).catch(error => {
-          console.error('Error al enviar notificación de inicialización:', error);
-        });
-      }
-    })();
-  </script>
-</body>
-</html>
+    } catch (error) {
+        console.error(`❌ Padre: Error enviando reto de parada ${paradaId} a ${destino}:`, error);
+    }
+}
+
+/**
+ * Responde con coordenadas
+ */
+async function responderCoordenadas(destino, mensajeId, paradaId = null) {
+    if (typeof window.coordenadasParadas === 'undefined') {
+        console.warn('⚠️ Coordenadas del padre no disponibles');
+        return;
+    }
+    
+    let coordenadas;
+    if (paradaId) {
+        coordenadas = { [paradaId]: window.coordenadasParadas.get(paradaId) };
+    } else {
+        coordenadas = Array.from(window.coordenadasParadas.entries());
+    }
+    
+    const iframe = document.getElementById(destino);
+    if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage({
+            tipo: TIPOS_MENSAJE.DATOS.RESPUESTA_COORDENADAS,
+            datos: { coordenadas, paradaId },
+            origen: 'padre',
+            destino: destino,
+            respuestaA: mensajeId
+        }, '*');
+    }
+}
+
+// Registrar el manejador adicional para solicitudes de datos
+if (typeof window !== 'undefined') {
+    window.addEventListener('message', manejarSolicitudDatos);
+}
+
+// ================== EXPORTACIONES EXTENDIDAS ==================
+export default {
+    inicializarMensajeria,
+    registrarControlador,
+    enviarMensaje,
+    cambiarModoGlobal,
+    habilitarControles,
+    deshabilitarControles,
+    enviarMensajeATodos,
+    // Nuevas funciones para hijos
+    solicitarConstantesPadre,
+    solicitarDatosParada,
+    solicitarCoordenadas,
+    notificarHijoListo,
+    TIPOS_MENSAJE,
+    CONFIG
+};
+
+// ================== FALLBACK PARA NAVEGADORES SIN SOPORTE A MÓDULOS ==================
+// Crear este archivo para proporcionar una importación consistente para todos los demás archivos
+// Este es un archivo de re-exportación que apunta correctamente a la implementación real
+
+export * from './js/mensajeria.js';
+
+// Agregar este mecanismo de fallback para navegadores más antiguos que no soportan módulos
+if (typeof window !== 'undefined') {
+    window.addEventListener('DOMContentLoaded', () => {
+        // Crear un objeto global si la carga del módulo falla
+        if (!window.Mensajeria) {
+            console.warn('Fallback to global Mensajeria object');
+            // Implementación mínima para evitar errores
+            window.Mensajeria = {
+                enviarMensaje: (destino, tipo, datos) => {
+                    console.warn(`[Mensajeria Fallback] Envío a ${destino}: ${tipo}`, datos);
+                    return Promise.resolve({ fallback: true });
+                },
+                inicializarMensajeria: () => Promise.resolve(true),
+                TIPOS_MENSAJE: { SISTEMA: {}, NAVEGACION: {}, AUDIO: {}, RETOS: {} }
+            };
+        }
+    });
+}
