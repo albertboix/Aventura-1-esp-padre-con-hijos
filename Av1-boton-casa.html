@@ -22,9 +22,6 @@
         }
       };
 
-      // Estado global de la aplicación (se inicializará más adelante)
-      let estadoApp;
-      
       // Tipos de mensajes específicos de este componente
       let TIPOS_MENSAJE = {
         // Valores por defecto en caso de que falle la importación
@@ -48,7 +45,7 @@
           const mod = await import('./mensajeria.js');
           if (mod && mod.TIPOS_MENSAJE) {
             TIPOS_MENSAJE = { ...TIPOS_MENSAJE, ...mod.TIPOS_MENSAJE };
-            console.log('[hijo5] Constantes de mensajería actualizadas:', TIPOS_MENSAJE);
+            console.log(`[${CONFIG.IFRAME_ID}] Constantes de mensajería actualizadas:`, TIPOS_MENSAJE);
           }
         } catch (e) {
           console.warn('[hijo5] No se pudieron cargar las constantes de mensajería, usando valores por defecto', e);
@@ -427,16 +424,16 @@
                   timeout: 5000
                 }
               );
-              console.log('[hijo5] Confirmación de cambio de modo enviada al padre');
+              console.log(`[${CONFIG.IFRAME_ID}] Confirmación de cambio de modo enviada al padre`);
             } catch (error) {
               console.error('[hijo5] Error al enviar confirmación al padre:', error);
               // Continuar a pesar del error de confirmación
             }
           } else {
-            console.warn('[hijo5] No se pudo enviar confirmación: Mensajería no disponible');
+            console.warn(`[${CONFIG.IFRAME_ID}] No se pudo enviar confirmación: Mensajería no disponible`);
           }
           
-          console.log(`[hijo5] Modo cambiado exitosamente a ${nuevoModo}`);
+          console.log(`[${CONFIG.IFRAME_ID}] Modo cambiado exitosamente a ${nuevoModo}`);
           return true;
           
         } catch (error) {
@@ -1230,51 +1227,67 @@
     };
 
     // ================== DECLARACIONES INICIALES ==================
-    // Inicializar el estado global de la aplicación
-    function inicializarEstadoApp() {
-      // Estado global de la aplicación
-      estadoApp = {
-        ...CONFIG.ESTADO_INICIAL,
-        // Sobrescribir con valores específicos si es necesario
-        gpsActivo: false,
+    // Estado global de la aplicación
+    let estadoApp = {};
+
+    // Configuración global
+    const CONFIG = {
+      IFRAME_ID: 'hijo5-casa',
+      LOG_LEVEL: 2, // 0: debug, 1: info, 2: warn, 3: error, 4: none
+      DEBUG: true,
+      LOG_PREFIX: '[hijo5-casa]',
+      REINTENTOS: {
+        MAXIMOS: 3,
+        TIEMPO_ESPERA: 1000,
+        FACTOR: 2
+      },
+      ESTADO_INICIAL: {
         modo: 'casa',
-        paradaActual: -1,
         tramoActual: -1,
         watchId: null,
         controlesHabilitados: true,
         motivoDeshabilitado: '',
-        
-        // Inicializar el estado desde localStorage
-        inicializar: function() {
-          try {
-            const savedState = localStorage.getItem('gpsState');
-            if (savedState !== null) {
-              const parsedState = JSON.parse(savedState);
-              this.gpsActivo = parsedState.gpsActivo || false;
-              this.modo = this.gpsActivo ? 'aventura' : 'casa';
-            }
-          } catch (e) {
-            console.error('Error al cargar el estado del GPS:', e);
-          }
-        },
-        
-        // Guardar el estado actual
-        guardar: function() {
-          try {
-            localStorage.setItem('gpsState', JSON.stringify({
-              gpsActivo: this.gpsActivo,
-              modo: this.modo
-            }));
-          } catch (e) {
-            console.error('Error al guardar el estado del GPS:', e);
-          }
-        }
+        gpsActivo: false
+      }
+    };
+
+    // Inicializar el estado de la aplicación
+    function inicializarEstadoApp() {
+      // Inicializar estado con valores por defecto
+      estadoApp = { 
+        ...CONFIG.ESTADO_INICIAL,
+        ultimoError: null  // Asegurar que ultimoError esté siempre definido
       };
       
-      // Inicializar el estado
-      estadoApp.inicializar();
+      // Cargar estado guardado
+      try {
+        const savedState = localStorage.getItem('gpsState');
+        if (savedState) {
+          const parsedState = JSON.parse(savedState);
+          Object.assign(estadoApp, parsedState);
+        }
+      } catch (e) {
+        console.error('Error al cargar el estado del GPS:', e);
+      }
     }
+
+    // Inicializar el estado al cargar la página
+    inicializarEstadoApp();
     
+    // Función para guardar el estado actual
+    function guardarEstado() {
+      try {
+        localStorage.setItem('gpsState', JSON.stringify({
+          gpsActivo: estadoApp.gpsActivo,
+          modo: estadoApp.modo,
+          controlesHabilitados: estadoApp.controlesHabilitados,
+          tramoActual: estadoApp.tramoActual
+        }));
+      } catch (e) {
+        console.error('Error al guardar el estado del GPS:', e);
+      }
+    }
+      
     // Inicializar el estado de la aplicación
     inicializarEstadoApp();
 
@@ -1288,8 +1301,8 @@
      * @param {string} [tipo='log'] - Tipo de log (log, warn, error, info)
      */
     function log(mensaje, tipo = 'log') {
-      if (!CONFIG.debug) return;
-      const prefijo = `${CONFIG.logPrefix} [${new Date().toISOString()}]`;
+      if (!CONFIG.DEBUG) return;
+      const prefijo = `${CONFIG.LOG_PREFIX} [${new Date().toISOString()}]`;
       if (typeof console[tipo] === 'function') {
         console[tipo](`${prefijo} ${mensaje}`);
       } else {
