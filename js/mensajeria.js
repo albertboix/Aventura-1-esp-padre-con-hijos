@@ -1,673 +1,756 @@
 /**
- * SISTEMA DE MENSAJERÍA CENTRALIZADA
- * Versión 3.0 - Comunicación bidireccional padre-hijos unificada
- * Soporta múltiples iframes y manejo de errores robusto
+ * Sistema de Mensajería para Comunicación entre Iframes
+ * Maneja la comunicación bidireccional entre iframes padre e hijo
+ * @version 1.0.0
  */
 
-// ================== TIPOS DE MENSAJE UNIFICADOS EXTENDIDOS ==================
+// ================== CONSTANTES Y CONFIGURACIÓN ==================
+
+/**
+ * Tipos de mensajes soportados por el sistema
+ */
 export const TIPOS_MENSAJE = {
-    // Sistema
-    SISTEMA: {
-        INICIALIZACION: 'sistema:inicializacion',
-        CAMBIO_MODO: 'sistema:cambio_modo',
-        LISTO: 'sistema:listo',
-        ERROR: 'sistema:error',
-        CONFIRMACION: 'sistema:confirmacion',
-        SINCRONIZAR: 'sistema:sincronizar',
-        CONTROLES_HABILITADOS: 'sistema:controles_habilitados',
-        CONTROLES_DESHABILITADOS: 'sistema:controles_deshabilitados'
-    },
-    // Datos (NUEVO - Para comunicación bidireccional)
-    DATOS: {
-        SOLICITAR_CONSTANTES: 'datos:solicitar_constantes',
-        CONSTANTES: 'datos:constantes',
-        SOLICITAR_PARADA: 'datos:solicitar_parada',
-        RESPUESTA_PARADA: 'datos:respuesta_parada',
-        SOLICITAR_COORDENADAS: 'datos:solicitar_coordenadas',
-        RESPUESTA_COORDENADAS: 'datos:respuesta_coordenadas',
-        SOLICITAR_ESTADO: 'datos:solicitar_estado',
-        RESPUESTA_ESTADO: 'datos:respuesta_estado'
-    },
-    // Navegación
-    NAVEGACION: {
-        CAMBIO_PARADA: 'navegacion:cambio_parada',
-        CAMBIO_TRAMO: 'navegacion:cambio_tramo',
-        GPS_ESTADO: 'navegacion:gps_estado',
-        ESTADO: 'navegacion:estado',
-        SOLICITAR_DESTINO: 'navegacion:solicitar_destino',
-        ESTABLECER_DESTINO: 'navegacion:establecer_destino',
-        LLEGADA_DETECTADA: 'navegacion:llegada_detectada'
-    },
-    // Audio
-    AUDIO: {
-        REPRODUCIR: 'audio:reproducir',
-        PAUSAR: 'audio:pausar',
-        DETENER: 'audio:detener',
-        FINALIZADO: 'audio:finalizado',
-        COMANDO: 'audio:comando',
-        ESTADO: 'audio:estado'
-    },
-    // Retos
-    RETOS: {
-        ABRIR: 'retos:abrir',
-        CERRAR: 'retos:cerrar',
-        MOSTRAR: 'retos:mostrar',
-        COMPLETADO: 'retos:completado',
-        VALIDAR: 'retos:validar',
-        ESTADO: 'retos:estado'
-    },
-    // GPS
-    GPS: {
-        ACTUALIZAR: 'gps:actualizar',
-        COMANDO: 'gps:comando',
-        ESTADO: 'gps:estado'
-    },
-    // UI
-    UI: {
-        ACTUALIZAR: 'ui:actualizar',
-        MOSTRAR_IMAGEN: 'ui:mostrar_imagen',
-        MOSTRAR_VIDEO: 'ui:mostrar_video',
-        CERRAR_MEDIA: 'ui:cerrar_media'
-    },
-    // Modo específicos
-    MODO: {
-        CAMBIAR: 'modo:cambiar',
-        HABILITAR_CONTROLES: 'modo:habilitar_controles',
-        DESHABILITAR_CONTROLES: 'modo:deshabilitar_controles'
-    }
+  // Mensajes del sistema
+  SISTEMA: {
+    INICIALIZACION: 'SISTEMA.INICIALIZACION',
+    CONFIGURACION: 'SISTEMA.CONFIGURACION', 
+    SINCRONIZAR: 'SISTEMA.SINCRONIZAR',
+    CONFIRMACION: 'SISTEMA.CONFIRMACION',
+    ERROR: 'SISTEMA.ERROR',
+    CAMBIO_MODO: 'SISTEMA.CAMBIO_MODO' // <-- Este string debe usarse en todos los archivos
+  },
+  
+  // Navegación y control del mapa
+  NAVEGACION: {
+    ESTADO: 'NAVEGACION.ESTADO',
+    PARADA_OBJETIVO: 'NAVEGACION.PARADA_OBJETIVO'
+  },
+  
+  // Control de modos e interfaz
+  MODO: {
+    CAMBIAR: 'MODO.CAMBIAR'
+  },
+  
+  // Audio y multimedia
+  AUDIO: {
+    ESTADO: 'AUDIO.ESTADO',
+    COMANDO: 'AUDIO.COMANDO'
+  },
+  
+  // GPS y geolocalización
+  GPS: {
+    ACTUALIZAR: 'GPS.ACTUALIZAR',
+    COMANDO: 'GPS.COMANDO',
+    POSICION_ACTUALIZADA: 'GPS.POSICION_ACTUALIZADA'
+  },
+  
+  // Retos y actividades
+  RETO: {
+    ESTADO: 'RETO.ESTADO',
+    NUEVO: 'RETO.NUEVO'
+  },
+  
+  // Control de interfaz de usuario
+  UI: {
+    ACTUALIZAR: 'UI.ACTUALIZAR',
+    HABILITAR_CONTROLES: 'habilitar_controles',
+    DESHABILITAR_CONTROLES: 'deshabilitar_controles'
+  },
+  
+  // Compatibilidad con mensajes anteriores
+  CONTROLES_HABILITADOS: 'sistema:controles_habilitados',
+  CONTROLES_DESHABILITADOS: 'sistema:controles_deshabilitados',
+  HABILITAR_CONTROLES: 'sistema:habilitar_controles',
+  DESHABILITAR_CONTROLES: 'sistema:deshabilitar_controles'
 };
 
-// ================== CONFIGURACIÓN GLOBAL ==================
-const CONFIG = {
-    DEBUG: true,
-    TIMEOUT: 5000,
-    MAX_RETRIES: 3,
-    LOG_LEVELS: {
-        DEBUG: 0,
-        INFO: 1,
-        WARN: 2,
-        ERROR: 3,
-        NONE: 4
-    }
+/**
+ * Niveles de logging
+ */
+export const LOG_LEVELS = {
+  ERROR: 0,
+  WARN: 1,
+  INFO: 2,
+  DEBUG: 3
 };
 
-// ================== ESTADO GLOBAL ==================
-let sistemaInicializado = false;
+/**
+ * Configuración por defecto del sistema de mensajería
+ */
+const CONFIG_DEFAULT = {
+  timeout: 10000,
+  maxReintentos: 3,
+  tiempoEsperaBase: 1000,
+  factorBackoff: 2,
+  logLevel: LOG_LEVELS.INFO,
+  debug: false
+};
+
+// ================== VARIABLES GLOBALES ==================
+
+let configuracion = { ...CONFIG_DEFAULT };
+let iframeId = null;
 let manejadores = new Map();
-let configuracionActual = { ...CONFIG };
 let mensajesPendientes = new Map();
-let timeouts = new Map();
+let contadorMensajes = 0;
+let sistemaInicializado = false;
+let iframesRegistrados = new Set(); // Registro de iframes activos
+
+// ================== FUNCIONES DE REGISTRO DE IFRAMES ==================
+
+/**
+ * Registra un iframe en el sistema para comunicación directa
+ * @param {string} id - ID del iframe
+ */
+export function registrarIframe(id) {
+  iframesRegistrados.add(id);
+  log(LOG_LEVELS.DEBUG, `Iframe registrado: ${id}`);
+}
+
+/**
+ * Obtiene la lista de iframes registrados
+ * @returns {Array} Lista de IDs de iframes
+ */
+export function obtenerIframesRegistrados() {
+  return Array.from(iframesRegistrados);
+}
+
+// ================== FUNCIONES DE UTILIDAD ==================
+
+/**
+ * Genera un ID único para mensajes
+ * @returns {string} ID único
+ */
+function generarIdMensaje() {
+  return `msg_${Date.now()}_${++contadorMensajes}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+/**
+ * Función de logging con niveles
+ * @param {number} nivel - Nivel de log
+ * @param {string} mensaje - Mensaje a loggear
+ * @param {*} datos - Datos adicionales
+ */
+function log(nivel, mensaje, datos = null) {
+  if (nivel <= configuracion.logLevel) {
+    const prefijo = `[Mensajería-${iframeId || 'Sin ID'}]`;
+    const timestamp = new Date().toISOString();
+    const nivelTexto = Object.keys(LOG_LEVELS)[nivel] || 'UNKNOWN';
+    
+    const mensajeCompleto = `${timestamp} ${prefijo} [${nivelTexto}] ${mensaje}`;
+    
+    switch (nivel) {
+      case LOG_LEVELS.ERROR:
+        console.error(mensajeCompleto, datos);
+        break;
+      case LOG_LEVELS.WARN:
+        console.warn(mensajeCompleto, datos);
+        break;
+      case LOG_LEVELS.INFO:
+        console.info(mensajeCompleto, datos);
+        break;
+      case LOG_LEVELS.DEBUG:
+        if (configuracion.debug) {
+          console.debug(mensajeCompleto, datos);
+        }
+        break;
+    }
+  }
+}
+
+/**
+ * Valida la estructura de un mensaje
+ * @param {Object} mensaje - Mensaje a validar
+ * @returns {boolean} true si es válido
+ */
+function validarMensaje(mensaje) {
+  if (!mensaje || typeof mensaje !== 'object') {
+    return false;
+  }
+  
+  const camposRequeridos = ['tipo', 'origen', 'timestamp', 'idMensaje'];
+  return camposRequeridos.every(campo => mensaje.hasOwnProperty(campo));
+}
+
+// ================== FUNCIONES PRINCIPALES ==================
 
 /**
  * Inicializa el sistema de mensajería
+ * @param {Object} config - Configuración del sistema
+ * @returns {Promise<void>}
  */
 export async function inicializarMensajeria(config = {}) {
-    if (sistemaInicializado) {
-        console.warn('Sistema de mensajería ya inicializado');
-        return;
+  try {
+    log(LOG_LEVELS.INFO, 'Inicializando sistema de mensajería...', config);
+    
+    // Validar configuración
+    if (!config.iframeId) {
+      throw new Error('Se requiere un iframeId para inicializar la mensajería');
     }
     
-    configuracionActual = { ...CONFIG, ...config };
+    // Aplicar configuración
+    configuracion = { ...CONFIG_DEFAULT, ...config };
+    iframeId = configuracion.iframeId;
+    
+    // Configurar listener de mensajes
+    if (typeof window !== 'undefined') {
+      window.addEventListener('message', manejarMensajeRecibido, false);
+      log(LOG_LEVELS.DEBUG, 'Event listener de mensajes configurado');
+    }
+    
     sistemaInicializado = true;
     
-    // Configurar manejador global de mensajes
-    window.addEventListener('message', manejarMensajeEntrante);
+    log(LOG_LEVELS.INFO, 'Sistema de mensajería inicializado correctamente', {
+      iframeId,
+      configuracion
+    });
     
-    log('INFO', '✅ Sistema de mensajería inicializado', configuracionActual);
-    return true;
+    return Promise.resolve();
+    
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, 'Error al inicializar la mensajería', error);
+    throw error;
+  }
 }
 
 /**
- * Registra un controlador para un tipo de mensaje
+ * Registra un manejador para un tipo de mensaje específico
+ * @param {string} tipo - Tipo de mensaje
+ * @param {Function} manejador - Función manejadora
  */
 export function registrarControlador(tipo, manejador) {
-    if (typeof manejador !== 'function') {
-        throw new Error(`Manejador para ${tipo} debe ser una función`);
-    }
-    
-    manejadores.set(tipo, manejador);
-    log('DEBUG', `📝 Controlador registrado para: ${tipo}`);
+  if (!sistemaInicializado) {
+    throw new Error('El sistema de mensajería no está inicializado');
+  }
+  
+  if (typeof manejador !== 'function') {
+    throw new Error('El manejador debe ser una función');
+  }
+  
+  manejadores.set(tipo, manejador);
+  log(LOG_LEVELS.DEBUG, `Manejador registrado para tipo: ${tipo}`);
 }
 
 /**
- * Envía un mensaje centralizado
+ * Alias para registrarControlador (para compatibilidad)
+ */
+export const registrarManejador = registrarControlador;
+
+/**
+ * Envía un mensaje a otro iframe o al padre
+ * @param {string} destino - ID del iframe destino o 'padre'
+ * @param {string} tipo - Tipo de mensaje
+ * @param {Object} datos - Datos del mensaje
+ * @param {Object} opciones - Opciones adicionales
+ * @returns {Promise<Object>} Respuesta del mensaje
  */
 export async function enviarMensaje(destino, tipo, datos = {}, opciones = {}) {
-    const opcionesFinales = {
-        timeout: configuracionActual.TIMEOUT,
-        maxRetries: configuracionActual.MAX_RETRIES,
-        esperarRespuesta: false,
-        ...opciones
-    };
-    
-    const mensaje = {
-        tipo,
-        datos,
-        destino,
-        origen: configuracionActual.iframeId || 'desconocido',
-        timestamp: new Date().toISOString(),
-        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        opciones: opcionesFinales
-    };
-    
-    try {
-        await enviarMensajeInterno(mensaje, opcionesFinales);
-        log('DEBUG', `📤 Mensaje enviado: ${tipo} -> ${destino}`, mensaje);
-        return mensaje.id;
-    } catch (error) {
-        log('ERROR', `❌ Error enviando mensaje ${tipo} a ${destino}:`, error);
-        throw error;
-    }
+  if (!sistemaInicializado) {
+    throw new Error('El sistema de mensajería no está inicializado');
+  }
+  
+  const opcionesCompletas = {
+    timeout: configuracion.timeout,
+    esperarRespuesta: true,
+    ...opciones
+  };
+  
+  // Si se pasa un objeto como primer parámetro (formato alternativo)
+  if (typeof destino === 'object' && destino.tipo) {
+    return enviarMensajeDirecto(destino, opcionesCompletas);
+  }
+  
+  // Construir el mensaje
+  const mensaje = {
+    tipo,
+    destino,
+    origen: iframeId,
+    timestamp: new Date().toISOString(),
+    idMensaje: generarIdMensaje(),
+    datos: datos || {},
+    version: '1.0.0'
+  };
+  
+  return enviarMensajeDirecto(mensaje, opcionesCompletas);
 }
 
 /**
- * Envía mensaje interno con reintentos
+ * Envía un mensaje construido directamente
+ * @param {Object} mensaje - Mensaje a enviar
+ * @param {Object} opciones - Opciones de envío
+ * @returns {Promise<Object>} Respuesta del mensaje
  */
-async function enviarMensajeInterno(mensaje, opciones, intento = 1) {
-    try {
-        if (mensaje.destino === 'padre') {
-            window.parent.postMessage(mensaje, '*');
+async function enviarMensajeDirecto(mensaje, opciones = {}) {
+  const {
+    timeout = configuracion.timeout,
+    esperarRespuesta = true
+  } = opciones;
+  
+  // Validar mensaje
+  if (!validarMensaje(mensaje)) {
+    throw new Error('Estructura de mensaje inválida');
+  }
+  
+  log(LOG_LEVELS.DEBUG, `Enviando mensaje tipo: ${mensaje.tipo}`, mensaje);
+  
+  try {
+    // Determinar la ventana destino
+    let ventanaDestino = null;
+    
+    if (mensaje.destino === 'padre' || !mensaje.destino) {
+      // Enviar al padre
+      if (window.parent && window.parent !== window) {
+        ventanaDestino = window.parent;
+      } else {
+        throw new Error('No se puede acceder a la ventana padre');
+      }
+    } else if (mensaje.destino === 'todos') {
+      // Enviar a todos los iframes registrados
+      return enviarATodosLosIframes(mensaje, opciones);
+    } else {
+      // Enviar a un iframe específico
+      const iframe = document.getElementById(mensaje.destino);
+      if (iframe && iframe.contentWindow) {
+        ventanaDestino = iframe.contentWindow;
+      } else {
+        throw new Error(`No se encontró el iframe con ID: ${mensaje.destino}`);
+      }
+    }
+    
+    // Enviar el mensaje
+    ventanaDestino.postMessage(mensaje, '*');
+    
+    // Si no se espera respuesta, resolver inmediatamente
+    if (!esperarRespuesta) {
+      log(LOG_LEVELS.DEBUG, `Mensaje enviado sin esperar respuesta: ${mensaje.idMensaje}`);
+      return { exito: true, mensaje: 'Mensaje enviado correctamente' };
+    }
+    
+    // Esperar respuesta con timeout
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        mensajesPendientes.delete(mensaje.idMensaje);
+        reject(new Error(`Timeout al esperar respuesta del mensaje ${mensaje.idMensaje}`));
+      }, timeout);
+      
+      mensajesPendientes.set(mensaje.idMensaje, {
+        resolve,
+        reject,
+        timeoutId,
+        timestamp: Date.now()
+      });
+      
+      log(LOG_LEVELS.DEBUG, `Esperando respuesta para mensaje: ${mensaje.idMensaje}`);
+    });
+    
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, 'Error al enviar mensaje', { mensaje, error: error.message });
+    throw error;
+  }
+}
+
+/**
+ * Envía un mensaje a todos los iframes registrados
+ * @param {Object} mensaje - Mensaje a enviar
+ * @param {Object} opciones - Opciones de envío
+ * @returns {Promise<Array>} Array de respuestas
+ */
+async function enviarATodosLosIframes(mensaje, opciones = {}) {
+  const iframes = ['hijo1-hamburguesa', 'hijo1-opciones', 'hijo2', 'hijo3', 'hijo4', 'hijo5-casa'];
+  const promesas = [];
+  
+  for (const iframeId of iframes) {
+    const iframe = document.getElementById(iframeId);
+    if (iframe && iframe.contentWindow) {
+      const mensajeIndividual = {
+        ...mensaje,
+        destino: iframeId,
+        idMensaje: generarIdMensaje()
+      };
+      
+      try {
+        iframe.contentWindow.postMessage(mensajeIndividual, '*');
+        log(LOG_LEVELS.DEBUG, `Mensaje enviado a ${iframeId}: ${mensajeIndividual.tipo}`);
+        
+        if (opciones.esperarRespuesta !== false) {
+          const promesa = new Promise((resolve, reject) => {
+            const timeoutId = setTimeout(() => {
+              mensajesPendientes.delete(mensajeIndividual.idMensaje);
+              resolve({ destino: iframeId, error: 'Timeout' });
+            }, opciones.timeout || configuracion.timeout);
+            
+            mensajesPendientes.set(mensajeIndividual.idMensaje, {
+              resolve: (datos) => resolve({ destino: iframeId, datos }),
+              reject: (error) => resolve({ destino: iframeId, error }),
+              timeoutId,
+              timestamp: Date.now()
+            });
+          });
+          promesas.push(promesa);
+        }
+      } catch (error) {
+        log(LOG_LEVELS.ERROR, `Error enviando a ${iframeId}`, error);
+        promesas.push(Promise.resolve({ destino: iframeId, error: error.message }));
+      }
+    }
+  }
+  
+  if (promesas.length === 0) {
+    return { exito: true, mensaje: 'Mensaje broadcast enviado' };
+  }
+  
+  return Promise.all(promesas);
+}
+
+/**
+ * Maneja los mensajes recibidos
+ * @param {MessageEvent} event - Evento de mensaje
+ */
+async function manejarMensajeRecibido(event) {
+  try {
+    const mensaje = event.data;
+    
+    // Validar que sea un mensaje válido
+    if (!validarMensaje(mensaje)) {
+      log(LOG_LEVELS.DEBUG, 'Mensaje recibido no válido, ignorando', mensaje);
+      return;
+    }
+    
+    log(LOG_LEVELS.DEBUG, `Mensaje recibido tipo: ${mensaje.tipo}`, mensaje);
+    
+    // Verificar si es una respuesta a un mensaje pendiente
+    if (mensaje.esRespuesta && mensaje.idMensajeOriginal) {
+      const mensajePendiente = mensajesPendientes.get(mensaje.idMensajeOriginal);
+      if (mensajePendiente) {
+        clearTimeout(mensajePendiente.timeoutId);
+        mensajesPendientes.delete(mensaje.idMensajeOriginal);
+        
+        if (mensaje.error) {
+          mensajePendiente.reject(new Error(mensaje.error));
         } else {
-            // Buscar iframe por ID
-            const iframe = document.getElementById(mensaje.destino) || 
-                          document.querySelector(`iframe[src*="${mensaje.destino}"]`);
-            
-            if (iframe && iframe.contentWindow) {
-                iframe.contentWindow.postMessage(mensaje, '*');
-            } else {
-                throw new Error(`Iframe ${mensaje.destino} no encontrado`);
-            }
+          mensajePendiente.resolve(mensaje.datos || mensaje);
         }
         
-        // Configurar timeout si se espera respuesta
-        if (opciones.esperarRespuesta) {
-            return new Promise((resolve, reject) => {
-                const timeoutId = setTimeout(() => {
-                    mensajesPendientes.delete(mensaje.id);
-                    reject(new Error(`Timeout esperando respuesta de ${mensaje.destino}`));
-                }, opciones.timeout);
-                
-                mensajesPendientes.set(mensaje.id, { resolve, reject });
-                timeouts.set(mensaje.id, timeoutId);
-            });
-        }
-        
-        return mensaje.id;
-        
-    } catch (error) {
-        if (intento < opciones.maxRetries) {
-            log('WARN', `⚠️ Reintento ${intento}/${opciones.maxRetries} para ${mensaje.tipo}`);
-            await new Promise(resolve => setTimeout(resolve, 1000 * intento));
-            return enviarMensajeInterno(mensaje, opciones, intento + 1);
-        }
-        throw error;
-    }
-}
-
-/**
- * Manejador centralizado de mensajes entrantes
- */
-async function manejarMensajeEntrante(event) {
-    if (!event.data || typeof event.data !== 'object') return;
-    
-    const { tipo, datos, origen, id, respuestaA } = event.data;
-    
-    // Manejar respuestas a mensajes pendientes
-    if (respuestaA && mensajesPendientes.has(respuestaA)) {
-        const { resolve } = mensajesPendientes.get(respuestaA);
-        const timeoutId = timeouts.get(respuestaA);
-        
-        if (timeoutId) clearTimeout(timeoutId);
-        mensajesPendientes.delete(respuestaA);
-        timeouts.delete(respuestaA);
-        
-        resolve(event.data);
+        log(LOG_LEVELS.DEBUG, `Respuesta procesada para mensaje: ${mensaje.idMensajeOriginal}`);
         return;
+      }
     }
     
-    // Procesar mensaje normal
-    if (manejadores.has(tipo)) {
-        try {
-            const resultado = await manejadores.get(tipo)({
-                tipo,
-                datos,
-                origen,
-                id,
-                evento: event
-            });
-            
-            log('DEBUG', `📥 Mensaje procesado: ${tipo} de ${origen}`, datos);
-            
-            // Enviar confirmación si se requiere
-            if (event.data.opciones?.esperarRespuesta) {
-                await enviarConfirmacion(origen, id, true, resultado);
-            }
-            
-        } catch (error) {
-            log('ERROR', `❌ Error procesando mensaje ${tipo} de ${origen}:`, error);
-            
-            // Enviar error como respuesta si se esperaba
-            if (event.data.opciones?.esperarRespuesta) {
-                await enviarConfirmacion(origen, id, false, { error: error.message });
-            }
-        }
-    } else {
-        log('WARN', `⚠️ No hay manejador para mensaje tipo: ${tipo}`);
-    }
-}
-
-/**
- * Envía confirmación de mensaje
- */
-async function enviarConfirmacion(destino, mensajeId, exito, datos = {}) {
-    const confirmacion = {
-        tipo: TIPOS_MENSAJE.SISTEMA.CONFIRMACION,
-        datos: { exito, ...datos },
-        destino,
-        origen: configuracionActual.iframeId || 'desconocido',
-        respuestaA: mensajeId,
-        timestamp: new Date().toISOString()
-    };
-    
-    if (destino === 'padre') {
-        window.parent.postMessage(confirmacion, '*');
-    } else {
-        const iframe = document.getElementById(destino);
-        if (iframe && iframe.contentWindow) {
-            iframe.contentWindow.postMessage(confirmacion, '*');
-        }
-    }
-}
-
-/**
- * Funciones de utilidad para logging
- */
-function log(nivel, mensaje, datos = null) {
-    const nivelNum = configuracionActual.LOG_LEVELS[nivel] || 1;
-    const nivelActual = configuracionActual.logLevel || configuracionActual.LOG_LEVELS.INFO;
-    
-    if (nivelNum < nivelActual) return;
-    
-    const timestamp = new Date().toISOString();
-    const contexto = configuracionActual.iframeId || 'SISTEMA';
-    
-    if (datos) {
-        console[nivel.toLowerCase()](`[${timestamp}] [${contexto}] ${mensaje}`, datos);
-    } else {
-        console[nivel.toLowerCase()](`[${timestamp}] [${contexto}] ${mensaje}`);
-    }
-}
-
-/**
- * Funciones de alto nivel para operaciones comunes
- */
-export async function cambiarModoGlobal(nuevoModo, opciones = {}) {
-    return enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, {
-        modo: nuevoModo,
-        ...opciones
-    }, { esperarRespuesta: true });
-}
-
-export async function habilitarControles(modo = 'casa', destinos = ['todos']) {
-    if (destinos.includes('todos')) {
-        return enviarMensajeATodos(TIPOS_MENSAJE.MODO.HABILITAR_CONTROLES, { modo });
-    } else {
-        const promesas = destinos.map(destino => 
-            enviarMensaje(destino, TIPOS_MENSAJE.MODO.HABILITAR_CONTROLES, { modo })
-        );
-        return Promise.allSettled(promesas);
-    }
-}
-
-export async function deshabilitarControles(motivo = 'desconocido', destinos = ['todos']) {
-    if (destinos.includes('todos')) {
-        return enviarMensajeATodos(TIPOS_MENSAJE.MODO.DESHABILITAR_CONTROLES, { motivo });
-    } else {
-        const promesas = destinos.map(destino => 
-            enviarMensaje(destino, TIPOS_MENSAJE.MODO.DESHABILITAR_CONTROLES, { motivo })
-        );
-        return Promise.allSettled(promesas);
-    }
-}
-
-export async function enviarMensajeATodos(tipo, datos = {}, opciones = {}) {
-    const destinosComunes = [
-        'Av1_audio_esp',
-        'Av1-botones-coordenadas', 
-        'Av1-esp-retos-preguntas',
-        'Av1-boton-casa'
-    ];
-    
-    const promesas = destinosComunes.map(destino => 
-        enviarMensaje(destino, tipo, datos, opciones).catch(error => ({
-            destino,
-            error: error.message
-        }))
-    );
-    
-    const resultados = await Promise.allSettled(promesas);
-    
-    const exitosos = resultados.filter(r => r.status === 'fulfilled').length;
-    const fallidos = resultados.length - exitosos;
-    
-    log('INFO', `📊 Mensaje múltiple: ${exitosos} exitosos, ${fallidos} fallidos`);
-    
-    return { exitosos, fallidos, resultados };
-}
-
-// ================== FUNCIONES DE UTILIDAD PARA HIJOS ==================
-
-/**
- * Solicita las constantes del padre (para usar en hijos)
- */
-export async function solicitarConstantesPadre(tiempoEspera = 5000) {
-    return new Promise((resolve, reject) => {
-        // Enviar solicitud al padre
-        window.parent.postMessage({
-            tipo: TIPOS_MENSAJE.DATOS.SOLICITAR_CONSTANTES,
-            datos: {},
-            origen: configuracionActual.iframeId || 'hijo',
-            destino: 'padre',
-            timestamp: new Date().toISOString()
-        }, '*');
-
-        // Configurar listener temporal para la respuesta
-        const timeoutId = setTimeout(() => {
-            window.removeEventListener('message', manejarRespuestaConstantes);
-            reject(new Error('Timeout al solicitar constantes del padre'));
-        }, tiempoEspera);
-
-        function manejarRespuestaConstantes(event) {
-            if (event.data?.tipo === TIPOS_MENSAJE.DATOS.CONSTANTES) {
-                clearTimeout(timeoutId);
-                window.removeEventListener('message', manejarRespuestaConstantes);
-                resolve(event.data.datos);
-            }
-        }
-
-        window.addEventListener('message', manejarRespuestaConstantes);
-    });
-}
-
-/**
- * Solicita datos de una parada específica al padre
- */
-export async function solicitarDatosParada(paradaId, tiempoEspera = 3000) {
-    return new Promise((resolve, reject) => {
-        window.parent.postMessage({
-            tipo: TIPOS_MENSAJE.DATOS.SOLICITAR_PARADA,
-            datos: { paradaId },
-            origen: configuracionActual.iframeId || 'hijo',
-            destino: 'padre',
-            timestamp: new Date().toISOString()
-        }, '*');
-
-        const timeoutId = setTimeout(() => {
-            window.removeEventListener('message', manejarRespuestaParada);
-            reject(new Error(`Timeout al solicitar datos de parada ${paradaId}`));
-        }, tiempoEspera);
-
-        function manejarRespuestaParada(event) {
-            if (event.data?.tipo === TIPOS_MENSAJE.DATOS.RESPUESTA_PARADA && 
-                event.data?.datos?.paradaId === paradaId) {
-                clearTimeout(timeoutId);
-                window.removeEventListener('message', manejarRespuestaParada);
-                resolve(event.data.datos);
-            }
-        }
-
-        window.addEventListener('message', manejarRespuestaParada);
-    });
-}
-
-/**
- * Solicita coordenadas al padre
- */
-export async function solicitarCoordenadas(paradaId = null, tiempoEspera = 3000) {
-    return new Promise((resolve, reject) => {
-        window.parent.postMessage({
-            tipo: TIPOS_MENSAJE.DATOS.SOLICITAR_COORDENADAS,
-            datos: { paradaId },
-            origen: configuracionActual.iframeId || 'hijo',
-            destino: 'padre',
-            timestamp: new Date().toISOString()
-        }, '*');
-
-        const timeoutId = setTimeout(() => {
-            window.removeEventListener('message', manejarRespuestaCoordenadas);
-            reject(new Error('Timeout al solicitar coordenadas'));
-        }, tiempoEspera);
-
-        function manejarRespuestaCoordenadas(event) {
-            if (event.data?.tipo === TIPOS_MENSAJE.DATOS.RESPUESTA_COORDENADAS) {
-                clearTimeout(timeoutId);
-                window.removeEventListener('message', manejarRespuestaCoordenadas);
-                resolve(event.data.datos);
-            }
-        }
-
-        window.addEventListener('message', manejarRespuestaCoordenadas);
-    });
-}
-
-/**
- * Notifica al padre que el hijo está listo con sus capacidades
- */
-export async function notificarHijoListo(componente, capacidades = [], version = '1.0') {
-    return enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.LISTO, {
-        componente,
-        capacidades,
-        version,
-        timestamp: new Date().toISOString()
-    }, { esperarRespuesta: true });
-}
-
-// ================== MANEJADORES CENTRALIZADOS PARA SOLICITUDES DE DATOS ==================
-
-/**
- * Manejador centralizado para solicitudes de datos del padre
- */
-async function manejarSolicitudDatos(event) {
-    if (!event.data || typeof event.data !== 'object') return;
-    
-    const { tipo, datos, origen, id } = event.data;
-    
-    // Solo procesar si somos el padre y recibimos solicitudes de datos
-    if (window.location !== window.parent.location) return; // Somos iframe, no padre
-    
-    switch (tipo) {
-        case TIPOS_MENSAJE.DATOS.SOLICITAR_CONSTANTES:
-            await responderConstantes(origen, id);
-            break;
-            
-        case TIPOS_MENSAJE.DATOS.SOLICITAR_PARADA:
-        case 'DATOS.SOLICITAR_PARADA':
-            await responderDatosParada(origen, id, datos.paradaId);
-            break;
-            
-        case TIPOS_MENSAJE.DATOS.SOLICITAR_COORDENADAS:
-            await responderCoordenadas(origen, id, datos.paradaId);
-            break;
-            
-        case TIPOS_MENSAJE.RETOS.ABRIR:
-            await responderReto(origen, id, datos.paradaId);
-            break;
-    }
-}
-
-/**
- * Responde con las constantes del sistema
- */
-async function responderConstantes(destino, mensajeId) {
-    if (typeof window.AVENTURA_PARADAS === 'undefined' || 
-        typeof window.coordenadasParadas === 'undefined') {
-        console.warn('⚠️ Constantes del padre no disponibles aún');
-        return;
+    // Buscar manejador para el tipo de mensaje
+    const manejador = manejadores.get(mensaje.tipo);
+    if (!manejador) {
+      log(LOG_LEVELS.WARN, `No hay manejador para el tipo de mensaje: ${mensaje.tipo}`);
+      
+      // Enviar respuesta de error si se espera una respuesta
+      if (!mensaje.esRespuesta) {
+        enviarRespuesta(mensaje, null, `No hay manejador para el tipo: ${mensaje.tipo}`);
+      }
+      return;
     }
     
-    const constantes = {
-        AVENTURA_PARADAS: window.AVENTURA_PARADAS,
-        COORDENADAS_PARADAS: Array.from(window.coordenadasParadas.entries()),
-        paradaActual: window.paradaActual || 0,
-        timestamp: new Date().toISOString()
-    };
-    
-    // Enviar directamente al hijo que lo solicita
-    const iframe = document.getElementById(destino);
-    if (iframe && iframe.contentWindow) {
-        iframe.contentWindow.postMessage({
-            tipo: TIPOS_MENSAJE.DATOS.CONSTANTES,
-            datos: constantes,
-            origen: 'padre',
-            destino: destino,
-            respuestaA: mensajeId
-        }, '*');
-    }
-}
-
-/**
- * Responde con datos de una parada específica usando las funciones del padre
- */
-async function responderDatosParada(destino, mensajeId, paradaId) {
-    console.log(`🎯 Padre: Procesando solicitud de datos para parada ${paradaId} de ${destino}`);
-    
-    if (typeof window.padreFunciones?.obtenerDatosParada !== 'function') {
-        console.warn('⚠️ Función obtenerDatosParada del padre no disponible');
-        return;
-    }
-    
+    // Ejecutar el manejador
     try {
-        const datosParada = window.padreFunciones.obtenerDatosParada(paradaId);
-        
-        // Enviar respuesta directamente al hijo
-        const iframe = document.getElementById(destino);
-        if (iframe && iframe.contentWindow) {
-            iframe.contentWindow.postMessage({
-                tipo: TIPOS_MENSAJE.NAVEGACION.ESTADO,
-                datos: { 
-                    accion: 'datos_parada',
-                    parada: datosParada,
-                    paradaId 
-                },
-                origen: 'padre',
-                destino: destino,
-                respuestaA: mensajeId
-            }, '*');
-            
-            console.log(`✅ Padre: Datos de parada ${paradaId} enviados a ${destino}`);
-        }
+      const resultado = await manejador(mensaje);
+      
+      // Enviar respuesta si no es una respuesta y se espera una
+      if (!mensaje.esRespuesta) {
+        enviarRespuesta(mensaje, resultado);
+      }
+      
     } catch (error) {
-        console.error(`❌ Padre: Error enviando datos de parada ${paradaId} a ${destino}:`, error);
+      log(LOG_LEVELS.ERROR, `Error en el manejador para ${mensaje.tipo}`, error);
+      
+      // Enviar respuesta de error
+      if (!mensaje.esRespuesta) {
+        enviarRespuesta(mensaje, null, error.message);
+      }
     }
+    
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, 'Error al procesar mensaje recibido', error);
+  }
 }
 
 /**
- * Responde con datos de reto usando las funciones del padre
+ * Envía una respuesta a un mensaje recibido
+ * @param {Object} mensajeOriginal - Mensaje original
+ * @param {*} datos - Datos de respuesta
+ * @param {string} error - Mensaje de error (opcional)
  */
-async function responderReto(destino, mensajeId, paradaId) {
-    console.log(`🎯 Padre: Procesando solicitud de reto para parada ${paradaId} de ${destino}`);
-    
-    if (typeof window.padreFunciones?.obtenerRetoParaParada !== 'function') {
-        console.warn('⚠️ Función obtenerRetoParaParada del padre no disponible');
-        return;
-    }
-    
-    try {
-        const retoData = window.padreFunciones.obtenerRetoParaParada(paradaId);
-        
-        // Enviar respuesta directamente al hijo
-        const iframe = document.getElementById(destino);
-        if (iframe && iframe.contentWindow) {
-            iframe.contentWindow.postMessage({
-                tipo: TIPOS_MENSAJE.RETOS.MOSTRAR,
-                datos: { 
-                    reto: retoData,
-                    paradaId 
-                },
-                origen: 'padre',
-                destino: destino,
-                respuestaA: mensajeId
-            }, '*');
-            
-            console.log(`✅ Padre: Reto de parada ${paradaId} enviado a ${destino}`);
-        }
-    } catch (error) {
-        console.error(`❌ Padre: Error enviando reto de parada ${paradaId} a ${destino}:`, error);
-    }
+function enviarRespuesta(mensajeOriginal, datos = null, error = null) {
+  const respuesta = {
+    tipo: `${mensajeOriginal.tipo}_respuesta`,
+    destino: mensajeOriginal.origen,
+    origen: iframeId,
+    timestamp: new Date().toISOString(),
+    idMensaje: generarIdMensaje(),
+    idMensajeOriginal: mensajeOriginal.idMensaje,
+    esRespuesta: true,
+    datos,
+    error,
+    version: '1.0.0'
+  };
+  
+  // Enviar respuesta sin esperar confirmación
+  enviarMensajeDirecto(respuesta, { esperarRespuesta: false }).catch(err => {
+    log(LOG_LEVELS.ERROR, 'Error al enviar respuesta', err);
+  });
 }
 
 /**
- * Responde con coordenadas
+ * Limpia mensajes pendientes que han expirado
  */
-async function responderCoordenadas(destino, mensajeId, paradaId = null) {
-    if (typeof window.coordenadasParadas === 'undefined') {
-        console.warn('⚠️ Coordenadas del padre no disponibles');
-        return;
+function limpiarMensajesExpirados() {
+  const ahora = Date.now();
+  for (const [id, pendiente] of mensajesPendientes.entries()) {
+    if (ahora - pendiente.timestamp > configuracion.timeout) {
+      clearTimeout(pendiente.timeoutId);
+      pendiente.reject(new Error(`Mensaje expirado: ${id}`));
+      mensajesPendientes.delete(id);
+      log(LOG_LEVELS.DEBUG, `Mensaje expirado eliminado: ${id}`);
     }
-    
-    let coordenadas;
-    if (paradaId) {
-        coordenadas = { [paradaId]: window.coordenadasParadas.get(paradaId) };
-    } else {
-        coordenadas = Array.from(window.coordenadasParadas.entries());
-    }
-    
-    const iframe = document.getElementById(destino);
-    if (iframe && iframe.contentWindow) {
-        iframe.contentWindow.postMessage({
-            tipo: TIPOS_MENSAJE.DATOS.RESPUESTA_COORDENADAS,
-            datos: { coordenadas, paradaId },
-            origen: 'padre',
-            destino: destino,
-            respuestaA: mensajeId
-        }, '*');
-    }
+  }
 }
 
-// Registrar el manejador adicional para solicitudes de datos
+/**
+ * Obtiene estadísticas del sistema de mensajería
+ * @returns {Object} Estadísticas del sistema
+ */
+export function obtenerEstadisticas() {
+  return {
+    sistemaInicializado,
+    iframeId,
+    mensajesPendientes: mensajesPendientes.size,
+    manejadoresRegistrados: manejadores.size,
+    tiposManejadores: Array.from(manejadores.keys()),
+    iframesRegistrados: Array.from(iframesRegistrados),
+    configuracion: { ...configuracion }
+  };
+}
+
+// ================== FUNCIONES ESPECIALIZADAS PARA EL MAPA ==================
+
+/**
+ * Envía un comando de navegación
+ * @param {string} destino - Iframe destino o 'todos'
+ * @param {string} accion - Acción de navegación
+ * @param {Object} datos - Datos adicionales
+ * @returns {Promise<Object>} Respuesta del mensaje
+ */
+export async function enviarComandoNavegacion(destino, accion, datos = {}) {
+  return enviarMensaje(destino, TIPOS_MENSAJE.NAVEGACION.ESTADO, {
+    accion,
+    ...datos,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Envía un comando GPS
+ * @param {string} destino - Iframe destino o 'todos'
+ * @param {string} accion - Acción GPS
+ * @param {Object} datos - Datos adicionales
+ * @returns {Promise<Object>} Respuesta del mensaje
+ */
+export async function enviarComandoGPS(destino, accion, datos = {}) {
+  return enviarMensaje(destino, TIPOS_MENSAJE.GPS.COMANDO, {
+    accion,
+    ...datos,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Actualiza coordenadas GPS
+ * @param {string} destino - Iframe destino o 'todos'
+ * @param {number} lat - Latitud
+ * @param {number} lng - Longitud
+ * @param {number} accuracy - Precisión
+ * @returns {Promise<Object>} Respuesta del mensaje
+ */
+export async function actualizarCoordenadasGPS(destino, lat, lng, accuracy = 0) {
+  return enviarMensaje(destino, TIPOS_MENSAJE.GPS.ACTUALIZAR, {
+    lat,
+    lng,
+    accuracy,
+    timestamp: Date.now()
+  }, { esperarRespuesta: false });
+}
+
+/**
+ * Envía un comando de audio
+ * @param {string} destino - Iframe destino
+ * @param {string} comando - Comando de audio
+ * @param {Object} datos - Datos adicionales
+ * @returns {Promise<Object>} Respuesta del mensaje
+ */
+export async function enviarComandoAudio(destino, comando, datos = {}) {
+  return enviarMensaje(destino, TIPOS_MENSAJE.AUDIO.COMANDO, {
+    comando,
+    ...datos,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Envía un mensaje de reto
+ * @param {string} destino - Iframe destino
+ * @param {Object} retoData - Datos del reto
+ * @returns {Promise<Object>} Respuesta del mensaje
+ */
+export async function enviarReto(destino, retoData) {
+  return enviarMensaje(destino, TIPOS_MENSAJE.RETO.NUEVO, {
+    ...retoData,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Sincroniza estado del sistema
+ * @param {Object} estado - Estado a sincronizar
+ * @returns {Promise<Object>} Respuesta del mensaje
+ */
+export async function sincronizarEstado(estado) {
+  return enviarMensaje('todos', TIPOS_MENSAJE.SISTEMA.SINCRONIZAR, {
+    ...estado,
+    timestamp: Date.now()
+  }, { esperarRespuesta: false });
+}
+
+/**
+ * Habilita controles en iframes
+ * @param {string} modo - Modo de controles
+ * @returns {Promise<Object>} Respuesta del mensaje
+ */
+export async function habilitarControles(modo = 'casa') {
+  return enviarMensaje('todos', TIPOS_MENSAJE.UI.HABILITAR_CONTROLES, {
+    modo,
+    timestamp: Date.now()
+  }, { esperarRespuesta: false });
+}
+
+/**
+ * Deshabilita controles en iframes
+ * @param {string} motivo - Motivo de deshabilitación
+ * @returns {Promise<Object>} Respuesta del mensaje
+ */
+export async function deshabilitarControles(motivo = 'desconocido') {
+  return enviarMensaje('todos', TIPOS_MENSAJE.UI.DESHABILITAR_CONTROLES, {
+    motivo,
+    timestamp: Date.now()
+  }, { esperarRespuesta: false });
+}
+
+/**
+ * Envía un mensaje de cambio de modo
+ * @param {string} destino - Iframe destino o 'todos'
+ * @param {string} nuevoModo - Nuevo modo a establecer
+ * @param {Object} datosExtra - Datos adicionales
+ * @returns {Promise<Object>} Respuesta del mensaje
+ */
+export async function enviarCambioModo(destino, nuevoModo, datosExtra = {}) {
+  return enviarMensaje(destino, TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, {
+    modo: nuevoModo,
+    ...datosExtra,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Limpia todos los recursos del sistema de mensajería
+ */
+export function limpiar() {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('message', manejarMensajeRecibido, false);
+  }
+  
+  // Limpiar mensajes pendientes
+  for (const [id, pendiente] of mensajesPendientes.entries()) {
+    clearTimeout(pendiente.timeoutId);
+    pendiente.reject(new Error('Sistema de mensajería limpiado'));
+  }
+  
+  mensajesPendientes.clear();
+  manejadores.clear();
+  sistemaInicializado = false;
+  iframeId = null;
+  
+  log(LOG_LEVELS.INFO, 'Sistema de mensajería limpiado');
+}
+
+// ================== CONFIGURACIÓN DE LIMPIEZA AUTOMÁTICA ==================
+
+// Limpiar mensajes expirados cada 30 segundos
 if (typeof window !== 'undefined') {
-    window.addEventListener('message', manejarSolicitudDatos);
+  setInterval(limpiarMensajesExpirados, 30000);
 }
 
-// ================== EXPORTACIONES EXTENDIDAS ==================
-export default {
-    inicializarMensajeria,
-    registrarControlador,
-    enviarMensaje,
-    cambiarModoGlobal,
-    habilitarControles,
-    deshabilitarControles,
-    enviarMensajeATodos,
-    // Nuevas funciones para hijos
-    solicitarConstantesPadre,
-    solicitarDatosParada,
-    solicitarCoordenadas,
-    notificarHijoListo,
-    TIPOS_MENSAJE,
-    CONFIG
+// ================== EXPORTACIÓN POR DEFECTO ==================
+
+/**
+ * Objeto principal del sistema de mensajería
+ */
+const Mensajeria = {
+  // Funciones principales
+  inicializarMensajeria,
+  enviarMensaje,
+  enviarMensajeConReintenos: enviarMensaje, // ✅ ALIAS para compatibilidad
+  registrarControlador,
+  registrarManejador,
+  
+  // Funciones especializadas para mapa
+  enviarComandoNavegacion,
+  enviarComandoGPS,
+  actualizarCoordenadasGPS,
+  enviarComandoAudio,
+  enviarReto,
+  sincronizarEstado,
+  habilitarControles,
+  deshabilitarControles,
+  
+  // Gestión de iframes
+  registrarIframe,
+  obtenerIframesRegistrados,
+  
+  // Constantes
+  TIPOS_MENSAJE,
+  LOG_LEVELS,
+  
+  // Utilidades
+  obtenerEstadisticas,
+  limpiar,
+  
+  // Configuración
+  configuracion: () => ({ ...configuracion })
 };
 
-// ================== FALLBACK PARA NAVEGADORES SIN SOPORTE A MÓDULOS ==================
-// Crear este archivo para proporcionar una importación consistente para todos los demás archivos
-// Este es un archivo de re-exportación que apunta correctamente a la implementación real
-
-export * from './js/mensajeria.js';
-
-// Agregar este mecanismo de fallback para navegadores más antiguos que no soportan módulos
+// ================== COMPATIBILIDAD HACIA ATRÁS ==================
+// Hacer las funciones disponibles globalmente con alias
 if (typeof window !== 'undefined') {
-    window.addEventListener('DOMContentLoaded', () => {
-        // Crear un objeto global si la carga del módulo falla
-        if (!window.Mensajeria) {
-            console.warn('Fallback to global Mensajeria object');
-            // Implementación mínima para evitar errores
-            window.Mensajeria = {
-                enviarMensaje: (destino, tipo, datos) => {
-                    console.warn(`[Mensajeria Fallback] Envío a ${destino}: ${tipo}`, datos);
-                    return Promise.resolve({ fallback: true });
-                },
-                inicializarMensajeria: () => Promise.resolve(true),
-                TIPOS_MENSAJE: { SISTEMA: {}, NAVEGACION: {}, AUDIO: {}, RETOS: {} }
-            };
-        }
-    });
+  window.enviarMensaje = enviarMensaje;
+  window.enviarMensajeConReintenos = enviarMensaje;
+  window.registrarManejador = registrarManejador;
+  window.registrarControlador = registrarControlador;
+  window.inicializarMensajeria = inicializarMensajeria;
+  window.TIPOS_MENSAJE = TIPOS_MENSAJE;
+  
+  // Funciones especializadas para el mapa
+  window.enviarComandoNavegacion = enviarComandoNavegacion;
+  window.enviarComandoGPS = enviarComandoGPS;
+  window.actualizarCoordenadasGPS = actualizarCoordenadasGPS;
+  window.enviarComandoAudio = enviarComandoAudio;
+  window.enviarReto = enviarReto;
+  window.sincronizarEstado = sincronizarEstado;
+  window.habilitarControles = habilitarControles;
+  window.deshabilitarControles = deshabilitarControles;
+  
+  // Registro de iframes
+  window.registrarIframe = registrarIframe;
+  window.obtenerIframesRegistrados = obtenerIframesRegistrados;
+  
+  // Compatibilidad con alias legacy
+  window.mensajeria = Mensajeria;
+  window.Mensajeria = Mensajeria;
 }
+
+export default Mensajeria;
