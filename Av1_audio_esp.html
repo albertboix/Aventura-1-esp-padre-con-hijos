@@ -223,6 +223,37 @@
     </style>
 </head>
 <body class="modo-aventura">
+    <script>
+    // Array de audios correspondientes a las paradas y tramos del recorrido
+    // Usando P- para paradas y TR- para tramos, coincidiendo con los IDs del hijo 2
+    const audioFiles = [
+        // Parada 0 - Inicio
+        { 
+            id: "audio_P-0", 
+            title: "Torres de Serranos (inicio)", 
+            file: "Av1_audio_esp/02 Intro ESPAÑOL 2.mp3"
+        },
+        // Tramo 1: Torres de Serranos → Plaza de la crida (Puente de Serranos)
+        { 
+            id: "audio_TR-1", 
+            title: "Tramo 1: Torres de Serranos → Plaza de la crida", 
+            file: "Av1_audio_esp/03 Av1 Pista 3 ESPAÑOL.mp3"
+        },
+        // Parada 1: Plaza de la crida (Puente de Serranos)
+        { 
+            id: "audio_P-1", 
+            title: "Parada 1: Plaza de la crida (Puente de Serranos - Reto 3)", 
+            file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
+        },
+        // ...existing array items...
+        // Parada 36 - FINAL: Torres de Serranos Final
+        { 
+            id: "audio_P-36", 
+            title: "Parada 36: Torres de Serranos (Final del recorrido)", 
+            file: "Av1_audio_esp/12 Av1 Pista 8 ESPAÑOL montada.mp3"
+        }
+    ];
+    </script>
     <div class="audio-player-controls">
         <div class="player-buttons-row">
             <button id="playPauseBtn" aria-label="Reproducir/Pausar">
@@ -303,7 +334,14 @@
                 // Registrar manejadores de mensajes
                 registrarControlador('audio', manejarMensajeAudio);
                 
-                // ...existing code...
+                // Registrar manejador para cambio de modo usando el estándar correcto
+                registrarControlador(
+                  TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO,
+                  async (mensaje) => {
+                    const { modo } = mensaje.datos || {};
+                    cambiarModo(modo);
+                  }
+                );
                 
             } catch (error) {
                 console.error(`[${IFRAME_ID}] Error al inicializar mensajería:`, error);
@@ -634,7 +672,7 @@
         }
 
         // Función para cambiar entre modo casa y aventura
-        function cambiarModo(modo) {
+        async function cambiarModo(modo) {
             if (modo === 'casa') {
                 document.body.classList.remove('modo-aventura');
                 document.body.classList.add('modo-casa');
@@ -642,6 +680,18 @@
             } else if (modo === 'aventura') {
                 document.body.classList.remove('modo-casa');
                 document.body.classList.add('modo-aventura');
+            }
+            
+            // Notificar al padre usando el estándar correcto
+            if (window.Mensajeria && typeof window.Mensajeria.enviarMensaje === 'function') {
+                await window.Mensajeria.enviarMensaje(
+                  'padre',
+                  TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO,
+                  {
+                    modo,
+                    timestamp: new Date().toISOString()
+                  }
+                );
             }
         }
 
