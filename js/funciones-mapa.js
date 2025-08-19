@@ -21,7 +21,7 @@ let intentosSincronizacion = 0;
 const MAX_INTENTOS_SINCRONIZACION = 5;
 
 /**
- * Inicializa el sistema de mapa con las paradas y coordenadas
+ * Inicializa el sistema de mapa with las paradas y coordenadas
  * @param {Object} opciones - Opciones de inicialización
  */
 export function inicializarMapa(opciones = {}) {
@@ -477,6 +477,16 @@ function registrarManejadoresMensajes() {
     
     // Registrar manejador para verificar hash del array
     window.Mensajeria.registrarControlador('datos:verificar_hash_array', manejarVerificacionHash);
+    
+    // Registrar manejador para cambio de modo usando el estándar correcto
+    window.Mensajeria.registrarControlador(
+        TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO,
+        (mensaje) => {
+            const { modo } = mensaje.datos || {};
+            console.log('[MAPA] Cambio de modo recibido:', modo);
+            // ...actualiza la interfaz/mapa según el modo...
+        }
+    );
     
     console.log('[MAPA] Manejadores de mensajes registrados');
 }
