@@ -1187,24 +1187,33 @@
         // Iniciar el sistema de mensajería
         iniciarSistemaMensajeria();
     </script>
-</body>
-</html>
-                    timestamp: Date.now(),
-                    totalParadas: AVENTURA_PARADAS.length,
-                    hash: calcularHashArray(AVENTURA_PARADAS)
-                }).catch(e => console.warn(`Error al notificar array de paradas a ${hijo.nombre}:`, e));
-            });
-            
-            // Verificar estado inicial de modo casa
-            setTimeout(() => {
-                if (typeof manejarCambioModoDesdeCasa === 'function') {
-                    manejarCambioModoDesdeCasa();
+    <script type="module">
+        // Añadir manejador para cambio de modo centralizado
+        function manejarCambioModoCentralizado(mensaje) {
+            try {
+                const datos = mensaje.datos || {};
+                const nuevoModo = datos.modo;
+                if (nuevoModo === 'casa' || nuevoModo === 'aventura') {
+                    estadoApp.modoCasa = (nuevoModo === 'casa');
+                    console.log(`[PADRE] Modo cambiado por comunicación centralizada: ${nuevoModo}`);
+                    // Opcional: notificar a otros hijos del cambio de modo
+                    Object.values(CONFIG.HIJOS).forEach(hijo => {
+                        enviarMensaje(hijo.id, TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, {
+                            modo: nuevoModo,
+                            origen: 'padre',
+                            timestamp: Date.now()
+                        }).catch(e => {});
+                    });
+                } else {
+                    console.warn(`[PADRE] Modo recibido no válido:`, nuevoModo);
                 }
-            }, 1500); // Dar tiempo a que hijo5-casa se inicialice
-        });
-        
-        // Iniciar el sistema de mensajería
-        iniciarSistemaMensajeria();
+            } catch (error) {
+                console.error('[PADRE] Error en manejarCambioModoCentralizado:', error);
+            }
+        }
+
+        // Registrar el controlador en el sistema de mensajería
+        registrarControladorSeguro(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejarCambioModoCentralizado);
     </script>
 </body>
 </html>
