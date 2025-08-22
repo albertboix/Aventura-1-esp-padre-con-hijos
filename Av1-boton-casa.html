@@ -1,12 +1,154 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>hijo5-casa</title>
     <script type="module">
-      // ================== CONFIGURACIÓN ==================
+      // Importar módulos necesarios
+      import { 
+        TIPOS_MENSAJE, 
+        inicializarMensajeria, 
+        enviarMensaje, 
+        registrarControlador 
+      } from './js/mensajeria.js';
+      
+      // Hacer las constantes disponibles globalmente
+      window.TIPOS_MENSAJE = TIPOS_MENSAJE;
+      window.Mensajeria = {
+        inicializarMensajeria,
+        enviarMensaje,
+        registrarControlador,
+        TIPOS_MENSAJE
+      };
+
+      // ================== CONFIGURACIÓN ESTÁNDAR ==================
+      // ================== CONSTANTES ==================
+      
+      // Niveles de log
+      const LOG_LEVELS = {
+        DEBUG: 0,
+        INFO: 1,
+        WARN: 2,
+        ERROR: 3,
+        NONE: 4
+      };
+      
+      // Utilidad de logging estandarizada
+      const logger = (() => {
+        // Función interna para el registro de logs
+        const log = (nivel, nivelTexto, mensaje, datos) => {
+          // Si el nivel de log está deshabilitado o es inferior al nivel configurado, no hacer nada
+          if (CONFIG.LOG_LEVEL > nivel) return;
+          
+          const timestamp = new Date().toISOString();
+          const prefijo = `[${timestamp}] [${CONFIG.IFRAME_ID}] [${nivelTexto}]`;
+          
+          // Determinar el método de consola a utilizar
+          let metodoConsola = 'log';
+          if (nivel === LOG_LEVELS.WARN) metodoConsola = 'warn';
+          else if (nivel >= LOG_LEVELS.ERROR) metodoConsola = 'error';
+          
+          // Registrar el mensaje
+          if (datos !== undefined) {
+            console[metodoConsola](`${prefijo} ${mensaje}`, datos);
+          } else {
+            console[metodoConsola](`${prefijo} ${mensaje}`);
+          }
+        };
+        
+        return {
+          /**
+           * Registra un mensaje de depuración
+           * @param {string} mensaje - Mensaje a registrar
+           * @param {*} [datos] - Datos adicionales a registrar
+           */
+          debug: (mensaje, datos) => {
+            log(LOG_LEVELS.DEBUG, 'DEBUG', mensaje, datos);
+          },
+          
+          /**
+           * Registra un mensaje informativo
+           * @param {string} mensaje - Mensaje a registrar
+           * @param {*} [datos] - Datos adicionales a registrar
+           */
+          info: (mensaje, datos) => {
+            log(LOG_LEVELS.INFO, 'INFO', mensaje, datos);
+          },
+          
+          /**
+           * Registra un mensaje de advertencia
+           * @param {string} mensaje - Mensaje a registrar
+           * @param {*} [datos] - Datos adicionales a registrar
+           */
+          warn: (mensaje, datos) => {
+            log(LOG_LEVELS.WARN, 'WARN', mensaje, datos);
+          },
+          
+          /**
+           * Registra un mensaje de error
+           * @param {string} mensaje - Mensaje a registrar
+           * @param {Error} error - Objeto de error
+           * @param {Object} [datosAdicionales] - Datos adicionales a registrar
+           */
+          error: (mensaje, error, datosAdicionales = {}) => {
+            const datos = { ...datosAdicionales };
+            
+            if (error) {
+              datos.error = {
+                mensaje: error.message,
+                stack: error.stack,
+                ...(error.details && { detalles: error.details })
+              };
+            }
+            
+            log(LOG_LEVELS.ERROR, 'ERROR', mensaje, Object.keys(datos).length ? datos : undefined);
+          }
+        };
+      })();
+      
+      // Modos de operación
+      const MODOS = {
+        CASA: 'casa',
+        AVENTURA: 'aventura'
+      };
+      
+      // Tipos de puntos
+      const TIPOS_PUNTO = {
+        PARADA: 'parada',
+        TRAMO: 'tramo',
+        INICIO: 'inicio'
+      };
+      
+      // Acciones comunes
+      const ACCIONES = {
+        ACTIVAR_GPS: 'activar_gps',
+        DESACTIVAR_GPS: 'desactivar_gps',
+        SELECCION_PUNTO: 'seleccion_punto',
+        CAMBIO_MODO: 'cambio_modo',
+        ERROR: 'error'
+      };
+      
+      // Constantes de mensajería
+      const MENSAJES = {
+        ERROR: {
+          CAMPO_REQUERIDO: 'Campo requerido',
+          TIPO_INVALIDO: 'Tipo de dato inválido',
+          FORMATO_INVALIDO: 'Formato inválido',
+          MENSAJE_INVALIDO: 'Mensaje inválido'
+        },
+        ESTADOS: {
+          EXITO: 'exito',
+          ERROR: 'error',
+          PENDIENTE: 'pendiente'
+        }
+      };
+      
+      // Constantes de configuración
       const CONFIG = {
         IFRAME_ID: 'hijo5-casa',
-        LOG_LEVEL: 2, // 0: debug, 1: info, 2: warn, 3: error, 4: none
         DEBUG: true,
+        LOG_LEVEL: LOG_LEVELS.INFO,
         REINTENTOS: {
           MAXIMOS: 3,
           TIEMPO_ESPERA: 1000,
@@ -22,198 +164,574 @@
         }
       };
 
-      // Tipos de mensajes específicos de este componente
-      let TIPOS_MENSAJE = {
-        // Valores por defecto en caso de que falle la importación
-        SISTEMA: {
-          INICIALIZACION: 'sistema:inicializacion',
-          CAMBIO_MODO: 'sistema:cambio_modo',
-          CONFIRMACION: 'sistema:confirmacion',
-          ACTUALIZAR_ESTADO: 'sistema:actualizar_estado',
-          SOLICITAR_ESTADO: 'sistema:solicitar_estado',
-          LISTO: 'sistema:listo'
-        },
-        // Mensajes específicos del componente
-        CAMBIO_PUNTO: 'hijo5:cambio_punto',
-        ACTUALIZAR_ESTADO: 'hijo5:actualizar_estado',
-        NOTIFICAR_PUNTO: 'hijo5:notificar_punto'
+      // Configuración de importaciones dinámicas
+      const MODULOS = {
+        mensajeria: './mensajeria.js',
+        funcionesMapa: './funciones-mapa.js'
       };
+
+      // Objeto para almacenar las importaciones
+      const modulosImportados = {};
       
-      // Intentar importar las constantes de mensajería
-      (async () => {
-        try {
-          const mod = await import('./mensajeria.js');
-          if (mod && mod.TIPOS_MENSAJE) {
-            TIPOS_MENSAJE = { ...TIPOS_MENSAJE, ...mod.TIPOS_MENSAJE };
-            console.log(`[${CONFIG.IFRAME_ID}] Constantes de mensajería actualizadas:`, TIPOS_MENSAJE);
-          }
-        } catch (e) {
-          console.warn('[hijo5] No se pudieron cargar las constantes de mensajería, usando valores por defecto', e);
-        }
-      })();
-
       /**
-       * Inicializa la mensajería y registra los manejadores de mensajes
-       * @returns {Promise<boolean>} True si la inicialización fue exitosa
+       * Carga un módulo de forma segura
+       * @param {string} nombreModulo - Nombre del módulo a cargar
+       * @returns {Promise<Object>} Módulo cargado
+       * @throws {Error} Si ocurre un error al cargar el módulo
        */
-      async function inicializarMensajeria() {
+      async function cargarModulo(nombreModulo) {
         try {
-            // Usar la configuración global
+          if (!modulosImportados[nombreModulo]) {
+            logger.info(`Cargando módulo: ${nombreModulo}`);
             
-            console.log(`[${CONFIG.IFRAME_ID}] Cargando módulo de mensajería...`);
-            
-            try {
-                const { 
-                    Mensajeria, 
-                    TIPOS_MENSAJE, 
-                    inicializarMensajeria, 
-                    enviarMensaje, 
-                    registrarControlador 
-                } = await import('./mensajeria.js');
-                
-                // Store in window for backward compatibility (to be removed later)
-                window.Mensajeria = { 
-                    Mensajeria, 
-                    TIPOS_MENSAJE, 
-                    inicializarMensajeria, 
-                    enviarMensaje, 
-                    registrarControlador 
-                };
-                
-                console.log(`[${CONFIG.IFRAME_ID}] Módulo de mensajería cargado correctamente`);
-                return { 
-                    Mensajeria, 
-                    TIPOS_MENSAJE, 
-                    inicializarMensajeria, 
-                    enviarMensaje, 
-                    registrarControlador 
-                };
-            } catch (importError) {
-                console.error(`[${CONFIG.IFRAME_ID}] Error al cargar el módulo de mensajería:`, importError);
-                throw new Error(`Error al cargar el módulo de mensajería: ${importError.message}`);
+            // Validar que el módulo esté en la lista de módulos soportados
+            if (!MODULOS[nombreModulo]) {
+              throw new Error(`Módulo no soportado: ${nombreModulo}`);
             }
             
-            if (!window.Mensajeria) {
-                throw new Error('El módulo de mensajería se cargó pero es undefined');
+            // Cargar el módulo dinámicamente
+            modulosImportados[nombreModulo] = await import(MODULOS[nombreModulo]);
+            
+            // Hacer que las funciones estén disponibles globalmente para compatibilidad
+            if (nombreModulo === 'mensajeria') {
+              window.Mensajeria = modulosImportados.mensajeria;
             }
             
-            if (typeof window.Mensajeria.inicializarMensajeria !== 'function') {
-                console.error('Métodos disponibles en Mensajeria:', Object.keys(window.Mensajeria).join(', '));
-                throw new Error('La función inicializarMensajeria no está disponible en el módulo');
-            }
-            
-            // Configurar la mensajería
-            console.log(`[${CONFIG.IFRAME_ID}] Inicializando mensajería con configuración:`, {
-                iframeId: CONFIG.IFRAME_ID,
-                logLevel: CONFIG.LOG_LEVEL,
-                debug: CONFIG.DEBUG,
-                reintentos: {
-                max: CONFIG.REINTENTOS.MAXIMOS,
-                delay: CONFIG.REINTENTOS.TIEMPO_ESPERA,
-                factor: CONFIG.REINTENTOS.FACTOR
-                }
-            });
-
-            try {
-                await window.Mensajeria.inicializarMensajeria({
-                iframeId: CONFIG.IFRAME_ID,
-                logLevel: CONFIG.LOG_LEVEL,
-                debug: CONFIG.DEBUG,
-                reintentos: {
-                    max: CONFIG.REINTENTOS.MAXIMOS,
-                    delay: CONFIG.REINTENTOS.TIEMPO_ESPERA,
-                    factor: CONFIG.REINTENTOS.FACTOR
-                }
-                });
-                console.log(`[${CONFIG.IFRAME_ID}] Mensajería inicializada correctamente`);
-            } catch (initError) {
-                console.error(`[${CONFIG.IFRAME_ID}] Error al inicializar la mensajería:`, initError);
-                throw new Error(`Error al inicializar la mensajería: ${initError.message}`);
-            }
-            
-            // Asegurarse de que las funciones globales estén disponibles
-            if (window.Mensajeria) {
-                // Hacer que las funciones estén disponibles globalmente
-                window.enableControls = window.Mensajeria.enableControls || function() {
-                console.warn('enableControls no está disponible en Mensajeria');
-                return Promise.resolve(false);
-                };
-                
-                window.disableControls = window.Mensajeria.disableControls || function() {
-                console.warn('disableControls no está disponible en Mensajeria');
-                return Promise.resolve(false);
-                };
-            }
-            
-            try {
-                // Registrar manejadores de mensajes
-                console.log(`[${CONFIG.IFRAME_ID}] Registrando manejadores de mensajes...`);
-                await registrarManejadores();
-                
-                // Notificar al padre que estamos listos
-                console.log(`[${CONFIG.IFRAME_ID}] Notificando al padre...`);
-                await notificarEstado('inicializado');
-                
-                console.log(`[${CONFIG.IFRAME_ID}] Inicialización completada exitosamente`);
-                return true;
-            } catch (handlerError) {
-                console.error(`[${CONFIG.IFRAME_ID}] Error al registrar manejadores:`, handlerError);
-                throw new Error(`Error al registrar manejadores: ${handlerError.message}`);
-            }
-            
+            logger.info(`Módulo cargado: ${nombreModulo}`);
+          }
+          
+          return modulosImportados[nombreModulo];
+          
         } catch (error) {
-            const errorMsg = `Error al inicializar la mensajería: ${error.message}`;
-            console.error(`[${CONFIG.IFRAME_ID}] ${errorMsg}`, error);
-            mostrarError(errorMsg);
-            return false;
+          logger.error(`Error al cargar el módulo ${nombreModulo}`, error);
+          throw new Error(`No se pudo cargar el módulo ${nombreModulo}: ${error.message}`);
         }
       }
+
+      // Cargar módulos requeridos
+      let mensajeria, funcionesMapa;
+      let inicializarMensajeria, enviarMensaje, registrarControlador, TIPOS_MENSAJE;
+      let inicializarMapa, centrarMapa, actualizarPuntoActual, actualizarTramoActual, actualizarModo;
       
-      /**
-       * Registra los manejadores de mensajes para este componente
-       * @returns {Promise<void>}
-       */
-      async function registrarManejadores() {
-        if (!window.Mensajeria) {
-          throw new Error('Mensajería no disponible para registrar manejadores');
+      try {
+        logger.info('Iniciando carga de módulos...');
+        
+        // Cargar módulos en paralelo para mejor rendimiento
+        [mensajeria, funcionesMapa] = await Promise.all([
+          cargarModulo('mensajeria'),
+          cargarModulo('funcionesMapa')
+        ]);
+        
+        // Desestructurar las funciones necesarias
+        if (mensajeria) {
+          ({ 
+            inicializarMensajeria, 
+            enviarMensaje, 
+            registrarControlador, 
+            TIPOS_MENSAJE 
+          } = mensajeria);
+          
+          // Hacer que las funciones estén disponibles globalmente para compatibilidad
+          window.inicializarMensajeria = inicializarMensajeria;
+          window.enviarMensaje = enviarMensaje;
+          window.registrarControlador = registrarControlador;
         }
         
+        if (funcionesMapa) {
+          ({ 
+            inicializarMapa, 
+            centrarMapa, 
+            actualizarPuntoActual,
+            actualizarTramoActual,
+            actualizarModo
+          } = funcionesMapa);
+        }
+        
+        logger.info('Módulos cargados correctamente');
+        
+      } catch (error) {
+        const errorMsg = 'Error crítico al cargar módulos';
+        logger.error(errorMsg, error);
+        
+        // Mostrar mensaje de error al usuario
+        const errorContainer = document.createElement('div');
+        errorContainer.style.cssText = 'padding: 20px; color: #721c24; background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; margin: 10px;';
+        errorContainer.innerHTML = `
+          <h2>Error al cargar la aplicación</h2>
+          <p>No se pudieron cargar los módulos necesarios. Por favor, recarga la página o inténtalo más tarde.</p>
+          <p>Detalles: ${error.message}</p>
+        `;
+        
+        document.body.innerHTML = '';
+        document.body.appendChild(errorContainer);
+        
+        throw new Error(`${errorMsg}: ${error.message}`); // Detener la ejecución
+      }
+
+      // Extender tipos de mensajes específicos de este componente
+      if (TIPOS_MENSAJE) {
+        TIPOS_MENSAJE = {
+          ...TIPOS_MENSAJE,
+          // Mensajes específicos del componente
+          CAMBIO_PUNTO: 'hijo5:cambio_punto',
+          ACTUALIZAR_ESTADO: 'hijo5:actualizar_estado',
+          NOTIFICAR_PUNTO: 'hijo5:notificar_punto'
+        };
+        logger.info('Constantes de mensajería cargadas correctamente');
+      } else {
+        logger.error('TIPOS_MENSAJE no está definido');
+        throw new Error('No se pudieron cargar las constantes de mensajería');
+      }
+      
+      // Estado inicial de la aplicación
+      const ESTADO_INICIAL = {
+        modo: 'casa', // 'casa' o 'aventura'
+        gpsActivo: false,
+        controlesHabilitados: true,
+        puntoActual: null,
+        tramoActual: null,
+        ultimaActualizacion: null,
+        version: '1.0.0'
+      };
+
+      // Estado global de la aplicación
+      let estadoApp = {
+        ...ESTADO_INICIAL,
+        mensajeriaInicializada: false,
+        manejadoresRegistrados: false,
+        _listeners: new Set(),
+        
+        // Método para actualizar el estado de forma controlada
+        async actualizarEstado(nuevoEstado) {
+          const estadoAnterior = { ...this };
+          Object.assign(this, nuevoEstado);
+          this.ultimaActualizacion = new Date().toISOString();
+          
+          // Notificar a los listeners
+          await this._notificarCambios(estadoAnterior);
+          return true;
+        },
+        
+        // Registrar listeners para cambios de estado
+        onCambio(listener) {
+          if (typeof listener !== 'function') {
+            throw new Error('El listener debe ser una función');
+          }
+          this._listeners.add(listener);
+          return () => this._listeners.delete(listener);
+        },
+        
+        // Notificar cambios a los listeners
+        async _notificarCambios(estadoAnterior) {
+          const cambios = {};
+          
+          // Encontrar propiedades que cambiaron
+          for (const [key, valor] of Object.entries(this)) {
+            if (key.startsWith('_')) continue; // Ignorar propiedades privadas
+            if (valor !== estadoAnterior[key]) {
+              cambios[key] = {
+                anterior: estadoAnterior[key],
+                nuevo: valor
+              };
+            }
+          }
+          
+          // Si no hay cambios, no notificar
+          if (Object.keys(cambios).length === 0) return;
+          
+          // Notificar a los listeners
+          const notificaciones = [];
+          for (const listener of this._listeners) {
+            try {
+              notificaciones.push(listener(cambios, this));
+            } catch (error) {
+              console.error('Error en listener de estado:', error);
+            }
+          }
+          
+          // Esperar a que todos los listeners terminen
+          await Promise.allSettled(notificaciones);
+        },
+        
+        // Reiniciar al estado inicial
+        async reiniciar() {
+          const estadoAnterior = { ...this };
+          Object.assign(this, {
+            ...ESTADO_INICIAL,
+            mensajeriaInicializada: this.mensajeriaInicializada,
+            manejadoresRegistrados: this.manejadoresRegistrados,
+            _listeners: this._listeners,
+            _notificarCambios: this._notificarCambios
+          });
+          await this._notificarCambios(estadoAnterior);
+          return true;
+        }
+      };
+
+      /**
+       * Inicializa el sistema de mensajería
+       * @returns {Promise<boolean>} True si la inicialización fue exitosa
+       */
+      async function inicializarMensajeriaApp() {
+        if (estadoApp.mensajeriaInicializada) {
+          logger.info('La mensajería ya está inicializada');
+          return true;
+        }
+
         try {
-          // Registrar manejadores de mensajes del sistema
+          logger.info('Inicializando mensajería...');
+          
+          // Validar que la función de inicialización esté disponible
+          if (typeof inicializarMensajeria !== 'function') {
+            throw new Error('La función inicializarMensajeria no está disponible');
+          }
+          
+          // Validar configuración
+          if (!CONFIG.IFRAME_ID) {
+            throw new Error('Configuración no válida: falta IFRAME_ID');
+          }
+          
+          // Inicializar la mensajería con la configuración actual
+          await inicializarMensajeria({
+            iframeId: CONFIG.IFRAME_ID,
+            debug: CONFIG.DEBUG,
+            logLevel: CONFIG.LOG_LEVEL,
+            reintentos: CONFIG.REINTENTOS
+          });
+          
+          // Actualizar el estado
+          await estadoApp.actualizar({ mensajeriaInicializada: true });
+          logger.info('Mensajería inicializada correctamente');
+          return true;
+          
+        } catch (error) {
+          const errorInfo = await notificarError('inicializacion_mensajeria', error);
+          logger.error('Error al inicializar la mensajería', errorInfo);
+          throw error;
+        }
+      }
+
+      /**
+       * Registra los manejadores de mensajes del sistema
+       * @returns {Promise<boolean>} True si los manejadores se registraron correctamente
+       */
+      async function registrarManejadores() {
+        try {
+          logger.info('Registrando manejadores de mensajes...');
+          
+          // Validar que las funciones necesarias estén disponibles
+          if (typeof registrarManejadorMensaje !== 'function') {
+            throw new Error('La función registrarManejadorMensaje no está disponible');
+          }
+          
+          if (typeof registrarControlador !== 'function') {
+            throw new Error('La función registrarControlador no está disponible');
+          }
+          
+          if (typeof inicializarMensajeria !== 'function') {
+            throw new Error('La función inicializarMensajeria no está disponible en el módulo');
+          }
+          
+          // Validar configuración
+          if (!CONFIG || !CONFIG.IFRAME_ID) {
+            throw new Error('Configuración no válida: falta IFRAME_ID');
+          }
+          
+          if (!TIPOS_MENSAJE) {
+            throw new Error('TIPOS_MENSAJE no está definido');
+          }
+          
+          logger.info('Validaciones de manejadores completadas');
+          
+          // Definir manejadores del sistema
           const manejadoresSistema = [
             { tipo: TIPOS_MENSAJE.SISTEMA.INICIALIZACION, manejador: manejarInicializacion },
             { tipo: TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejador: manejarCambioModo },
             { tipo: TIPOS_MENSAJE.SISTEMA.CONFIRMACION, manejador: manejarConfirmacion },
             { tipo: TIPOS_MENSAJE.SISTEMA.ACTUALIZAR_ESTADO, manejador: manejarActualizacionEstado },
-            { tipo: TIPOS_MENSAJE.SISTEMA.SOLICITAR_ESTADO, manejador: manejarSolicitudEstado }
+            { tipo: TIPOS_MENSAJE.SISTEMA.SOLICITAR_ESTADO, manejador: manejarSolicitudEstado },
+            { tipo: TIPOS_MENSAJE.SISTEMA.ERROR, manejador: manejarError }
           ];
+          
+          // Registrar manejadores específicos del componente si existen
+          if (typeof manejarMensajeEspecifico === 'function') {
+            manejadoresSistema.push({
+              tipo: TIPOS_MENSAJE.ESPECIFICO,
+              manejador: manejarMensajeEspecifico
+            });
+          }
           
           // Registrar todos los manejadores
           for (const { tipo, manejador } of manejadoresSistema) {
             if (typeof manejador === 'function') {
-              window.Mensajeria.registrarControlador(tipo, manejador);
-              console.log(`[${CONFIG.IFRAME_ID}] Manejador registrado para: ${tipo}`);
+              registrarControlador(tipo, manejador);
+              if (CONFIG.DEBUG) {
+                console.log(`[${CONFIG.IFRAME_ID}] Manejador registrado para: ${tipo}`);
+              }
             }
           }
           
+          estadoApp.manejadoresRegistrados = true;
           console.log(`[${CONFIG.IFRAME_ID}] Todos los manejadores de mensajes registrados`);
           return true;
           
         } catch (error) {
-          console.error(`[${CONFIG.IFRAME_ID}] Error al registrar manejadores:`, error);
+          await notificarError('registro_manejadores', error);
           throw error; // Relanzar para que el llamador pueda manejarlo
         }
       }
-      
+
       /**
        * Notifica el estado actual al iframe padre
        * @param {string} accion - Acción que generó el cambio de estado
        * @param {Object} [datosAdicionales={}] - Datos adicionales a incluir en la notificación
        * @returns {Promise<boolean>} True si la notificación se envió correctamente
        */
-      async function notificarEstado(accion, datosAdicionales = {}) {
-        if (!window.Mensajeria) {
+      // ================== MANEJO DE ERRORES ESTÁNDAR ==================
+      /**
+       * Notifica un error al padre y lo registra en el logger
+       * @param {string} tipo - Tipo de error
+       * @param {Error|string|Object} error - Objeto de error, mensaje u objeto con detalles
+       * @param {Object} [datosAdicionales={}] - Datos adicionales para incluir en el error
+       * @returns {Promise<Object>} Información detallada del error
+       */
+      async function notificarError(tipo, error, datosAdicionales = {}) {
+        try {
+          // Validación de parámetros
+          if (!tipo || typeof tipo !== 'string') {
+            logger.warn('Tipo de error no válido, usando valor por defecto', { tipo });
+            tipo = 'error_desconocido';
+          }
+
+          // Crear objeto de error si es necesario
+          let errorObj;
+          if (error instanceof Error) {
+            errorObj = error;
+          } else if (typeof error === 'string') {
+            errorObj = new Error(error);
+          } else if (error && typeof error === 'object') {
+            errorObj = new Error(error.message || 'Error desconocido');
+            Object.assign(errorObj, error);
+          } else {
+            errorObj = new Error('Error desconocido');
+          }
+
+          // Preparar información detallada del error
+          const errorInfo = {
+            tipo,
+            mensaje: errorObj.message,
+            stack: errorObj.stack,
+            origen: CONFIG.IFRAME_ID,
+            timestamp: new Date().toISOString(),
+            ...(errorObj.details && { detalles: errorObj.details }),
+            ...datosAdicionales
+          };
+          
+          // Registrar el error según su severidad
+          if (tipo.startsWith('advertencia')) {
+            logger.warn(`Advertencia (${tipo}): ${errorObj.message}`, errorInfo);
+          } else {
+            logger.error(`Error (${tipo}): ${errorObj.message}`, errorInfo);
+          }
+          
+          // Notificar al padre si está disponible
+          if (typeof enviarMensaje === 'function' && !tipo.startsWith('advertencia')) {
+            try {
+              await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, errorInfo);
+            } catch (e) {
+              logger.error('Error al notificar error al padre', e);
+            }
+          }
+          
+          return errorInfo;
+          
+        } catch (error) {
+          // Si hay un error en el manejador de errores, usar console.error directamente
+          console.error('Error crítico en notificarError:', error);
+          return {
+            tipo: 'error_critico',
+            mensaje: 'Error en el manejador de errores: ' + (error.message || 'Error desconocido'),
+            stack: error.stack,
+            origen: CONFIG.IFRAME_ID,
+            timestamp: new Date().toISOString()
+          };
+        }
+      }
+      
+      // Función auxiliar para manejo de errores en promesas
+      const manejarError = (tipo) => (error) => {
+        notificarError(tipo, error);
+        return Promise.reject(error);
+      };
+
+      // ================== FUNCIONES DE VALIDACIÓN ==================
+      
+      /**
+       * Valida un ID de punto
+       * @param {string} idPunto - ID del punto a validar
+       * @returns {Object} { valido: boolean, mensaje: string }
+       */
+      function validarIdPunto(idPunto) {
+        if (!idPunto || typeof idPunto !== 'string') {
+          return { 
+            valido: false, 
+            mensaje: `${MENSAJES.ERROR.CAMPO_REQUERIDO}: ID del punto debe ser una cadena no vacía`
+          };
+        }
+        
+        // Verificar formato del ID (ejemplo: 'padre-P-1' o 'padre-TR-1')
+        const regex = /^padre-(P|TR)-\d+$/;
+        if (!regex.test(idPunto)) {
+          return { 
+            valido: false, 
+            mensaje: `${MENSAJES.ERROR.FORMATO_INVALIDO}: ${idPunto}. Debe seguir el formato 'padre-P-<número>' o 'padre-TR-<número>'`
+          };
+        }
+        
+        return { valido: true };
+      }
+      
+      /**
+       * Valida un objeto de punto
+       * @param {Object} punto - Punto a validar
+       * @returns {Object} { valido: boolean, errores: string[] }
+       */
+      function validarPunto(punto) {
+        const errores = [];
+        
+        if (!punto || typeof punto !== 'object') {
+          return { 
+            valido: false, 
+            errores: [`${MENSAJES.ERROR.TIPO_INVALIDO}: Se esperaba un objeto para el punto`] 
+          };
+        }
+        
+        // Validar campos requeridos
+        const camposRequeridos = ['padreid', 'tipo', 'nombre'];
+        camposRequeridos.forEach(campo => {
+          if (!(campo in punto)) {
+            errores.push(`${MENSAJES.ERROR.CAMPO_REQUERIDO}: '${campo}'`);
+          }
+        });
+        
+        // Validar tipo de punto
+        if (punto.tipo && !Object.values(TIPOS_PUNTO).includes(punto.tipo)) {
+          errores.push(`${MENSAJES.ERROR.TIPO_INVALIDO}: '${punto.tipo}'. Valores permitidos: ${Object.values(TIPOS_PUNTO).join(', ')}`);
+        }
+        
+        // Validar ID del punto
+        if (punto.padreid) {
+          const validacionId = validarIdPunto(punto.padreid);
+          if (!validacionId.valido) {
+            errores.push(validacionId.mensaje);
+          }
+        }
+        
+        // Validar que tenga al menos parada o tramo según el tipo
+        if (punto.tipo === TIPOS_PUNTO.PARADA && punto.parada === undefined) {
+          errores.push(`${MENSAJES.ERROR.CAMPO_REQUERIDO}: 'parada' para puntos de tipo '${TIPOS_PUNTO.PARADA}'`);
+        }
+        
+        if (punto.tipo === TIPOS_PUNTO.TRAMO && punto.tramo === undefined) {
+          errores.push(`${MENSAJES.ERROR.CAMPO_REQUERIDO}: 'tramo' para puntos de tipo '${TIPOS_PUNTO.TRAMO}'`);
+        }
+        
+        return {
+          valido: errores.length === 0,
+          errores
+        };
+      }
+      
+      /**
+       * Valida un mensaje recibido
+       * @param {Object} mensaje - Mensaje a validar
+       * @param {Array<string>} camposRequeridos - Campos requeridos en el mensaje
+       * @returns {Object} { valido: boolean, error?: string }
+       */
+      function validarMensaje(mensaje, camposRequeridos = ['tipo', 'origen']) {
+        if (!mensaje || typeof mensaje !== 'object') {
+          return { 
+            valido: false, 
+            error: `${MENSAJES.ERROR.TIPO_INVALIDO}: Se esperaba un objeto para el mensaje`
+          };
+        }
+        
+        // Verificar campos requeridos
+        const faltantes = camposRequeridos.filter(campo => !(campo in mensaje));
+        if (faltantes.length > 0) {
+          return { 
+            valido: false, 
+            error: `${MENSAJES.ERROR.CAMPO_REQUERIDO}: ${faltantes.join(', ')}`
+          };
+        }
+        
+        // Validar tipo de mensaje
+        if (mensaje.tipo && typeof mensaje.tipo !== 'string') {
+          return { 
+            valido: false, 
+            error: `${MENSAJES.ERROR.TIPO_INVALIDO}: 'tipo' debe ser una cadena`
+          };
+        }
+        
+        // Validar origen
+        if (mensaje.origen && typeof mensaje.origen !== 'string') {
+          return { 
+            valido: false, 
+            error: `${MENSAJES.ERROR.TIPO_INVALIDO}: 'origen' debe ser una cadena`
+          };
+        }
+        
+        return { valido: true };
+      }
+      
+      /**
+       * Valida los datos de entrada para el cambio de modo
+       * @param {Object} datos - Datos a validar
+       * @returns {Object} { valido: boolean, error?: string, modo?: string }
+       */
+      function validarCambioModo(datos = {}) {
+        const { modo, motivo = 'desconocido' } = datos;
+        
+        // Validar que el modo sea válido
+        if (!Object.values(MODOS).includes(modo)) {
+          return { 
+            valido: false, 
+            error: `${MENSAJES.ERROR.TIPO_INVALIDO}: '${modo}'. Debe ser uno de: ${Object.values(MODOS).join(', ')}`
+          };
+        }
+        
+        // Validar que el motivo sea una cadena
+        if (typeof motivo !== 'string') {
+          return { 
+            valido: false, 
+            error: `${MENSAJES.ERROR.TIPO_INVALIDO}: 'motivo' debe ser una cadena`
+          };
+        }
+        
+        // Si todo es válido, devolver los datos normalizados
+        return { 
+          valido: true, 
+          modo,
+          motivo: motivo.trim() || 'sin motivo especificado'
+        };
+      }
+
+      // ================== FUNCIONES DE ESTADO ==================
+      async function notificarEstado(accion, datos = {}) {
+        // Validar entrada
+        if (typeof accion !== 'string' || !accion.trim()) {
+          console.error(`[${CONFIG.IFRAME_ID}] Acción no válida para notificar estado`);
+          return false;
+        }
+        
+        if (!enviarMensaje) {
           console.warn(`[${CONFIG.IFRAME_ID}] Mensajería no disponible para notificar estado`);
+          return false;
+        }
+        
+        // Validar que los datos sean un objeto
+        if (typeof datos !== 'object' || datos === null) {
+          console.error(`[${CONFIG.IFRAME_ID}] Datos de estado no válidos`);
           return false;
         }
         
@@ -223,7 +741,7 @@
           origen: CONFIG.IFRAME_ID,
           accion,
           datos: {
-            ...datosAdicionales,
+            ...datos, // Usar el parámetro datos en lugar de datosAdicionales
             timestamp,
             modo: estadoApp.modo,
             gpsActivo: estadoApp.gpsActivo,
@@ -235,14 +753,11 @@
         
         try {
           // Usar el sistema de mensajería con reintentos
-          await window.Mensajeria.enviarMensaje(
+          await enviarMensaje(
             'padre',
             TIPOS_MENSAJE.SISTEMA.ACTUALIZAR_ESTADO,
             mensaje.datos,
-            { 
-              maxRetries: CONFIG.REINTENTOS.MAXIMOS,
-              retryDelay: CONFIG.REINTENTOS.TIEMPO_ESPERA
-            }
+            { reintentos: CONFIG.REINTENTOS.MAXIMOS }
           );
           
           console.log(`[${CONFIG.IFRAME_ID}] Estado notificado: ${accion}`, mensaje.datos);
@@ -357,59 +872,48 @@
       }
       
       // Manejador de cambio de modo
-      async function manejarCambioModo(mensaje = {}) {
-        console.log('[hijo5] Recibido mensaje de cambio de modo:', mensaje);
-        
+      async function manejarCambioModo(datos = {}) {
         try {
-          // Manejar diferentes formatos de mensaje
-          const datos = mensaje.datos || {};
-          const nuevoModo = datos.modo || datos.nuevoModo || 'casa';
-          const motivo = datos.motivo || 'desconocido';
-          const forzar = datos.forzar || false;
-          
-          if (!nuevoModo) {
-            throw new Error('No se especificó el modo en el mensaje');
+          // Validar datos de entrada
+          const validacion = validarCambioModo(datos);
+          if (!validacion.valido) {
+            throw new Error(validacion.error);
           }
           
-          // Validar el modo
-          if (nuevoModo !== 'casa' && nuevoModo !== 'aventura') {
-            throw new Error(`Modo no válido: ${nuevoModo}`);
+          const { modo, motivo } = validacion;
+          
+          // Validar modo
+          if (modo !== 'casa' && modo !== 'aventura') {
+            throw new Error(`Modo no válido: ${modo}`);
           }
           
           const modoAnterior = estadoApp.modo;
-          if (modoAnterior === nuevoModo && !forzar) {
-            console.log(`[hijo5] Ya se encuentra en modo ${nuevoModo}, ignorando cambio`);
-            return { exito: true, mensaje: 'Ya está en el modo solicitado' };
+          
+          // Si ya está en el modo solicitado, no hacer nada
+          if (modo === modoAnterior) {
+            console.log(`[${CONFIG.IFRAME_ID}] Ya está en modo ${modo}, ignorando solicitud`);
+            return true;
           }
           
-          console.log(`[hijo5] Cambiando de modo: ${modoAnterior} -> ${nuevoModo}`);
-          estadoApp.modo = nuevoModo;
+          console.log(`[${CONFIG.IFRAME_ID}] Cambiando de modo ${modoAnterior} a ${modo}...`);
           
-          // 1. Actualizar el estado
-          // 2. Ajustes específicos según el modo
-          if (nuevoModo === 'casa') {
-            // Desactivar GPS al cambiar a modo casa
-            estadoApp.gpsActivo = false;
-            console.log(`[${CONFIG.IFRAME_ID}] GPS desactivado al cambiar a modo casa`);
-          }
+          // Actualizar el estado local
+          estadoApp.modo = modo;
           
-          // 3. Actualizar la interfaz
+          // Actualizar la interfaz
           actualizarInterfaz();
           
-          // 4. Notificar el cambio si es necesario
-          // Notificar al padre del cambio exitoso
-          if (window.Mensajeria) {
+          // Notificar al padre del cambio de modo exitoso
+          if (enviarMensaje) {
             try {
-              await window.Mensajeria.enviarMensaje(
-                'padre',
-                TIPOS_MENSAJE.SISTEMA.CONFIRMACION,
+              await enviarMensaje(
+                'padre', 
+                TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_CONFIRMACION, 
                 {
-                  tipo: 'cambio_modo',
-                  id: mensaje.id || Date.now().toString(),
                   exito: true,
                   datos: {
                     modoAnterior,
-                    modoNuevo: nuevoModo,
+                    modoNuevo: modo,
                     motivo,
                     timestamp: new Date().toISOString()
                   }
@@ -421,17 +925,15 @@
                 }
               );
               console.log(`[${CONFIG.IFRAME_ID}] Confirmación de cambio de modo enviada al padre`);
-            } catch (error) {
-              console.error('[hijo5] Error al enviar confirmación al padre:', error);
-              // Continuar a pesar del error de confirmación
+            } catch (notifyError) {
+              console.error(`[${CONFIG.IFRAME_ID}] Error al notificar error de cambio de modo:`, notifyError);
             }
           } else {
             console.warn(`[${CONFIG.IFRAME_ID}] No se pudo enviar confirmación: Mensajería no disponible`);
           }
           
-          console.log(`[${CONFIG.IFRAME_ID}] Modo cambiado exitosamente a ${nuevoModo}`);
+          console.log(`[${CONFIG.IFRAME_ID}] Modo cambiado exitosamente a ${modo}`);
           return true;
-          
         } catch (error) {
           const errorMsg = `Error al cambiar el modo: ${error.message}`;
           console.error(`[${CONFIG.IFRAME_ID}] ${errorMsg}`, error);
@@ -440,12 +942,12 @@
           try {
             await notificarEstado('error_cambio_modo', {
               error: error.message,
-              motivo: mensaje.datos?.motivo || 'desconocido',
+              motivo: datos.motivo || 'desconocido',
               modoAnterior: estadoApp.modo,
-              modoIntentado: mensaje.datos?.modo
+              modoIntentado: datos.modo
             });
           } catch (notifyError) {
-            console.error(`[${CONFIG.IFRAME_ID}] Error al notificar error de cambio de modo:`, notifyError);
+            console.error(`[${CONFIG.IFRAME_ID}] Error al notificar el error:`, notifyError);
           }
           
           return false;
@@ -484,66 +986,39 @@
               version: '1.0.0' // Versión del formato de respuesta
             }
           };
-          
-          // Filtrar respuesta según lo solicitado
-          if (solicitud !== 'completo') {
-            if (solicitud === 'basico') {
-              // Solo información básica
-              datosRespuesta.estado = {
-                modo: estadoApp.modo,
-                gpsActivo: estadoApp.gpsActivo,
-                controlesHabilitados: estadoApp.controlesHabilitados
-              };
-            } else if (solicitud === 'punto_actual' && estadoApp.puntoActual) {
-              // Solo información del punto actual
-              datosRespuesta.estado = {
-                puntoActual: estadoApp.puntoActual,
-                tramoActual: estadoApp.tramoActual
-              };
+
+          // Enviar respuesta
+          await enviarMensaje(
+            mensaje.origen || 'padre',
+            'respuesta_estado',
+            datosRespuesta,
+            { 
+              maxRetries: CONFIG.REINTENTOS.MAXIMOS,
+              retryDelay: CONFIG.REINTENTOS.TIEMPO_ESPERA
             }
-          }
-          
-          // Enviar la respuesta
-          if (window.Mensajeria) {
-            await window.Mensajeria.enviarMensaje(
-              mensaje.origen || 'padre',
-              'respuesta_estado',
-              datosRespuesta,
-              { 
-                maxRetries: CONFIG.REINTENTOS.MAXIMOS,
-                retryDelay: CONFIG.REINTENTOS.TIEMPO_ESPERA
-              }
-            );
-            
-            console.log(`[${CONFIG.IFRAME_ID}] Estado enviado (${solicitud})`, { 
-              idSolicitud: idMensaje,
-              destino: mensaje.origen || 'padre'
-            });
-          } else {
-            console.warn(`[${CONFIG.IFRAME_ID}] No se pudo enviar el estado: Mensajería no disponible`);
-            return false;
-          }
-          
+          );
+
+          console.log(`[${CONFIG.IFRAME_ID}] Estado enviado (${solicitud})`, { 
+            idSolicitud: idMensaje,
+            destino: mensaje.origen || 'padre'
+          });
           return true;
-          
         } catch (error) {
           const errorMsg = `Error al procesar solicitud de estado (${solicitud}): ${error.message}`;
           console.error(`[${CONFIG.IFRAME_ID}] ${errorMsg}`, error);
           
           // Intentar notificar el error
           try {
-            if (window.Mensajeria) {
-              await window.Mensajeria.enviarMensaje(
-                mensaje.origen || 'padre',
-                'error_solicitud_estado',
-                {
-                  idSolicitud: idMensaje,
-                  error: error.message,
-                  timestamp: new Date().toISOString()
-                },
-                { maxRetries: 1 } // Solo un intento para errores
-              );
-            }
+            await enviarMensaje(
+              mensaje.origen || 'padre',
+              'error_solicitud_estado',
+              {
+                idSolicitud: idMensaje,
+                error: error.message,
+                timestamp: new Date().toISOString()
+              },
+              { maxRetries: 1 } // Solo un intento para errores
+            );
           } catch (notifyError) {
             console.error(`[${CONFIG.IFRAME_ID}] Error al notificar error de estado:`, notifyError);
           }
@@ -642,19 +1117,17 @@
           
           // Notificar el error sin reintentos para evitar bucles
           try {
-            if (window.Mensajeria) {
-              await window.Mensajeria.enviarMensaje(
-                mensaje.origen || 'padre',
-                'error_procesamiento_confirmacion',
-                {
-                  idConfirmacion: idOperacion,
-                  tipo,
-                  error: error.message,
-                  timestamp: new Date().toISOString()
-                },
-                { maxRetries: 1 } // Solo un intento para errores
-              );
-            }
+            await enviarMensaje(
+              mensaje.origen || 'padre',
+              'error_procesamiento_confirmacion',
+              {
+                idConfirmacion: idOperacion,
+                tipo,
+                error: error.message,
+                timestamp: new Date().toISOString()
+              },
+              { maxRetries: 1 } // Solo un intento para errores
+            );
           } catch (notifyError) {
             console.error(`[${CONFIG.IFRAME_ID}] Error al notificar error de confirmación:`, notifyError);
           }
@@ -663,27 +1136,37 @@
         }
       }
       
-      // Función para notificar errores
+      /**
+       * Notifica un error al sistema de registro y opcionalmente al padre
+       * @param {string} tipo - Tipo de error
+       * @param {Error} error - Objeto de error
+       * @returns {Promise<Object>} Información del error notificado
+       */
       async function notificarError(tipo, error) {
-        console.error(`[${CONFIG.IFRAME_ID}] Error (${tipo}):`, error);
+        // Validación de parámetros
+        if (!tipo || typeof tipo !== 'string') {
+          logger.error('Tipo de error no válido al notificar error', { tipo, error });
+          tipo = 'error_desconocido';
+        }
         
-        if (window.Mensajeria) {
-          try {
-            await window.Mensajeria.enviarMensaje(
-              'padre',
-              'error',
-              {
-                tipo,
-                mensaje: error.message,
-                stack: error.stack,
-                timestamp: Date.now(),
-                origen: CONFIG.IFRAME_ID
-              },
-              CONFIG.REINTENTOS
-            );
-          } catch (e) {
-            console.error(`[${CONFIG.IFRAME_ID}] Error al notificar error:`, e);
-          }
+        // Registrar el error localmente
+        logger.error(`Error (${tipo})`, error);
+        
+        try {
+          await enviarMensaje(
+            'padre',
+            'error',
+            {
+              tipo,
+              mensaje: error.message,
+              stack: error.stack,
+              timestamp: Date.now(),
+              origen: CONFIG.IFRAME_ID
+            },
+            CONFIG.REINTENTOS
+          );
+        } catch (e) {
+          console.error(`[${CONFIG.IFRAME_ID}] Error al notificar error:`, e);
         }
       }
       
@@ -715,50 +1198,88 @@
       // Incluir aquí las funciones existentes como actualizarBotonGPS, etc.
       // ...
       
-      // Función para mostrar errores en la interfaz
-      function mostrarError(mensaje) {
-        // Implementar lógica para mostrar errores al usuario
-        console.error(mensaje);
+      /**
+       * Muestra un mensaje de error en la interfaz de usuario
+       * @param {string} mensaje - Mensaje de error a mostrar
+       * @param {Error} [error] - Error opcional para registrar
+       */
+      function mostrarError(mensaje, error = null) {
+        // Registrar el error
+        if (error) {
+          logger.error(mensaje, error);
+        } else {
+          logger.error(mensaje);
+        }
         
-        // Mostrar mensaje de error en la interfaz si es necesario
+        // Mostrar mensaje de error en la interfaz si es posible
         const errorContainer = document.getElementById('error-container');
         if (errorContainer) {
           errorContainer.textContent = mensaje;
           errorContainer.style.display = 'block';
           
-          // Ocultar después de 5 segundos
+          // Ocultar el mensaje después de 5 segundos
           setTimeout(() => {
             errorContainer.style.display = 'none';
           }, 5000);
         }
       }
       
-      // Función para habilitar controles
+      /**
+       * Habilita o deshabilita los controles de la interfaz según el modo
+       * @param {string} modo - Modo para el cual habilitar los controles
+       * @returns {Promise<boolean>} True si los controles se habilitaron correctamente
+       */
       async function habilitarControles(modo) {
-        console.log(`[${CONFIG.IFRAME_ID}] Habilitando controles para modo: ${modo}`);
-        estadoApp.controlesHabilitados = true;
+        logger.debug(`Habilitando controles para modo: ${modo}`);
         
-        // Aquí iría la lógica para habilitar controles específicos
-        const gpsBtn = document.getElementById('gps-casa-btn');
-        if (gpsBtn) {
-          gpsBtn.disabled = false;
+        try {
+          // Actualizar estado
+          estadoApp.controlesHabilitados = true;
+          
+          // Habilitar controles específicos
+          const gpsBtn = document.getElementById('gps-casa-btn');
+          const modoBtn = document.getElementById('boton-cambio-modo');
+          
+          if (gpsBtn) gpsBtn.disabled = false;
+          if (modoBtn) modoBtn.disabled = false;
+          
+          logger.info(`Controles habilitados para modo: ${modo}`);
+          return true;
+          
+        } catch (error) {
+          const errorMsg = 'Error al habilitar controles';
+          logger.error(errorMsg, error);
+          throw new Error(`${errorMsg}: ${error.message}`);
         }
-        
-        return true;
       }
       
-      // Función para deshabilitar controles
+      /**
+       * Deshabilita los controles de la interfaz
+       * @param {string} razon - Razón por la que se deshabilitan los controles
+       * @returns {Promise<boolean>} True si los controles se deshabilitaron correctamente
+       */
       async function deshabilitarControles(razon) {
-        console.log(`[${CONFIG.IFRAME_ID}] Deshabilitando controles. Razón: ${razon}`);
-        estadoApp.controlesHabilitados = false;
+        logger.debug(`Deshabilitando controles. Razón: ${razon}`);
         
-        // Aquí iría la lógica para deshabilitar controles específicos
-        const gpsBtn = document.getElementById('gps-casa-btn');
-        if (gpsBtn) {
-          gpsBtn.disabled = true;
+        try {
+          // Actualizar estado
+          estadoApp.controlesHabilitados = false;
+          
+          // Deshabilitar controles específicos
+          const gpsBtn = document.getElementById('gps-casa-btn');
+          const modoBtn = document.getElementById('boton-cambio-modo');
+          
+          if (gpsBtn) gpsBtn.disabled = true;
+          if (modoBtn) modoBtn.disabled = true;
+          
+          logger.info(`Controles deshabilitados. Razón: ${razon}`);
+          return true;
+          
+        } catch (error) {
+          const errorMsg = 'Error al deshabilitar controles';
+          logger.error(errorMsg, error);
+          throw new Error(`${errorMsg}: ${error.message}`);
         }
-        
-        return true;
       }
       
       /**
@@ -847,43 +1368,366 @@
         }
       }
       
-      // Inicializar la aplicación cuando el DOM esté listo
-      document.addEventListener('DOMContentLoaded', () => {
-        try {
-          console.log('[hijo5-casa] Iniciando inicialización...');
-          window.CONFIG = window.CONFIG || { IFRAME_ID: 'hijo5-casa' };
-          window.estadoApp = window.estadoApp || {
-            gpsActivo: false,
-            modo: 'casa',
-            controlesHabilitados: true,
-            puntoActual: null,
-            tramoActual: null,
-            ultimoError: null
-          };
-          cargarEstado();
-          const gpsBtn = document.getElementById('gps-casa-btn');
-          if (gpsBtn) {
-            const newBtn = gpsBtn.cloneNode(true);
-            gpsBtn.parentNode.replaceChild(newBtn, gpsBtn);
-            console.log(`[${CONFIG.IFRAME_ID}] Aplicación inicializada correctamente`);
-            const gpsBtn = document.getElementById('gps-casa-btn');
-            if (gpsBtn) {
-              gpsBtn.addEventListener('click', async (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const nuevoModo = estadoApp.modo === 'casa' ? 'aventura' : 'casa';
-                await manejarCambioModo({
-                  datos: { modo: nuevoModo, motivo: 'click_usuario' }
-                });
-              });
-            }
-            actualizarInterfaz();
+      // ================== MANEJADORES DE EVENTOS ==================
+      
+      // Sistema de gestión de manejadores de eventos
+      const manejadoresEventos = {
+        _almacen: new Map(),
+        
+        /**
+         * Agrega un manejador de eventos a un elemento
+         * @param {HTMLElement} elemento - Elemento al que se agregará el manejador
+         * @param {string} tipoEvento - Tipo de evento a manejar
+         * @param {Function} manejador - Función que manejará el evento
+         * @param {Object} [opciones] - Opciones adicionales para el manejador
+         */
+        agregar(elemento, tipoEvento, manejador, opciones) {
+          if (!elemento || !tipoEvento || typeof manejador !== 'function') {
+            logger.warn('Parámetros inválidos para agregar manejador', { 
+              elemento: !!elemento, 
+              tipoEvento,
+              esFuncion: typeof manejador === 'function'
+            });
+            return;
           }
-        } catch (error) {
-          console.error(`[${CONFIG.IFRAME_ID}] Error en la inicialización:`, error);
-          mostrarError('Error al inicializar la aplicación. Por favor, recarga la página.');
+          
+          const clave = this._generarClave(elemento);
+          
+          if (!this._almacen.has(clave)) {
+            this._almacen.set(clave, new Map());
+          }
+          
+          const eventosElemento = this._almacen.get(clave);
+          
+          if (!eventosElemento.has(tipoEvento)) {
+            eventosElemento.set(tipoEvento, []);
+          }
+          
+          eventosElemento.get(tipoEvento).push({ manejador, opciones });
+          elemento.addEventListener(tipoEvento, manejador, opciones);
+          
+          logger.debug(`Manejador agregado: ${clave} - ${tipoEvento}`);
+        },
+        
+        /**
+         * Elimina manejadores de eventos de un elemento
+         * @param {HTMLElement} elemento - Elemento del que se eliminarán los manejadores
+         * @param {string} [tipoEvento] - Tipo de evento a eliminar (opcional)
+         */
+        eliminar(elemento, tipoEvento) {
+          if (!elemento) {
+            logger.warn('No se puede eliminar manejadores: elemento no proporcionado');
+            return;
+          }
+          
+          const clave = this._generarClave(elemento);
+          if (!this._almacen.has(clave)) {
+            logger.debug(`No hay manejadores registrados para el elemento: ${clave}`);
+            return;
+          }
+          
+          const eventosElemento = this._almacen.get(clave);
+          
+          if (tipoEvento) {
+            this._eliminarTipoEvento(elemento, eventosElemento, tipoEvento);
+            
+            if (eventosElemento.size === 0) {
+              this._almacen.delete(clave);
+              logger.debug(`Todos los manejadores eliminados para: ${clave}`);
+            }
+          } else {
+            // Eliminar todos los tipos de eventos para este elemento
+            for (const [tipo] of eventosElemento) {
+              this._eliminarTipoEvento(elemento, eventosElemento, tipo);
+            }
+            this._almacen.delete(clave);
+            logger.debug(`Todos los manejadores eliminados para: ${clave}`);
+          }
+        },
+        
+        /**
+         * Elimina todos los manejadores de eventos registrados
+         */
+        limpiarTodo() {
+          if (this._almacen.size === 0) {
+            logger.debug('No hay manejadores para limpiar');
+            return;
+          }
+          
+          logger.info(`Limpiando ${this._almacen.size} elementos con manejadores...`);
+          
+          for (const [clave, eventosElemento] of this._almacen) {
+            const [tag, id, ...clases] = clave.split('.');
+            let selector = tag;
+            if (id) selector += `#${id}`;
+            if (clases.length) selector += `.${clases.join('.')}`;
+            
+            const elemento = document.querySelector(selector);
+            if (!elemento) {
+              logger.warn(`Elemento no encontrado: ${selector}`);
+              continue;
+            }
+            
+            for (const [tipoEvento] of eventosElemento) {
+              this.eliminar(elemento, tipoEvento);
+            }
+          }
+          
+          this._almacen.clear();
+          logger.info('Todos los manejadores han sido eliminados');
+        },
+        
+        /**
+         * Genera una clave única para identificar un elemento
+         * @private
+         * @param {HTMLElement} elemento - Elemento para generar la clave
+         * @returns {string} Clave única para el elemento
+         */
+        _generarClave(elemento) {
+          const tag = elemento.tagName ? elemento.tagName.toLowerCase() : 'unknown';
+          const id = elemento.id ? elemento.id : '';
+          const clases = elemento.classList ? Array.from(elemento.classList).join('.') : '';
+          return [tag, id, clases].filter(Boolean).join('.');
+        },
+        
+        /**
+         * Elimina todos los manejadores de un tipo de evento específico
+         * @private
+         * @param {HTMLElement} elemento - Elemento del que se eliminarán los manejadores
+         * @param {Map} eventosElemento - Mapa de eventos del elemento
+         * @param {string} tipoEvento - Tipo de evento a eliminar
+         */
+        _eliminarTipoEvento(elemento, eventosElemento, tipoEvento) {
+          if (!eventosElemento.has(tipoEvento)) {
+            logger.debug(`No hay manejadores para el tipo de evento: ${tipoEvento}`);
+            return;
+          }
+          
+          const manejadores = eventosElemento.get(tipoEvento);
+          const clave = this._generarClave(elemento);
+          
+          logger.debug(`Eliminando ${manejadores.length} manejadores para: ${clave} - ${tipoEvento}`);
+          
+          for (const { manejador, opciones } of manejadores) {
+            try {
+              elemento.removeEventListener(tipoEvento, manejador, opciones);
+              logger.debug(`Manejador eliminado: ${clave} - ${tipoEvento}`);
+            } catch (error) {
+              logger.error(`Error al eliminar manejador: ${clave} - ${tipoEvento}`, error);
+            }
+          }
+          
+          eventosElemento.delete(tipoEvento);
         }
-      });
+      };
+      
+      /**
+       * Configura los manejadores de eventos de la interfaz de usuario
+       */
+      function configurarManejadoresUI() {
+        // Manejador para el botón de GPS
+        const gpsBtn = document.getElementById('gps-casa-btn');
+        if (gpsBtn) {
+          manejadoresEventos.agregar(gpsBtn, 'click', manejarClickGPS);
+        }
+        
+        // Manejador para el botón de cambio de modo
+        const botonCambioModo = document.getElementById('boton-cambio-modo');
+        if (botonCambioModo) {
+          manejadoresEventos.agregar(botonCambioModo, 'click', manejarCambioModo);
+        }
+        
+        // Manejador para los botones de paradas/tramos
+        manejadoresEventos.agregar(document, 'click', (event) => {
+          const botonParada = event.target.closest('.parada-tramo-btn');
+          if (botonParada) {
+            const idPunto = botonParada.dataset.idPunto;
+            if (idPunto) {
+              manejarSeleccionPunto(idPunto);
+            }
+          }
+        });
+        
+        // Manejador para cerrar la ventana de paradas al hacer clic fuera
+        manejadoresEventos.agregar(document, 'click', (event) => {
+          const zonaBoton = document.getElementById('zona-boton-casa');
+          const ventanaParadas = document.getElementById('paradas-window');
+          
+          if (ventanaParadas && ventanaParadas.classList.contains('visible') && 
+              zonaBoton && !zonaBoton.contains(event.target)) {
+            ventanaParadas.classList.remove('visible');
+          }
+        });
+        
+        // Manejador para el evento personalizado de cambio de modo
+        manejadoresEventos.agregar(document, 'modoCambiado', (event) => {
+          const { modo } = event.detail || {};
+          actualizarInterfazModo(modo);
+        });
+      }
+      
+      /**
+       * Maneja el clic en el botón de GPS
+       * @param {Event} event - Evento de clic
+       */
+      async function manejarClickGPS(event) {
+        event.stopPropagation();
+        
+        try {
+          const nuevoEstado = !estadoApp.gpsActivo;
+          console.log(`[${CONFIG.IFRAME_ID}] Cambiando estado GPS a: ${nuevoEstado ? 'ACTIVO' : 'INACTIVO'}`);
+          
+          // Actualizar estado local
+          await estadoApp.actualizarEstado({
+            gpsActivo: nuevoEstado,
+            ultimaAccion: nuevoEstado ? 'activar_gps' : 'desactivar_gps',
+            timestamp: new Date().toISOString()
+          });
+          
+          // Notificar al padre del cambio
+          await notificarEstado('cambio_estado_gps', { 
+            gpsActivo: nuevoEstado 
+          });
+          
+          // Mostrar/ocultar ventana de paradas si está disponible
+          const ventanaParadas = document.getElementById('paradas-window');
+          if (ventanaParadas) {
+            if (nuevoEstado) {
+              ventanaParadas.classList.add('visible');
+            } else {
+              ventanaParadas.classList.remove('visible');
+            }
+          }
+          
+        } catch (error) {
+          console.error(`[${CONFIG.IFRAME_ID}] Error al manejar clic en GPS:`, error);
+          notificarError('error_gps', error);
+        }
+      }
+      
+      /**
+       * Maneja la selección de un punto (parada o tramo)
+       * @param {string} idPunto - ID del punto seleccionado
+       */
+      async function manejarSeleccionPunto(idPunto) {
+        try {
+          console.log(`[${CONFIG.IFRAME_ID}] Punto seleccionado:`, idPunto);
+          
+          // Validar ID del punto
+          const validacionId = validarIdPunto(idPunto);
+          if (!validacionId.valido) {
+            throw new Error(validacionId.mensaje);
+          }
+          
+          // Encontrar el punto en el array de puntosRuta
+          const punto = puntosRuta.find(p => p.padreid === idPunto);
+          if (!punto) {
+            throw new Error(`No se encontró el punto con ID: ${idPunto}`);
+          }
+          
+          // Validar la estructura del punto
+          const validacionPunto = validarPunto(punto);
+          if (!validacionPunto.valido) {
+            throw new Error(`Punto inválido: ${validacionPunto.errores.join('; ')}`);
+          }
+          
+          // Actualizar estado local
+          const actualizacion = {
+            puntoActual: punto,
+            ultimaAccion: 'seleccion_punto',
+            timestamp: new Date().toISOString()
+          };
+          
+          // Actualizar según el tipo de punto
+          if (punto.tipo === 'parada' || punto.parada !== undefined) {
+            actualizacion.paradaActual = punto.parada;
+          } else if (punto.tipo === 'tramo' || punto.tramo !== undefined) {
+            actualizacion.tramoActual = punto.tramo;
+          }
+          
+          await estadoApp.actualizarEstado(actualizacion);
+          
+          // Notificar al padre
+          await notificarEstado('punto_seleccionado', { 
+            tipo: punto.tipo,
+            id: punto.padreid,
+            nombre: punto.nombre,
+            datosAdicionales: punto
+          });
+          
+          // Resaltar el punto seleccionado
+          document.querySelectorAll('.parada-tramo-btn').forEach(btn => {
+            btn.classList.toggle('actual', btn.dataset.idPunto === idPunto);
+          });
+          
+        } catch (error) {
+          console.error(`[${CONFIG.IFRAME_ID}] Error al manejar selección de punto:`, error);
+          notificarError('seleccion_punto', error);
+        }
+      }
+      
+      // Inicializar la aplicación cuando el DOM esté listo
+      // ================== INICIALIZACIÓN ==================
+      /**
+       * Inicializa la aplicación
+       * @returns {Promise<boolean>} True si la inicialización fue exitosa
+       */
+      /**
+       * Inicializa la aplicación
+       * @returns {Promise<boolean>} True si la inicialización fue exitosa
+       */
+      /**
+       * Inicializa la aplicación
+       * @returns {Promise<boolean>} True si la inicialización fue exitosa
+       */
+      async function inicializarAplicacion() {
+        logger.info('Inicializando aplicación...');
+        
+        try {
+          // Inicializar estado global
+          window.CONFIG = CONFIG;
+          window.estadoApp = estadoApp;
+          
+          // Configurar manejadores de eventos
+          configurarManejadoresUI();
+          
+          // Inicializar componentes
+          logger.debug('Inicializando componentes...');
+          await Promise.all([
+            inicializarMensajeriaApp(),
+            registrarManejadores()
+          ]);
+          
+          // Configurar estado inicial
+          estadoApp = {
+            ...estadoApp,
+            ...CONFIG.ESTADO_INICIAL,
+            inicializado: true
+          };
+          
+          // Cargar estado inicial y actualizar la interfaz
+          logger.debug('Cargando estado inicial...');
+          await cargarEstado();
+          actualizarInterfaz();
+          
+          // Notificar al padre que la aplicación está lista
+          logger.debug('Notificando al padre que la aplicación está lista...');
+          await notificarEstado('aplicacion_inicializada', {
+            version: '1.0.0',
+            timestamp: new Date().toISOString()
+          });
+          
+          logger.info('Aplicación inicializada correctamente');
+          return true;
+          
+        } catch (error) {
+          const errorMsg = 'Error al inicializar la aplicación';
+          logger.error(errorMsg, error);
+          await notificarError('inicializacion_aplicacion', error);
+          mostrarError('Error al inicializar la aplicación. Por favor, recarga la página.');
+          throw error;
+        }
+      }
       
       // Array completo de paradas y tramos con padreid añadido
       const puntosRuta = [
@@ -943,6 +1787,77 @@
         { padreid: "padre-P-31", tipo: "parada", parada: 31, nombre: "Torres de Serranos (Final)" }
       ];
 
+      /**
+       * Carga el estado inicial de la aplicación
+       * @returns {Promise<void>}
+       */
+      async function cargarEstado() {
+        try {
+          // 1. Cargar datos de la ruta
+          logger.debug('Cargando datos de la ruta...');
+          // ... (código para cargar datos de la ruta)
+          
+          // 2. Cargar preferencias del usuario
+          logger.debug('Cargando preferencias del usuario...');
+          // ... (código para cargar preferencias)
+          
+          // 3. Actualizar el estado de la aplicación
+          logger.debug('Actualizando estado de la aplicación...');
+          // ... (código para actualizar el estado)
+          
+          logger.info('Estado inicial cargado correctamente');
+          
+        } catch (error) {
+          const errorMsg = 'Error al cargar el estado';
+          logger.error(errorMsg, error);
+          await notificarError('carga_estado', error);
+          throw error; // Relanzar para que el llamador pueda manejarlo
+        }
+      }
+
+      // Inicializar la aplicación cuando el DOM esté listo
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+          inicializarAplicacion().catch(error => {
+            logger.error('Error crítico durante la inicialización', error);
+          });
+        });
+      } else {
+        // Si el DOM ya está listo, inicializar de inmediato
+        inicializarAplicacion().catch(error => {
+          logger.error('Error crítico durante la inicialización', error);
+        });
+      }
+      
+      // Limpiar manejadores de eventos cuando se desmonte el iframe
+      window.addEventListener('beforeunload', () => {
+        if (typeof manejadoresEventos !== 'undefined' && typeof manejadoresEventos.limpiarTodo === 'function') {
+          logger.debug('Limpiando manejadores de eventos...');
+          
+          try {
+            manejadoresEventos.limpiarTodo();
+            logger.info('Limpieza de manejadores de eventos completada');
+          } catch (error) {
+            logger.error('Error al limpiar manejadores de eventos', error);
+          }
+        }
+      });
+      
+      // Configurar manejador de eventos para el botón GPS
+      document.addEventListener('click', (e) => {
+        const gpsBtn = e.target.closest('#gps-casa-btn');
+        if (gpsBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          const nuevoModo = estadoApp.modo === 'casa' ? 'aventura' : 'casa';
+          manejarCambioModo({
+            datos: { modo: nuevoModo, motivo: 'click_usuario' }
+          }).catch(error => {
+            console.error(`[${CONFIG.IFRAME_ID}] Error al cambiar el modo:`, error);
+          });
+        }
+      });
+      
       // ...existing code...
     </script>
     <style>
@@ -1250,11 +2165,11 @@
 </head>
 <body>
   <div id="zona-boton-casa">
-    <button id="gps-casa-btn" class="on" title="Activar GPS">
-      <div class="button-content">
+    <button id="gps-casa-btn" class="on" title="Activar GPS" aria-label="Activar GPS">
+      <span class="button-content">
         <span class="satellite-emoji">📡</span>
         <span class="gps-label">ON</span>
-      </div>
+      </span>
     </button>
     <div id="paradas-container" class="paradas-container">
       <!-- Las paradas y tramos se agregarán aquí dinámicamente -->
@@ -1263,5 +2178,26 @@
       <div id="paradas-list"></div>
     </div>
   </div>
+  <script>
+    // Código de inicialización de la aplicación
+    document.addEventListener('DOMContentLoaded', async () => {
+      try {
+        // Inicialización de la mensajería
+        await inicializarMensajeria({
+          iframeId: CONFIG.IFRAME_ID,
+          debug: CONFIG.DEBUG,
+          logLevel: CONFIG.LOG_LEVEL
+        });
+        
+        // Registrar manejadores de eventos
+        registrarManejadores();
+        
+        // Notificar que la inicialización ha terminado
+        notificarInicializacion();
+      } catch (error) {
+        notificarError('inicializacion', error);
+      }
+    });
+  </script>
 </body>
 </html>
