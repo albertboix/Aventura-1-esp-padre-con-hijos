@@ -12,11 +12,16 @@
         inicializarMensajeria, 
         enviarMensaje, 
         registrarControlador
-      } from './mensajeria.js';
+      } from './js/mensajeria.js';
       
-      // Hacer las funciones disponibles globalmente
-      window.Mensajeria = { enviarMensaje, inicializarMensajeria: inicializarMensajeriaModulo };
-      window.TIPOS_MENSAJE = TIPOS_MSG;
+    // Hacer las constantes y funciones disponibles globalmente
+    window.TIPOS_MENSAJE = TIPOS_MENSAJE;
+    window.Mensajeria = {
+      inicializarMensajeria,
+      enviarMensaje,
+      registrarControlador,
+      TIPOS_MENSAJE
+    };
       
       // ================== INICIALIZACIÓN DE MENSAJERÍA MEJORADA ==================
       
@@ -49,25 +54,10 @@
       window.estadoApp = estadoApp;
       
       // Constantes de mensajería como respaldo
-      const TIPOS_MENSAJE = {
-        SISTEMA: 'sistema',
-        INICIALIZACION: 'inicializacion',
-        CONFIGURACION: 'configuracion',
-        ESTADO: 'estado',
-        ERROR: 'error',
-        NAVEGACION: 'navegacion',
-        AUDIO: 'audio',
-        RETO: 'reto',
-        CONFIRMACION: 'confirmacion',
-        CONTROLES_HABILITADOS: 'sistema:controles_habilitados',
-        CONTROLES_DESHABILITADOS: 'sistema:controles_deshabilitados',
-        CAMBIO_MODO: 'sistema:cambio_modo',
-        HABILITAR_CONTROLES: 'sistema:habilitar_controles',
-        DESHABILITAR_CONTROLES: 'sistema:deshabilitar_controles'
-      };
+      // (Eliminado: declaración duplicada de TIPOS_MENSAJE)
       
       // Hacer las constantes accesibles globalmente
-      window.TIPOS_MENSAJE = TIPOS_MENSAJE;
+      // (Eliminado: declaración duplicada de window.TIPOS_MENSAJE)
 
       /**
        * Inicializa el sistema de mensajería con manejo mejorado de errores y reintentos
@@ -77,6 +67,9 @@
         const ID_APLICACION = 'hijo2';
         const MAX_REINTENTOS = estadoApp.configuracion.maxReintentos || 5;
         const DELAY_BASE = estadoApp.configuracion.delayReconexion || 2000;
+        
+        // Usar el módulo importado
+        const moduloMensajeria = Mensajeria;
         
         // Función para notificar error al padre
         const notificarErrorAlPadre = (error) => {
@@ -129,24 +122,20 @@
           console.log(`[${ID_APLICACION}] Iniciando sistema de mensajería (intento ${estadoApp.reintentos + 1}/${MAX_REINTENTOS})...`);
           
           // 1. Verificar si ya está cargado el módulo
-          if (window.Mensajeria && estadoApp.mensajeriaInicializada) {
+          if (estadoApp.mensajeriaInicializada) {
             console.log(`[${ID_APLICACION}] Módulo de mensajería ya cargado y listo`);
             return true;
           }
-          
-          // 2. Importar dinámicamente el módulo de mensajería
-          console.log(`[${ID_APLICACION}] Importando módulo de mensajería...`);
-          const moduloMensajeria = await import('./js/mensajeria.js');
           
           if (!moduloMensajeria) {
             throw new Error('No se pudo cargar el módulo de mensajería');
           }
           
-          // 3. Hacer el módulo globalmente disponible
-          window.Mensajeria = moduloMensajeria.default || moduloMensajeria;
+          // Hacer el módulo globalmente disponible
+          window.Mensajeria = moduloMensajeria;
           
-          // 5. Asegurar que TIPOS_MENSAJE esté disponible globalmente
-          window.TIPOS_MENSAJE = window.Mensajeria.TIPOS_MENSAJE || {
+          // Asegurar que TIPOS_MENSAJE esté disponible globalmente
+          window.TIPOS_MENSAJE = TIPOS_MENSAJE || {
             // Tipos básicos
             SISTEMA: 'sistema',
             INICIALIZACION: 'inicializacion',
@@ -359,7 +348,7 @@
       // Cargar el módulo de mensajería con manejo de errores
       async function cargarModuloMensajeria() {
         try {
-          const modulo = await import('./js/mensajeria.js');
+          const modulo = await import('./mensajeria.js');
           console.log('[HIJO2] Módulo de mensajería cargado correctamente');
           return modulo;
         } catch (error) {
@@ -419,64 +408,119 @@
       }
       
       // Manejar habilitación de controles
+        // Guardar referencia a la función original para poder llamarla
+        const manejarHabilitarControlesOriginal = window.manejarHabilitarControles || (() => {});
+        
         async function manejarHabilitarControles(mensaje) {
             console.log('[HIJO2] Solicitando habilitar controles', mensaje);
             
             try {
-                // Validar mensaje
-                if (!mensaje || typeof mensaje !== 'object') {
-                    throw new Error('Mensaje inválido');
+                // Llamar a la implementación original
+                const resultado = await manejarHabilitarControlesOriginal(mensaje);
+                
+                // Notificar al padre sobre el cambio de estado de los controles
+                await notificarEstadoControles(
+                    'habilitado',
+                    mensaje?.datos?.razon || 'sin especificar',
+                    mensaje?.datos?.controles || []
+                );
+                
+                return resultado;
+                if (!mensaje || typeof mensaje !== 'object' || !mensaje.datos) {
+                    throw new Error('Mensaje inválido o sin datos');
                 }
                 
-                const { modo = 'casa', motivo = 'sin_especificar', forzar = false } = mensaje.datos || {};
+                const { controles = [], razon = 'no especificada', temporal = false } = mensaje.datos;
+                const resultados = { habilitados: [], noEncontrados: [] };
                 
-                // Si ya están habilitados y no se fuerza el cambio
-                if (estadoApp.controlesHabilitados && !forzar) {
-                    console.log(`[HIJO2] Los controles ya están habilitados en modo ${estadoApp.modoActual}`, { motivo });
+                console.log(`[HIJO2] Procesando habilitación de controles. Razón: ${razon}`, {
+                    totalControles: Array.isArray(controles) ? controles.length : 'todos',
+                    temporal
+                });
+                
+                // Función para habilitar un control individual
+                const habilitarControl = (idControl) => {
+                    const elemento = document.getElementById(idControl);
+                    if (elemento) {
+                        elemento.disabled = false;
+                        elemento.classList.remove('disabled');
+                        
+                        // Añadir clase temporal si es necesario
+                        if (temporal) {
+                            elemento.classList.add('temporal');
+                        } else {
+                            elemento.classList.remove('temporal');
+                        }
+                        
+                        resultados.habilitados.push(idControl);
+                        return true;
+                    }
                     return false;
-                }
+                };
                 
-                // Actualizar estado local
-                estadoApp.controlesHabilitados = true;
-                estadoApp.modoActual = modo;
-                estadoApp.motivoDeshabilitado = '';
-                
-                // Actualizar interfaz
-                document.body.classList.remove('controles-deshabilitados');
-                
-                // Actualizar botones
-                actualizarEstadoBotones();
-                
-                // Notificar al padre
-                try {
-                    await enviarMensajeAlPadre('sistema:controles_habilitados', { 
-                        modo,
-                        motivo,
-                        timestamp: Date.now(),
-                        origen: 'hijo2',
-                        forzado: forzar
+                // Procesar habilitación
+                if (!Array.isArray(controles) || controles.length === 0) {
+                    // Habilitar todos los controles de navegación
+                    document.querySelectorAll('.boton-navegacion').forEach(boton => {
+                        if (habilitarControl(boton.id)) {
+                            console.log(`[HIJO2] Control habilitado: ${boton.id}`);
+                        }
                     });
-                    console.log(`[HIJO2] Controles habilitados (modo: ${modo}, motivo: ${motivo})`);
-                } catch (error) {
-                    console.error('[HIJO2] Error al notificar habilitación de controles:', error);
-                    // No relanzar el error para no interrumpir el flujo
+                } else {
+                    // Habilitar solo los controles especificados
+                    controles.forEach(idControl => {
+                        if (habilitarControl(idControl)) {
+                            console.log(`[HIJO2] Control habilitado: ${idControl}`);
+                        } else {
+                            console.warn(`[HIJO2] No se encontró el control: ${idControl}`);
+                            resultados.noEncontrados.push(idControl);
+                        }
+                    });
                 }
                 
-                return true;
+                // Notificar al padre sobre el resultado
+                if (window.Mensajeria) {
+                    await window.Mensajeria.enviarMensaje(
+                        'padre',
+                        'sistema:controles_habilitados',
+                        {
+                            timestamp: Date.now(),
+                            totalHabilitados: resultados.habilitados.length,
+                            noEncontrados: resultados.noEncontrados,
+                            razon,
+                            temporal
+                        },
+                        { esperarConfirmacion: false }
+                    ).catch(console.error);
+                }
+                
+                console.log('[HIJO2] Proceso de habilitación de controles completado', resultados);
+                return { 
+                    exito: true, 
+                    resultados 
+                };
                 
             } catch (error) {
                 console.error('[HIJO2] Error al habilitar controles:', error);
                 
                 // Notificar al padre sobre el error
                 try {
-                    await enviarMensajeAlPadre('sistema:error_controles', {
-                        accion: 'habilitar',
-                        error: error.message || 'Error desconocido',
-                        timestamp: Date.now(),
-                        origen: 'hijo2'
-                    });
-                } catch (err) {
-                    console.error('[HIJO2] Error al notificar error de habilitación:', err);
+                    if (window.Mensajeria?.enviarMensaje) {
+                        await window.Mensajeria.enviarMensaje(
+                            'padre',
+                            'sistema:error_controles',
+                            {
+                                error: error.message || 'Error desconocido al habilitar controles',
+                                accion: 'habilitar',
+                                timestamp: Date.now(),
+                                stack: error.stack || 'No stack trace',
+                                origen: 'hijo2'
+                            },
+                            { esperarConfirmacion: false }
+                        ).catch(console.error);
+                    }
+                } catch (e) {
+                    console.error('[HIJO2] Error al notificar error al padre:', e);
                 }
                 
                 throw error;
@@ -484,11 +528,24 @@
         }
         
         // Manejar deshabilitación de controles
+        // Guardar referencia a la función original para poder llamarla
+        const manejarDeshabilitarControlesOriginal = window.manejarDeshabilitarControles || (() => {});
+        
         async function manejarDeshabilitarControles(mensaje) {
             console.log('[HIJO2] Solicitando deshabilitar controles', mensaje);
             
             try {
-                // Validar mensaje
+                // Llamar a la implementación original
+                const resultado = await manejarDeshabilitarControlesOriginal(mensaje);
+                
+                // Notificar al padre sobre el cambio de estado de los controles
+                await notificarEstadoControles(
+                    'deshabilitado',
+                    mensaje?.datos?.razon || 'sin especificar',
+                    mensaje?.datos?.controles || []
+                );
+                
+                return resultado;
                 if (!mensaje || typeof mensaje !== 'object') {
                     throw new Error('Mensaje inválido');
                 }
@@ -592,53 +649,9 @@
             return true;
         }
         
-        // Actualiza el estado visual de los botones según el estado de los controles
-        function actualizarEstadoBotones() {
-            try {
-                // Obtener todos los botones de navegación
-                const botonesNavegacion = document.querySelectorAll('.boton-navegacion, .control-navegacion');
-                
-                // Si los controles están deshabilitados
-                if (!estadoApp.controlesHabilitados) {
-                    botonesNavegacion.forEach(boton => {
-                        boton.disabled = true;
-                        boton.classList.add('deshabilitado');
-                        
-                        // Agregar tooltip con el motivo si está disponible
-                        if (estadoApp.motivoDeshabilitado) {
-                            boton.title = `Controles deshabilitados: ${estadoApp.motivoDeshabilitado}`;
-                        }
-                    });
-                } else {
-                    // Si los controles están habilitados
-                    botonesNavegacion.forEach(boton => {
-                        boton.disabled = false;
-                        boton.classList.remove('deshabilitado');
-                        
-                        // Limpiar tooltip si existe
-                        if (boton.title && boton.title.includes('Controles deshabilitados')) {
-                            boton.title = '';
-                        }
-                    });
-                }
-                
-                console.log('[HIJO2] Estado de botones actualizado', { 
-                    habilitados: estadoApp.controlesHabilitados,
-                    motivo: estadoApp.motivoDeshabilitado || 'N/A'
-                });
-                
-                return true;
-                
-            } catch (error) {
-                console.error('[HIJO2] Error al actualizar estado de botones:', error);
-                return false;
-            }
-        }
       
       // La función manejarConfirmacion ha sido movida a una versión más completa más abajo
       // Busca 'Función para manejar la confirmación de mensajes con reintenos' para ver la implementación
-      
-      // Manejador de confirmaciones (versión antigua eliminada - ver implementación actual más abajo)
       
       // Manejador principal de mensajes de navegación
       async function manejarMensajeNavegacion(mensaje) {
@@ -708,106 +721,6 @@
           throw error;
         }
       }
-      
-      // Manejador para habilitar controles
-      async function manejarHabilitarControles(mensaje) {
-        console.log('[HIJO2] Solicitando habilitar controles', mensaje);
-        
-        try {
-          // Validar mensaje
-          if (!mensaje || typeof mensaje !== 'object' || !mensaje.datos) {
-            throw new Error('Mensaje de habilitación de controles inválido');
-          }
-          
-          const { controles = [], razon = 'no especificada', temporal = false } = mensaje.datos;
-          const resultados = { habilitados: [], noEncontrados: [] };
-          
-          console.log(`[HIJO2] Procesando habilitación de controles. Razón: ${razon}`, {
-            totalControles: Array.isArray(controles) ? controles.length : 'todos',
-            temporal
-          });
-          
-          // Función para habilitar un control individual
-          const habilitarControl = (idControl) => {
-            const elemento = document.getElementById(idControl);
-            if (elemento) {
-              elemento.disabled = false;
-              elemento.classList.remove('disabled');
-　
-              // Añadir clase temporal si es necesario
-              if (temporal) {
-                elemento.classList.add('temporal');
-              } else {
-                elemento.classList.remove('temporal');
-　　　　　　　}
-　
-              resultados.habilitados.push(idControl);
-              return true;
-            }
-            return false;
-          };
-　
-          // Procesar habilitación
-          if (!Array.isArray(controles) || controles.length === 0) {
-            // Habilitar todos los controles de navegación
-            document.querySelectorAll('.boton-navegacion').forEach(boton => {
-              if (habilitarControl(boton.id)) {
-                console.log(`[HIJO2] Control habilitado: ${boton.id}`);
-              }
-            });
-          } else {
-            // Habilitar solo los controles especificados
-            controles.forEach(idControl => {
-              if (habilitarControl(idControl)) {
-                console.log(`[HIJO2] Control habilitado: ${idControl}`);
-              } else {
-                console.warn(`[HIJO2] No se encontró el control: ${idControl}`);
-                resultados.noEncontrados.push(idControl);
-              }
-            });
-          }
-　
-          // Notificar al padre sobre el resultado
-          if (window.Mensajeria) {
-            await window.Mensajeria.enviarMensaje(
-              'padre',
-              'sistema:controles_habilitados',
-              {
-                timestamp: Date.now(),
-                totalHabilitados: resultados.habilitados.length,
-                noEncontrados: resultados.noEncontrados,
-                razon,
-                temporal
-              },
-              { esperarConfirmacion: false }
-            ).catch(console.error);
-          }
-　
-          console.log('[HIJO2] Proceso de habilitación de controles completado', resultados);
-          return { 
-            exito: true, 
-            resultados 
-          };
-　
-        } catch (error) {
-          console.error('[HIJO2] Error al habilitar controles:', error);
-　
-          // Notificar al padre sobre el error
-          if (window.Mensajeria) {
-            await window.Mensajeria.enviarMensaje(
-              'padre',
-              'sistema:error_controles',
-              {
-                error: error.message || 'Error desconocido al habilitar controles',
-                accion: 'habilitar',
-                timestamp: Date.now()
-              },
-              { esperarConfirmacion: false }
-            ).catch(console.error);
-          }
-　
-          throw error;
-        }
       }
       
       // Esquema de validación para mensajes de confirmación
@@ -859,129 +772,6 @@
         return true;
       }
 
-      // Función para manejar la confirmación de mensajes con reintentos
-      async function manejarConfirmacion(mensaje, intento = 1, maxIntentos = 3) {
-        const ID_TRANSACCION = `confirm-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        
-        const log = (nivel, mensaje, datos = {}) => {
-          const timestamp = new Date().toISOString();
-          console[nivel](`[${timestamp}] [${ID_TRANSACCION}] ${mensaje}`, datos);
-        };
-
-        try {
-          log('info', 'Iniciando procesamiento de confirmación', { intento });
-          
-          // Validar estructura básica del mensaje
-          if (!mensaje || typeof mensaje !== 'object' || !mensaje.datos) {
-            throw new Error('Estructura de mensaje de confirmación inválida');
-          }
-
-          const { idMensaje, estado, timestamp = new Date().toISOString(), detalles = {}, tipo } = mensaje.datos;
-          
-          // Validar el esquema del mensaje
-          try {
-            validarMensajeConfirmacion({ idMensaje, estado, timestamp, detalles, tipo });
-          } catch (error) {
-            throw new Error(`Validación fallida: ${error.message}`);
-          }
-
-          log('info', 'Mensaje de confirmación validado', { idMensaje, estado, tipo });
-          
-          // Registrar la confirmación en el sistema de mensajería
-          if (window.Mensajeria?.registrarConfirmacion) {
-            try {
-              await window.Mensajeria.registrarConfirmacion(idMensaje, {
-                estado,
-                timestamp,
-                detalles,
-                tipo
-              });
-              log('info', 'Confirmación registrada exitosamente');
-            } catch (error) {
-              log('error', 'Error al registrar confirmación', { error: error.message });
-              throw new Error(`Error al registrar confirmación: ${error.message}`);
-            }
-          } else {
-            log('warn', 'Sistema de mensajería no disponible para registrar confirmación');
-          }
-
-          // Manejar diferentes tipos de confirmaciones
-          if (tipo) {
-            log('debug', `Procesando confirmación de tipo: ${tipo}`);
-            // Aquí podrías agregar lógica específica para diferentes tipos de confirmaciones
-          }
-
-          // Notificar al padre que la confirmación fue procesada
-          if (window.Mensajeria?.enviarMensaje) {
-            try {
-              await window.Mensajeria.enviarMensaje(
-                'padre',
-                'confirmacion-procesada',
-                {
-                  idMensaje,
-                  estado: 'procesado',
-                  timestamp: new Date().toISOString(),
-                  detalles: {
-                    origen: 'hijo2',
-                    transaccion: ID_TRANSACCION
-                  }
-                },
-                { maxRetries: 2, retryDelay: 500 }
-              );
-              log('info', 'Notificación de confirmación procesada enviada al padre');
-            } catch (error) {
-              log('error', 'Error al notificar al padre', { error: error.message });
-              // No relanzamos el error para no marcar la confirmación como fallida
-            }
-          }
-
-          return {
-            estado: 'procesado',
-            idMensaje,
-            timestamp: new Date().toISOString(),
-            transaccion: ID_TRANSACCION
-          };
-          
-        } catch (error) {
-          log('error', 'Error al procesar confirmación', { 
-            error: error.message,
-            intento,
-            maxIntentos 
-          });
-
-          // Reintentar si no hemos alcanzado el máximo de intentos
-          if (intento < maxIntentos) {
-            const tiempoEspera = Math.min(1000 * Math.pow(2, intento - 1), 10000);
-            log('info', `Reintentando en ${tiempoEspera}ms...`, { intento: intento + 1 });
-            
-            await new Promise(resolve => setTimeout(resolve, tiempoEspera));
-            return manejarConfirmacion(mensaje, intento + 1, maxIntentos);
-          }
-
-          // Notificar el error al padre
-          if (window.Mensajeria?.enviarMensaje) {
-            try {
-              await window.Mensajeria.enviarMensaje(
-                'padre',
-                'error-procesar-confirmacion',
-                {
-                  error: error.message || 'Error desconocido al procesar confirmación',
-                  mensajeOriginal: mensaje,
-                  timestamp: new Date().toISOString(),
-                  intentos: intento,
-                  transaccion: ID_TRANSACCION
-                },
-                { maxRetries: 2, retryDelay: 500 }
-              );
-            } catch (notifyError) {
-              log('error', 'Error al notificar error al padre', { error: notifyError.message });
-            }
-          }
-
-          // Lanzar el error para que el sistema de mensajería lo maneje
-          throw new Error(`Error después de ${intento} intentos: ${error.message}`);
-        }
-      }
       
       // Función auxiliar para notificar cambios de estado
       async function notificarCambioEstado(estado, datos = {}) {
@@ -1000,18 +790,30 @@
         }
       }
       
-      // Hacer las funciones disponibles globalmente para compatibilidad
-      window.inicializarMensajeria = inicializarMensajeriaModulo;
-      window.TIPOS_MENSAJE = TIPOS_MSG;
-      window.enableControls = enableControls;
-      window.disableControls = disableControls;
+    // Hacer las funciones disponibles globalmente para compatibilidad
+    window.inicializarMensajeria = inicializarMensajeria;
+    window.TIPOS_MENSAJE = TIPOS_MENSAJE;
+    window.enableControls = enableControls;
+    window.disableControls = disableControls;
       
       // Inicializar la mensajería cuando el DOM esté listo
+      function init() {
+        try {
+          inicializarMensajeria().then(() => {
+            console.log('[INIT] Mensajería inicializada correctamente');
+          }).catch(error => {
+            console.error('[INIT] Error al inicializar la mensajería:', error);
+          });
+        } catch (error) {
+          console.error('[INIT] Error crítico al inicializar:', error);
+        }
+      }
+
       if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', inicializarMensajeria);
+        document.addEventListener('DOMContentLoaded', init);
       } else {
-        // Si el DOM ya está listo, inicializar inmediatamente
-        setTimeout(inicializarMensajeria, 100);
+        // Si el DOM ya está listo, inicializar en el siguiente ciclo de eventos
+        setTimeout(init, 0);
       }
       // Fix 6: Ensure manejarMensajeEntrante exists
       function manejarMensajeEntrante(event) {
@@ -1275,14 +1077,79 @@
             .time-display { margin: 1px 0; }
             .botones-row { gap: 8px; margin: 1px 0; }
         }
+        /* Estilos para el modal de medios */
+        #modal-medios {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.9);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            color: white;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        
+        #modal-medios .cerrar {
+            position: absolute;
+            top: 20px;
+            right: 30px;
+            font-size: 40px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        #modal-medios .contenido {
+            max-width: 90%;
+            max-height: 80vh;
+            overflow: auto;
+            text-align: center;
+        }
+        
+        #modal-medios h2 {
+            margin-bottom: 20px;
+        }
+        
+        #modal-medios .media-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        #modal-medios img,
+        #modal-medios video {
+            max-width: 100%;
+            max-height: 70vh;
+            object-fit: contain;
+        }
+        
+        #modal-medios video {
+            background: #000;
+        }
     </style>
 </head>
 <body>
+    <!-- Modal para mostrar imágenes y videos -->
+    <div id="modal-medios">
+        <span class="cerrar">&times;</span>
+        <div class="contenido">
+            <h2 id="titulo-medio"></h2>
+            <div class="media-container"></div>
+        </div>
+    </div>
+    
     <div class="container">
         <div class="nav-buttons-container">
             <button id="btn-punto" class="nav-button" title="Punto de interés">📍</button>
-            <button id="btn-ruta" class="nav-button" title="Ver ruta">🗺️</button>
-            <button id="btn-brujula" class="nav-button" title="Brújula">🧭</button>
+            <a href="Av1_mapa_completo.html" target="_blank" class="nav-button" title="Ver ruta">🗺️</a>
+            <a href="mapas/Av1_mapa.jpg" target="_blank" class="nav-button" title="Brújula">🧭</a>
         </div>
         <div class="botones-row">
             <button id="btn-gps" class="boton">
@@ -1302,6 +1169,127 @@
     </div>
 
     <script>
+    // ================== GESTIÓN DE MEDIOS ==================
+    let elementoActual = null; // Almacena el elemento actual (parada o tramo)
+    
+    // Inicializar el modal de medios
+    document.addEventListener('DOMContentLoaded', () => {
+        const modal = document.getElementById('modal-medios');
+        const cerrarBtn = document.querySelector('#modal-medios .cerrar');
+        
+        // Cerrar modal al hacer clic en la X
+        if (cerrarBtn) {
+            cerrarBtn.addEventListener('click', cerrarModal);
+        }
+        
+        // Cerrar modal al hacer clic fuera del contenido
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) cerrarModal();
+            });
+        }
+        
+        // Cerrar con tecla ESC
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') cerrarModal();
+        });
+    });
+    
+    // Cerrar el modal de medios
+    function cerrarModal() {
+        const modal = document.getElementById('modal-medios');
+        if (modal) {
+            modal.style.display = 'none';
+            
+            // Detener videos al cerrar el modal
+            const videos = modal.querySelectorAll('video');
+            videos.forEach(video => video.pause());
+        }
+    }
+    
+    // Mostrar imagen o video del elemento actual
+    function mostrarMediaActual(tipo) {
+        if (!elementoActual) {
+            console.warn('No hay elemento actual seleccionado');
+            actualizarStatus('No hay elemento seleccionado', { tipo: 'advertencia' });
+            return;
+        }
+        
+        const mediaPath = tipo === 'imagen' 
+            ? elementoActual.imagen 
+            : (elementoActual.video || '');
+            
+        if (!mediaPath) {
+            console.warn(`No hay ${tipo} disponible para este elemento`);
+            actualizarStatus(`No hay ${tipo} disponible`, { tipo: 'advertencia' });
+            return;
+        }
+        
+        const modal = document.getElementById('modal-medios');
+        const tituloMedio = document.getElementById('titulo-medio');
+        const mediaContainer = document.querySelector('.media-container');
+        
+        if (!modal || !tituloMedio || !mediaContainer) {
+            console.error('Elementos del modal no encontrados');
+            return;
+        }
+        
+        // Actualizar título
+        tituloMedio.textContent = elementoActual.nombre || 'Elemento sin nombre';
+        mediaContainer.innerHTML = '';
+        
+        if (tipo === 'imagen') {
+            const img = document.createElement('img');
+            img.src = mediaPath;
+            img.alt = `Imagen de ${elementoActual.nombre || 'elemento actual'}`;
+            img.style.maxWidth = '100%';
+            img.style.maxHeight = '70vh';
+            mediaContainer.appendChild(img);
+        } else {
+            const video = document.createElement('video');
+            video.src = mediaPath;
+            video.controls = true;
+            video.autoplay = true;
+            video.style.maxWidth = '100%';
+            video.style.maxHeight = '70vh';
+            mediaContainer.appendChild(video);
+        }
+        
+        modal.style.display = 'flex';
+    }
+    
+    // Actualizar el elemento actual basado en el ID
+    function actualizarElementoActual(id) {
+        if (id) {
+            // Buscar en paradas y tramos
+            elementoActual = COORDENADAS_PARADAS.find(item => item.id === id);
+            
+            // Actualizar estado de los botones
+            actualizarEstadoBotonesMedios();
+        } else {
+            elementoActual = null;
+            actualizarEstadoBotonesMedios();
+        }
+    }
+    
+    // Actualizar estado de los botones de medios
+    function actualizarEstadoBotonesMedios() {
+        const btnImagen = document.getElementById('btn-imagen');
+        const btnVideo = document.getElementById('btn-video');
+        
+        if (btnImagen) {
+            const tieneImagen = elementoActual && elementoActual.imagen;
+            btnImagen.disabled = !tieneImagen;
+            btnImagen.title = tieneImagen ? 'Ver imagen' : 'Sin imagen disponible';
+        }
+        
+        if (btnVideo) {
+            const tieneVideo = elementoActual && elementoActual.video;
+            btnVideo.disabled = !tieneVideo;
+            btnVideo.title = tieneVideo ? 'Ver video' : 'Sin video disponible';
+        }
+    }
+    
     // ================== COORDENADAS DE LAS PARADAS ==================
     
     // Fix 1: Complete the missing function implementations
@@ -2120,8 +2108,8 @@
                     btnPunto.classList.add('activo');
                     btnPunto.title = 'Desactivar navegación al punto de interés';
                     
-                    // Deshabilitar otros botones mientras la navegación está activa
-                    document.querySelectorAll('.boton:not(#btn-punto)').forEach(btn => {
+                    // Deshabilitar botones que no deben usarse durante la navegación
+                    document.querySelectorAll('.boton:not(#btn-punto):not(#btn-ruta):not(#btn-brujula)').forEach(btn => {
                         btn.disabled = true;
                         btn.classList.add('disabled');
                     });
@@ -2537,6 +2525,17 @@
                         
                         console.log('[NAVEGACION] Redirigiendo mensaje al manejador de navegación:', tipo);
                         manejarMensajeDestino(mensaje);
+                        
+                        // Actualizar el elemento actual cuando se establece un destino
+                        if (tipo === 'DESTINO_ESTABLECIDO' || (datos && datos.accion === 'establecer_destino')) {
+                            const idDestino = datos.id || (datos.destino && datos.destino.id);
+                            if (idDestino) {
+                                actualizarElementoActual(idDestino);
+                            }
+                        } else if (tipo === 'CANCELAR_NAVEGACION' || (datos && datos.accion === 'cancelar_navegacion')) {
+                            actualizarElementoActual(null);
+                        }
+                        
                         return;
                     }
                     
@@ -2696,24 +2695,17 @@
                     console.log('Mostrar ruta');
                     break;
                     
-                case 'btn-brujula':
-                    // Lógica para el botón de brújula
-                    console.log('Activar/desactivar brújula');
-                    break;
-                    
                 case 'btn-gps':
                     // Lógica para el botón de GPS
                     console.log('Activar/desactivar GPS');
                     break;
                     
                 case 'btn-imagen':
-                    // Lógica para el botón de imagen
-                    console.log('Mostrar imagen');
+                    mostrarMediaActual('imagen');
                     break;
                     
                 case 'btn-video':
-                    // Lógica para el botón de video
-                    console.log('Reproducir video');
+                    mostrarMediaActual('video');
                     break;
                     
                 default:
@@ -2745,7 +2737,7 @@
                 // Habilitar otros botones si estamos en una parada
                 if (paradaActual) {
                     actualizarEstadoBoton(document.getElementById('btn-gps'), true, '');
-                    actualizarEstadoBotonesMultimedia(); // Actualiza estado de botones de multimedia
+                    actualizarEstadoBotonesMedios(); // Actualiza estado de botones de multimedia
                 }
             }
         }
@@ -3245,63 +3237,57 @@
                 try {
                     if (modo === 'casa') {
                         // Deshabilitar GPS y limpiar navegación en modo casa
-                        detenerGPS();
-                        limpiarDestinoNavegacion();
+                        if (window.detenerGPS) detenerGPS();
+                        if (window.limpiarDestinoNavegacion) limpiarDestinoNavegacion();
                         
                         // Actualizar estado de los botones
-                        actualizarEstadoBotonesModo('casa');
+                        if (window.actualizarEstadoBotonesModo) {
+                            actualizarEstadoBotonesModo('casa');
+                        }
                         
                         log('debug', 'Modo casa activado - GPS desactivado');
                     } else {
                         // Modo aventura - habilitar controles
-                        actualizarEstadoBotonesModo('aventura');
+                        if (window.actualizarEstadoBotonesModo) {
+                            actualizarEstadoBotonesModo('aventura');
+                        }
                         log('debug', 'Modo aventura activado - Controles habilitados');
                     }
                 } catch (error) {
-                    log('error', 'Error al actualizar controles', { 
-                        error: error.message,
+                    const errorInfo = {
+                        mensaje: error.message,
                         stack: error.stack,
-                        motivo
-                    });
+                        motivo: motivo || 'Error al actualizar controles',
+                        modo: modo,
+                        timestamp: new Date().toISOString()
+                    };
                     
-                    // Si no es un error crítico, continuar
-                    if (!forzar) throw error;
+                    log('error', 'Error al actualizar controles', errorInfo);
+                    
+                    if (!forzar) {
+                        // Revertir cambios en caso de error
+                        if (window.estadoNavegacion) {
+                            window.estadoNavegacion.actualizar({ 
+                                modo: modoAnterior,
+                                ultimaActualizacion: new Date().toISOString()
+                            });
+                        }
+                        throw error;
+                    }
+                    
                     log('warn', 'Continuando a pesar del error (modo forzado)');
                 }
                 
-                // 3. Notificar al padre si es necesario
-                if (notificarPadre) {
-                    try {
-                        log('debug', 'Notificando cambio de modo al padre...');
-                        await window.Mensajeria?.enviarMensaje?.('padre', 'sistema:cambio_modo', { 
-                            modo, 
-                            habilitado: habilitar, 
-                            motivo,
-                            timestamp: new Date().toISOString(),
-                            idTransaccion: ID_TRANSACCION,
-                            desdeHijo: 'hijo2'
-                        });
-                        log('debug', 'Notificación al padre completada');
-                    } catch (error) {
-                        log('error', 'Error al notificar el cambio de modo al padre', {
-                            error: error.message,
-                            stack: error.stack,
-                            motivo
-                        });
-                        
-                        // Si es crítico, revertir el cambio
-                        if (!forzar) {
-                            // Revertir cambios en caso de error
-                            if (window.estadoNavegacion) {
-                                window.estadoNavegacion.actualizar({ 
-                                    modo: modoAnterior,
-                                    ultimaActualizacion: new Date().toISOString()
-                                });
-                            }
-                            throw error;
-                        }
-                        log('warn', 'Continuando a pesar del error (modo forzado)');
-                    }
+                // 3. Actualizar la interfaz de usuario
+                try {
+                    window.estadoNavegacion.actualizar({ 
+                        modo: modoAnterior,
+                        ultimaActualizacion: new Date().toISOString()
+                    });
+                } catch (error) {
+                    log('error', 'Error al actualizar estado de navegación', error);
+                    if (!forzar) throw error;
+                    log('warn', 'Continuando a pesar del error (modo forzado)');
                 }
                 
                 // 4. Actualizar la interfaz si es necesario
@@ -3805,6 +3791,125 @@
         // NOTA: La función enviarMensajeAlPadre ha sido eliminada. 
         // Usar Mensajeria.enviarMensaje('padre', tipo, datos) en su lugar.
 
+        // ================== FUNCIONES DE NOTIFICACIÓN AL PADRE ==================
+        
+        /**
+         * Notifica al padre sobre el estado actual de los controles
+         * @param {string} estado - 'habilitado' o 'deshabilitado'
+         * @param {string} razon - Razón del cambio de estado
+         * @param {Array<string>} controlesAfectados - IDs de los controles afectados
+         * @returns {Promise<Object>} Respuesta del padre
+         */
+        async function notificarEstadoControles(estado, razon = 'sin especificar', controlesAfectados = []) {
+            try {
+                if (!window.Mensajeria?.enviarMensaje) {
+                    console.warn('[HIJO2] Mensajería no disponible para notificar estado de controles');
+                    return { exito: false, error: 'Mensajería no disponible' };
+                }
+
+                console.log(`[HIJO2] Notificando estado de controles: ${estado} (${razon})`, controlesAfectados);
+                
+                return await window.Mensajeria.enviarMensaje(
+                    'padre',
+                    TIPOS_MENSAJE.CONTROLES.ESTADO,
+                    {
+                        estado,
+                        razon,
+                        controles: controlesAfectados,
+                        timestamp: Date.now(),
+                        origen: 'hijo2'
+                    },
+                    {
+                        esperarConfirmacion: true,
+                        maxReintentos: 3,
+                        timeout: 5000
+                    }
+                );
+            } catch (error) {
+                console.error('[HIJO2] Error al notificar estado de controles:', error);
+                return { exito: false, error: error.message };
+            }
+        }
+
+        /**
+         * Actualiza el estado del GPS y notifica al padre
+         * @param {string} estado - Estado del GPS ('activo', 'inactivo', 'error')
+         * @param {Object} [datos] - Datos adicionales del GPS
+         * @param {number} [datos.precision] - Precisión en metros
+         * @param {Object} [datos.ubicacion] - Última ubicación conocida
+         * @returns {Promise<Object>} Respuesta del padre
+         */
+        async function actualizarEstadoGPS(estado, datos = {}) {
+            try {
+                if (!window.Mensajeria?.enviarMensaje) {
+                    console.warn('[HIJO2] Mensajería no disponible para actualizar estado GPS');
+                    return { exito: false, error: 'Mensajería no disponible' };
+                }
+
+                console.log(`[HIJO2] Actualizando estado GPS: ${estado}`, datos);
+                
+                const mensaje = {
+                    estado,
+                    timestamp: Date.now(),
+                    origen: 'hijo2',
+                    ...datos
+                };
+
+                return await window.Mensajeria.enviarMensaje(
+                    'padre',
+                    TIPOS_MENSAJE.GPS.ESTADO,
+                    mensaje,
+                    {
+                        esperarConfirmacion: true,
+                        maxReintentos: 3,
+                        timeout: 5000
+                    }
+                );
+            } catch (error) {
+                console.error('[HIJO2] Error al actualizar estado GPS:', error);
+                return { exito: false, error: error.message };
+            }
+        }
+
+        /**
+         * Confirma un cambio de modo al padre
+         * @param {string} modo - Nuevo modo ('casa' o 'aventura')
+         * @param {boolean} exito - Si el cambio fue exitoso
+         * @param {string} [razon] - Razón del resultado (especialmente útil en caso de error)
+         * @returns {Promise<Object>} Respuesta del padre
+         */
+        async function confirmarCambioModo(modo, exito, razon = '') {
+            try {
+                if (!window.Mensajeria?.enviarMensaje) {
+                    console.warn('[HIJO2] Mensajería no disponible para confirmar cambio de modo');
+                    return { exito: false, error: 'Mensajería no disponible' };
+                }
+
+                console.log(`[HIJO2] Confirmando cambio a modo ${modo}: ${exito ? 'éxito' : 'fallo'}`, razon || '');
+                
+                return await window.Mensajeria.enviarMensaje(
+                    'padre',
+                    TIPOS_MENSAJE.MODO.CAMBIADO,
+                    {
+                        modo,
+                        exito,
+                        razon: exito ? 'Modo cambiado correctamente' : razon || 'Error desconocido',
+                        timestamp: Date.now(),
+                        origen: 'hijo2'
+                    },
+                    {
+                        esperarConfirmacion: true,
+                        maxReintentos: 3,
+                        timeout: 5000
+                    }
+                );
+            } catch (error) {
+                console.error('[HIJO2] Error al confirmar cambio de modo:', error);
+                return { exito: false, error: error.message };
+            }
+        }
+
+
         /**
          * Actualiza el estado de todos los botones de la interfaz
          * centralizando la lógica de activación/desactivación
@@ -3846,20 +3951,19 @@
             }
         }
 
-        // === FLUJO DE NAVEGACIÓN COMPLETO ===
+        // ================== FUNCIONES DE NOTIFICACIÓN AL PADRE ==================
         
-        function iniciarEstadoInicial() {
-            paradaActual = 0;
-            paradaDestino = 1;
-            estadoNavegacion = 'inicio';
-            
-            // GPS siempre activado por defecto
+        /**
+         * Inicializa la interfaz cuando se detecta la ubicación GPS
+         */
+        function inicializarInterfazConUbicacion() {
             if (!ubicacionActual) {
                 iniciarGPS();
-            } else {
-                // Si ya tenemos ubicación, actualizar el estado de los botones
-                actualizarEstadoBotones();
+                return;
             }
+            
+            // Si ya tenemos ubicación, actualizar el estado de los botones
+            actualizarEstadoBotones();
             
             // Mostrar chincheta verde en parada actual (0)
             enviarMensajeAlPadre({
@@ -3877,6 +3981,9 @@
             actualizarStatus(`🏠 Parada ${paradaActual}: Torres de Serranos (Inicio) - Botones activos`);
         }
         
+        /**
+         * Inicia la navegación hacia la siguiente parada
+         */
         function iniciarNavegacionAProximaParada() {
             if (paradaDestino > 36) {
                 actualizarStatus('✅ ¡Tour completado! Has visitado todas las paradas.');
@@ -3966,18 +4073,17 @@
             console.log(`[Hijo 2] Interacción usuario: ${tipoBoton}`, mensaje);
         }
         
-        function informarEstadoGPS(estado, datos = {}) {
+        async function informarEstadoGPS(estado, datos = {}) {
             // Informar cambios en el estado del GPS
-            const mensaje = {
-                tipo: 'estado-gps',
-                estadoGPS: estado,
-                ubicacion: ubicacionActual,
-                timestamp: Date.now(),
-                ...datos
-            };
+            console.log(`[Hijo 2] Estado GPS: ${estado}`, datos);
             
-            enviarMensajeAlPadre(mensaje);
-            console.log(`[Hijo 2] Estado GPS: ${estado}`, mensaje);
+            // Usar la nueva función de notificación
+            await actualizarEstadoGPS(estado, {
+                ...datos,
+                ubicacion: ubicacionActual
+            }).catch(error => {
+                console.error('[Hijo 2] Error al notificar estado GPS:', error);
+            });
         }
         
         function procesarLlegadaAParada() {
@@ -4029,225 +4135,200 @@
             // Manejar clic según el botón
             switch(id) {
                 case 'btn-punto':
-                    if (!ubicacionActual) return; // No hacer nada si no hay ubicación
-                    
-                    // Obtener la parada actual o comenzar desde P-0 si es la primera vez
-                    let paradaActual = estadoNavegacion.obtenerEstado().paradaActual;
-                    let siguienteParada = null;
-                    
-                    if (!paradaActual) {
-                        // Primera vez - comenzar desde P-0 (Torres de Serranos)
-                        siguienteParada = COORDENADAS_PARADAS.find(p => p.id === 'P-0');
-                        estadoNavegacion.actualizar({ paradaActual: 'P-0' });
-                        console.log('Comenzando aventura desde P-0 (Torres de Serranos)');
-                    } else {
-                        // Buscar siguiente parada en el array
-                        const indiceActual = COORDENADAS_PARADAS.findIndex(p => p.id === paradaActual);
-                        if (indiceActual < COORDENADAS_PARADAS.length - 1) {
-                            siguienteParada = COORDENADAS_PARADAS[indiceActual + 1];
-                            console.log(`Siguiente parada: ${siguienteParada.id} - ${siguienteParada.nombre}`);
-                        } else {
-                            console.log('¡Has llegado al final del recorrido!');
-                            return;
-                        }
-                    }
+                    // 1. Obtener la ubicación actual del usuario
+                    actualizarStatus('🛰️ Obteniendo tu ubicación...', { tipo: 'info', permanente: true });
+                    if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(
+                            (position) => {
+                                // Éxito al obtener la ubicación
+                                ubicacionActual = {
+                                    lat: position.coords.latitude,
+                                    lng: position.coords.longitude
+                                };
+                                actualizarStatus('✅ Ubicación encontrada', { tipo: 'exito' });
 
-                    if (siguienteParada) {
-                        // 1. Mostrar marcadores (chincheta verde en ubicación actual, roja en siguiente parada)
-                        Mensajes.enviar('mostrarMarcadores', {
-                            origen: {
-                                lat: ubicacionActual.lat,
-                                lng: ubicacionActual.lng,
-                                titulo: '',  // Texto vacío para eliminar 'Tu ubicación'
-                                color: 'green',
-                                id: 'ubicacion_actual',
-                                icono: 'pin'
-                            },
-                            destino: {
-                                lat: siguienteParada.coordenadas.lat,
-                                lng: siguienteParada.coordenadas.lng,
-                                titulo: siguienteParada.nombre,
-                                color: 'red',
-                                id: siguienteParada.id,
-                                icono: 'flag'
-                            },
-                            zoom: 16 // Nivel de zoom para mostrar ambos puntos
-                        });
+                                // 2. Lógica de navegación
+                                let paradaActualState = estadoNavegacion.obtenerEstado().paradaActual;
+                                let siguienteParada = null;
 
-                        // 2. Dibujar línea discontinua verde de 6px entre los puntos
-                        Mensajes.enviar('dibujarRuta', {
-                            puntos: [ubicacionActual, siguienteParada.coordenadas],
-                            color: '#00FF00', // Azul
-                            grosor: 6, // 6px de ancho
-                            opacidad: 0.8,
-                            lineJoin: 'round',
-                            lineCap: 'round'
-                        });
+                                if (!paradaActualState) {
+                                    siguienteParada = COORDENADAS_PARADAS.find(p => p.id === 'P-0');
+                                    estadoNavegacion.actualizar({ paradaActual: 'P-0' });
+                                    console.log('Comenzando aventura desde P-0 (Torres de Serranos)');
+                                } else {
+                                    const indiceActual = COORDENADAS_PARADAS.findIndex(p => p.id === paradaActualState);
+                                    if (indiceActual < COORDENADAS_PARADAS.length - 1) {
+                                        siguienteParada = COORDENADAS_PARADAS[indiceActual + 1];
+                                        console.log(`Siguiente parada: ${siguienteParada.id} - ${siguienteParada.nombre}`);
+                                    } else {
+                                        actualizarStatus('🏁 ¡Has llegado al final del recorrido!', { tipo: 'exito' });
+                                        console.log('¡Has llegado al final del recorrido!');
+                                        return;
+                                    }
+                                }
 
-                        // 3. Iniciar actualización de flecha de dirección cada 7 segundos
-                        if (intervaloFlecha) {
-                            clearInterval(intervaloFlecha);
-                        }
-                        intervaloFlecha = setInterval(actualizarFlechaNavegacion, 7000);
-                        actualizarFlechaNavegacion(); // Llamar inmediatamente
-
-                        // 4. Actualizar el título del botón para mostrar la distancia
-                        actualizarDistanciaObjetivo(ubicacionActual, siguienteParada.coordenadas);
-
-                        // 5. Verificar si estamos a menos de 50m del objetivo
-                        const distancia = calcularDistancia(
-                            ubicacionActual.lat,
-                            ubicacionActual.lng,
-                            siguienteParada.coordenadas.lat,
-                            siguienteParada.coordenadas.lng
-                        );
-
-                        console.log(`Distancia al objetivo: ${distancia.toFixed(2)} metros`);
-
-                        if (distancia <= 50) {
-                            console.log('¡Estás a menos de 50m del objetivo!');
-                            
-                            // 6. Hacer parpadear la chincheta verde 3 veces en amarillo
-                            Mensajes.enviar('animarMarcador', {
-                                id: siguienteParada.id,
-                                animacion: 'parpadeo',
-                                veces: 3,
-                                colorInicial: 'green',
-                                colorFinal: 'yellow',
-                                duracion: 1000, // 1 segundo por parpadeo
-                                alTerminar: () => {
-                                    // Una vez terminada la animación, dejar fijo en verde
-                                    Mensajes.enviar('actualizarMarcador', {
-                                        id: siguienteParada.id,
-                                        color: 'green',
-                                        titulo: `Llegada: ${siguienteParada.nombre}`,
-                                        icono: 'check'
+                                if (siguienteParada) {
+                                    Mensajes.enviar('mostrarMarcadores', {
+                                        origen: { ...ubicacionActual, titulo: '', color: 'blue', id: 'ubicacion_actual', icono: 'arrow' },
+                                        destino: { ...siguienteParada.coordenadas, titulo: siguienteParada.nombre, color: 'red', id: siguienteParada.id, icono: 'flag' },
+                                        zoom: 16
                                     });
-                                    
-                                    // Actualizar estado para indicar que se alcanzó el objetivo
-                                    estadoNavegacion.actualizar({ objetivoAlcanzado: true });
-                                    
-                                    // Actualizar estado de los botones
-                                    actualizarEstadoBotonesModo('aventura');
-                                },
-                                veces: 3,
-                                colorInicial: 'green',
-                                colorFinal: 'yellow'
-                            });
 
-                            // 7. Después de la animación (3 segundos):
-                            //    - Chincheta se queda fija en verde
-                            //    - Botón Punto de Interés se pone rojo y se desactiva
-                            //    - Se activan los botones GPS, Imagen y Video (si aplica)
-                            setTimeout(() => {
-                                // Chincheta fija en verde
-                                Mensajes.enviar('actualizarMarcador', {
-                                    id: siguienteParada.id,
-                                    color: 'green',
-                                    titulo: `Llegada: ${siguienteParada.nombre}`,
-                                    icono: 'check'
-                                });
+                                    Mensajes.enviar('dibujarRuta', {
+                                        puntos: [ubicacionActual, siguienteParada.coordenadas],
+                                        color: '#00FF00',
+                                        grosor: 6,
+                                        opacidad: 0.8,
+                                        lineJoin: 'round',
+                                        lineCap: 'round'
+                                    });
 
-                                // Desactivar botón Punto de Interés (rojo y deshabilitado)
-                                const btnPunto = document.getElementById('btn-punto');
-                                if (btnPunto) {
-                                    btnPunto.classList.add('disabled');
-                                    btnPunto.style.background = 'linear-gradient(135deg, #dc3545, #c82333)';
-                                    btnPunto.title = 'Punto de interés alcanzado';
+                                    if (intervaloFlecha) clearInterval(intervaloFlecha);
+                                    intervaloFlecha = setInterval(actualizarFlechaNavegacion, 7000);
+                                    actualizarFlechaNavegacion();
+
+                                    actualizarDistanciaObjetivo(ubicacionActual, siguienteParada.coordenadas);
+                                    const distancia = calcularDistancia(ubicacionActual.lat, ubicacionActual.lng, siguienteParada.coordenadas.lat, siguienteParada.coordenadas.lng);
+                                    console.log(`Distancia al objetivo: ${distancia.toFixed(2)} metros`);
+
+                                    if (distancia <= 50) {
+                                        console.log('¡Estás a menos de 50m del objetivo!');
+                                        // Cambiar el color del marcador a verde y animarlo
+                                        Mensajes.enviar('actualizarMarcador', { id: siguienteParada.id, color: 'green' });
+                                        Mensajes.enviar('animarMarcador', { id: siguienteParada.id, animacion: 'parpadeo' });
+
+                                        // 7. Después de la animación (3 segundos):
+                                        setTimeout(() => {
+                                            // Chincheta fija en verde
+                                            Mensajes.enviar('actualizarMarcador', {
+                                                id: siguienteParada.id,
+                                                color: 'green',
+                                                titulo: `Llegada: ${siguienteParada.nombre}`,
+                                                icono: 'check'
+                                            });
+
+                                            // Desactivar botón Punto de Interés (rojo y deshabilitado)
+                                            const btnPunto = document.getElementById('btn-punto');
+                                            if (btnPunto) {
+                                                btnPunto.classList.add('disabled');
+                                                btnPunto.style.background = 'linear-gradient(135deg, #dc3545, #c82333)';
+                                                btnPunto.title = 'Punto de interés alcanzado';
+                                            }
+
+                                            // Activar botones GPS, Imagen y Video (si es un tramo)
+                                            const btnGps = document.getElementById('btn-gps');
+                                            const btnImagen = document.getElementById('btn-imagen');
+                                            const btnVideo = document.getElementById('btn-video');
+                                            
+                                            if (btnGps) {
+                                                btnGps.classList.remove('disabled');
+                                                btnGps.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
+                                                btnGps.title = 'Iniciar navegación GPS';
+                                            }
+                                            
+                                            if (btnImagen) {
+                                                btnImagen.classList.remove('disabled');
+                                                btnImagen.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
+                                                btnImagen.title = 'Ver imagen de la ubicación';
+                                            }
+                                            
+                                            if (btnVideo) {
+                                                btnVideo.classList.remove('disabled');
+                                                btnVideo.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
+                                                btnVideo.title = 'Ver video del tramo';
+                                            }
+
+                                            // Actualizar el estado de navegación
+                                            estadoNavegacion.actualizar({ 
+                                                paradaActual: siguienteParada.id,
+                                                objetivoAlcanzado: true 
+                                            });
+
+                                        }, 3000); // 3 segundos para la animación (3 parpadeos de 1s)
+                                    }
                                 }
-
-                                // Activar botones GPS, Imagen y Video (si es un tramo)
-                                const btnGps = document.getElementById('btn-gps');
-                                const btnImagen = document.getElementById('btn-imagen');
-                                const btnVideo = document.getElementById('btn-video');
-                                
-                                if (btnGps) {
-                                    btnGps.classList.remove('disabled');
-                                    btnGps.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
-                                    btnGps.title = 'Iniciar navegación GPS';
-                                }
-                                
-                                if (btnImagen && siguienteParada.imagen) {
-                                    btnImagen.classList.remove('disabled');
-                                    btnImagen.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
-                                    btnImagen.title = 'Ver imagen de la ubicación';
-                                }
-                                
-                                if (btnVideo && siguienteParada.id.startsWith('TR-') && siguienteParada.video) {
-                                    btnVideo.classList.remove('disabled');
-                                    btnVideo.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
-                                    btnVideo.title = 'Ver video del tramo';
-                                }
-
-                                // Actualizar el estado de navegación
-                                estadoNavegacion.actualizar({ 
-                                    paradaActual: siguienteParada.id,
-                                    objetivoAlcanzado: true 
-                                });
-
-                            }, 3000); // 3 segundos para la animación (3 parpadeos de 1s)
-                        }
+                            },
+                            (error) => {
+                                console.error(`Error al obtener la ubicación: ${error.message}`);
+                                actualizarStatus(`Error de GPS: ${error.message}`, { tipo: 'error' });
+                            },
+                            {
+                                enableHighAccuracy: true,
+                                timeout: 10000,
+                                maximumAge: 0
+                            }
+                        );
+                    } else {
+                        actualizarStatus('GPS no soportado en este navegador.', { tipo: 'error' });
                     }
                     break;
                     
                 case 'btn-ruta':
-                    // Botón de ruta - Mostrar ruta completa en nueva pestaña
-                    // Siempre activo con estilo verde, sin interacción con el padre
-                    window.open('Av1_mapa_completo.html', '_blank');
+                    // Envía un mensaje al padre para abrir la URL del mapa completo
+                    enviarMensaje('padre', TIPOS_MENSAJE.UI.ABRIR_URL, {
+                        url: paradaActual?.rutas?.mapaCompleto || 'Av1_mapa_completo.html',
+                        target: '_blank'
+                    });
+                    actualizarStatus('Mostrando la ruta completa.');
                     break;
-                    
+
                 case 'btn-brujula':
-                    // Botón de brújula - Mostrar imagen del mapa en nueva pestaña
-                    // Siempre activo con estilo verde, sin interacción con el padre
-                    window.open('mapas/Av1_mapa.jpg', '_blank');
+                    // Envía un mensaje al padre para abrir la imagen del mapa
+                    enviarMensaje('padre', TIPOS_MENSAJE.UI.ABRIR_URL, {
+                        url: paradaActual?.rutas?.imagenMapa || 'mapas/Av1_mapa.jpg',
+                        target: '_blank'
+                    });
+                    actualizarStatus('Mostrando la imagen del mapa.');
                     break;
                     
                 case 'btn-gps':
-                    if (!ubicacionActual) {
-                        // Iniciar navegación GPS
-                        if (ubicacionActual) {
-                            const siguienteParada = COORDENADAS_PARADAS.find(p => p.parada === (window.paradaActual + 1));
-                            
-                            if (siguienteParada) {
-                                // Preparar waypoints para la ruta (si existen)
-                                let waypoints = [];
-                                if (siguienteParada.waypoints && siguienteParada.waypoints.length > 0) {
-                                    waypoints = siguienteParada.waypoints.map(wp => ({
-                                        lat: wp.lat,
-                                        lng: wp.lng
-                                    }));
-                                }
-                                
-                                // Mostrar ruta con polyline azul de 6px
-                                Mensajes.enviar('mostrarRuta', {
-                                    origen: ubicacionActual,
-                                    destino: siguienteParada.coordenadas || siguienteParada,
-                                    waypoints: waypoints,
-                                    opciones: {
-                                        color: '#007bff', // Azul
-                                        peso: 6, // 6px de ancho
-                                        opacidad: 0.8,
-                                        lineJoin: 'round',
-                                        lineCap: 'round'
-                                    },
-                                    marcadores: {
-                                        inicio: {
-                                            color: 'green',
-                                            texto: 'Tú estás aquí'
-                                        },
-                                        fin: {
-                                            color: 'red',
-                                            texto: siguienteParada.nombre || 'Siguiente punto',
-                                            cambiarAVerde: true // La chincheta se pondrá verde al llegar
-                                        }
-                                    },
-                                    mostrarFlecha: true
-                                });
-                                
-                                // Iniciar seguimiento GPS
-                                iniciarGPS();
+                    // Iniciar navegación GPS si la ubicación está disponible
+                    if (ubicacionActual) {
+                        const siguienteParada = COORDENADAS_PARADAS.find(p => p.parada === (window.paradaActual + 1));
+                        
+                        if (siguienteParada) {
+                            // Preparar waypoints para la ruta (si existen)
+                            let waypoints = [];
+                            if (siguienteParada.waypoints && siguienteParada.waypoints.length > 0) {
+                                waypoints = siguienteParada.waypoints.map(wp => ({
+                                    lat: wp.lat,
+                                    lng: wp.lng
+                                }));
                             }
+                            
+                            // Mostrar ruta con polyline azul de 6px
+                            Mensajes.enviar('mostrarRuta', {
+                                origen: ubicacionActual,
+                                destino: siguienteParada.coordenadas || siguienteParada,
+                                waypoints: waypoints,
+                                opciones: {
+                                    color: '#007bff', // Azul
+                                    peso: 6, // 6px de ancho
+                                    opacidad: 0.8,
+                                    lineJoin: 'round',
+                                    lineCap: 'round'
+                                },
+                                marcadores: {
+                                    inicio: {
+                                        color: 'green',
+                                        texto: 'Tú estás aquí'
+                                    },
+                                    fin: {
+                                        color: 'red',
+                                        texto: siguienteParada.nombre || 'Siguiente punto',
+                                        cambiarAVerde: true // La chincheta se pondrá verde al llegar
+                                    }
+                                },
+                                mostrarFlecha: true
+                            });
+                            
+                            // Iniciar seguimiento GPS
+                            iniciarGPS();
                         }
+                    } else {
+                        // Opcional: Notificar al usuario que la ubicación no está disponible
+                        console.warn("[Botones] Se intentó iniciar la navegación GPS sin una ubicación actual.");
+                        actualizarStatus("Ubicación no disponible. Activa el GPS.");
                     }
                     break;
                     
@@ -4261,11 +4342,12 @@
                             src: paradaActual.imagen || '',
                             titulo: paradaActual.nombre || 'Imagen de la ubicación',
                             descripcion: paradaActual.descripcion || '',
+                            mensajeSinImagen: !paradaActual.imagen ? 'No hay imagen disponible para esta ubicación.' : undefined,
                             modo: 'aventura'
                         });
                         
                         // Actualizar estado para indicar que se mostró la imagen
-                        actualizarStatus(`Mostrando imagen: ${paradaActual.nombre || 'Ubicación actual'}`);
+                        actualizarStatus(paradaActual.imagen ? `Mostrando imagen: ${paradaActual.nombre || 'Ubicación actual'}` : 'No hay imagen disponible.');
                     } else {
                         // Enviar mensaje con información estática de las paradas/tramos
                         Mensajes.enviar('mostrarInfoEstatica', {
@@ -4276,7 +4358,7 @@
                     
                 case 'btn-video':
                     // Verificar si se puede mostrar el reproductor de video
-                    if (paradaActual && paradaActual.id && paradaActual.id.startsWith('TR-')) {
+                    if (paradaActual) { // Se permite aunque no sea un tramo, para mostrar el mensaje
                         // Efecto de zoom antes de mostrar el reproductor de video
                         Mensajes.enviar('zoomSecuencial', {
                             coordenadas: paradaActual.coordenadas || paradaActual,
@@ -4677,18 +4759,19 @@
 
         // Función para confirmar la recepción de un mensaje
         function confirmarRecepcion(idMensaje, exito = true, datosAdicionales = {}) {
-            const respuesta = {
-                type: 'confirmacionRecepcion',
-                idMensaje,
-                timestamp: Date.now(),
-                exito,
-                origen: 'hijo2',
-                ...datosAdicionales
-            };
-            
-            console.log(`📤 HIJO 2: Enviando confirmación de recepción para mensaje ${idMensaje}`, respuesta);
-            window.parent.postMessage(respuesta, '*');
-            return respuesta;
+          const respuesta = {
+            type: 'confirmacionRecepcion',
+            idMensaje,
+            timestamp: Date.now(),
+            exito,
+            origen: 'hijo2',
+            ...datosAdicionales
+          };
+          
+          console.log(`📤 HIJO 2: Enviando confirmación de recepción para mensaje ${idMensaje}`, respuesta);
+          // Reemplazado window.parent.postMessage por Mensajeria.enviarMensaje
+          Mensajeria.enviarMensaje('padre', 'confirmacion-recepcion', respuesta, { esperarRespuesta: false });
+          return respuesta;
         }
 
         // Función para manejar mensajes específicos del padre
@@ -5028,6 +5111,33 @@
                     videoActivo,
                     obtenerMensajeTooltip('video', estado, paradaActual)
                 );
+            }
+        }
+        
+        // Actualizar el elemento actual cuando se establece un destino
+        function manejarDestinoEstablecido(destino) {
+            if (destino && destino.id) {
+                actualizarElementoActual(destino.id);
+            } else {
+                actualizarElementoActual(null);
+            }
+        }
+        
+        // Actualizar el elemento actual cuando se establece un destino
+        function manejarDestinoEstablecido(destino) {
+            if (destino && destino.id) {
+                actualizarElementoActual(destino.id);
+            } else {
+                actualizarElementoActual(null);
+            }
+        }
+        
+        // Actualizar el elemento actual cuando se establece un destino
+        function manejarDestinoEstablecido(destino) {
+            if (destino && destino.id) {
+                actualizarElementoActual(destino.id);
+            } else {
+                actualizarElementoActual(null);
             }
         }
         
@@ -5619,37 +5729,216 @@
         }
         
         /**
-         * Maneja el cambio de modo (casa/aventura)
+         * Maneja el cambio de modo (casa/aventura) con notificaciones mejoradas
          * @param {string} modo - 'casa' o 'aventura'
          * @param {boolean} habilitar - Si es true, habilita los controles
+         * @param {Object} [opciones] - Opciones adicionales
+         * @param {boolean} [opciones.notificarPadre=true] - Si se debe notificar al padre
+         * @param {string} [opciones.motivo='cambio_modo'] - Razón del cambio
+         * @returns {Promise<Object>} - Resultado de la operación
          */
-        function manejarCambioModo(modo, habilitar = false) {
-            console.log(`🔄 HIJO 2: Cambiando a modo ${modo} - Habilitar: ${habilitar}`);
+        async function manejarCambioModo(modo, habilitar = false, opciones = {}) {
+            const {
+                notificarPadre = true,
+                motivo = 'cambio_modo',
+                forzar = false
+            } = opciones;
             
-            // Validar el modo
-            if (modo !== 'casa' && modo !== 'aventura') {
-                console.error(`❌ HIJO 2: Modo no válido: ${modo}`);
-                return;
-            }
+            const ID_TRANSACCION = `cambio-mod-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
             
-            // Actualizar el modo
-            modoActual = modo;
+            // Función de utilidad para registrar mensajes de log
+            const log = (nivel, mensaje, datos = {}) => {
+                const timestamp = new Date().toISOString();
+                const prefijo = `[${timestamp}] [HIJO2] [${ID_TRANSACCION}]`;
+                console[nivel](`${prefijo} ${mensaje}`, datos);
+            };
             
-            // Actualizar controles según corresponda
-            if (habilitar) {
-                enableControls(modo);
-            } else {
-                disableControls(`Modo ${modo} sin habilitación explícita`);
-            }
-            
-            // Notificar al padre
-            if (window.Mensajes && typeof Mensajes.enviar === 'function') {
-                Mensajes.enviar('SISTEMA.CONFIGURACION', {
-                    estado: 'modoCambiado',
-                    modo: modo,
-                    habilitado: habilitar,
-                    timestamp: Date.now()
+            try {
+                log('info', `Iniciando cambio de modo a ${modo}`, { 
+                    habilitar, 
+                    motivo, 
+                    forzar,
+                    estadoActual: window.estadoNavegacion?.obtenerEstado?.()
                 });
+                
+                // Validar el modo
+                if (modo !== 'casa' && modo !== 'aventura') {
+                    const error = new Error(`Modo no válido: ${modo}. Debe ser 'casa' o 'aventura'`);
+                    error.codigo = 'MODO_NO_VALIDO';
+                    throw error;
+                }
+                
+                // Obtener el estado actual
+                const estadoActual = window.estadoNavegacion?.obtenerEstado?.() || {};
+                const modoAnterior = estadoActual.modo || 'casa';
+                
+                // Verificar si es necesario hacer algún cambio
+                if (modoAnterior === modo && !forzar) {
+                    log('debug', 'El modo no ha cambiado y no se forzó el cambio');
+                    return {
+                        estado: 'ok',
+                        mensaje: 'El modo no ha cambiado',
+                        modo,
+                        modoAnterior,
+                        cambiado: false,
+                        timestamp: new Date().toISOString(),
+                        idTransaccion: ID_TRANSACCION
+                    };
+                }
+                
+                // 1. Actualizar el estado de navegación
+                if (window.estadoNavegacion) {
+                    window.estadoNavegacion.actualizar({ 
+                        modo,
+                        ultimaActualizacion: new Date().toISOString()
+                    });
+                }
+                
+                // 2. Actualizar controles según el modo
+                try {
+                    if (modo === 'casa') {
+                        // Deshabilitar GPS y limpiar navegación en modo casa
+                        if (window.detenerGPS) detenerGPS();
+                        if (window.limpiarDestinoNavegacion) limpiarDestinoNavegacion();
+                        
+                        // Actualizar estado de los botones
+                        if (window.actualizarEstadoBotonesModo) {
+                            actualizarEstadoBotonesModo('casa');
+                        }
+                        
+                        log('debug', 'Modo casa activado - GPS desactivado');
+                    } else {
+                        // Modo aventura - habilitar controles
+                        if (window.actualizarEstadoBotonesModo) {
+                            actualizarEstadoBotonesModo('aventura');
+                        }
+                        log('debug', 'Modo aventura activado - Controles habilitados');
+                    }
+                } catch (error) {
+                    log('error', 'Error al actualizar controles', { 
+                        error: error.message,
+                        stack: error.stack,
+                        motivo
+                    });
+                    
+                    if (!forzar) throw error;
+                    log('warn', 'Continuando a pesar del error (modo forzado)');
+                }
+                
+                // 3. Actualizar interfaz de usuario
+                try {
+                    modoActual = modo;
+                    
+                    // Actualizar controles según corresponda
+                    if (habilitar) {
+                        if (window.enableControls) enableControls(modo);
+                    } else if (window.disableControls) {
+                        disableControls(`Modo ${modo} sin habilitación explícita`);
+                    }
+                    
+                    // Actualizar estado de los botones
+                    if (window.actualizarEstadoBotones) {
+                        actualizarEstadoBotones();
+                    }
+                    
+                    log('debug', 'Interfaz actualizada');
+                } catch (error) {
+                    log('error', 'Error al actualizar la interfaz', {
+                        error: error.message,
+                        stack: error.stack
+                    });
+                    if (!forzar) throw error;
+                }
+                
+                // 4. Notificar al padre si es necesario
+                if (notificarPadre) {
+                    log('info', 'Notificando al padre del cambio de modo', { modo, habilitar, motivo });
+                    try {
+                        // Usar la nueva función de notificación
+                        await confirmarCambioModo(
+                            modo,
+                            true,
+                            `Modo cambiado a ${modo} exitosamente`
+                        );
+                        
+                        // Mantener compatibilidad con el sistema antiguo
+                        if (window.Mensajes && typeof Mensajes.enviar === 'function') {
+                            Mensajes.enviar('SISTEMA.CONFIGURACION', {
+                                estado: 'modoCambiado',
+                                modo: modo,
+                                habilitado: habilitar,
+                                timestamp: Date.now()
+                            });
+                        }
+                    } catch (error) {
+                        log('error', 'Error al notificar cambio de modo al padre', { 
+                            error: error.message,
+                            stack: error.stack
+                        });
+                        
+                        // Notificar el fallo al cambiar de modo
+                        try {
+                            await confirmarCambioModo(
+                                modo,
+                                false,
+                                `Error al cambiar a modo ${modo}: ${error.message}`
+                            );
+                        } catch (notifyError) {
+                            log('error', 'Error al notificar fallo de cambio de modo', { 
+                                error: notifyError.message 
+                            });
+                        }
+                        
+                        throw error;
+                    }
+                }
+                
+                // 5. Preparar resultado exitoso
+                const resultado = {
+                    estado: 'ok',
+                    mensaje: `Modo cambiado a ${modo} exitosamente`,
+                    modo,
+                    modoAnterior,
+                    habilitado: habilitar,
+                    motivo,
+                    cambiado: true,
+                    timestamp: new Date().toISOString(),
+                    idTransaccion: ID_TRANSACCION
+                };
+                
+                log('info', 'Cambio de modo completado exitosamente', resultado);
+                return resultado;
+                
+            } catch (error) {
+                // Manejo de errores
+                const errorInfo = {
+                    codigo: error.codigo || 'ERROR_DESCONOCIDO',
+                    mensaje: error.message,
+                    stack: error.stack,
+                    datos: error.datos || {},
+                    modoSolicitado: modo,
+                    modoAnterior: window.estadoNavegacion?.obtenerEstado?.()?.modo || 'desconocido',
+                    timestamp: new Date().toISOString(),
+                    idTransaccion: ID_TRANSACCION
+                };
+                
+                log('error', `Error al cambiar el modo a ${modo}`, errorInfo);
+                
+                // Notificar al padre del error
+                if (notificarPadre) {
+                    try {
+                        await confirmarCambioModo(
+                            modo,
+                            false,
+                            `Error al cambiar a modo ${modo}: ${error.message}`
+                        );
+                    } catch (notifyError) {
+                        console.error('Error al notificar error al padre:', notifyError);
+                    }
+                }
+                
+                // Relanzar el error para que el llamador pueda manejarlo
+                throw error;
             }
         }
         
@@ -5773,8 +6062,14 @@
                                 control.removeAttribute('disabled');
                                 
                                 // Actualizar estado visual según el modo actual
-                                if (id === 'btn-punto' && !modoCasa) {
-                                    control.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
+                                if (id === 'btn-punto') {
+                                    if (modoCasa) {
+                                        control.setAttribute('disabled', 'true');
+                                        control.style.background = '#ccc'; // Optional: grey out when disabled
+                                    } else {
+                                        control.removeAttribute('disabled');
+                                        control.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
+                                    }
                                 } else if (id === 'btn-imagen' || id === 'btn-video') {
                                     // Los botones de multimedia se actualizarán según el estado del GPS
                                     actualizarEstadoBotonesMultimedia();
@@ -6072,7 +6367,6 @@
         }
         
         // Cerrar la función inicializarAplicacion
-        }
     </script>
 </head>
 
