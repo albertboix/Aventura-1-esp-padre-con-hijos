@@ -13,17 +13,20 @@ export const TIPOS_MENSAJE = {
   // Mensajes del sistema
   SISTEMA: {
     INICIALIZACION: 'SISTEMA.INICIALIZACION',
-    CONFIGURACION: 'SISTEMA.CONFIGURACION', 
+    // Para cambios de configuración en tiempo real (tema, idioma, opciones)
+    CONFIGURACION: 'SISTEMA.CONFIGURACION',
     SINCRONIZAR: 'SISTEMA.SINCRONIZAR',
     CONFIRMACION: 'SISTEMA.CONFIRMACION',
     ERROR: 'SISTEMA.ERROR',
-    CAMBIO_MODO: 'SISTEMA.CAMBIO_MODO' // <-- Este string debe usarse en todos los archivos
+    CAMBIO_MODO: 'SISTEMA.CAMBIO_MODO',
+    CAMBIO_MODO_CONFIRMACION: 'SISTEMA.CAMBIO_MODO_CONFIRMACION'
   },
   
   // Navegación y control del mapa
   NAVEGACION: {
     ESTADO: 'NAVEGACION.ESTADO',
-    PARADA_OBJETIVO: 'NAVEGACION.PARADA_OBJETIVO'
+    CAMBIO_PARADA: 'NAVEGACION.CAMBIO_PARADA',
+    LLEGADA_DETECTADA: 'NAVEGACION.LLEGADA_DETECTADA'
   },
   
   // Control de modos e interfaz
@@ -53,11 +56,21 @@ export const TIPOS_MENSAJE = {
   // Control de interfaz de usuario
   UI: {
     ACTUALIZAR: 'UI.ACTUALIZAR',
-    HABILITAR_CONTROLES: 'habilitar_controles',
-    DESHABILITAR_CONTROLES: 'deshabilitar_controles'
+    HABILITAR_CONTROLES: 'UI.HABILITAR_CONTROLES',
+    DESHABILITAR_CONTROLES: 'UI.DESHABILITAR_CONTROLES',
+    ABRIR_URL: 'UI.ABRIR_URL' // Nuevo: Para solicitar al padre que abra una URL
   },
   
-  // Compatibilidad con mensajes anteriores
+  // Datos y sincronización
+  DATOS: {
+    SOLICITAR_PARADAS: 'DATOS.SOLICITAR_PARADAS',
+    SOLICITAR_PARADA: 'DATOS.SOLICITAR_PARADA',
+    ARRAY_ACTUALIZADO: 'DATOS.ARRAY_ACTUALIZADO',
+    VERIFICAR_HASH: 'DATOS.VERIFICAR_HASH',
+    ACTUALIZAR_PARADA: 'DATOS.ACTUALIZAR_PARADA'
+  },
+  
+  // Compatibilidad con mensajes anteriores (mantener por compatibilidad)
   CONTROLES_HABILITADOS: 'sistema:controles_habilitados',
   CONTROLES_DESHABILITADOS: 'sistema:controles_deshabilitados',
   HABILITAR_CONTROLES: 'sistema:habilitar_controles',
@@ -643,17 +656,56 @@ export async function deshabilitarControles(motivo = 'desconocido') {
 
 /**
  * Envía un mensaje de cambio de modo
- * @param {string} destino - Iframe destino o 'todos'
- * @param {string} nuevoModo - Nuevo modo a establecer
- * @param {Object} datosExtra - Datos adicionales
  * @returns {Promise<Object>} Respuesta del mensaje
+ * @throws {Error} Si el modo no es válido o hay un error en el envío
  */
-export async function enviarCambioModo(destino, nuevoModo, datosExtra = {}) {
-  return enviarMensaje(destino, TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, {
+export async function enviarCambioModo(destino, nuevoModo, datosExtra = {}, timeout = 5000) {
+  // Tipos de modos válidos
+  const MODOS_VALIDOS = new Set(['casa', 'aventura']);
+
+  // Validar el modo
+  if (!MODOS_VALIDOS.has(nuevoModo)) {
+    throw new Error(`Modo no válido: ${nuevoModo}. Debe ser 'casa' o 'aventura'`);
+  }
+
+  // Crear mensaje con metadatos
+  const mensaje = {
     modo: nuevoModo,
-    ...datosExtra,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    origen: window.iframeId || 'sistema',
+    ...datosExtra
+  };
+
+  // Configurar timeout
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`Timeout al cambiar a modo ${nuevoModo} después de ${timeout}ms`));
+    }, timeout);
   });
+
+  try {
+    // Enviar mensaje con timeout
+    const envio = enviarMensaje(destino, TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, mensaje);
+    const resultado = await Promise.race([envio, timeoutPromise]);
+    
+    // Limpiar timeout
+    clearTimeout(timeoutId);
+    
+    // Verificar respuesta
+    if (resultado?.error) {
+      throw new Error(`Error en la respuesta: ${resultado.error}`);
+    }
+    
+    return resultado;
+  } catch (error) {
+    // Limpiar timeout en caso de error
+    if (timeoutId) clearTimeout(timeoutId);
+    
+    // Registrar error y relanzar
+    console.error(`[Mensajería] Error al cambiar a modo ${nuevoModo}:`, error);
+    throw error;
+  }
 }
 
 /**
@@ -721,8 +773,107 @@ const Mensajeria = {
   limpiar,
   
   // Configuración
-  configuracion: () => ({ ...configuracion })
+  configuracion: () => ({ ...configuracion }),
+  enviarConfiguracion
 };
+
+// ================== MANEJADORES DE CONFIGURACIÓN ==================
+
+/**
+ * Envía una actualización de configuración a todos los iframes hijos
+ * @param {Object} config - Configuración a enviar
+ * @param {string} [config.tema] - Tema de la interfaz (claro/oscuro)
+ * @param {string} [config.idioma] - Código de idioma (es, en, etc.)
+ * @param {Object} [config.opciones] - Opciones adicionales de configuración
+ * @returns {Promise<Array>} Respuestas de los iframes
+ */
+async function enviarConfiguracion(config) {
+  const { tema, idioma, opciones } = config;
+  
+  // Validar que al menos un campo de configuración esté presente
+  if (!tema && !idioma && !opciones) {
+    throw new Error('Se debe proporcionar al menos un campo de configuración');
+  }
+  
+  const mensaje = {
+    tipo: TIPOS_MENSAJE.SISTEMA.CONFIGURACION,
+    datos: { tema, idioma, opciones },
+    timestamp: Date.now()
+  };
+  
+  try {
+    const respuestas = await enviarATodosLosIframes(mensaje, {
+      esperarRespuesta: true,
+      timeout: 5000
+    });
+    
+    // Verificar si hubo errores en las respuestas
+    const errores = respuestas.filter(r => r.error);
+    if (errores.length > 0) {
+      console.warn('Algunos iframes no aplicaron la configuración correctamente:', errores);
+    }
+    
+    return respuestas;
+    
+  } catch (error) {
+    console.error('Error al enviar configuración:', error);
+    throw error;
+  }
+}
+
+// Hacer la función disponible en la API
+export { enviarConfiguracion };
+
+// ================== MANEJADORES DE CONFIGURACIÓN ==================
+
+/**
+ * Maneja los mensajes de configuración del sistema
+ * @param {Object} mensaje - Mensaje recibido
+ * @returns {Promise<void>}
+ */
+async function manejarConfiguracionSistema(mensaje) {
+  const { tema, idioma, opciones } = mensaje.datos || {};
+  
+  try {
+    // Aplicar tema si se especificó
+    if (tema) {
+      document.documentElement.setAttribute('data-tema', tema);
+      localStorage.setItem('tema', tema);
+    }
+    
+    // Aplicar idioma si se especificó
+    if (idioma) {
+      document.documentElement.lang = idioma;
+      localStorage.setItem('idioma', idioma);
+    }
+    
+    // Aplicar opciones adicionales
+    if (opciones) {
+      // Ejemplo: Actualizar configuración de notificaciones
+      if (opciones.notificaciones !== undefined) {
+        // Lógica para manejar notificaciones
+      }
+      
+      // Ejemplo: Actualizar configuración de accesibilidad
+      if (opciones.accesibilidad) {
+        // Aplicar ajustes de accesibilidad
+      }
+    }
+    
+    // Notificar que la configuración se aplicó correctamente
+    await enviarRespuesta(mensaje, { 
+      exito: true, 
+      configuracion: { tema, idioma }
+    });
+    
+  } catch (error) {
+    console.error('Error al aplicar configuración:', error);
+    await enviarRespuesta(mensaje, null, 'Error al aplicar configuración');
+  }
+}
+
+// Registrar el manejador de configuración
+registrarControlador(TIPOS_MENSAJE.SISTEMA.CONFIGURACION, manejarConfiguracionSistema);
 
 // ================== COMPATIBILIDAD HACIA ATRÁS ==================
 // Hacer las funciones disponibles globalmente con alias
