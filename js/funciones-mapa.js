@@ -4,7 +4,12 @@
  */
 
 // Importar la mensajería
-import { Mensajeria, TIPOS_MENSAJE, enviarMensaje } from '../Aventura-1-esp-padre-con-hijos/js/mensajeria.js';
+import { 
+  inicializarMensajeria,
+  enviarMensaje, 
+  registrarControlador,
+  TIPOS_MENSAJE 
+} from './mensajeria.js';
 
 // Estado del módulo
 let mapa = null;
@@ -43,8 +48,8 @@ export function inicializarMapa(opciones = {}) {
         console.log('[MAPA] No se encontró array de paradas, solicitando al padre...');
         
         // Verificar si la mensajería está disponible
-        if (window.Mensajeria && window.Mensajeria.enviarMensaje) {
-            window.Mensajeria.enviarMensaje('padre', 'datos:solicitar_array_paradas', {
+        if (enviarMensaje) {
+            enviarMensaje('padre', TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS, {
                 timestamp: Date.now()
             }).then(respuesta => {
                 if (respuesta && respuesta.exito && respuesta.datos && respuesta.datos.AVENTURA_PARADAS) {
@@ -458,188 +463,155 @@ function crearMapaConElementos(opciones) {
  * Registra manejadores de mensajes para eventos de navegación
  */
 function registrarManejadoresMensajes() {
-    if (!window.Mensajeria || !window.Mensajeria.registrarControlador) {
-        console.warn('[MAPA] Sistema de mensajería no disponible para registrar controladores');
-        return;
-    }
-    
-    // Registrar manejador para cambio de parada
-    window.Mensajeria.registrarControlador('navegacion:cambio_parada', manejarCambioParada);
-    
-    // Registrar manejador para llegada a parada
-    window.Mensajeria.registrarControlador('navegacion:llegada_detectada', manejarLlegadaParada);
-    
-    // Registrar manejador para actualización de posición GPS
-    window.Mensajeria.registrarControlador('gps:actualizar', manejarActualizacionGPS);
-    
-    // Registrar manejador para actualización del array de paradas
-    window.Mensajeria.registrarControlador('datos:array_paradas_actualizado', manejarArrayParadasActualizado);
-    
-    // Registrar manejador para verificar hash del array
-    window.Mensajeria.registrarControlador('datos:verificar_hash_array', manejarVerificacionHash);
-    
-    // Registrar manejador para cambio de modo usando el estándar correcto
-    window.Mensajeria.registrarControlador(
-        TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO,
-        (mensaje) => {
-            const { modo } = mensaje.datos || {};
-            console.log('[MAPA] Cambio de modo recibido:', modo);
-            // ...actualiza la interfaz/mapa según el modo...
-        }
-    );
-    
-    console.log('[MAPA] Manejadores de mensajes registrados');
-}
-
-/**
- * Maneja el evento de cambio de parada
- * @param {Object} mensaje - Mensaje recibido
- */
-function manejarCambioParada(mensaje) {
-    console.log('[MAPA] Cambio de parada recibido:', mensaje);
-    
-    if (mensaje.datos && mensaje.datos.parada_id) {
-        // Resaltar marcador de la parada en el mapa
-        resaltarMarcador(mensaje.datos.parada_id);
+    try {
+        // Registrar manejador para cambio de parada
+        registrarControlador(TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, manejarCambioParada);
         
-        // Centrar mapa en la parada
-        centrarMapaEnParada(mensaje.datos.parada_id);
-    }
-}
-
-/**
- * Resalta un marcador en el mapa
- * @param {string} paradaId - ID de la parada
- */
-function resaltarMarcador(paradaId) {
-    // Implementación pendiente
-    console.log(`[MAPA] Resaltando marcador de parada ${paradaId}`);
-}
-
-/**
- * Centra el mapa en una parada
- * @param {string} paradaId - ID de la parada
- */
-function centrarMapaEnParada(paradaId) {
-    // Implementación pendiente
-    console.log(`[MAPA] Centrando mapa en parada ${paradaId}`);
-}
-
-/**
- * Maneja el evento de llegada a una parada
- * @param {Object} mensaje - Mensaje recibido
- */
-function manejarLlegadaParada(mensaje) {
-    console.log('[MAPA] Llegada a parada detectada:', mensaje);
-    
-    if (mensaje.datos && mensaje.datos.parada_id) {
-        // Animar marcador para indicar llegada
-        animarMarcador(mensaje.datos.parada_id, 'llegada');
+        // Registrar manejador para llegada a parada
+        registrarControlador(TIPOS_MENSAJE.NAVEGACION.LLEGADA_DETECTADA, manejarLlegadaParada);
         
-        // Si hay audio asociado a la parada, activar notificación visual
-        if (mensaje.datos.audio_id) {
-            mostrarNotificacionAudio(mensaje.datos.audio_id);
-        }
+        // Registrar manejador para actualización GPS
+        registrarControlador(TIPOS_MENSAJE.GPS.ACTUALIZACION, manejarActualizacionGPS);
         
-        // Si hay reto asociado, activar notificación visual
-        if (mensaje.datos.reto_id || (mensaje.datos.retos && mensaje.datos.retos.length)) {
-            mostrarNotificacionReto(mensaje.datos.reto_id || mensaje.datos.retos[0]);
-        }
-    }
-}
-
-/**
- * Anima un marcador en el mapa
- * @param {string} paradaId - ID de la parada
- * @param {string} tipoAnimacion - Tipo de animación
- */
-function animarMarcador(paradaId, tipoAnimacion) {
-    // Implementación pendiente
-    console.log(`[MAPA] Animando marcador ${paradaId} con animación ${tipoAnimacion}`);
-}
-
-/**
- * Muestra una notificación de audio disponible
- * @param {string} audioId - ID del audio
- */
-function mostrarNotificacionAudio(audioId) {
-    // Implementación pendiente
-    console.log(`[MAPA] Mostrando notificación de audio ${audioId}`);
-}
-
-/**
- * Muestra una notificación de reto disponible
- * @param {string} retoId - ID del reto
- */
-function mostrarNotificacionReto(retoId) {
-    // Implementación pendiente
-    console.log(`[MAPA] Mostrando notificación de reto ${retoId}`);
-}
-
-/**
- * Maneja la actualización de la posición GPS
- * @param {Object} mensaje - Mensaje recibido
- */
-function manejarActualizacionGPS(mensaje) {
-    if (mensaje.datos && mensaje.datos.lat && mensaje.datos.lng) {
-        // Actualizar marcador de posición del usuario
-        actualizarPosicionUsuario(mensaje.datos.lat, mensaje.datos.lng, mensaje.datos.precision);
-    }
-}
-
-/**
- * Actualiza la posición del usuario en el mapa
- * @param {number} lat - Latitud
- * @param {number} lng - Longitud
- * @param {number} precision - Precisión en metros
- */
-function actualizarPosicionUsuario(lat, lng, precision) {
-    // Implementación pendiente
-    console.log(`[MAPA] Actualizando posición de usuario a [${lat}, ${lng}] (precisión: ${precision}m)`);
-}
-
-/**
- * Maneja la notificación de actualización del array de paradas
- * @param {Object} mensaje - Mensaje recibido
- */
-function manejarArrayParadasActualizado(mensaje) {
-    console.log('[MAPA] Notificación de actualización de paradas recibida');
-    
-    // Solicitar el array actualizado
-    solicitarArrayParadasAlPadre()
-        .then(arrayActualizado => {
-            if (arrayActualizado) {
-                console.log('[MAPA] Actualizando elementos del mapa con nuevo array');
-                actualizarElementosMapa(arrayActualizado);
+        // Registrar manejador para actualización de array de paradas
+        registrarControlador(TIPOS_MENSAJE.DATOS.ARRAY_ACTUALIZADO, manejarArrayParadasActualizado);
+        
+        // Registrar manejador para verificar hash del array
+        registrarControlador(TIPOS_MENSAJE.DATOS.VERIFICAR_HASH, manejarVerificacionHash);
+        
+        // Registrar manejador para cambio de modo siguiendo el protocolo estandarizado
+        registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, async (mensaje) => {
+            // Validar estructura del mensaje
+            if (!mensaje || typeof mensaje !== 'object' || !mensaje.datos) {
+                throw new Error('Mensaje de cambio de modo inválido: estructura incorrecta');
             }
-        })
-        .catch(error => {
-            console.error('[MAPA] Error al solicitar array actualizado:', error);
+            
+            const { datos } = mensaje;
+            const { modo, timestamp = Date.now(), motivo, forzar = false } = datos;
+            
+            // Validar modo
+            if (modo !== 'casa' && modo !== 'aventura') {
+                throw new Error(`Modo no válido: ${modo}. Debe ser 'casa' o 'aventura'`);
+            }
+            
+            // Validar timestamp
+            if (typeof timestamp !== 'number' || isNaN(new Date(timestamp).getTime())) {
+                throw new Error(`Timestamp inválido: ${timestamp}`);
+            }
+            
+            try {
+                console.log(`[MAPA] Procesando solicitud de cambio a modo: ${modo}` + 
+                          (motivo ? ` (Motivo: ${motivo})` : ''));
+                
+                // Verificar si ya está en el modo solicitado
+                const modoActual = document.body.classList.contains('modo-casa') ? 'casa' : 'aventura';
+                if (!forzar && modoActual === modo) {
+                    console.log(`[MAPA] Ya está en modo ${modo}, ignorando solicitud`);
+                    return { 
+                        exito: true, 
+                        modo, 
+                        estado: 'ya_estaba_en_modo',
+                        timestamp: Date.now()
+                    };
+                }
+                
+                // Actualizar el estado del mapa según el modo
+                await actualizarModoMapa(modo);
+                
+                // Preparar confirmación
+                const confirmacion = {
+                    exito: true,
+                    origen: CONFIG.IFRAME_ID,
+                    datos: { 
+                        modo,
+                        modoAnterior: modoActual,
+                        timestamp: Date.now(),
+                        timestampSolicitud: timestamp,
+                        motivo,
+                        detalles: 'Modo actualizado correctamente en el mapa',
+                        version: '1.0.0'
+                    }
+                };
+                
+                // Enviar confirmación al padre
+                if (typeof enviarMensaje === 'function') {
+                    await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_CONFIRMACION, confirmacion)
+                        .catch(error => {
+                            console.error('[MAPA] Error al enviar confirmación de cambio de modo:', error);
+                            throw new Error('No se pudo confirmar el cambio de modo');
+                        });
+                }
+                
+                console.log(`[MAPA] Confirmación de cambio a modo ${modo} enviada`);
+                return { 
+                    exito: true, 
+                    modo, 
+                    estado: 'confirmado',
+                    timestamp: Date.now() 
+                };
+                
+            } catch (error) {
+                console.error(`[MAPA] Error al procesar cambio a modo ${modo}:`, error);
+                
+                // Notificar error al padre
+                if (typeof enviarMensaje === 'function') {
+                    const mensajeError = {
+                        tipo: 'cambio_modo',
+                        mensaje: `Error al cambiar el modo a ${modo}: ${error.message}`,
+                        stack: error.stack,
+                        origen: CONFIG.IFRAME_ID,
+                        timestamp: Date.now(),
+                        datos: { 
+                            modo,
+                            modoAnterior: document.body.classList.contains('modo-casa') ? 'casa' : 'aventura',
+                            timestamp: Date.now(),
+                            error: error.message
+                        }
+                    };
+                    
+                    enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, mensajeError)
+                        .catch(e => console.error('[MAPA] Error al notificar error de cambio de modo:', e));
+                }
+                
+                // Relanzar error para manejo superior
+                throw error;
+            }
         });
-}
-
-/**
- * Maneja la verificación del hash del array
- * @param {Object} mensaje - Mensaje recibido
- * @returns {Object} - Respuesta con el resultado de la verificación
- */
-function manejarVerificacionHash(mensaje) {
-    if (!mensaje || !mensaje.datos || !mensaje.datos.hashServidor) {
-        return { exito: false, error: 'Datos de verificación incompletos' };
+        
+        // Manejador para mensajes de estado de modo
+        registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_ESTADO, (mensaje) => {
+            const { datos } = mensaje || {};
+            if (!datos) return;
+            
+            const { modo, confirmado, timestamp } = datos;
+            if (confirmado && (modo === 'casa' || modo === 'aventura')) {
+                console.log(`[MAPA] Estado de modo actualizado a: ${modo} (${new Date(timestamp).toISOString()})`);
+                // Asegurarse de que la interfaz esté sincronizada
+                actualizarElementosDeInterfaz(modo);
+            }
+        });
+        
+        // Manejador para errores del sistema
+        registrarControlador(TIPOS_MENSAJE.SISTEMA.ERROR, (mensaje) => {
+            const { datos } = mensaje || {};
+            if (!datos) return;
+            
+            const { tipo, mensaje: mensajeError, origen, timestamp } = datos;
+            if (tipo === 'cambio_modo_fallido') {
+                console.error(
+                    `[MAPA] Error en cambio de modo: ${mensajeError}`,
+                    `\nOrigen: ${origen || 'desconocido'}`,
+                    `\nHora: ${new Date(timestamp).toISOString()}`
+                );
+                // Opcional: Restaurar a un estado conocido o mostrar mensaje al usuario
+            }
+        });
+        
+        console.log('[MAPA] Manejadores de mensajes registrados correctamente');
+    } catch (error) {
+        console.error('[MAPA] Error al registrar manejadores de mensajes:', error);
+        throw error;
     }
-    
-    const { hashServidor } = mensaje.datos;
-    const coincide = hashArrayParadas === hashServidor;
-    
-    return {
-        exito: true,
-        datos: {
-            coincide,
-            hashLocal: hashArrayParadas,
-            hashServidor,
-            ultimaSincronizacion
-        }
-    };
 }
 
 /**
@@ -652,7 +624,7 @@ async function cargarDatosParada(paradaId) {
         console.log(`[MAPA] Solicitando datos para parada: ${paradaId}`);
         
         // Usar la mensajería para solicitar los datos al padre
-        const respuesta = await Mensajeria.enviarMensaje(
+        const respuesta = await enviarMensaje(
             'padre',
             TIPOS_MENSAJE.DATOS.SOLICITAR_PARADA,
             { paradaId },
@@ -674,92 +646,272 @@ async function cargarDatosParada(paradaId) {
 }
 
 /**
- * Actualiza o crea un marcador en el mapa para una parada
- * @param {string} paradaId - ID de la parada
- * @param {Object} datosParada - Datos completos de la parada
+ * Actualiza la interfaz del mapa según el modo especificado
+ * @param {'casa'|'aventura'} modo - El modo al que cambiar
+ * @param {Object} [opciones] - Opciones adicionales
+ * @param {boolean} [opciones.forzar=false] - Forzar la actualización aunque ya esté en el modo solicitado
+ * @returns {Promise<{exito: boolean, modo: string, timestamp: number}>}
+ * @throws {Error} Si el modo no es válido o hay un error al actualizar
  */
-function actualizarMarcadorParada(paradaId, datosParada) {
-    if (!datosParada || !datosParada.coordenadas) {
-        console.warn(`[MAPA] Datos de coordenadas faltantes para la parada ${paradaId}`);
-        return;
-    }
-
-    const [lat, lng] = datosParada.coordenadas;
-    const popupContent = `<b>${datosParada.nombre || `Parada ${paradaId}`}</b>`;
-
-    if (marcadoresParadas.has(paradaId)) {
-        // Actualizar marcador existente
-        const marcador = marcadoresParadas.get(paradaId);
-        marcador.setLatLng([lat, lng]);
-        marcador.getPopup().setContent(popupContent);
-        console.log(`[MAPA] Marcador actualizado para parada ${paradaId}`);
-    } else {
-        // Crear nuevo marcador
-        const marcador = L.marker([lat, lng])
-            .addTo(mapa)
-            .bindPopup(popupContent);
-        
-        marcadoresParadas.set(paradaId, marcador);
-        console.log(`[MAPA] Nuevo marcador creado para parada ${paradaId}`);
+async function actualizarModoMapa(modo, opciones = {}) {
+    const { forzar = false } = opciones;
+    const timestampInicio = Date.now();
+    
+    // Validar modo
+    if (modo !== 'casa' && modo !== 'aventura') {
+        throw new Error(`Modo no válido: ${modo}. Debe ser 'casa' o 'aventura'`);
     }
     
-    // Almacenar los datos de la parada
-    paradasCargadas.set(paradaId, datosParada);
+    // Verificar si ya está en el modo solicitado
+    const modoActual = document.body.classList.contains('modo-casa') ? 'casa' : 'aventura';
+    if (!forzar && modoActual === modo) {
+        console.log(`[MAPA] Ya está en modo ${modo}, no se requiere actualización`);
+        return { 
+            exito: true, 
+            modo, 
+            estado: 'ya_estaba_en_modo',
+            timestamp: Date.now()
+        };
+    }
+    
+    try {
+        console.log(`[MAPA] Iniciando actualización a modo: ${modo} (${new Date(timestampInicio).toISOString()})`);
+        
+        // 1. Actualizar clases CSS del contenedor del mapa
+        const contenedorMapa = document.querySelector('.map-container') || document.body;
+        if (contenedorMapa) {
+            // Usar requestAnimationFrame para animaciones suaves
+            await new Promise((resolve) => {
+                requestAnimationFrame(() => {
+                    contenedorMapa.classList.remove('modo-casa', 'modo-aventura');
+                    contenedorMapa.classList.add(`modo-${modo}`);
+                    resolve();
+                });
+            });
+        }
+        
+        // 2. Aplicar estilos específicos del modo al mapa
+        if (mapa && typeof mapa.setStyle === 'function') {
+            const estilos = {
+                casa: {
+                    weight: 2,
+                    opacity: 0.8,
+                    color: '#4a8fe7',
+                    fillOpacity: 0.2,
+                    fillColor: '#4a8fe7',
+                    dashArray: '3',
+                    className: `estilo-modo-casa-${Date.now()}`
+                },
+                aventura: {
+                    weight: 3,
+                    opacity: 1,
+                    color: '#e74c3c',
+                    fillOpacity: 0.3,
+                    fillColor: '#e74c3c',
+                    dashArray: null,
+                    className: `estilo-modo-aventura-${Date.now()}`
+                }
+            };
+            
+            // Aplicar estilos con transición suave
+            await new Promise((resolve) => {
+                requestAnimationFrame(() => {
+                    try {
+                        mapa.eachLayer(layer => {
+                            if (layer.setStyle) {
+                                layer.setStyle(estilos[modo]);
+                            }
+                        });
+                        
+                        // Forzar actualización de la vista
+                        if (mapa._renderer) {
+                            mapa._renderer._update();
+                        }
+                        resolve();
+                    } catch (error) {
+                        console.error('[MAPA] Error al aplicar estilos del mapa:', error);
+                        resolve(); // Continuar aunque falle el estilo
+                    }
+                });
+            });
+        }
+        
+        // 3. Actualizar otros elementos de la interfaz
+        try {
+            await actualizarElementosDeInterfaz(modo);
+        } catch (error) {
+            console.error('[MAPA] Error al actualizar elementos de interfaz:', error);
+            // Continuar aunque falle la actualización de la interfaz
+        }
+        
+        const tiempoTranscurrido = Date.now() - timestampInicio;
+        console.log(`[MAPA] Actualización a modo ${modo} completada en ${tiempoTranscurrido}ms`);
+        
+        return { 
+            exito: true, 
+            modo, 
+            modoAnterior: modoActual,
+            timestamp: Date.now(),
+            tiempoTranscurrido
+        };
+        
+    } catch (error) {
+        console.error(`[MAPA] Error al actualizar al modo ${modo}:`, error);
+        
+        // Intentar restaurar un estado consistente
+        try {
+            if (mapa) {
+                mapa.setStyle({
+                    weight: 1,
+                    opacity: 0.7,
+                    color: '#666',
+                    fillOpacity: 0.1,
+                    fillColor: '#999',
+                    dashArray: null
+                });
+            }
+        } catch (recoveryError) {
+            console.error('[MAPA] Error al restaurar estilo por defecto:', recoveryError);
+            // No relanzar este error para no sobrescribir el error original
+        }
+        
+        // Crear un error mejor formateado para el manejo superior
+        const errorActualizado = new Error(
+            `Error al cambiar al modo ${modo}: ${error.message || error}`
+        );
+        errorActualizado.name = 'ErrorCambioModo';
+        errorActualizado.detalles = {
+            modoSolicitado: modo,
+            modoAnterior: document.body.classList.contains('modo-casa') ? 'casa' : 'aventura',
+            timestamp: Date.now(),
+            tiempoTranscurrido: Date.now() - timestampInicio,
+            errorOriginal: error
+        };
+        
+        throw errorActualizado;
+    }
 }
 
 /**
- * Limpia los recursos del módulo
+ * Actualiza elementos de la interfaz de usuario según el modo
+ * @param {'casa'|'aventura'} modo - Modo actual
+ * @returns {Promise<void>}
  */
-export function limpiarRecursos() {
+// Configuración del módulo
+const CONFIG = {
+  IFRAME_ID: 'hijo-mapa', // ID único para este iframe
+  DEBUG: true,
+  LOG_LEVEL: 1, // 0: debug, 1: info, 2: warn, 3: error
+};
+
+/**
+ * Notifica un error al padre a través del sistema de mensajería.
+ * @param {string} tipo - El tipo de error (p.ej., 'inicializacion', 'cambio_modo').
+ * @param {Error} error - El objeto de error.
+ */
+async function notificarError(tipo, error) {
+  console.error(`[${CONFIG.IFRAME_ID}] Error (${tipo}):`, error);
+  if (enviarMensaje) {
     try {
-        // Limpiar manejadores de mensajes
-        if (manejadorActualizacionParada) {
-            Mensajeria.removerControlador(TIPOS_MENSAJE.DATOS.ACTUALIZACION_PARADA, manejadorActualizacionParada);
-            manejadorActualizacionParada = null;
-        }
-        
-        // Limpiar el mapa
-        if (mapa) {
-            mapa.off(); // Remover todos los manejadores de eventos
-            mapa.remove();
-            mapa = null;
-        }
-        
-        // Limpiar colecciones
-        marcadoresParadas.clear();
-        paradasCargadas.clear();
-        
-        estaInicializado = false;
-        console.log('[MAPA] Recursos del mapa liberados correctamente');
-        
-    } catch (error) {
-        console.error('[MAPA] Error al limpiar recursos del mapa:', error);
+      await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
+        tipo,
+        mensaje: error.message,
+        stack: error.stack,
+        origen: CONFIG.IFRAME_ID
+      });
+    } catch (msgError) {
+      console.error(`[${CONFIG.IFRAME_ID}] Fallo al notificar el error original:`, msgError);
     }
+  }
 }
 
-// Inicializar el mapa cuando el DOM esté listo
-function inicializar() {
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', inicializarMapa);
-    } else {
-        // Usar un pequeño retraso para asegurar que todo esté listo
-        setTimeout(() => {
-            if (!inicializarMapa()) {
-                console.error('[MAPA] Error al inicializar el mapa automáticamente');
+async function actualizarElementosDeInterfaz(modo) {
+    if (modo !== 'casa' && modo !== 'aventura') {
+        console.warn(`[MAPA] Intento de actualizar interfaz con modo no válido: ${modo}`);
+        return;
+    }
+    
+    console.log(`[MAPA] Actualizando interfaz para modo: ${modo}`);
+    
+    try {
+        document.body.classList.remove('modo-casa', 'modo-aventura');
+        document.body.classList.add(`modo-${modo}`);
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        
+        const botonesModo = document.querySelectorAll('[data-accion="cambiar-modo"]');
+        botonesModo.forEach(boton => {
+            const modoBoton = boton.getAttribute('data-modo');
+            const esActivo = modoBoton === modo;
+            boton.disabled = esActivo;
+            boton.classList.toggle('activo', esActivo);
+            boton.setAttribute('aria-pressed', esActivo.toString());
+            const textoAccesible = boton.querySelector('.sr-only');
+            if (textoAccesible) {
+                textoAccesible.textContent = esActivo ? `Modo ${modo} activo` : `Cambiar a modo ${modoBoton}`;
             }
-        }, 100);
+        });
+        
+        const titulo = document.querySelector('h1, .titulo-mapa');
+        if (titulo) {
+            titulo.textContent = `Mapa - Modo ${modo.charAt(0).toUpperCase() + modo.slice(1)}`;
+            titulo.setAttribute('aria-live', 'polite');
+        }
+    } catch (error) {
+        console.error(`[MAPA] Error al actualizar la interfaz para el modo ${modo}:`, error);
     }
 }
 
-// Iniciar la aplicación
-inicializar();
+function limpiarRecursos() {
+    console.log('[MAPA] Limpiando recursos del mapa...');
+    if (mapa) {
+        mapa.remove();
+        mapa = null;
+    }
+    marcadoresParadas.clear();
+    paradasCargadas.clear();
+    console.log('[MAPA] Recursos limpiados');
+}
 
-// Manejar recarga de la página
+function actualizarMarcadorParada(paradaId, datosNuevos) {
+    if (!marcadoresParadas.has(paradaId)) {
+        console.warn(`[MAPA] Se intentó actualizar un marcador inexistente: ${paradaId}`);
+        return;
+    }
+
+    const marcador = marcadoresParadas.get(paradaId);
+    console.log(`[MAPA] Marcador para ${paradaId} actualizado con:`, datosNuevos);
+    if (datosNuevos.visitada) {
+        // Suponiendo que crearIconoParada existe
+        // marcador.setIcon(crearIconoParada({ visitada: true }));
+    }
+}
+
+async function inicializar() {
+    try {
+        console.log(`[${CONFIG.IFRAME_ID}] Inicializando módulo de mapa...`);
+        
+        await inicializarMensajeria({
+            iframeId: CONFIG.IFRAME_ID,
+            debug: CONFIG.DEBUG,
+            logLevel: CONFIG.LOG_LEVEL
+        });
+        
+        registrarManejadoresMensajes();
+        inicializarMapa();
+        
+        console.log(`[${CONFIG.IFRAME_ID}] Módulo de mapa inicializado correctamente`);
+    } catch (error) {
+        console.error(`[${CONFIG.IFRAME_ID}] Error al inicializar el módulo de mapa:`, error);
+        await notificarError('inicializacion_modulo_mapa', error);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', inicializar);
+
 window.addEventListener('beforeunload', () => {
     limpiarRecursos();
 });
 
-// Exportar las funciones que necesiten ser accesibles desde otros módulos
 export default {
     inicializarMapa,
     limpiarRecursos,
