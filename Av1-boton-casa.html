@@ -1844,17 +1844,42 @@
       });
       
       // Configurar manejador de eventos para el botón GPS
-      document.addEventListener('click', (e) => {
+      document.addEventListener('click', async (e) => {
         const gpsBtn = e.target.closest('#gps-casa-btn');
         if (gpsBtn) {
           e.preventDefault();
           e.stopPropagation();
-          const nuevoModo = estadoApp.modo === 'casa' ? 'aventura' : 'casa';
-          manejarCambioModo({
-            datos: { modo: nuevoModo, motivo: 'click_usuario' }
-          }).catch(error => {
+          
+          // Determinar el nuevo modo (alternar entre 'ruta' y 'casa')
+          const nuevoModo = estadoApp.modo === 'ruta' ? 'casa' : 'ruta';
+          
+          try {
+            // Enviar mensaje de cambio de modo al padre
+            await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, {
+              modo: nuevoModo,
+              origen: CONFIG.IFRAME_ID,
+              timestamp: Date.now(),
+              motivo: 'click_usuario'
+            });
+            
+            // Si estamos cambiando a modo 'casa', desactivar el GPS si está activo
+            if (nuevoModo === 'casa' && estadoApp.gpsActivo) {
+              await enviarMensaje('padre', TIPOS_MENSAJE.GPS.COMANDO, {
+                accion: 'desactivar',
+                origen: CONFIG.IFRAME_ID
+              });
+              actualizarEstado({ gpsActivo: false });
+            }
+            
+            // Actualizar estado local
+            actualizarEstado({ modo: nuevoModo });
+            actualizarInterfaz();
+            
+            logger.info(`Modo cambiado a: ${nuevoModo}`);
+          } catch (error) {
             console.error(`[${CONFIG.IFRAME_ID}] Error al cambiar el modo:`, error);
-          });
+            notificarError('cambio_modo', error);
+          }
         }
       });
       
