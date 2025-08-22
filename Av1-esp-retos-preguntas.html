@@ -7,12 +7,11 @@
     <script type="module">
         // Standardized import for mensajeria.js
         import { 
-            Mensajeria,
             TIPOS_MENSAJE, 
             inicializarMensajeria, 
             enviarMensaje, 
             registrarControlador
-        } from './mensajeria.js';
+        } from './js/mensajeria.js';
         
         // ================== CONFIGURACIÓN ==================
         // Constantes y variables globales
@@ -29,6 +28,43 @@
                 FACTOR: 2
             }
         };
+
+        // Función para notificar errores al padre
+        async function notificarError(tipo, error) {
+            console.error(`[${CONFIG.iframeId}] Error (${tipo}):`, error);
+            if (enviarMensaje) {
+                await enviarMensaje('padre', 'sistema_error', {
+                    tipo,
+                    mensaje: error.message,
+                    stack: error.stack
+                });
+            }
+        }
+
+        // Inicialización cuando el DOM esté listo
+        document.addEventListener('DOMContentLoaded', async () => {
+            console.log(`[${CONFIG.iframeId}] DOM cargado, inicializando...`);
+            
+            try {
+                // Configuración de mensajería
+                await inicializarMensajeria({
+                    iframeId: CONFIG.iframeId,
+                    debug: CONFIG.debug,
+                    logLevel: CONFIG.logLevel
+                });
+
+                // Inicializar la aplicación
+                await inicializarMensajeria();
+                
+                // Registrar manejadores de mensajes
+                registrarManejadores();
+                
+                console.log(`[${CONFIG.iframeId}] Aplicación inicializada correctamente`);
+            } catch (error) {
+                console.error(`[${CONFIG.iframeId}] Error al inicializar la aplicación:`, error);
+                await notificarError('inicializacion', error);
+            }
+        });
 
         // Estado global de la aplicación
         let estadoApp = {
@@ -320,6 +356,31 @@
         // Variables globales
         let currentRetoIndex = -1;
         let retosDisabled = true;
+        let elementoActual = null; // Almacena el elemento actual (parada o tramo)
+
+        // Función para habilitar controles
+        function habilitarControles(mensaje) {
+            estadoApp.controlesHabilitados = true;
+            retosDisabled = false;
+            document.body.classList.remove ('disabled');
+            console.log('[HIJO4] Controles habilitados');
+        }
+        
+        // Función para deshabilitar controles
+        function deshabilitarControles(mensaje) {
+            estadoApp.controlesHabilitados = false;
+            retosDisabled = true;
+            document.body.classList.add('disabled');
+            console.log(`[HIJO4] Controles deshabilitados: ${mensaje?.datos?.motivo || 'sin motivo especificado'}`);
+        }
+        
+        // Función para manejar cambios de modo
+        function manejarCambioModo(mensaje) {
+            if (mensaje.datos && mensaje.datos.modo) {
+                estadoApp.modo = mensaje.datos.modo;
+                console.log(`[HIJO4] Modo cambiado a: ${estadoApp.modo}`);
+            }
+        }
 
         // ================== FUNCIONES DE UTILIDAD ==================
         function mostrarMensaje(mensaje, tipo = 'info', duracion = 3000) {
@@ -396,14 +457,11 @@
         // ================== FUNCIONES DE MENSAJERÍA ==================
         async function enviarMensajeAlPadre(tipo, datos = {}) {
             try {
-                if (Mensajeria && typeof Mensajeria.enviarMensaje === 'function') {
-                    await Mensajeria.enviarMensaje('padre', tipo, datos);
-                    console.log(`[${CONFIG.iframeId}] Mensaje enviado al padre:`, { tipo, datos });
-                } else {
-                    console.warn(`[${CONFIG.iframeId}] Mensajería no disponible para enviar:`, { tipo, datos });
-                }
+                await enviarMensaje('padre', tipo, datos);
+                console.log(`[${CONFIG.iframeId}] Mensaje enviado al padre:`, { tipo, datos });
             } catch (error) {
                 console.error(`[${CONFIG.iframeId}] Error enviando mensaje al padre:`, error);
+                throw error; // Relanzar para manejo superior si es necesario
             }
         }
 
@@ -462,41 +520,82 @@
         // ================== FUNCIONES DE MANEJO DE MODO ==================
         async function manejarCambioModo(mensaje) {
             try {
-                const { modo, habilitar = false, motivo = 'cambio_modo' } = mensaje.datos || {};
+                const { modo, timestamp, motivo = 'cambio_modo' } = mensaje.datos || {};
                 
-                if (!modo || !['casa', 'aventura'].includes(modo)) {
+                // Validar modo
+                if (modo !== 'casa' && modo !== 'aventura') {
                     throw new Error(`Modo no válido: ${modo}`);
                 }
 
+                console.log(`[${CONFIG.iframeId}] Cambiando a modo: ${modo}`, motivo ? `(Motivo: ${motivo})` : '');
+                
                 const modoAnterior = estadoApp.modo;
                 estadoApp.modo = modo;
 
-                if (habilitar) {
-                    enableControls(modo);
-                } else {
-                    disableControls(motivo);
-                }
+                // Actualizar controles según el modo
+                enableControls(modo);
 
                 // Si cambiamos a modo casa, cerrar retos abiertos
                 if (modo === 'casa' && estadoApp.retoActual) {
                     cerrarReto();
                 }
 
-                console.log(`[${CONFIG.iframeId}] Modo cambiado de '${modoAnterior}' a '${modo}'`);
+                // Renderizar el reto actual con el nuevo modo
+                if (elementoActual) {
+                    renderizarRetoActual();
+                }
+
+                // Enviar confirmación al padre
+                if (enviarMensaje) {
+                    await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_CONFIRMACION, {
+                        modo,
+                        timestamp,
+                        origen: CONFIG.iframeId,
+                        exito: true,
+                        modoAnterior
+                    });
+                    
+                    // Broadcast del nuevo estado a todos los componentes
+                    await enviarMensaje('todos', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_ESTADO, {
+                        modo,
+                        timestamp: Date.now(),
+                        origen: CONFIG.iframeId
+                    });
+                }
 
                 return {
                     estado: 'ok',
                     modoAnterior,
-                    modoNuevo: modo
+                    modoNuevo: modo,
+                    timestamp: Date.now()
                 };
 
             } catch (error) {
                 console.error(`[${CONFIG.iframeId}] Error al cambiar modo:`, error);
-                await notificarError('error_cambio_modo', {
-                    mensaje: error.message,
-                    modo: mensaje.datos?.modo
-                });
-                throw error;
+                
+                // Notificar error al padre
+                if (enviarMensaje) {
+                    await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
+                        tipo: 'cambio_modo',
+                        mensaje: error.message,
+                        stack: error.stack,
+                        origen: CONFIG.iframeId,
+                        modo: mensaje.datos?.modo,
+                        modoAnterior: estadoApp.modo
+                    }).catch(console.error);
+                }
+                
+                // Revertir al modo anterior en caso de error
+                if (mensaje.datos?.modo) {
+                    estadoApp.modo = mensaje.datos.modo;
+                }
+                
+                return {
+                    estado: 'error',
+                    error: error.message,
+                    modoActual: estadoApp.modo,
+                    timestamp: Date.now()
+                };
             }
         }
 
@@ -504,16 +603,6 @@
         async function inicializarMensajeria() {
             try {
                 console.log(`[${CONFIG.iframeId}] Iniciando sistema de retos...`);
-
-                // Inicializar mensajería
-                await Mensajeria.inicializarMensajeria({
-                    iframeId: CONFIG.iframeId,
-                    debug: CONFIG.debug,
-                    logLevel: CONFIG.logLevel
-                });
-
-                // Registrar manejadores de mensajes
-                registrarManejadores();
 
                 // Inicializar interfaz
                 inicializarInterfaz();
@@ -539,29 +628,77 @@
         }
 
         // ================== REGISTRO DE MANEJADORES ==================
-        function registrarManejadores() {
-            if (!Mensajeria || typeof Mensajeria.registrarControlador !== 'function') {
-                console.warn('⚠️ No se pueden configurar manejadores: Mensajeria no disponible');
-                return;
+        // Función para actualizar el elemento actual
+        function actualizarElementoActual(id) {
+            if (id) {
+                // Buscar en el array de retos
+                let retoIndex = -1;
+                
+                // Buscar en retos de aventura
+                if (estadoApp.modo === 'aventura') {
+                    retoIndex = estadoApp.retosAventura1Es.findIndex(reto => reto.id === id);
+                    if (retoIndex !== -1) {
+                        elementoActual = estadoApp.retosAventura1Es[retoIndex];
+                        return true;
+                    }
+                } 
+                // Buscar en retos de casa
+                else if (estadoApp.modo === 'casa') {
+                    retoIndex = estadoApp.retosCasa1Es.findIndex(reto => reto.id === id);
+                    if (retoIndex !== -1) {
+                        elementoActual = estadoApp.retosCasa1Es[retoIndex];
+                        return true;
+                    }
+                }
+                
+                console.warn(`[${CONFIG.iframeId}] No se encontró un reto con ID:`, id);
+                return false;
+            } else {
+                elementoActual = null;
+                return false;
             }
-
-            // Manejador de cambio de modo
-            Mensajeria.registrarControlador('cambio_modo', manejarCambioModo);
-            Mensajeria.registrarControlador(TIPOS_MENSAJE.SISTEMA?.CAMBIO_MODO || 'cambio_modo', manejarCambioModo);
+        }
+        
+        function registrarManejadores() {
+            // Manejador de cambio de elemento de navegación
+            registrarControlador('NAVEGACION.CAMBIO_ELEMENTO', (mensaje) => {
+                const { id } = mensaje.datos || {};
+                if (id) {
+                    const encontrado = actualizarElementoActual(id);
+                    if (encontrado && estadoApp.modo === 'aventura' && estadoApp.controlesHabilitados) {
+                        // Mostrar el reto correspondiente si está en modo aventura
+                        const retoIndex = estadoApp.retosAventura1Es.findIndex(r => r.id === id);
+                        if (retoIndex !== -1) {
+                            renderizarReto(retoIndex);
+                        }
+                    }
+                }
+            });
+            
+            // Manejador de cambio de modo estandarizado
+            registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejarCambioModo);
+            
+            // Sincronizar estado de modo al inicio
+            registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_ESTADO, async (mensaje) => {
+                if (mensaje.origen !== CONFIG.iframeId && mensaje.datos?.modo !== estadoApp.modo) {
+                    console.log(`[${CONFIG.iframeId}] Sincronizando modo: ${mensaje.datos.modo} desde ${mensaje.origen}`);
+                    await manejarCambioModo(mensaje);
+                }
+            });
 
             // Manejador de controles
-            Mensajeria.registrarControlador('habilitar_controles', (mensaje) => {
+            registrarControlador(TIPOS_MENSAJE.UI.HABILITAR_CONTROLES, (mensaje) => {
                 const { modo } = mensaje.datos || {};
                 enableControls(modo || 'casa');
             });
 
-            Mensajeria.registrarControlador('deshabilitar_controles', (mensaje) => {
+            registrarControlador(TIPOS_MENSAJE.UI.DESHABILITAR_CONTROLES, (mensaje) => {
                 const { motivo } = mensaje.datos || {};
                 disableControls(motivo || 'desconocido');
             });
 
             // Manejador de retos
-            Mensajeria.registrarControlador('mostrar_reto', (mensaje) => {
+            registrarControlador('mostrar_reto', (mensaje) => {
                 const { index } = mensaje.datos || {};
                 if (typeof index === 'number') {
                     renderizarReto(index);
