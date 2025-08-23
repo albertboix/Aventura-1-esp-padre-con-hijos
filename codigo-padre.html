@@ -286,37 +286,15 @@
         </div>
     </div>
 
+    <!-- Global state object -->
     <script type="module">
         // Standardized import for mensajeria.js
         import { 
             TIPOS_MENSAJE, 
-            inicializarMensajeria, 
+            inicializarMensajeria,
             enviarMensaje, 
             registrarControlador 
         } from './mensajeria.js';
-
-        // Añadir la función registrarControladorSeguro aquí
-        function registrarControladorSeguro(tipo, manejador) {
-            if (!tipo || typeof manejador !== 'function') {
-                console.error(`[PADRE] Error al registrar controlador: tipo o manejador inválidos`);
-                return;
-            }
-            // Wrapper para manejo seguro de errores
-            const manejadorSeguro = (mensaje) => {
-                try {
-                    return manejador(mensaje);
-                } catch (error) {
-                    console.error(`Error al manejar mensaje ${mensaje.tipo}:`, error);
-                    return {
-                        exito: false,
-                        error: error.message,
-                        origen: 'error_manejo_mensaje'
-                    };
-                }
-            };
-            registrarControlador(tipo, manejadorSeguro);
-            console.log(`[PADRE] Controlador registrado para: ${tipo}`);
-        }
 
         // Configuración mejorada del sistema de mensajería
         const CONFIG = {
@@ -336,13 +314,23 @@
         
         // Estado centralizado de la aplicación
         const estadoApp = {
-            modoCasa: false,
+            modo: {
+                actual: 'casa',
+                cambioPendiente: null,
+                confirmacionesRecibidas: new Set()
+            },
             paradaActual: 0,
+            controlesHabilitados: true,
             hijosMensajeriaInicializados: {},
             estadoGPS: 'inactivo',
             ultimaUbicacion: null,
             estadoControles: {}
         };
+        
+        // Make estadoApp globally available
+        window.estadoApp = estadoApp;
+
+        // Registro directo de controladores sin envoltura
 
         // ================== ARRAY DE PARADAS Y TRAMOS ==================
         // Este array contiene paradas y tramos con sus metadatos.
@@ -490,7 +478,23 @@
 
         let paradaActual = 0; // Índice de la parada actual
 
-        // Inicializar el sistema de mensajería con manejo de errores
+        // Initialize messaging system
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                await inicializarMensajeria({
+                    debug: true,
+                    logLevel: 1
+                });
+                console.log('Sistema de mensajería inicializado correctamente');
+                // Register message handlers after initialization
+                registrarControladoresTotales();
+                // Initialize map after messaging is ready
+                await inicializarMapa();
+            } catch (error) {
+                console.error('Error al inicializar el sistema de mensajería:', error);
+            }
+        });
+
         async function iniciarSistemaMensajeria() {
             try {
                 console.log(`[${CONFIG.ID_PADRE}] Iniciando sistema de mensajería...`);
@@ -908,40 +912,56 @@
             const { datos } = mensaje;
             console.log(`[${CONFIG.ID_PADRE}] Estado GPS actualizado:`, datos.estado);
             
-            // Actualizar estado interno
+            // Establecer valores por defecto
+            const estado = datos?.estado || 'desconocido';
+            const precision = datos?.precision;
+            const ubicacion = datos?.ultimaUbicacion;
+            
+            // Actualizar el estado del GPS
             estadoApp.estadoGPS = {
-                estado: datos.estado,
-                precision: datos.precision,
+                estado,
+                precision,
                 ultimaActualizacion: Date.now(),
-                ubicacion: datos.ultimaUbicacion
+                ubicacion
             };
             
             // Actualizar UI si es necesario
             const gpsStatus = document.getElementById('gps-status');
             if (gpsStatus) {
-                gpsStatus.textContent = `GPS: ${datos.estado}`;
-                gpsStatus.className = `gps-status ${datos.estado}`;
+                gpsStatus.textContent = `GPS: ${estado}`;
+                gpsStatus.className = `gps-status ${estado}`;
+                
+                // Limpiar precisión anterior
+                const precisionAnterior = gpsStatus.querySelector('.gps-precision');
+                if (precisionAnterior) {
+                    gpsStatus.removeChild(precisionAnterior);
+                }
                 
                 // Mostrar precisión si está disponible
-                if (datos.precision) {
+                if (typeof precision === 'number') {
                     const precisionElement = document.createElement('span');
                     precisionElement.className = 'gps-precision';
-                    precisionElement.textContent = ` (${datos.precision.toFixed(1)}m)`;
+                    precisionElement.textContent = ` (${precision.toFixed(1)}m)`;
                     gpsStatus.appendChild(precisionElement);
                 }
             }
             
             // Registrar en el log de actividad
-            registrarActividad('gps_actualizado', {
-                estado: datos.estado,
-                precision: datos.precision,
-                timestamp: Date.now()
-            });
+            try {
+                registrarActividad('gps_actualizado', {
+                    estado,
+                    precision,
+                    timestamp: Date.now()
+                });
+            } catch (error) {
+                console.error('Error al registrar actividad GPS:', error);
+            }
         }
         
         /**
          * Maneja la confirmación de cambio de modo desde el hijo2
          * @param {Object} mensaje - Mensaje de confirmación
+{{ ... }}
          */
         function manejarCambioModoConfirmado(mensaje) {
             const { datos } = mensaje;
@@ -974,22 +994,22 @@
         // ================== REGISTRO Y MANEJO DE CONTROLADORES DE MENSAJE ==================
         // Registrar todos los controladores de mensajes estructurados
         function registrarControladoresTotales() {
-            // Manejo de errores centralizado
-            registrarControladorSeguro(TIPOS_MENSAJE.SISTEMA.ERROR, (mensaje) => {
+            // Registro directo de manejador de errores
+            registrarControlador(TIPOS_MENSAJE.SISTEMA.ERROR, (mensaje) => {
                 console.error(`[PADRE] Error recibido de ${mensaje.origen}:`, mensaje.datos);
                 mostrarMensajeInfoParada(`Error en ${mensaje.origen}: ${mensaje.datos.mensaje}`, true);
                 return { exito: true };
             });
 
             // Manejo de inicialización de hijos
-            registrarControladorSeguro(TIPOS_MENSAJE.SISTEMA.INICIALIZACION_COMPLETADA, (mensaje) => {
+            registrarControlador(TIPOS_MENSAJE.SISTEMA.INICIALIZACION_COMPLETADA, (mensaje) => {
                 console.log(`[PADRE] ${mensaje.origen} ha completado su inicialización.`);
                 estadoApp.hijosMensajeriaInicializados[mensaje.origen] = true;
                 return { exito: true };
             });
 
             // NUEVO: Manejador para abrir URLs de forma segura
-            registrarControladorSeguro('abrirURL', (mensaje) => {
+            registrarControlador('abrirURL', (mensaje) => {
                 const { url, target = '_blank' } = mensaje.datos;
                 if (url) {
                     // Validación básica de la URL para seguridad
@@ -1006,44 +1026,44 @@
             });
 
             // Controladores de sistema
-            registrarControladorSeguro(TIPOS_MENSAJE.SISTEMA.INICIALIZACION, manejarInicializacion);
+            registrarControlador(TIPOS_MENSAJE.SISTEMA.INICIALIZACION, manejarInicializacion);
             
             // Controladores de navegación
-            registrarControladorSeguro(TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, manejarCambioParada);
+            registrarControlador(TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, manejarCambioParada);
             
             // Controladores de audio
-            registrarControladorSeguro(TIPOS_MENSAJE.AUDIO.REPRODUCIR, manejarReproducirAudio);
-            registrarControladorSeguro(TIPOS_MENSAJE.AUDIO.PAUSAR, manejarPausarAudio);
-            registrarControladorSeguro(TIPOS_MENSAJE.AUDIO.FINALIZADO, manejarAudioFinalizado);
+            registrarControlador(TIPOS_MENSAJE.AUDIO.REPRODUCIR, manejarReproducirAudio);
+            registrarControlador(TIPOS_MENSAJE.AUDIO.PAUSAR, manejarPausarAudio);
+            registrarControlador(TIPOS_MENSAJE.AUDIO.FINALIZADO, manejarAudioFinalizado);
             
             // Controladores de retos
-            registrarControladorSeguro(TIPOS_MENSAJE.RETOS.MOSTRAR, manejarMostrarReto);
-            registrarControladorSeguro(TIPOS_MENSAJE.RETOS.OCULTAR, manejarOcultarReto);
-            registrarControladorSeguro(TIPOS_MENSAJE.RETOS.COMPLETADO, manejarRetoCompletado);
+            registrarControlador(TIPOS_MENSAJE.RETOS.MOSTRAR, manejarMostrarReto);
+            registrarControlador(TIPOS_MENSAJE.RETOS.OCULTAR, manejarOcultarReto);
+            registrarControlador(TIPOS_MENSAJE.RETOS.COMPLETADO, manejarRetoCompletado);
             
             // Controladores de modo
-            registrarControladorSeguro(TIPOS_MENSAJE.MODO.ACTIVAR, manejarModoActivar);
-            registrarControladorSeguro(TIPOS_MENSAJE.MODO.DESACTIVAR, manejarModoDesactivar);
+            registrarControlador(TIPOS_MENSAJE.MODO.ACTIVAR, manejarModoActivar);
+            registrarControlador(TIPOS_MENSAJE.MODO.DESACTIVAR, manejarModoDesactivar);
             
             // Controladores de error
-            registrarControladorSeguro(TIPOS_MENSAJE.ERROR, manejarError);
+            registrarControlador(TIPOS_MENSAJE.ERROR, manejarError);
 
             // Controladores de datos
-            registrarControladorSeguro(TIPOS_MENSAJE.DATOS.SOLICITAR_CONSTANTES, manejarSolicitudConstantes);
-            registrarControladorSeguro(TIPOS_MENSAJE.DATOS.SOLICITAR_PARADA, manejarSolicitudParada);
-            registrarControladorSeguro(TIPOS_MENSAJE.DATOS.SOLICITAR_COORDENADAS, manejarSolicitudCoordenadas);
-            registrarControladorSeguro(TIPOS_MENSAJE.DATOS.SOLICITAR_ESTADO, manejarSolicitudEstado);
+            registrarControlador(TIPOS_MENSAJE.DATOS.SOLICITAR_CONSTANTES, manejarSolicitudConstantes);
+            registrarControlador(TIPOS_MENSAJE.DATOS.SOLICITAR_PARADA, manejarSolicitudParada);
+            registrarControlador(TIPOS_MENSAJE.DATOS.SOLICITAR_COORDENADAS, manejarSolicitudCoordenadas);
+            registrarControlador(TIPOS_MENSAJE.DATOS.SOLICITAR_ESTADO, manejarSolicitudEstado);
             
             // Controladores para comunicación con los componentes
-            registrarControladorSeguro('CONTROLES.ESTADO', manejarEstadoControles);
-            registrarControladorSeguro('GPS.ESTADO', manejarEstadoGPS);
+            registrarControlador('CONTROLES.ESTADO', manejarEstadoControles);
+            registrarControlador('GPS.ESTADO', manejarEstadoGPS);
             
             // Controladores estandarizados de modo
-            registrarControladorSeguro(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_CONFIRMACION, manejarCambioModoConfirmado);
-            registrarControladorSeguro(TIPOS_MENSAJE.SISTEMA.ERROR, manejarErrorSistema);
+            registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_CONFIRMACION, manejarCambioModoConfirmado);
+            registrarControlador(TIPOS_MENSAJE.SISTEMA.ERROR, manejarErrorSistema);
             
             // Controladores de datos
-            registrarControladorSeguro(TIPOS_MENSAJE.DATOS.SOLICITAR_ARRAY_PARADAS, manejarSolicitudArrayParadas);
+            registrarControlador(TIPOS_MENSAJE.DATOS.SOLICITAR_ARRAY_PARADAS, manejarSolicitudArrayParadas);
             
             // Verificar que todos los manejadores requeridos estén registrados
             verificarManejadoresRequeridos();
@@ -1194,27 +1214,6 @@
             
             console.log(`[${CONFIG.ID_PADRE}] Verificación de manejadores completada: todos los manejadores requeridos están registrados`);
             return true;
-        }
-
-        // ================== REGISTRO DE CONTROLADORES CON MANEJO DE ERRORES ==================
-        /**
-         * Registra un controlador de mensajes con manejo de errores
-         * @param {string} tipo - El tipo de mensaje
-         * @param {Function} manejador - La función manejadora
-         */
-        function registrarControladorSeguro(tipo, manejador) {
-            if (!tipo || typeof manejador !== 'function') {
-                console.error(`[${CONFIG.ID_PADRE}] Error al registrar controlador: tipo o manejador inválidos`);
-                return;
-            }
-            
-            // Crear una función wrapper que maneja errores
-            const manejadorSeguro = (mensaje) => manejarMensajeSeguro(manejador, mensaje);
-            
-            // Registrar el controlador con el wrapper
-            registrarControlador(tipo, manejadorSeguro);
-            
-            console.log(`[${CONFIG.ID_PADRE}] Controlador registrado para: ${tipo}`);
         }
 
         /**
@@ -1619,9 +1618,9 @@
         }
 
         // Registrar controladores
-        registrarControladorSeguro(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejarCambioModoCentralizado);
-        registrarControladorSeguro(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_CONFIRMACION, manejarConfirmacionCambioModo);
-        registrarControladorSeguro(TIPOS_MENSAJE.SISTEMA.ERROR, manejarErrorSistema);
+        registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejarCambioModoCentralizado);
+        registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_CONFIRMACION, manejarConfirmacionCambioModo);
+        registrarControlador(TIPOS_MENSAJE.SISTEMA.ERROR, manejarErrorSistema);
     </script>
 </body>
 </html>
