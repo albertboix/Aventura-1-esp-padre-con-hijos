@@ -10,9 +10,25 @@
         TIPOS_MENSAJE, 
         inicializarMensajeria, 
         enviarMensaje, 
-        registrarControlador 
-      } from './js/mensajeria.js';
-      import { notificarError, withErrorHandling } from './js/error-handler.js';
+        registrarControlador,
+        TIPOS_MENSAJE
+      } from './mensajeria.js';
+      
+      // Initialize notificarError if not already defined
+      if (typeof window.notificarError === 'undefined') {
+          window.notificarError = function(tipo, error, datosAdicionales = {}) {
+              const errorObj = error instanceof Error ? error : new Error(String(error));
+              const errorInfo = {
+                  tipo,
+                  mensaje: errorObj.message,
+                  stack: errorObj.stack,
+                  ...datosAdicionales,
+                  timestamp: new Date().toISOString()
+              };
+              console.error(`[BotonCasa] Error (${tipo}):`, errorInfo);
+              return errorInfo;
+          };
+      }
       
       // Hacer las constantes disponibles globalmente
       window.TIPOS_MENSAJE = TIPOS_MENSAJE;
@@ -215,7 +231,7 @@
       // Cargar módulos requeridos
       let mensajeria, funcionesMapa;
       let enviarMensaje, registrarControlador, TIPOS_MENSAJE;
-      let inicializarMapa, centrarMapa, actualizarPuntoActual, actualizarTramoActual, actualizarModo;
+      // Remove duplicate declarations that might conflict with imported modules
       
       try {
         logger.info('Iniciando carga de módulos...');
@@ -226,8 +242,12 @@
           cargarModulo('funcionesMapa')
         ]);
         
-        // Desestructurar las funciones necesarias
+        // Desestructurar las funciones necesarias del módulo de mensajería
         if (mensajeria) {
+          // Only assign these if they're not already defined to avoid redeclaration
+          if (typeof enviarMensaje === 'undefined') {
+            ({ enviarMensaje, registrarControlador, TIPOS_MENSAJE } = mensajeria);
+          }
           ({ 
             inicializarMensajeria, 
             enviarMensaje, 
@@ -499,15 +519,41 @@
        * @param {Object} [datosAdicionales={}] - Datos adicionales para incluir en el error
        * @returns {Promise<Object>} Información detallada del error
        */
-      import { notificarError } from './error-handler.js'; // La función notificarError ahora se importa del módulo error-handler.js
-
+      async function notificarError(tipo, error, datosAdicionales = {}) {
+        try {
+          // Ensure we have a valid error object
+          const errorObj = typeof error === 'string' 
+            ? new Error(error) 
+            : error instanceof Error 
+              ? error 
+              : new Error('Error desconocido');
+          
+          // Prepare error info
+          const errorInfo = {
+            tipo,
+            mensaje: errorObj.message,
+            stack: errorObj.stack,
+            ...datosAdicionales,
+            origen: CONFIG.IFRAME_ID,
+            timestamp: new Date().toISOString()
+          };
+          
+          // Log the error
+          console.error(`[${CONFIG.IFRAME_ID}] Error (${tipo}):`, errorInfo);
+          
+          // Send error to parent if messaging is available
+          if (typeof enviarMensaje === 'function') {
+            try {
+              await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, errorInfo);
+            } catch (sendError) {
+              console.error('Error al enviar mensaje de error al padre:', sendError);
             }
           }
           
           return errorInfo;
           
         } catch (error) {
-          // Si hay un error en el manejador de errores, usar console.error directamente
+          // If there's an error in the error handler, use console.error directly
           console.error('Error crítico en notificarError:', error);
           return {
             tipo: 'error_critico',
@@ -2142,20 +2188,21 @@
     // Código de inicialización de la aplicación
     document.addEventListener('DOMContentLoaded', async () => {
       try {
-        // Inicialización de la mensajería
-        await inicializarMensajeria({
-          iframeId: CONFIG.IFRAME_ID,
-          debug: CONFIG.DEBUG,
-          logLevel: CONFIG.LOG_LEVEL
-        });
-        
-        // Registrar manejadores de eventos
-        registrarManejadores();
-        
-        // Notificar que la inicialización ha terminado
-        notificarInicializacion();
+        if (typeof window.mensajeriaInicializada === 'undefined') {
+          logger.info('Inicializando sistema de mensajería...');
+          await inicializarMensajeria({
+            iframeId: CONFIG.IFRAME_ID,
+            debug: CONFIG.DEBUG,
+            logLevel: CONFIG.LOG_LEVEL
+          });
+          window.mensajeriaInicializada = true;
+          logger.info('Sistema de mensajería inicializado correctamente');
+        } else {
+          logger.info('El sistema de mensajería ya está inicializado');
+        }
       } catch (error) {
-        notificarError('inicializacion', error);
+        logger.error('Error al inicializar el sistema de mensajería:', error);
+        throw new Error(`Error al inicializar el sistema de mensajería: ${error.message}`);
       }
     });
   </script>
