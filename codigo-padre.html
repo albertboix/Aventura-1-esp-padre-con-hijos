@@ -12,8 +12,8 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
             crossorigin=""></script>
-    <script type="module" src="./js/mensajeria.js"></script>
-    <script type="module" src="./js/funciones-mapa.js"></script>
+    <script type="module" src="./mensajeria.js"></script>
+    <script type="module" src="./funciones-mapa.js"></script>
 
     <style>
         html, body {
@@ -228,13 +228,26 @@
         // Check if Leaflet is available
         if (typeof L === 'undefined') {
             updateMapDebug('ERROR: Leaflet no disponible');
+            console.error('Leaflet no está disponible. Asegúrate de que el script de Leaflet se cargue correctamente.');
         } else {
             updateMapDebug('Leaflet cargado, inicializando...');
+            console.log('Versión de Leaflet cargada:', L.version);
             
             // Remove debug when map initializes
             document.addEventListener('mapInitialized', () => {
                 updateMapDebug('Inicializado correctamente');
+                console.log('Mapa inicializado correctamente');
             });
+            
+            // Force map initialization after a short delay
+            setTimeout(() => {
+                if (window.mapa) {
+                    console.log('Forzando actualización del tamaño del mapa...');
+                    window.mapa.invalidateSize(true);
+                } else {
+                    console.warn('El mapa no se ha inicializado correctamente');
+                }
+            }, 500);
         }
     </script>
     
@@ -1258,48 +1271,81 @@
                 // Get the map container
                 const mapContainer = document.getElementById('mapa');
                 if (!mapContainer) {
-                    console.error('[MAPA] No se encontró el contenedor del mapa (id="mapa")');
+                    const errorMsg = 'No se encontró el contenedor del mapa (id="mapa")';
+                    console.error('[MAPA]', errorMsg);
+                    updateMapDebug('ERROR: ' + errorMsg);
                     return null;
                 }
                 
-                // Ensure the map container has proper dimensions
+                // Ensure the map container has proper dimensions and is visible
                 mapContainer.style.width = '100%';
                 mapContainer.style.height = '100%';
                 mapContainer.style.display = 'block';
+                mapContainer.style.visibility = 'visible';
                 
                 // Check if Leaflet is available
                 if (!window.L) {
-                    console.error('[MAPA] Error: Leaflet no está disponible (objeto L)');
+                    const errorMsg = 'Leaflet no está disponible (objeto L)';
+                    console.error('[MAPA]', errorMsg);
+                    updateMapDebug('ERROR: ' + errorMsg);
                     return null;
                 }
                 
                 console.log('[MAPA] Creando instancia del mapa...');
+                updateMapDebug('Creando instancia del mapa...');
                 
                 // Create map instance with default view over Valencia
                 const map = L.map('mapa', {
                     center: [39.4697, -0.3774], // Valencia coordinates
                     zoom: 15,
-                    zoomControl: true
+                    zoomControl: true,
+                    preferCanvas: true, // Better performance
+                    fadeAnimation: false,
+                    zoomAnimation: true,
+                    attributionControl: false
                 });
                 
-                // Add OpenStreetMap tile layer
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                // Add OpenStreetMap tile layer with retries
+                const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-                    maxZoom: 19
+                    maxZoom: 19,
+                    minZoom: 12,
+                    subdomains: ['a', 'b', 'c'],
+                    errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+                    detectRetina: true
                 }).addTo(map);
+                
+                // Handle tile loading errors
+                tileLayer.on('tileerror', function(e) {
+                    console.warn('Error al cargar el tile:', e);
+                });
+                
+                // Add a simple marker to verify the map is working
+                L.marker([39.4697, -0.3774])
+                    .addTo(map)
+                    .bindPopup('¡Hola! Estás en Valencia')
+                    .openPopup();
                 
                 // Save reference to map
                 window.mapa = map;
                 
                 console.log('[MAPA] Mapa inicializado correctamente');
+                updateMapDebug('Mapa inicializado');
                 
                 // Force map to recalculate size after a short delay
                 setTimeout(() => {
-                    map.invalidateSize(true);
-                    console.log('[MAPA] Tamaño del mapa actualizado');
+                    console.log('[MAPA] Actualizando tamaño del mapa...');
+                    map.invalidateSize({ pan: false, animate: false });
                     
-                    // Dispatch event to notify map is initialized
-                    document.dispatchEvent(new Event('mapInitialized'));
+                    // Add a small delay and check again
+                    setTimeout(() => {
+                        map.invalidateSize({ pan: false, animate: false });
+                        console.log('[MAPA] Tamaño del mapa actualizado');
+                        updateMapDebug('Tamaño actualizado');
+                        
+                        // Dispatch event to notify map is initialized
+                        document.dispatchEvent(new Event('mapInitialized'));
+                    }, 100);
                 }, 100);
                 
                 return map;
