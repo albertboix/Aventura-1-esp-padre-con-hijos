@@ -12,15 +12,19 @@
         enviarMensaje, 
         registrarControlador 
       } from './js/mensajeria.js';
+      import { notificarError, withErrorHandling } from './js/error-handler.js';
       
       // Hacer las constantes disponibles globalmente
       window.TIPOS_MENSAJE = TIPOS_MENSAJE;
       window.Mensajeria = {
-        inicializarMensajeria,
-        enviarMensaje,
+        inicializarMensajeria: withErrorHandling(inicializarMensajeria, 'boton-casa:inicializar'),
+        enviarMensaje: withErrorHandling(enviarMensaje, 'boton-casa:enviar'),
         registrarControlador,
         TIPOS_MENSAJE
       };
+      
+      // Hacer notificarError disponible globalmente
+      window.notificarError = notificarError;
 
       // ================== CONFIGURACIÓN ESTÁNDAR ==================
       // ================== CONSTANTES ==================
@@ -210,7 +214,7 @@
 
       // Cargar módulos requeridos
       let mensajeria, funcionesMapa;
-      let inicializarMensajeria, enviarMensaje, registrarControlador, TIPOS_MENSAJE;
+      let enviarMensaje, registrarControlador, TIPOS_MENSAJE;
       let inicializarMapa, centrarMapa, actualizarPuntoActual, actualizarTramoActual, actualizarModo;
       
       try {
@@ -495,51 +499,8 @@
        * @param {Object} [datosAdicionales={}] - Datos adicionales para incluir en el error
        * @returns {Promise<Object>} Información detallada del error
        */
-      async function notificarError(tipo, error, datosAdicionales = {}) {
-        try {
-          // Validación de parámetros
-          if (!tipo || typeof tipo !== 'string') {
-            logger.warn('Tipo de error no válido, usando valor por defecto', { tipo });
-            tipo = 'error_desconocido';
-          }
+      import { notificarError } from './error-handler.js'; // La función notificarError ahora se importa del módulo error-handler.js
 
-          // Crear objeto de error si es necesario
-          let errorObj;
-          if (error instanceof Error) {
-            errorObj = error;
-          } else if (typeof error === 'string') {
-            errorObj = new Error(error);
-          } else if (error && typeof error === 'object') {
-            errorObj = new Error(error.message || 'Error desconocido');
-            Object.assign(errorObj, error);
-          } else {
-            errorObj = new Error('Error desconocido');
-          }
-
-          // Preparar información detallada del error
-          const errorInfo = {
-            tipo,
-            mensaje: errorObj.message,
-            stack: errorObj.stack,
-            origen: CONFIG.IFRAME_ID,
-            timestamp: new Date().toISOString(),
-            ...(errorObj.details && { detalles: errorObj.details }),
-            ...datosAdicionales
-          };
-          
-          // Registrar el error según su severidad
-          if (tipo.startsWith('advertencia')) {
-            logger.warn(`Advertencia (${tipo}): ${errorObj.message}`, errorInfo);
-          } else {
-            logger.error(`Error (${tipo}): ${errorObj.message}`, errorInfo);
-          }
-          
-          // Notificar al padre si está disponible
-          if (typeof enviarMensaje === 'function' && !tipo.startsWith('advertencia')) {
-            try {
-              await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, errorInfo);
-            } catch (e) {
-              logger.error('Error al notificar error al padre', e);
             }
           }
           
@@ -1142,33 +1103,7 @@
        * @param {Error} error - Objeto de error
        * @returns {Promise<Object>} Información del error notificado
        */
-      async function notificarError(tipo, error) {
-        // Validación de parámetros
-        if (!tipo || typeof tipo !== 'string') {
-          logger.error('Tipo de error no válido al notificar error', { tipo, error });
-          tipo = 'error_desconocido';
-        }
-        
-        // Registrar el error localmente
-        logger.error(`Error (${tipo})`, error);
-        
-        try {
-          await enviarMensaje(
-            'padre',
-            'error',
-            {
-              tipo,
-              mensaje: error.message,
-              stack: error.stack,
-              timestamp: Date.now(),
-              origen: CONFIG.IFRAME_ID
-            },
-            CONFIG.REINTENTOS
-          );
-        } catch (e) {
-          console.error(`[${CONFIG.IFRAME_ID}] Error al notificar error:`, e);
-        }
-      }
+      // La función notificarError ahora se importa del módulo error-handler.js
       
       // Sincronizar estado con el padre
       async function sincronizarEstado(estado) {
