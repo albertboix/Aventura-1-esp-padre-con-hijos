@@ -5,23 +5,39 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Botones y Coordenadas GPS</title>
     <script type="module">
-      // Standardized import for mensajeria.js
+      // Standardized import for mensajeria.js and error handler
       import { 
-        Mensajeria,
         TIPOS_MENSAJE, 
         inicializarMensajeria, 
         enviarMensaje, 
-        registrarControlador
-      } from './js/mensajeria.js';
+        registrarControlador,
+        TIPOS_MENSAJE
+      } from './mensajeria.js';
       
-    // Hacer las constantes y funciones disponibles globalmente
-    window.TIPOS_MENSAJE = TIPOS_MENSAJE;
-    window.Mensajeria = {
-      inicializarMensajeria,
-      enviarMensaje,
-      registrarControlador,
-      TIPOS_MENSAJE
-    };
+      // Initialize notificarError if not already defined
+      if (typeof window.notificarError === 'undefined') {
+          window.notificarError = function(tipo, error, datosAdicionales = {}) {
+              const errorObj = error instanceof Error ? error : new Error(String(error));
+              const errorInfo = {
+                  tipo,
+                  mensaje: errorObj.message,
+                  stack: errorObj.stack,
+                  ...datosAdicionales,
+                  timestamp: new Date().toISOString()
+              };
+              console.error(`[Coordenadas] Error (${tipo}):`, errorInfo);
+              return errorInfo;
+          };
+      }
+      
+      // Make mensajeria functions available globally with error handling
+      window.TIPOS_MENSAJE = TIPOS_MENSAJE;
+      window.Mensajeria = {
+        inicializarMensajeria: withErrorHandling(inicializarMensajeria, 'botones-coordenadas:inicializar'),
+        enviarMensaje: withErrorHandling(enviarMensaje, 'botones-coordenadas:enviar'),
+        registrarControlador,
+        TIPOS_MENSAJE
+      };
       
       // ================== INICIALIZACIÓN DE MENSAJERÍA MEJORADA ==================
       
@@ -91,6 +107,7 @@
             }, '*');
           } catch (e) {
             console.error(`[${ID_APLICACION}] Error al notificar error al padre:`, e);
+            // No usar notificarError aquí para evitar bucles de error
           }
         };
         // Función para programar reintento
@@ -196,32 +213,6 @@
               }
             },
             onReconnect: (intento) => {
-              console.log(`[${ID_APLICACION}] Reconectando... (intento ${intento})`);
-            }
-          };
-          
-          // 7. Inicializar la mensajería
-          console.log(`[${ID_APLICACION}] Inicializando mensajería con configuración:`, configuracion);
-          
-          try {
-            await window.Mensajeria.inicializarMensajeria(configuracion);
-            
-            // 8. Configurar manejadores de mensajes
-            if (typeof configurarManejadoresMensajes === 'function') {
-              configurarManejadoresMensajes();
-            } else {
-              console.warn(`[${ID_APLICACION}] La función configurarManejadoresMensajes no está definida`);
-            }
-            
-            // 9. Configurar sistema de reconexión
-            if (typeof configurarSistemaReconexion === 'function') {
-              configurarSistemaReconexion();
-            } else {
-              console.warn(`[${ID_APLICACION}] La función configurarSistemaReconexion no está definida`);
-            }
-            
-            // 10. Notificar al padre que estamos listos
-            if (typeof notificarInicializacion === 'function') {
               await notificarInicializacion();
             } else {
               console.warn(`[${ID_APLICACION}] La función notificarInicializacion no está definida`);
@@ -251,7 +242,9 @@
                 }, '*');
                 console.log(`[${ID_APLICACION}] ✅ Sistema de mensajería inicializado correctamente`);
               } catch (error) {
-                console.error(`[${ID_APLICACION}] Error al notificar al padre:`, error);
+                const errorMsg = `[${ID_APLICACION}] Error al notificar al padre`;
+                console.error(errorMsg, error);
+                // No usar notificarError aquí para evitar bucles de error
               }
             } else {
               console.warn(`[${ID_APLICACION}] No se pudo notificar al padre: window.parent no disponible`);
@@ -259,9 +252,16 @@
             
             return true;
           } catch (error) {
-            console.error(`[${ID_APLICACION}] Error al inicializar la mensajería:`, error);
+            const errorMsg = `[${ID_APLICACION}] Error al inicializar la mensajería`;
+            console.error(errorMsg, error);
             estadoApp.ultimoError = error;
             estadoApp.mensajeriaInicializada = false;
+            
+            // Notificar el error usando el manejador centralizado
+            await notificarError('mensajeria:inicializacion', error, {
+              modulo: 'botones-coordenadas',
+              intento: estadoApp.reintentos || 1
+            });
             
             // Notificar al padre sobre el error
             notificarErrorAlPadre(error);
@@ -352,8 +352,13 @@
           console.log('[HIJO2] Módulo de mensajería cargado correctamente');
           return modulo;
         } catch (error) {
-          console.error('[HIJO2] Error al cargar el módulo de mensajería:', error);
-          throw new Error('No se pudo cargar el módulo de mensajería. Verifica la ruta del archivo.');
+          const errorMsg = 'Error al cargar el módulo de mensajería';
+          console.error(`[HIJO2] ${errorMsg}:`, error);
+          await notificarError('carga_modulo', error, {
+            modulo: 'botones-coordenadas',
+            ruta: './mensajeria.js'
+          });
+          throw new Error(`${errorMsg}. Verifica la ruta del archivo.`);
         }
       }
       
@@ -402,7 +407,11 @@
           return manejadoresRegistrados;
           
         } catch (error) {
-          console.error('[HIJO2] ❌ Error en configuración de manejadores:', error);
+          const errorMsg = 'Error en configuración de manejadores';
+          console.error(`[HIJO2] ❌ ${errorMsg}:`, error);
+          await notificarError('configuracion_manejadores', error, {
+            modulo: 'botones-coordenadas'
+          });
           throw error; // Relanzar para manejo superior
         }
       }
@@ -6359,11 +6368,78 @@
                 });
         }
         
+        // Inicialización cuando el DOM esté listo
+        async function inicializarAplicacion() {
+          try {
+            console.log('[BOTONES] Inicializando aplicación...');
+            
+            // Inicializar mensajería con configuración estándar
+            await window.Mensajeria.inicializarMensajeria({
+              iframeId: 'hijo2-botones',
+              debug: true,
+              logLevel: 1,
+              maxReintentos: 3,
+              tiempoReintento: 2000
+            });
+            
+            // Registrar manejadores de mensajes
+            if (typeof configurarManejadoresMensajes === 'function') {
+              configurarManejadoresMensajes();
+            }
+            
+            // Inicializar interfaz
+            if (typeof inicializarInterfaz === 'function') {
+              inicializarInterfaz();
+            }
+            
+            // Notificar al padre que estamos listos
+            await window.Mensajeria.enviarMensaje(
+              'padre', 
+              'sistema:inicializado', 
+              { 
+                estado: 'listo', 
+                modulo: 'botones-coordenadas',
+                timestamp: Date.now() 
+              }
+            );
+            
+            console.log('[BOTONES] Aplicación inicializada correctamente');
+          } catch (error) {
+            const errorMsg = '[BOTONES] Error al inicializar la aplicación';
+            console.error(errorMsg, error);
+            
+            // Notificar el error usando el manejador centralizado
+            await notificarError('inicializacion', error, {
+              modulo: 'botones-coordenadas',
+              accion: 'inicializacion',
+              intento: 1
+            });
+            
+            // Intentar notificar al padre del error
+            try {
+              await window.Mensajeria.enviarMensaje(
+                'padre',
+                'sistema:error',
+                {
+                  tipo: 'error_inicializacion',
+                  mensaje: errorMsg,
+                  error: error.message,
+                  stack: error.stack,
+                  timestamp: Date.now()
+                }
+              );
+            } catch (e) {
+              console.error('[BOTONES] No se pudo notificar el error al padre:', e);
+            }
+          }
+        }
+        
         // Iniciar la aplicación cuando el DOM esté listo
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', inicializarAplicacion);
+          document.addEventListener('DOMContentLoaded', inicializarAplicacion);
         } else {
-            inicializarAplicacion();
+          // Usar setTimeout para asegurar que el DOM esté completamente cargado
+          setTimeout(inicializarAplicacion, 0);
         }
         
         // Cerrar la función inicializarAplicacion
