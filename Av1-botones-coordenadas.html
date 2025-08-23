@@ -10,8 +10,7 @@
         TIPOS_MENSAJE, 
         inicializarMensajeria, 
         enviarMensaje, 
-        registrarControlador,
-        TIPOS_MENSAJE
+        registrarControlador
       } from './mensajeria.js';
       
       // Initialize notificarError if not already defined
@@ -160,8 +159,6 @@
             ESTADO: 'estado',
             ERROR: 'error',
             NAVEGACION: 'navegacion',
-            AUDIO: 'audio',
-            RETO: 'reto',
             CONFIRMACION: 'confirmacion',
             
             // Controles
@@ -176,17 +173,7 @@
             // Navegación
             INICIAR_NAVEGACION: 'navegacion:iniciar',
             DETENER_NAVEGACION: 'navegacion:detener',
-            LLEGADA_DESTINO: 'navegacion:llegada_destino',
-            
-            // Audio
-            REPRODUCIR_AUDIO: 'audio:reproducir',
-            PAUSAR_AUDIO: 'audio:pausar',
-            DETENER_AUDIO: 'audio:detener',
-            
-            // Retos
-            INICIAR_RETO: 'reto:iniciar',
-            COMPLETAR_RETO: 'reto:completar',
-            FALLAR_RETO: 'reto:fallar'
+            LLEGADA_DESTINO: 'navegacion:llegada_destino'
           };
           
           // Hacer una copia local para usar en este ámbito
@@ -212,22 +199,57 @@
                 programarReintento();
               }
             },
-            onReconnect: (intento) => {
-              await notificarInicializacion();
-            } else {
-              console.warn(`[${ID_APLICACION}] La función notificarInicializacion no está definida`);
+            onReconnect: async (intento) => {
+              if (typeof notificarInicializacion === 'function') {
+                await notificarInicializacion();
+              } else {
+                console.warn(`[${ID_APLICACION}] La función notificarInicializacion no está definida`);
+              }
+              
+              // Actualizar estado después de reconexión exitosa
+              estadoApp.mensajeriaInicializada = true;
+              estadoApp.reconectando = false;
+              estadoApp.reintentos = 0;
+              estadoApp.ultimoError = null;
+              
+              // Notificar al padre que la mensajería está lista
+              if (window.parent && window.parent !== window) {
+                try {
+                  await window.parent.postMessage({
+                    tipo: TIPOS_MENSAJE.INICIALIZACION,
+                    origen: ID_APLICACION,
+                    estado: 'reconectado',
+                    timestamp: Date.now(),
+                    detalles: {
+                      mensajeria: 'reconectada',
+                      intento: intento,
+                      reconexiones: estadoApp.reintentos
+                    }
+                  }, '*');
+                  console.log(`[${ID_APLICACION}] ✅ Reconexión exitosa (intento ${intento})`);
+                } catch (error) {
+                  console.error(`[${ID_APLICACION}] Error al notificar reconexión:`, error);
+                }
+              }
+              
+              return true;
             }
+          };
+          
+          try {
+            // Inicializar la mensajería con la configuración
+            await inicializarMensajeria(configuracion);
             
-            // 11. Actualizar estado
+            // Actualizar estado
             estadoApp.mensajeriaInicializada = true;
             estadoApp.reconectando = false;
             estadoApp.reintentos = 0;
             estadoApp.ultimoError = null;
             
-            // 12. Notificar al padre que la mensajería está lista
+            // Notificar al padre que la mensajería está lista
             if (window.parent && window.parent !== window) {
               try {
-                window.parent.postMessage({
+                await window.parent.postMessage({
                   tipo: TIPOS_MENSAJE.INICIALIZACION,
                   origen: ID_APLICACION,
                   estado: 'listo',
@@ -241,16 +263,16 @@
                   }
                 }, '*');
                 console.log(`[${ID_APLICACION}] ✅ Sistema de mensajería inicializado correctamente`);
+                return true;
               } catch (error) {
                 const errorMsg = `[${ID_APLICACION}] Error al notificar al padre`;
                 console.error(errorMsg, error);
-                // No usar notificarError aquí para evitar bucles de error
+                throw error; // Relanzar para manejarlo en el catch externo
               }
             } else {
               console.warn(`[${ID_APLICACION}] No se pudo notificar al padre: window.parent no disponible`);
+              return false;
             }
-            
-            return true;
           } catch (error) {
             const errorMsg = `[${ID_APLICACION}] Error al inicializar la mensajería`;
             console.error(errorMsg, error);
@@ -298,51 +320,22 @@
               }
             }
             
-            throw error; // Relanzar el error para que sea manejado por el bloque catch externo si es necesario
+            return false; // Indicar que la inicialización falló
           }
-        } catch (error) {
-          // Manejo detallado de errores
-          const errorMsg = `[${ID_APLICACION}] ❌ Error en inicialización: ${error.message || 'Error desconocido'}`;
-          console.error(errorMsg, error);
-          
-          // Actualizar estado
+      } catch (error) {
+          console.error(`[${ID_APLICACION}] Error en la inicialización del sistema de mensajería:`, error);
           estadoApp.ultimoError = error;
-          estadoApp.mensajeriaInicializada = false;
+          estadoApp.reintentos++;
           
-          // Notificar al padre sobre el error
-          notificarErrorAlPadre(error);
-          
-          // Mostrar error al usuario
-          if (typeof mostrarError === 'function') {
-            mostrarError('Error en el sistema de mensajería. Reconectando...', 'error');
+          if (estadoApp.reintentos < MAX_REINTENTOS) {
+              const delay = Math.min(DELAY_BASE * Math.pow(2, estadoApp.reintentos - 1), 30000);
+              console.log(`[${ID_APLICACION}] Reintentando en ${delay}ms...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+              return inicializarMensajeria();
           }
           
-          // Intentar reconexión automática
-          if (!programarReintento()) {
-            // Si no se pudo programar el reintento (porque se alcanzó el máximo)
-            const mensajeFinal = `No se pudo conectar después de ${MAX_REINTENTOS} intentos. Por favor, recargue la página.`;
-            console.error(`[${ID_APLICACION}] ${mensajeFinal}`);
-            
-            if (typeof mostrarError === 'function') {
-              mostrarError(mensajeFinal, 'error', 0); // 0 = mostrar permanentemente
-            }
-            
-            // Notificar al padre sobre el fallo final
-            if (window.parent && window.parent !== window) {
-              window.parent.postMessage({
-                tipo: 'sistema:error_fatal',
-                origen: ID_APLICACION,
-                error: {
-                  mensaje: 'Fallo en la inicialización de la mensajería',
-                  intentos: estadoApp.reintentos,
-                  ultimoError: error.message,
-                  timestamp: new Date().toISOString()
-                },
-                estado: 'error_fatal',
-                requiereRecarga: true
-              }, '*');
-            }
-          }
+          console.error(`[${ID_APLICACION}] Se agotaron los ${MAX_REINTENTOS} intentos de inicialización`);
+          return false;
       }
       
       // Cargar el módulo de mensajería con manejo de errores
@@ -363,7 +356,7 @@
       }
       
       // Función para configurar manejadores de mensajes de forma robusta
-      function configurarManejadoresMensajes() {
+      async function configurarManejadoresMensajes() {
         try {
           const { TIPOS_MENSAJE, LOG_LEVELS } = window.Mensajeria;
           
@@ -416,7 +409,8 @@
         }
       }
       
-      // Manejar habilitación de controles
+      // Función para manejar habilitación de controles
+      async function manejarHabilitarControles() {
         // Guardar referencia a la función original para poder llamarla
         const manejarHabilitarControlesOriginal = window.manejarHabilitarControles || (() => {});
         
@@ -729,7 +723,6 @@
           // Relanzar el error para que el sistema de mensajería lo maneje
           throw error;
         }
-      }
       }
       
       // Esquema de validación para mensajes de confirmación
@@ -4049,6 +4042,8 @@
             actualizarStatus(`🗺️ Navegando hacia parada ${paradaDestino} - Sigue la ruta azul`);
         }
         
+        } // Cierre de iniciarNavegacionAProximaParada
+        
         function informarCambioEstado(estado, datos = {}) {
             // Hijo 2 solo informa estados, no controla otros hijos
             const mensaje = {
@@ -6303,71 +6298,6 @@
             return todosListos;
         }
 
-        // Inicialización mejorada
-        function inicializarAplicacion() {
-            console.log('Iniciando configuración de la aplicación...');
-            
-            // Verificar elementos del DOM
-            if (!verificarElementosListos()) {
-                console.warn('Algunos elementos no se encontraron, continuando con la inicialización...');
-            }
-
-            // Configurar la mensajería
-            return configurarMensajeria()
-                .then(() => {
-                    console.log('Mensajería configurada, iniciando estado inicial...');
-                    
-                    // Iniciar en estado inicial por defecto
-                    if (typeof iniciarEstadoInicial === 'function') {
-                        iniciarEstadoInicial();
-                    } else {
-                        console.error('La función iniciarEstadoInicial no está definida');
-                    }
-                    
-                    // Inicializar la barra de progreso si los elementos existen
-                    if (totalTimeSpan) {
-                        totalTimeSpan.textContent = formatTime(totalTripTime);
-                    }
-                    
-                    if (typeof resetTripProgress === 'function') {
-                        resetTripProgress();
-                    }
-                    
-                    console.log('[APP] Aplicación inicializada correctamente');
-                    
-                    // Notificar al padre que la aplicación está lista usando el sistema de mensajería
-                    if (window.parent !== window && typeof Mensajeria !== 'undefined' && typeof Mensajeria.enviarMensaje === 'function') {
-                        Mensajeria.enviarMensaje('padre', 'app:ready', {
-                            origen: 'hijo2',
-                            timestamp: new Date().toISOString()
-                        }).then(() => {
-                            console.log('✅ Notificación de aplicación lista enviada correctamente');
-                        }).catch(error => {
-                            console.error('❌ Error al notificar que la aplicación está lista:', error);
-                        });
-                    } else if (window.parent !== window) {
-                        console.warn('⚠️ No se pudo notificar al padre: el sistema de mensajería no está disponible');
-                    }
-                    
-                    return Promise.resolve();
-                })
-                .catch(error => {
-                    console.error('[ERROR] Error al inicializar la aplicación:', error);
-                    
-                    // Intentar una recuperación básica
-                    try {
-                        // Habilitar controles básicos aunque falle la mensajería
-                        if (typeof enableControls === 'function') {
-                            enableControls('aventura');
-                        }
-                    } catch (e) {
-                        console.error('Error en la recuperación:', e);
-                    }
-                    
-                    return Promise.reject(error);
-                });
-        }
-        
         // Inicialización cuando el DOM esté listo
         async function inicializarAplicacion() {
           try {
@@ -6438,13 +6368,13 @@
         if (document.readyState === 'loading') {
           document.addEventListener('DOMContentLoaded', inicializarAplicacion);
         } else {
-          // Usar setTimeout para asegurar que el DOM esté completamente cargado
           setTimeout(inicializarAplicacion, 0);
         }
-        
-        // Cerrar la función inicializarAplicacion
-    </script>
+      } // Cierre de la función anónima del módulo
+      </script>
 </head>
+
+<body>
 
 </body>
 </html>
