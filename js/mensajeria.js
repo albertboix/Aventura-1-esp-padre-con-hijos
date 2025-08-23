@@ -3,7 +3,46 @@
  * Maneja la comunicación bidireccional entre iframes padre e hijo
  * @version 2.0.0
  */
-import { notificarError, withErrorHandling } from './js/error-handler.js';
+
+// ================== ERROR HANDLING ==================
+
+/**
+ * Wraps a function with error handling
+ * @param {Function} fn - Function to wrap
+ * @param {string} context - Context for error messages
+ * @returns {Function} Wrapped function with error handling
+ */
+function withErrorHandling(fn, context) {
+    return async function(...args) {
+        try {
+            return await fn.apply(this, args);
+        } catch (error) {
+            console.error(`[${context}] Error:`, error);
+            throw error;
+        }
+    };
+}
+
+/**
+ * Notifica un error al sistema
+ * @param {string} tipo - Tipo de error
+ * @param {Error|string} error - Objeto de error o mensaje
+ * @param {Object} [datosAdicionales={}] - Datos adicionales
+ * @returns {Object} Información del error
+ */
+function notificarError(tipo, error, datosAdicionales = {}) {
+    const errorObj = error instanceof Error ? error : new Error(String(error));
+    const errorInfo = {
+        tipo,
+        mensaje: errorObj.message,
+        stack: errorObj.stack,
+        ...datosAdicionales,
+        timestamp: new Date().toISOString()
+    };
+    
+    console.error(`[Mensajería] Error (${tipo}):`, errorInfo);
+    return errorInfo;
+}
 
 // ================== CONSTANTES Y CONFIGURACIÓN ==================
 
