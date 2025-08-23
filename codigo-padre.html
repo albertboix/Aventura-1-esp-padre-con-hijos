@@ -68,6 +68,13 @@
             left: 0 !important;
             width: 100% !important;
             height: 100% !important;
+            z-index: 1 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            background-color: #f0f0f0 !important;
+            width: 100% !important;
+            height: 100% !important;
             background-color: #f0f0f0 !important;
             z-index: 1 !important;
             width: 100vw !important;
@@ -233,21 +240,39 @@
             updateMapDebug('Leaflet cargado, inicializando...');
             console.log('Versión de Leaflet cargada:', L.version);
             
-            // Remove debug when map initializes
-            document.addEventListener('mapInitialized', () => {
-                updateMapDebug('Inicializado correctamente');
-                console.log('Mapa inicializado correctamente');
-            });
-            
-            // Force map initialization after a short delay
-            setTimeout(() => {
-                if (window.mapa) {
-                    console.log('Forzando actualización del tamaño del mapa...');
-                    window.mapa.invalidateSize(true);
-                } else {
-                    console.warn('El mapa no se ha inicializado correctamente');
+            // Initialize map after a short delay to ensure DOM is ready
+            setTimeout(async () => {
+                try {
+                    console.log('Inicializando mapa...');
+                    await inicializarMapa();
+                    
+                    // Once map is initialized, update debug info
+                    updateMapDebug('Mapa inicializado correctamente');
+                    console.log('Mapa inicializado correctamente');
+                    
+                    // Dispatch event to notify map is initialized
+                    document.dispatchEvent(new Event('mapInitialized'));
+                    
+                    // Force map size update after a short delay
+                    if (window.mapa && typeof window.mapa.invalidateSize === 'function') {
+                        console.log('Actualizando tamaño del mapa...');
+                        window.mapa.invalidateSize({ pan: false, animate: false });
+                        
+                        // Update again after a short delay to ensure proper sizing
+                        setTimeout(() => {
+                            if (window.mapa) {
+                                window.mapa.invalidateSize({ pan: false, animate: false });
+                                console.log('Tamaño del mapa actualizado');
+                            }
+                        }, 100);
+                    } else {
+                        console.warn('El mapa no se ha inicializado correctamente');
+                    }
+                } catch (error) {
+                    console.error('Error al inicializar el mapa:', error);
+                    updateMapDebug(`Error: ${error.message}`);
                 }
-            }, 500);
+            }, 100);
         }
     </script>
     
@@ -301,6 +326,20 @@
 
     <!-- Global state object -->
     <script type="module">
+        // Initialize estadoApp if it doesn't exist
+        window.estadoApp = window.estadoApp || {
+            modo: {
+                actual: 'casa',
+                cambioPendiente: null,
+                ultimaConfirmacion: null
+            },
+            paradaActual: 0,
+            config: {
+                debug: true,
+                logLevel: 1
+            }
+        };
+
         // Standardized import for mensajeria.js
         import { 
             TIPOS_MENSAJE, 
@@ -1358,6 +1397,10 @@
 
         // Fix 4: Ensure the map is initialized when the page loads
         document.addEventListener('DOMContentLoaded', async function() {
+            // Initialize the map first
+            console.log('DOM completamente cargado, inicializando mapa...');
+            await inicializarMapa();
+            
             // Corregir paradas incompletas
             if (typeof corregirParadasIncompletas === 'function') {
                 corregirParadasIncompletas();
