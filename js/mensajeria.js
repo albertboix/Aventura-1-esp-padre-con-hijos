@@ -1,8 +1,9 @@
 /**
  * Sistema de Mensajería para Comunicación entre Iframes
  * Maneja la comunicación bidireccional entre iframes padre e hijo
- * @version 1.0.0
+ * @version 2.0.0
  */
+import { notificarError, withErrorHandling } from './js/error-handler.js';
 
 // ================== CONSTANTES Y CONFIGURACIÓN ==================
 
@@ -129,6 +130,21 @@ export function obtenerIframesRegistrados() {
 }
 
 // ================== FUNCIONES DE UTILIDAD ==================
+
+// Hacer disponible globalmente para compatibilidad con código antiguo
+if (typeof window !== 'undefined') {
+    window.Mensajeria = {
+        TIPOS_MENSAJE,
+        inicializarMensajeria: withErrorHandling(inicializarMensajeria, 'mensajeria:inicializar'),
+        registrarControlador,
+        registrarManejador,
+        enviarMensaje: withErrorHandling(enviarMensaje, 'mensajeria:enviar'),
+        enviarMensajeDirecto: withErrorHandling(enviarMensajeDirecto, 'mensajeria:enviarDirecto'),
+        enviarATodosLosIframes: withErrorHandling(enviarATodosLosIframes, 'mensajeria:enviarATodos'),
+        enviarConfiguracion: withErrorHandling(enviarConfiguracion, 'mensajeria:configuracion'),
+        // Agregar otras funciones que necesiten ser accesibles globalmente
+    };
+}
 
 /**
  * Genera un ID único para mensajes
