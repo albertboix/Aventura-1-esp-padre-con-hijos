@@ -12,8 +12,17 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
             crossorigin=""></script>
-    <script type="module" src="./mensajeria.js"></script>
-    <script type="module" src="./funciones-mapa.js"></script>
+    <script type="module">
+        // Importar módulos
+        import { TIPOS_MENSAJE, inicializarMensajeria, registrarControlador } from './mensajeria.js';
+        import { inicializarMapa } from './funciones-mapa.js';
+        
+        // Hacer disponibles globalmente para compatibilidad
+        window.TIPOS_MENSAJE = TIPOS_MENSAJE;
+        window.inicializarMensajeria = inicializarMensajeria;
+        window.registrarControlador = registrarControlador;
+        window.inicializarMapa = inicializarMapa;
+    </script>
 
     <style>
         html, body {
@@ -240,8 +249,12 @@
             updateMapDebug('Leaflet cargado, inicializando...');
             console.log('Versión de Leaflet cargada:', L.version);
             
-            // Initialize map after a short delay to ensure DOM is ready
-            setTimeout(async () => {
+            // La inicialización del mapa ahora se maneja en el evento DOMContentLoaded principal
+        }
+        
+        // Initialize map after a short delay to ensure DOM is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            (async () => {
                 try {
                     console.log('Inicializando mapa...');
                     await inicializarMapa();
@@ -272,8 +285,8 @@
                     console.error('Error al inicializar el mapa:', error);
                     updateMapDebug(`Error: ${error.message}`);
                 }
-            }, 100);
-        }
+            })();
+        });
     </script>
     
     <!-- Eliminar los estilos inline y usar las clases CSS -->
@@ -530,22 +543,7 @@
 
         let paradaActual = 0; // Índice de la parada actual
 
-        // Initialize messaging system
-        document.addEventListener('DOMContentLoaded', async () => {
-            try {
-                await inicializarMensajeria({
-                    debug: true,
-                    logLevel: 1
-                });
-                console.log('Sistema de mensajería inicializado correctamente');
-                // Register message handlers after initialization
-                registrarControladoresTotales();
-                // Initialize map after messaging is ready
-                await inicializarMapa();
-            } catch (error) {
-                console.error('Error al inicializar el sistema de mensajería:', error);
-            }
-        });
+        // La mensajería ahora se inicializa en el evento DOMContentLoaded principal
 
         async function iniciarSistemaMensajeria() {
             try {
@@ -594,7 +592,8 @@
                     enviarMensaje(hijo.id, TIPOS_MENSAJE.SISTEMA.INICIALIZACION, {
                         padre: CONFIG.ID_PADRE,
                         timestamp: Date.now(),
-                        modoCasa: estadoApp.modoCasa,
+                        modo: estadoApp.modo.actual,
+                        version: '1.0.0',
                         paradaActual: estadoApp.paradaActual,
                         aventuraParadas: AVENTURA_PARADAS // Enviamos el array completo de paradas
                     }, {
@@ -730,9 +729,12 @@
                     }
                     
                     if (retoId) {
-                        // Usar el nuevo sistema de mensajería
+                        // Usar el nuevo sistema de mensajería estandarizado
                         enviarMensaje(CONFIG.HIJOS.RETOS.id, TIPOS_MENSAJE.RETOS.MOSTRAR, {
-                            index: retoId
+                            retoId: retoId,
+                            timestamp: new Date().toISOString(),
+                            origen: CONFIG.ID_PADRE,
+                            version: '1.0'
                         });
                         iframeHijo4.style.display = 'block';
                         ocultarInfoParada(); // Oculta la info de la parada cuando se muestra un reto
@@ -803,9 +805,15 @@
                 // Notificar a todos los hijos del cambio con datos enriquecidos
                 Object.values(CONFIG.HIJOS).forEach(hijo => {
                     enviarMensaje(hijo.id, TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, {
-                        parada: nuevaParada,
+                        indice: nuevaParada,
                         parada_id: parada.parada_id,
                         audio_id: parada.audio_id,
+                        origen: CONFIG.ID_PADRE,
+                        destino: hijo.id,
+                        timestamp: new Date().toISOString(),
+                        version: '1.0',
+                        tipo: parada.tipo,
+                        timestamp: Date.now(),
                         reto_id: parada.reto_id,
                         retos: parada.retos,
                         nombre: obtenerNombreParada(parada),
@@ -860,13 +868,23 @@
             mostrarParadaActual();
             
             // Activar controles relacionados con la parada seleccionada
-            enviarMensaje(CONFIG.HIJOS.AUDIO.id, TIPOS_MENSAJE.MODO.HABILITAR_CONTROLES, {
-                paradaActual: mensaje.datos.index,
-                audio_id: parada.audio_id
+            enviarMensaje(CONFIG.HIJOS.AUDIO.id, TIPOS_MENSAJE.CONTROL.HABILITAR, {
+                habilitar: true,
+                parada_id: parada.parada_id,
+                audio_id: parada.audio_id,
+                origen: CONFIG.ID_PADRE,
+                destino: CONFIG.HIJOS.AUDIO.id,
+                timestamp: new Date().toISOString(),
+                version: '1.0'
             });
             
-            enviarMensaje(CONFIG.HIJOS.COORDENADAS.id, TIPOS_MENSAJE.MODO.HABILITAR_CONTROLES, {
-                paradaActual: mensaje.datos.index
+            enviarMensaje(CONFIG.HIJOS.COORDENADAS.id, TIPOS_MENSAJE.CONTROL.HABILITAR, {
+                habilitar: true,
+                parada_id: parada.parada_id,
+                origen: CONFIG.ID_PADRE,
+                destino: CONFIG.HIJOS.COORDENADAS.id,
+                timestamp: new Date().toISOString(),
+                version: '1.0'
             });
             
             // Determinar reto a mostrar
@@ -891,10 +909,14 @@
             const paradaInicial = AVENTURA_PARADAS.find(item => item.tipo === "inicio") || AVENTURA_PARADAS[0];
             
             // Notificar a hijo de coordenadas para iniciar navegación
-            enviarMensaje(CONFIG.HIJOS.COORDENADAS.id, TIPOS_MENSAJE.NAVEGACION.ESTABLECER_DESTINO, {
+            enviarMensaje(CONFIG.HIJOS.COORDENADAS.id, TIPOS_MENSAJE.NAVEGACION.INICIAR, {
                 tipo: 'iniciar-gps-a-parada',
                 parada_id: paradaInicial.parada_id,
-                paradaDestinoNombre: obtenerNombreParada(paradaInicial)
+                paradaDestinoNombre: obtenerNombreParada(paradaInicial),
+                origen: CONFIG.ID_PADRE,
+                destino: CONFIG.HIJOS.COORDENADAS.id,
+                timestamp: new Date().toISOString(),
+                version: '1.0'
             });
             
             ocultarInfoParada(); // Oculta la info si ya estaba visible al iniciar la aventura
@@ -914,10 +936,14 @@
                 const paradaActual = paradasFiltradas[estadoApp.paradaActual];
                 const paradaSiguiente = paradasFiltradas[estadoApp.paradaActual + 1];
                 
-                enviarMensaje(CONFIG.HIJOS.COORDENADAS.id, TIPOS_MENSAJE.NAVEGACION.ESTABLECER_DESTINO, {
+                enviarMensaje(CONFIG.HIJOS.COORDENADAS.id, TIPOS_MENSAJE.NAVEGACION.INICIAR, {
                     tipo: 'navegar-de-a-b',
                     origen: paradaActual.parada_id,
-                    destino: paradaSiguiente.parada_id
+                    destino: paradaSiguiente.parada_id,
+                    origenMensaje: CONFIG.ID_PADRE,
+                    destinoMensaje: CONFIG.HIJOS.COORDENADAS.id,
+                    timestamp: new Date().toISOString(),
+                    version: '1.0'
                 });
             } else {
                 console.log('¡Has completado todas las paradas de la aventura!');
@@ -1011,31 +1037,204 @@
         }
         
         /**
+         * Maneja la confirmación de cambio de modo desde los componentes
+         * @param {Object} mensaje - Mensaje de confirmación
+         * @returns {Object} Resultado de la operación
+         */
+        function manejarCambioModoConfirmado(mensaje) {
+            const { datos, origen } = mensaje;
+            console.log(`[${CONFIG.ID_PADRE}] Confirmación de cambio de modo desde ${origen}:`, datos);
+            
+            if (!estadoApp.modo.cambioPendiente) {
+                const errorMsg = 'No hay cambio de modo pendiente para confirmar';
+                console.warn(`[${CONFIG.ID_PADRE}] ${errorMsg}`);
+                return {
+                    exito: false,
+                    error: errorMsg,
+                    timestamp: new Date().toISOString(),
+                    origen: CONFIG.ID_PADRE,
+                    version: '1.0'
+                };
+            }
+            
+            const { modoSolicitado, timestampSolicitud } = estadoApp.modo.cambioPendiente;
+            const { exito, error, metadata = {} } = datos;
+            
+            // Registrar confirmación o error
+            if (exito) {
+                estadoApp.modo.componentesConfirmados[origen] = {
+                    timestamp: new Date().toISOString(),
+                    metadata
+                };
+                console.log(`[${CONFIG.ID_PADRE}] ${origen} confirmó cambio a modo ${modoSolicitado}`);
+            } else {
+                estadoApp.modo.errores[origen] = {
+                    error: error || 'Error desconocido',
+                    timestamp: new Date().toISOString(),
+                    metadata
+                };
+                console.error(`[${CONFIG.ID_PADRE}] Error en ${origen} al cambiar a modo ${modoSolicitado}:`, error);
+            }
+            
+            // Verificar si todos los componentes han respondido
+            verificarConfirmacionesModo();
+            
+            return {
+                exito: true,
+                modo: modoSolicitado,
+                timestamp: new Date().toISOString(),
+                origen: CONFIG.ID_PADRE,
+                version: '1.0',
+                metadata: {
+                    tiempoRespuesta: Date.now() - timestampSolicitud
+                }
+            };
+        }
+
+        /**
+         * Maneja las actualizaciones de estado de los controles del hijo2
+         * @param {Object} mensaje - Mensaje con el estado de los controles
+         */
+        function manejarEstadoControles(mensaje) {
+            const { datos } = mensaje;
+            console.log(`[${CONFIG.ID_PADRE}] Estado de controles actualizado:`, datos);
+            
+            // Actualizar estado interno
+            estadoApp.controlesHabilitados = datos.estado === 'habilitado';
+            
+            // Actualizar UI si es necesario
+            if (datos.controles) {
+                datos.controles.forEach(idControl => {
+                    const elemento = document.getElementById(idControl);
+                    if (elemento) {
+                        elemento.disabled = datos.estado === 'deshabilitado';
+                    }
+                });
+            }
+            
+            // Registrar en el log de actividad
+            registrarActividad('controles_actualizados', {
+                estado: datos.estado,
+                razon: datos.razon || 'no especificada',
+                timestamp: Date.now()
+            });
+        }
+        
+        /**
+         * Maneja las actualizaciones de estado del GPS del hijo2
+         * @param {Object} mensaje - Mensaje con el estado del GPS
+         */
+        function manejarEstadoGPS(mensaje) {
+            const { datos } = mensaje;
+            console.log(`[${CONFIG.ID_PADRE}] Estado GPS actualizado:`, datos.estado);
+            
+            // Establecer valores por defecto
+            const estado = datos?.estado || 'desconocido';
+            const precision = datos?.precision;
+            const ubicacion = datos?.ultimaUbicacion;
+            
+            // Actualizar el estado del GPS
+            estadoApp.estadoGPS = {
+                estado,
+                precision,
+                ultimaActualizacion: Date.now(),
+                ubicacion
+            };
+            
+            // Actualizar UI si es necesario
+            const gpsStatus = document.getElementById('gps-status');
+            if (gpsStatus) {
+                gpsStatus.textContent = `GPS: ${estado}`;
+                gpsStatus.className = `gps-status ${estado}`;
+                
+                // Limpiar precisión anterior
+                const precisionAnterior = gpsStatus.querySelector('.gps-precision');
+                if (precisionAnterior) {
+                    gpsStatus.removeChild(precisionAnterior);
+                }
+                
+                // Mostrar precisión si está disponible
+                if (typeof precision === 'number') {
+                    const precisionElement = document.createElement('span');
+                    precisionElement.className = 'gps-precision';
+                    precisionElement.textContent = ` (${precision.toFixed(1)}m)`;
+                    gpsStatus.appendChild(precisionElement);
+                }
+            }
+            
+            // Registrar en el log de actividad
+            try {
+                registrarActividad('gps_actualizado', {
+                    estado,
+                    precision,
+                    timestamp: Date.now()
+                });
+            } catch (error) {
+                console.error('Error al registrar actividad GPS:', error);
+            }
+        }
+        
+        /**
          * Maneja la confirmación de cambio de modo desde el hijo2
          * @param {Object} mensaje - Mensaje de confirmación
 {{ ... }}
          */
+        /**
+         * Maneja la confirmación de cambio de modo desde los componentes
+         * @param {Object} mensaje - Mensaje de confirmación
+         * @returns {Object} Resultado de la operación
+         */
         function manejarCambioModoConfirmado(mensaje) {
-            const { datos } = mensaje;
-            console.log(`[${CONFIG.ID_PADRE}] Confirmación de cambio de modo:`, datos);
+            const { datos, origen } = mensaje;
+            console.log(`[${CONFIG.ID_PADRE}] Confirmación de cambio de modo desde ${origen}:`, datos);
             
-            // Actualizar estado interno
-            if (datos.exito) {
-                estadoApp.modoActual = datos.modo;
-                console.log(`[${CONFIG.ID_PADRE}] Modo cambiado a: ${datos.modo}`);
-                
-                // Notificar al usuario
-                mostrarNotificacion(`Modo cambiado a: ${datos.modo}`, 'exito');
-                
-                // Actualizar UI si es necesario
-                actualizarUIparaModo(datos.modo);
-            } else {
-                console.warn(`[${CONFIG.ID_PADRE}] Error al cambiar a modo ${datos.modo}:`, datos.razon);
-                mostrarNotificacion(`Error al cambiar a modo ${datos.modo}: ${datos.razon}`, 'error');
+            if (!estadoApp.modo.cambioPendiente) {
+                const errorMsg = 'No hay cambio de modo pendiente para confirmar';
+                console.warn(`[${CONFIG.ID_PADRE}] ${errorMsg}`);
+                return {
+                    exito: false,
+                    error: errorMsg,
+                    timestamp: new Date().toISOString(),
+                    origen: CONFIG.ID_PADRE,
+                    version: '1.0'
+                };
             }
             
-            // Registrar en el log de actividad
-            registrarActividad('cambio_modo_confirmado', {
+            const { modoSolicitado, timestampSolicitud } = estadoApp.modo.cambioPendiente;
+            const { exito, error, metadata = {} } = datos;
+            
+            // Registrar confirmación o error
+            if (exito) {
+                estadoApp.modo.componentesConfirmados[origen] = {
+                    timestamp: new Date().toISOString(),
+                    metadata
+                };
+                console.log(`[${CONFIG.ID_PADRE}] ${origen} confirmó cambio a modo ${modoSolicitado}`);
+            } else {
+                estadoApp.modo.errores[origen] = {
+                    error: error || 'Error desconocido',
+                    timestamp: new Date().toISOString(),
+                    metadata
+                };
+                console.error(`[${CONFIG.ID_PADRE}] Error en ${origen} al cambiar a modo ${modoSolicitado}:`, error);
+            }
+            
+            // Verificar si todos los componentes han respondido
+            verificarConfirmacionesModo();
+            
+            return {
+                exito: true,
+                modo: modoSolicitado,
+                timestamp: new Date().toISOString(),
+                origen: CONFIG.ID_PADRE,
+                version: '1.0',
+                metadata: {
+                    tiempoRespuesta: Date.now() - timestampSolicitud
+                }
+            };
+            
+            // Registrar actividad
+            arActividad('cambio_modo_confirmado', {
                 modo: datos.modo,
                 exito: datos.exito,
                 razon: datos.razon || '',
@@ -1048,21 +1247,50 @@
         function registrarControladoresTotales() {
             // Registro directo de manejador de errores
             registrarControlador(TIPOS_MENSAJE.SISTEMA.ERROR, (mensaje) => {
-                console.error(`[PADRE] Error recibido de ${mensaje.origen}:`, mensaje.datos);
-                mostrarMensajeInfoParada(`Error en ${mensaje.origen}: ${mensaje.datos.mensaje}`, true);
-                return { exito: true };
+                const { origen, datos } = mensaje;
+                const mensajeError = datos?.mensaje || 'Error desconocido';
+                const tipoError = datos?.tipo || 'desconocido';
+                
+                console.error(`[${CONFIG.ID_PADRE}] Error (${tipoError}) de ${origen}:`, mensajeError);
+                mostrarMensajeInfoParada(`Error en ${origen}: ${mensajeError}`, true);
+                
+                return {
+                    exito: false,
+                    error: {
+                        tipo: tipoError,
+                        mensaje: mensajeError,
+                        timestamp: new Date().toISOString(),
+                        origen: CONFIG.ID_PADRE,
+                        version: '1.0'
+                    }
+                };
             });
 
             // Manejo de inicialización de hijos
             registrarControlador(TIPOS_MENSAJE.SISTEMA.INICIALIZACION_COMPLETADA, (mensaje) => {
-                console.log(`[PADRE] ${mensaje.origen} ha completado su inicialización.`);
-                estadoApp.hijosMensajeriaInicializados[mensaje.origen] = true;
-                return { exito: true };
+                const { origen, datos } = mensaje;
+                console.log(`[${CONFIG.ID_PADRE}] ${origen} ha completado su inicialización.`);
+                
+                estadoApp.hijosMensajesInicializacion[origen] = {
+                    ...datos,
+                    timestamp: new Date().toISOString(),
+                    version: '1.0'
+                };
+                
+                return {
+                    exito: true,
+                    datos: {
+                        mensaje: `Inicialización de ${origen} registrada`,
+                        timestamp: new Date().toISOString(),
+                        origen: CONFIG.ID_PADRE,
+                        version: '1.0'
+                    }
+                };
             });
 
-            // NUEVO: Manejador para abrir URLs de forma segura
-            registrarControlador('abrirURL', (mensaje) => {
-                const { url, target = '_blank' } = mensaje.datos;
+            // Manejador para abrir URLs de forma segura
+            registrarControlador(TIPOS_MENSAJE.UI.ABRIR_URL, (mensaje) => {
+                const { url, target = '_blank' } = mensaje.datos || {};
                 if (url) {
                     // Validación básica de la URL para seguridad
                     if (url.startsWith('http') || url.startsWith('/') || url.match(/^[a-zA-Z0-9_\-]+\.(html|jpg|png)$/)) {
@@ -1098,7 +1326,7 @@
             registrarControlador(TIPOS_MENSAJE.MODO.DESACTIVAR, manejarModoDesactivar);
             
             // Controladores de error
-            registrarControlador(TIPOS_MENSAJE.ERROR, manejarError);
+            registrarControlador(TIPOS_MENSAJE.SISTEMA.ERROR, manejarError);
 
             // Controladores de datos
             registrarControlador(TIPOS_MENSAJE.DATOS.SOLICITAR_CONSTANTES, manejarSolicitudConstantes);
@@ -1107,8 +1335,8 @@
             registrarControlador(TIPOS_MENSAJE.DATOS.SOLICITAR_ESTADO, manejarSolicitudEstado);
             
             // Controladores para comunicación con los componentes
-            registrarControlador('CONTROLES.ESTADO', manejarEstadoControles);
-            registrarControlador('GPS.ESTADO', manejarEstadoGPS);
+            registrarControlador(TIPOS_MENSAJE.CONTROL.ESTADO, manejarEstadoControles);
+            registrarControlador(TIPOS_MENSAJE.GPS.ESTADO, manejarEstadoGPS);
             
             // Controladores estandarizados de modo
             registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_CONFIRMACION, manejarCambioModoConfirmado);
@@ -1144,7 +1372,10 @@
                 // Notificar al hijo de audio para reproducir sonido de éxito
                 enviarMensaje(CONFIG.HIJOS.AUDIO.id, TIPOS_MENSAJE.AUDIO.REPRODUCIR, {
                     tipo: 'efecto',
-                    nombre: 'exito'
+                    nombre: 'exito',
+                    volumen: 1.0,
+                    loop: false,
+                    timestamp: Date.now()
                 }).catch(e => console.warn('Error al solicitar efecto de sonido:', e));
                 
                 // Actualizar estado global para rastrear retos completados
@@ -1298,144 +1529,88 @@
         };
 
         // Variable global para la instancia del mapa
-        let mapa;
+        // La función inicializarMapa ahora se importa de funciones-mapa.js
 
-        /**
-         * Inicializa el mapa de Leaflet
-         */
-        async function inicializarMapa() {
-            console.log('[MAPA] Inicializando mapa...');
-            
-            try {
-                // Get the map container
-                const mapContainer = document.getElementById('mapa');
-                if (!mapContainer) {
-                    const errorMsg = 'No se encontró el contenedor del mapa (id="mapa")';
-                    console.error('[MAPA]', errorMsg);
-                    updateMapDebug('ERROR: ' + errorMsg);
-                    return null;
-                }
-                
-                // Ensure the map container has proper dimensions and is visible
-                mapContainer.style.width = '100%';
-                mapContainer.style.height = '100%';
-                mapContainer.style.display = 'block';
-                mapContainer.style.visibility = 'visible';
-                
-                // Check if Leaflet is available
-                if (!window.L) {
-                    const errorMsg = 'Leaflet no está disponible (objeto L)';
-                    console.error('[MAPA]', errorMsg);
-                    updateMapDebug('ERROR: ' + errorMsg);
-                    return null;
-                }
-                
-                console.log('[MAPA] Creando instancia del mapa...');
-                updateMapDebug('Creando instancia del mapa...');
-                
-                // Create map instance with default view over Valencia
-                const map = L.map('mapa', {
-                    center: [39.4697, -0.3774], // Valencia coordinates
-                    zoom: 15,
-                    zoomControl: true,
-                    preferCanvas: true, // Better performance
-                    fadeAnimation: false,
-                    zoomAnimation: true,
-                    attributionControl: false
-                });
-                
-                // Add OpenStreetMap tile layer with retries
-                const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-                    maxZoom: 19,
-                    minZoom: 12,
-                    subdomains: ['a', 'b', 'c'],
-                    errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
-                    detectRetina: true
-                }).addTo(map);
-                
-                // Handle tile loading errors
-                tileLayer.on('tileerror', function(e) {
-                    console.warn('Error al cargar el tile:', e);
-                });
-                
-                // Add a simple marker to verify the map is working
-                L.marker([39.4697, -0.3774])
-                    .addTo(map)
-                    .bindPopup('¡Hola! Estás en Valencia')
-                    .openPopup();
-                
-                // Save reference to map
-                window.mapa = map;
-                
-                console.log('[MAPA] Mapa inicializado correctamente');
-                updateMapDebug('Mapa inicializado');
-                
-                // Force map to recalculate size after a short delay
-                setTimeout(() => {
-                    console.log('[MAPA] Actualizando tamaño del mapa...');
-                    map.invalidateSize({ pan: false, animate: false });
-                    
-                    // Add a small delay and check again
-                    setTimeout(() => {
-                        map.invalidateSize({ pan: false, animate: false });
-                        console.log('[MAPA] Tamaño del mapa actualizado');
-                        updateMapDebug('Tamaño actualizado');
-                        
-                        // Dispatch event to notify map is initialized
-                        document.dispatchEvent(new Event('mapInitialized'));
-                    }, 100);
-                }, 100);
-                
-                return map;
-            } catch (error) {
-                console.error('[MAPA] Error al inicializar el mapa:', error);
-                document.getElementById('map-debug').textContent = `Error: ${error.message}`;
-                return null;
-            }
-        }
-
-        // Fix 4: Ensure the map is initialized when the page loads
+        // Inicialización cuando el DOM está listo
         document.addEventListener('DOMContentLoaded', async function() {
-            // Initialize the map first
-            console.log('DOM completamente cargado, inicializando mapa...');
-            await inicializarMapa();
-            
-            // Corregir paradas incompletas
-            if (typeof corregirParadasIncompletas === 'function') {
-                corregirParadasIncompletas();
-            }
-            
-            // Exponer el array de paradas a window para que sea accesible por comunicaciones externas
-            window.AVENTURA_PARADAS = AVENTURA_PARADAS;
-            
-            console.log('[PADRE] Llamando a inicializarMapa()...');
-            // Initialize map with error handling
             try {
-                const mapaInstance = await inicializarMapa();
+                console.log('[PADRE] Inicializando aplicación...');
+                
+                // Inicializar mensajería
+                await window.inicializarMensajeria({
+                    debug: true,
+                    logLevel: 1
+                });
+                console.log('[PADRE] Sistema de mensajería inicializado');
+                
+                // Registrar controladores de mensajes
+                registrarControladoresTotales();
+                
+                // Asegurarse de que AVENTURA_PARADAS esté disponible globalmente
+                if (!window.AVENTURA_PARADAS) {
+                    console.error('[PADRE] Error: AVENTURA_PARADAS no está definido');
+                    throw new Error('No se encontró el array de paradas');
+                }
+
+                // Inicializar el mapa usando la función importada
+                console.log('[PADRE] Inicializando mapa con', window.AVENTURA_PARADAS.length, 'paradas...');
+                
+                const mapaInstance = await window.inicializarMapa({
+                    arrayParadas: window.AVENTURA_PARADAS,
+                    containerId: 'mapa',
+                    center: [39.4699, -0.3763], // Coordenadas de Valencia
+                    zoom: 14,
+                    minZoom: 12,
+                    maxZoom: 18,
+                    zoomControl: false
+                });
+
                 if (!mapaInstance) {
-                    console.error('[PADRE] Error: inicializarMapa() no devolvió una instancia de mapa');
-                    document.getElementById('map-debug').textContent = 'Error: No se pudo inicializar el mapa';
-                    return;
+                    throw new Error('No se pudo inicializar el mapa');
                 }
                 
-                console.log('[PADRE] Mapa inicializado con éxito');
-                document.getElementById('map-debug').textContent = 'Mapa cargado correctamente';
+                // Guardar referencia global al mapa
+                window.mapa = mapaInstance;
+                console.log('[PADRE] Mapa inicializado correctamente');
+                
+                // Forzar actualización del tamaño del mapa
+                setTimeout(() => {
+                    if (window.mapa) {
+                        window.mapa.invalidateSize({ pan: false, animate: false });
+                        console.log('[PADRE] Tamaño del mapa actualizado');
+                        
+                        // Notificar que el mapa está listo
+                        document.dispatchEvent(new Event('mapInitialized'));
+                        updateMapDebug('Mapa inicializado correctamente');
+                    }
+                }, 100);
                 
                 // Asegurarse de que el mapa se redimensione correctamente
                 window.addEventListener('resize', () => {
-                    setTimeout(() => mapa.invalidateSize(), 100);
+                    setTimeout(() => mapaInstance.invalidateSize(), 100);
                 });
-                document.getElementById('map-debug').textContent = 'Mapa cargado correctamente';
                 
-                // Auto-hide debug after 5 seconds
-                setTimeout(() => {
-                    const debugEl = document.getElementById('map-debug');
-                    if (debugEl) {
+                // Corregir paradas incompletas si existe la función
+                if (typeof corregirParadasIncompletas === 'function') {
+                    corregirParadasIncompletas();
+                }
+                
+                // Exponer el array de paradas a window para que sea accesible por comunicaciones externas
+                window.AVENTURA_PARADAS = AVENTURA_PARADAS;
+                
+                console.log('[PADRE] Mapa inicializado con éxito');
+                
+                // Actualizar estado de depuración
+                const debugEl = document.getElementById('map-debug');
+                if (debugEl) {
+                    debugEl.textContent = 'Mapa cargado correctamente';
+                    
+                    // Ocultar mensaje de depuración después de 5 segundos
+                    setTimeout(() => {
                         debugEl.style.opacity = '0';
                         setTimeout(() => debugEl.style.display = 'none', 1000);
-                    }
-                }, 5000);
+                    }, 5000);
+                }
             } catch (error) {
                 console.error('[PADRE] Error al inicializar el mapa:', error);
                 const errorMsg = error instanceof Error ? error.message : String(error);
@@ -1476,8 +1651,14 @@
         // Manejador centralizado de cambio de modo
         async function manejarCambioModoCentralizado(mensaje) {
             try {
-                const { datos } = mensaje;
-                const { modo, motivo, forzar = false } = datos || {};
+                const { datos, origen: solicitante } = mensaje;
+                const { 
+                    modo, 
+                    motivo = 'Cambio de modo solicitado', 
+                    forzar = false,
+                    timestamp = new Date().toISOString(),
+                    version = '1.0'
+                } = datos || {};
                 
                 // Validar modo
                 if (modo !== 'casa' && modo !== 'aventura') {
@@ -1498,9 +1679,17 @@
                 estadoApp.modo.cambioPendiente = {
                     modoSolicitado: modo,
                     timestampSolicitud: Date.now(),
-                    solicitante: mensaje.origen || 'desconocido',
-                    motivo
+                    solicitante: solicitante || 'sistema',
+                    motivo,
+                    metadata: {
+                        forzar: Boolean(forzar),
+                        version,
+                        timestampSolicitud: new Date(timestamp).toISOString()
+                    }
                 };
+                
+                console.log(`[${CONFIG.ID_PADRE}] Iniciando cambio a modo ${modo} solicitado por ${solicitante}`, 
+                    { motivo, forzar, timestamp });
                 
                 // Resetear confirmaciones previas
                 estadoApp.modo.componentesConfirmados = {};
@@ -1510,12 +1699,21 @@
                 const promesas = Object.values(CONFIG.HIJOS).map(hijo => 
                     enviarMensaje(hijo.id, TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, {
                         modo,
-                        timestamp: Date.now(),
-                        motivo,
-                        origen: CONFIG.ID_PADRE
+                        motivo: motivo || 'Cambio de modo solicitado',
+                        timestamp: new Date().toISOString(),
+                        origen: CONFIG.ID_PADRE,
+                        destino: hijo.id,
+                        version: '1.0',
+                        metadata: {
+                            forzar: Boolean(forzor),
+                            solicitante: mensaje.origen || 'sistema'
+                        }
                     }).catch(error => ({
                         id: hijo.id,
-                        error: error.message
+                        error: error.message,
+                        timestamp: new Date().toISOString(),
+                        origen: CONFIG.ID_PADRE,
+                        version: '1.0'
                     }))
                 );
                 
@@ -1587,10 +1785,13 @@
                 // Notificar a todos los componentes del cambio exitoso
                 await Promise.all(
                     Object.values(CONFIG.HIJOS).map(hijo =>
-                        enviarMensaje(hijo.id, TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_ESTADO, {
+                        enviarMensaje(hijo.id, TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_CONFIRMACION, {
                             modo: modoSolicitado,
-                            timestamp: Date.now(),
+                            estado: 'confirmado',
+                            timestamp: new Date().toISOString(),
                             origen: CONFIG.ID_PADRE,
+                            destino: hijo.id,
+                            version: '1.0',
                             confirmado: true
                         }).catch(console.error)
                     )
