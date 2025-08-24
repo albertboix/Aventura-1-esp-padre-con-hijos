@@ -48,73 +48,262 @@ function notificarError(tipo, error, datosAdicionales = {}) {
 
 /**
  * Tipos de mensajes soportados por el sistema
+ * @namespace TIPOS_MENSAJE
  */
 export const TIPOS_MENSAJE = {
   // Mensajes del sistema
   SISTEMA: {
+    /**
+     * Inicialización del sistema
+     * @event SISTEMA.INICIALIZACION
+     */
     INICIALIZACION: 'SISTEMA.INICIALIZACION',
-    // Para cambios de configuración en tiempo real (tema, idioma, opciones)
+    
+    /**
+     * Cambios de configuración en tiempo real (tema, idioma, opciones)
+     * @event SISTEMA.CONFIGURACION
+     */
     CONFIGURACION: 'SISTEMA.CONFIGURACION',
+    
+    /**
+     * Sincronización de estado
+     * @event SISTEMA.SINCRONIZAR
+     */
     SINCRONIZAR: 'SISTEMA.SINCRONIZAR',
+    
+    /**
+     * Confirmación de operación
+     * @event SISTEMA.CONFIRMACION
+     */
     CONFIRMACION: 'SISTEMA.CONFIRMACION',
+    
+    /**
+     * Notificación de error
+     * @event SISTEMA.ERROR
+     */
     ERROR: 'SISTEMA.ERROR',
+    
+    /**
+     * Cambio de modo (casa/aventura)
+     * @event SISTEMA.CAMBIO_MODO
+     */
     CAMBIO_MODO: 'SISTEMA.CAMBIO_MODO',
-    CAMBIO_MODO_CONFIRMACION: 'SISTEMA.CAMBIO_MODO_CONFIRMACION'
+    
+    /**
+     * Confirmación de cambio de modo
+     * @event SISTEMA.CAMBIO_MODO_CONFIRMACION
+     */
+    CAMBIO_MODO_CONFIRMACION: 'SISTEMA.CAMBIO_MODO_CONFIRMACION',
+    
+    /**
+     * Confirmación de inicialización
+     * @event SISTEMA.INICIALIZACION_COMPLETADA
+     */
+    INICIALIZACION_COMPLETADA: 'SISTEMA.INICIALIZACION_COMPLETADA'
   },
   
   // Navegación y control del mapa
   NAVEGACION: {
+    /**
+     * Estado actual de la navegación
+     * @event NAVEGACION.ESTADO
+     */
     ESTADO: 'NAVEGACION.ESTADO',
+    
+    /**
+     * Cambio de parada actual
+     * @event NAVEGACION.CAMBIO_PARADA
+     */
     CAMBIO_PARADA: 'NAVEGACION.CAMBIO_PARADA',
-    LLEGADA_DETECTADA: 'NAVEGACION.LLEGADA_DETECTADA'
+    
+    /**
+     * Llegada a una parada detectada
+     * @event NAVEGACION.LLEGADA_DETECTADA
+     */
+    LLEGADA_DETECTADA: 'NAVEGACION.LLEGADA_DETECTADA',
+    
+    /**
+     * Establecer nuevo destino de navegación
+     * @event NAVEGACION.ESTABLECER_DESTINO
+     */
+    ESTABLECER_DESTINO: 'NAVEGACION.ESTABLECER_DESTINO'
   },
   
-  // Control de modos e interfaz
-  MODO: {
-    CAMBIAR: 'MODO.CAMBIAR'
+  // Control de interfaz de usuario
+  UI: {
+    /**
+     * Actualización de la interfaz
+     * @event UI.ACTUALIZAR
+     */
+    ACTUALIZAR: 'UI.ACTUALIZAR',
+    
+    /**
+     * Habilitar controles de interfaz
+     * @event UI.HABILITAR_CONTROLES
+     */
+    HABILITAR_CONTROLES: 'UI.HABILITAR_CONTROLES',
+    
+    /**
+     * Deshabilitar controles de interfaz
+     * @event UI.DESHABILITAR_CONTROLES
+     */
+    DESHABILITAR_CONTROLES: 'UI.DESHABILITAR_CONTROLES'
   },
   
   // Audio y multimedia
   AUDIO: {
+    /**
+     * Estado actual del reproductor de audio
+     * @event AUDIO.ESTADO
+     */
     ESTADO: 'AUDIO.ESTADO',
-    COMANDO: 'AUDIO.COMANDO'
+    
+    /**
+     * Comando de control de audio
+     * @event AUDIO.COMANDO
+     */
+    COMANDO: 'AUDIO.COMANDO',
+    
+    /**
+     * Reproducir audio
+     * @event AUDIO.REPRODUCIR
+     */
+    REPRODUCIR: 'AUDIO.REPRODUCIR',
+    
+    /**
+     * Pausar reproducción
+     * @event AUDIO.PAUSAR
+     */
+    PAUSAR: 'AUDIO.PAUSAR',
+    
+    /**
+     * Reproducción finalizada
+     * @event AUDIO.FINALIZADO
+     */
+    FINALIZADO: 'AUDIO.FINALIZADO'
   },
   
   // GPS y geolocalización
   GPS: {
+    /**
+     * Actualización de posición GPS
+     * @event GPS.ACTUALIZAR
+     */
     ACTUALIZAR: 'GPS.ACTUALIZAR',
+    
+    /**
+     * Comando de control GPS
+     * @event GPS.COMANDO
+     */
     COMANDO: 'GPS.COMANDO',
+    
+    /**
+     * Estado actual del GPS
+     * @event GPS.ESTADO
+     */
+    ESTADO: 'GPS.ESTADO',
+    
+    /**
+     * Notificación de nueva posición
+     * @event GPS.POSICION_ACTUALIZADA
+     */
     POSICION_ACTUALIZADA: 'GPS.POSICION_ACTUALIZADA'
   },
   
   // Retos y actividades
   RETO: {
+    /**
+     * Estado actual de los retos
+     * @event RETO.ESTADO
+     */
     ESTADO: 'RETO.ESTADO',
-    NUEVO: 'RETO.NUEVO'
+    
+    /**
+     * Nuevo reto disponible
+     * @event RETO.NUEVO
+     */
+    NUEVO: 'RETO.NUEVO',
+    
+    /**
+     * Mostrar un reto
+     * @event RETO.MOSTRAR
+     */
+    MOSTRAR: 'RETO.MOSTRAR',
+    
+    /**
+     * Ocultar un reto
+     * @event RETO.OCULTAR
+     */
+    OCULTAR: 'RETO.OCULTAR',
+    
+    /**
+     * Abrir un reto específico
+     * @event RETO.ABRIR
+     */
+    ABRIR: 'RETO.ABRIR',
+    
+    /**
+     * Reto completado
+     * @event RETO.COMPLETADO
+     */
+    COMPLETADO: 'RETO.COMPLETADO'
   },
   
-  // Control de interfaz de usuario
-  UI: {
-    ACTUALIZAR: 'UI.ACTUALIZAR',
-    HABILITAR_CONTROLES: 'UI.HABILITAR_CONTROLES',
-    DESHABILITAR_CONTROLES: 'UI.DESHABILITAR_CONTROLES',
-    ABRIR_URL: 'UI.ABRIR_URL' // Nuevo: Para solicitar al padre que abra una URL
+  // Control de estado de la aplicación
+  CONTROL: {
+    /**
+     * Estado de los controles
+     * @event CONTROL.ESTADO
+     */
+    ESTADO: 'CONTROL.ESTADO',
+    
+    /**
+     * Abrir una URL en el navegador
+     * @event UI.ABRIR_URL
+     */
+    ABRIR_URL: 'UI.ABRIR_URL'
   },
   
   // Datos y sincronización
   DATOS: {
+    /**
+     * Solicitar lista de paradas
+     * @event DATOS.SOLICITAR_PARADAS
+     */
     SOLICITAR_PARADAS: 'DATOS.SOLICITAR_PARADAS',
+    
+    /**
+     * Solicitar información de una parada específica
+     * @event DATOS.SOLICITAR_PARADA
+     */
     SOLICITAR_PARADA: 'DATOS.SOLICITAR_PARADA',
+    
+    /**
+     * Notificar actualización del array de paradas
+     * @event DATOS.ARRAY_ACTUALIZADO
+     */
     ARRAY_ACTUALIZADO: 'DATOS.ARRAY_ACTUALIZADO',
+    
+    /**
+     * Verificar hash de datos
+     * @event DATOS.VERIFICAR_HASH
+     */
     VERIFICAR_HASH: 'DATOS.VERIFICAR_HASH',
+    
+    /**
+     * Actualizar información de una parada
+     * @event DATOS.ACTUALIZAR_PARADA
+     */
     ACTUALIZAR_PARADA: 'DATOS.ACTUALIZAR_PARADA'
   },
   
   // Compatibilidad con mensajes anteriores (mantener por compatibilidad)
-  CONTROLES_HABILITADOS: 'sistema:controles_habilitados',
-  CONTROLES_DESHABILITADOS: 'sistema:controles_deshabilitados',
-  HABILITAR_CONTROLES: 'sistema:habilitar_controles',
-  DESHABILITAR_CONTROLES: 'sistema:deshabilitar_controles'
+  LEGACY: {
+    CONTROLES_HABILITADOS: 'sistema:controles_habilitados',
+    CONTROLES_DESHABILITADOS: 'sistema:controles_deshabilitados',
+    HABILITAR_CONTROLES: 'sistema:habilitar_controles',
+    DESHABILITAR_CONTROLES: 'sistema:deshabilitar_controles'
+  }
 };
 
 /**
@@ -167,6 +356,35 @@ export function registrarIframe(id) {
 export function obtenerIframesRegistrados() {
   return Array.from(iframesRegistrados);
 }
+
+// ================== VALIDACIÓN DE MENSAJES ==================
+
+/**
+ * Esquemas de validación para los mensajes
+ * @type {Object.<string, {propiedadesRequeridas: string[], validar?: function(Object): boolean}>}
+ */
+const ESQUEMAS_MENSAJES = {
+  'SISTEMA.CAMBIO_MODO': {
+    propiedadesRequeridas: ['modo', 'timestamp'],
+    validar: (datos) => ['casa', 'aventura'].includes(datos.modo)
+  },
+  'GPS.POSICION_ACTUALIZADA': {
+    propiedadesRequeridas: ['coordenadas', 'timestamp'],
+    validar: (datos) => 
+      typeof datos.coordenadas?.lat === 'number' && 
+      typeof datos.coordenadas?.lng === 'number' &&
+      (datos.coordenadas.accuracy === undefined || typeof datos.coordenadas.accuracy === 'number')
+  },
+  'AUDIO.REPRODUCIR': {
+    propiedadesRequeridas: ['tipo', 'nombre']
+  },
+  'RETO.MOSTRAR': {
+    propiedadesRequeridas: ['retoId']
+  },
+  'NAVEGACION.ESTABLECER_DESTINO': {
+    propiedadesRequeridas: ['tipo', 'parada_id', 'paradaDestinoNombre']
+  }
+};
 
 // ================== FUNCIONES DE UTILIDAD ==================
 
@@ -232,15 +450,41 @@ function log(nivel, mensaje, datos = null) {
  * @returns {boolean} true si es válido
  */
 function validarMensaje(mensaje) {
+  // Validación básica de la estructura del mensaje
   if (!mensaje || typeof mensaje !== 'object') {
+    console.error('Mensaje no es un objeto:', mensaje);
     return false;
   }
   
-  const camposRequeridos = ['tipo', 'origen', 'timestamp', 'idMensaje'];
-  return camposRequeridos.every(campo => mensaje.hasOwnProperty(campo));
+  // Validar campos obligatorios
+  const camposRequeridos = ['tipo', 'destino', 'origen', 'datos'];
+  for (const campo of camposRequeridos) {
+    if (!(campo in mensaje)) {
+      console.error(`Falta campo requerido '${campo}' en mensaje:`, mensaje);
+      return false;
+    }
+  }
+  
+  // Validar estructura de datos según el tipo de mensaje
+  const esquema = ESQUEMAS_MENSAJES[mensaje.tipo];
+  if (esquema) {
+    // Validar propiedades requeridas
+    for (const prop of esquema.propiedadesRequeridas || []) {
+      if (!(prop in mensaje.datos) && mensaje.datos[prop] !== 0) {
+        console.error(`Falta propiedad requerida '${prop}' en mensaje ${mensaje.tipo}:`, mensaje);
+        return false;
+      }
+    }
+    
+    // Ejecutar validación personalizada si existe
+    if (esquema.validar && !esquema.validar(mensaje.datos)) {
+      console.error(`Validación fallida para mensaje ${mensaje.tipo}:`, mensaje);
+      return false;
+    }
+  }
+  
+  return true;
 }
-
-// ================== FUNCIONES PRINCIPALES ==================
 
 /**
  * Inicializa el sistema de mensajería
