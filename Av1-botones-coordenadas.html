@@ -5,29 +5,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Botones y Coordenadas GPS</title>
     <script type="module">
-      // Standardized import for mensajeria.js and error handler
-      import { 
-        TIPOS_MENSAJE, 
-        inicializarMensajeria, 
-        enviarMensaje, 
-        registrarControlador
-      } from './mensajeria.js';
-      
-      // Initialize notificarError if not already defined
-      if (typeof window.notificarError === 'undefined') {
-          window.notificarError = function(tipo, error, datosAdicionales = {}) {
-              const errorObj = error instanceof Error ? error : new Error(String(error));
-              const errorInfo = {
-                  tipo,
-                  mensaje: errorObj.message,
-                  stack: errorObj.stack,
-                  ...datosAdicionales,
-                  timestamp: new Date().toISOString()
-              };
-              console.error(`[Coordenadas] Error (${tipo}):`, errorInfo);
-              return errorInfo;
-          };
-      }
+    // Standardized import for mensajeria.js and error handler
+    import { 
+      TIPOS_MENSAJE, 
+      inicializarMensajeria, 
+      enviarMensaje, 
+      registrarControlador
+    } from './mensajeria.js';
+    
+    // Initialize notificarError if not already defined
+    if (typeof window.notificarError === 'undefined') {
+        window.notificarError = function(tipo, error, datosAdicionales = {}) {
+            const errorObj = error instanceof Error ? error : new Error(String(error));
+            const errorInfo = {
+                tipo,
+                mensaje: errorObj.message,
+                stack: errorObj.stack,
+                ...datosAdicionales,
+                timestamp: new Date().toISOString()
+            };
+            console.error(`[Coordenadas] Error (${tipo}):`, errorInfo);
+            return errorInfo;
+        };
+    }
       
       // Make mensajeria functions available globally with error handling
       window.TIPOS_MENSAJE = TIPOS_MENSAJE;
@@ -410,12 +410,23 @@
       }
       
       // Función para manejar habilitación de controles
-      async function manejarHabilitarControles() {
+      async function manejarHabilitarControles(mensaje) {
         // Guardar referencia a la función original para poder llamarla
         const manejarHabilitarControlesOriginal = window.manejarHabilitarControles || (() => {});
         
-        async function manejarHabilitarControles(mensaje) {
             console.log('[HIJO2] Solicitando habilitar controles', mensaje);
+            
+            if (!mensaje || typeof mensaje !== 'object' || !mensaje.datos) {
+                throw new Error('Mensaje inválido o sin datos');
+            }
+            
+            const { controles = [], razon = 'no especificada', temporal = false } = mensaje.datos;
+            const resultados = { habilitados: [], noEncontrados: [] };
+            
+            console.log(`[HIJO2] Procesando habilitación de controles. Razón: ${razon}`, {
+                totalControles: Array.isArray(controles) ? controles.length : 'todos',
+                temporal
+            });
             
             try {
                 // Llamar a la implementación original
@@ -424,22 +435,9 @@
                 // Notificar al padre sobre el cambio de estado de los controles
                 await notificarEstadoControles(
                     'habilitado',
-                    mensaje?.datos?.razon || 'sin especificar',
-                    mensaje?.datos?.controles || []
+                    razon,
+                    Array.isArray(controles) ? controles : []
                 );
-                
-                return resultado;
-                if (!mensaje || typeof mensaje !== 'object' || !mensaje.datos) {
-                    throw new Error('Mensaje inválido o sin datos');
-                }
-                
-                const { controles = [], razon = 'no especificada', temporal = false } = mensaje.datos;
-                const resultados = { habilitados: [], noEncontrados: [] };
-                
-                console.log(`[HIJO2] Procesando habilitación de controles. Razón: ${razon}`, {
-                    totalControles: Array.isArray(controles) ? controles.length : 'todos',
-                    temporal
-                });
                 
                 // Función para habilitar un control individual
                 const habilitarControl = (idControl) => {
@@ -485,7 +483,7 @@
                 if (window.Mensajeria) {
                     await window.Mensajeria.enviarMensaje(
                         'padre',
-                        'sistema:controles_habilitados',
+                        TIPOS_MENSAJE.CONTROL.ESTADO,
                         {
                             timestamp: Date.now(),
                             totalHabilitados: resultados.habilitados.length,
@@ -511,7 +509,7 @@
                     if (window.Mensajeria?.enviarMensaje) {
                         await window.Mensajeria.enviarMensaje(
                             'padre',
-                            'sistema:error_controles',
+                            TIPOS_MENSAJE.SISTEMA.ERROR,
                             {
                                 error: error.message || 'Error desconocido al habilitar controles',
                                 accion: 'habilitar',
@@ -573,10 +571,11 @@
                 
                 // Notificar al padre
                 try {
-                    await enviarMensajeAlPadre('sistema:controles_deshabilitados', { 
+                    await enviarMensajeAlPadre(TIPOS_MENSAJE.CONTROL.ESTADO, { 
+                        habilitar: false,
                         motivo,
                         timestamp: Date.now(),
-                        origen: 'hijo2',
+                        origen: CONFIG.IFRAME_ID,
                         forzado: forzar
                     });
                     console.log(`[HIJO2] Controles deshabilitados (motivo: ${motivo})`);
@@ -592,7 +591,7 @@
                 
                 // Notificar al padre sobre el error
                 try {
-                    await enviarMensajeAlPadre('sistema:error_controles', {
+                    await enviarMensajeAlPadre(TIPOS_MENSAJE.SISTEMA.ERROR, {
                         accion: 'deshabilitar',
                         error: error.message || 'Error desconocido',
                         timestamp: Date.now(),
@@ -709,7 +708,7 @@
           if (window.Mensajeria && TIPOS_MENSAJE) {
             await window.Mensajeria.enviarMensaje(
               'padre',
-              TIPOS_MENSAJE.ERROR,
+              TIPOS_MENSAJE.SISTEMA.ERROR,
               {
                 tipo: 'error_navegacion',
                 accion,
@@ -780,7 +779,7 @@
         try {
           await window.Mensajeria.enviarMensaje(
             'padre',
-            'cambio-estado',
+            TIPOS_MENSAJE.SISTEMA.ESTADO,
             {
               estado,
               timestamp: new Date().toISOString(),
@@ -1962,16 +1961,17 @@
                         // Notificar al usuario
                         actualizarStatus(`Destino establecido: ${datosDestino.nombre || 'Punto de interés'}`, 'exito');
                         // Confirmar al padre que el destino se estableció correctamente
-                        window.Mensajeria.enviarMensaje('padre', 'destino-establecido', {
-                            exito: true,
+                        window.Mensajeria.enviarMensaje('padre', TIPOS_MENSAJE.NAVEGACION.DESTINO_ESTABLECIDO, {
                             idDestino: datosDestino.id,
                             nombre: datosDestino.nombre,
+                            coordenadas: datosDestino.coordenadas,
                             timestamp: new Date().toISOString()
                         });
                     } else {
                         actualizarStatus('Error: No se pudo establecer el destino', 'error');
-                        window.Mensajeria.enviarMensaje('padre', 'error-destino', {
-                            error: 'No se pudo establecer el destino',
+                        window.Mensajeria.enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
+                            tipo: 'error_destino',
+                            mensaje: 'No se pudo establecer el destino',
                             idDestino: datosDestino.id,
                             timestamp: new Date().toISOString()
                         });
@@ -1981,8 +1981,9 @@
                     actualizarStatus('Error: Coordenadas de destino inválidas', 'error');
                     
                     // Notificar al padre del error
-                    window.Mensajeria.enviarMensaje('padre', 'error-destino', {
-                        error: 'Coordenadas de destino inválidas',
+                    window.Mensajeria.enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
+                        tipo: 'error_destino',
+                        mensaje: 'Coordenadas de destino inválidas',
                         idDestino: datosDestino.id,
                         timestamp: new Date().toISOString()
                     });
@@ -1998,9 +1999,10 @@
                     btnPunto.click();
                     
                     // Notificar al padre que la navegación fue cancelada
-                    window.Mensajeria.enviarMensaje('padre', 'navegacion-cancelada', {
+                    window.Mensajeria.enviarMensaje('padre', TIPOS_MENSAJE.NAVEGACION.CANCELADA, {
                         timestamp: new Date().toISOString(),
-                        idDestino: puntoDestino?.id
+                        idDestino: puntoDestino?.id,
+                        motivo: 'usuario'
                     });
                 }
                 
@@ -2039,8 +2041,9 @@
                 actualizarStatus('Error: Coordenadas de destino inválidas', 'error');
                 
                 // Notificar al padre del error
-                window.Mensajeria.enviarMensaje('padre', 'error-destino', {
-                    error: 'Coordenadas de destino inválidas',
+                window.Mensajeria.enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
+                    tipo: 'error_destino',
+                    mensaje: 'Coordenadas de destino inválidas',
                     destino: {
                         lat: destino?.lat,
                         lng: destino?.lng,
@@ -2058,7 +2061,7 @@
                 // Notificar al padre que se está iniciando la navegación
                 window.Mensajeria.enviarMensaje(
                     'padre',
-                    'inicio-navegacion',
+                    TIPOS_MENSAJE.NAVEGACION.INICIADA,
                     {
                         destino: {
                             lat: destino.lat,
@@ -2126,7 +2129,7 @@
                 iniciarVerificacionDestino();
                 
                 // Notificar al padre que la navegación se inició correctamente
-                window.Mensajeria.enviarMensaje('padre', 'navegacion-iniciada', {
+                window.Mensajeria.enviarMensaje('padre', TIPOS_MENSAJE.NAVEGACION.INICIADA, {
                     idDestino: puntoDestino.id,
                     nombre: puntoDestino.nombre,
                     coordenadas: {
@@ -2143,8 +2146,9 @@
                 actualizarStatus('Error al iniciar la navegación', 'error');
                 
                 // Notificar al padre del error
-                window.Mensajeria.enviarMensaje('padre', 'error-navegacion', {
-                    error: error.message || 'Error desconocido al iniciar navegación',
+                window.Mensajeria.enviarMensaje('padre', TIPOS_MENSAJE.NAVEGACION.ERROR, {
+                    tipo: 'inicio_navegacion',
+                    mensaje: error.message || 'Error desconocido al iniciar navegación',
                     destino: {
                         lat: destino.lat,
                         lng: destino.lng,
@@ -2458,6 +2462,8 @@
             }
         }
         
+        'use strict';
+
         /**
          * Calcula la distancia en metros entre dos puntos geográficos usando la fórmula del haversine
          * @param {number} lat1 - Latitud del primer punto
@@ -2498,6 +2504,7 @@
          * @param {Object} datos - Datos del mensaje
          * @param {MessageEvent} event - Evento de mensaje
          */
+        
         function manejarMensajesPadre(tipo, datos, event) {
             console.log(`[HIJO2] Mensaje recibido del padre - Tipo: ${tipo}`, datos);
             
@@ -2616,7 +2623,7 @@
             if (window.Mensajeria && window.Mensajeria.enviarMensaje) {
                 window.Mensajeria.enviarMensaje(
                     'padre',
-                    'SOLICITAR_DESTINO',
+                    TIPOS_MENSAJE.NAVEGACION.SOLICITAR_DESTINO,
                     { timestamp: Date.now() }
                 );
                 
@@ -2807,7 +2814,7 @@
             try {
                 // Registrar manejador para cambio de modo
                 if (window.Mensajeria && typeof window.Mensajeria.registrarControlador === 'function') {
-                    window.Mensajeria.registrarControlador('sistema:cambio_modo', manejarMensajeCambioModo);
+                    window.Mensajeria.registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejarMensajeCambioModo);
                     console.log('[HIJO2] Manejador de cambio de modo registrado');
                 } else {
                     console.warn('[HIJO2] No se pudo registrar el manejador de cambio de modo: Mensajeria no disponible');
@@ -4041,8 +4048,6 @@
             
             actualizarStatus(`🗺️ Navegando hacia parada ${paradaDestino} - Sigue la ruta azul`);
         }
-        
-        } // Cierre de iniciarNavegacionAProximaParada
         
         function informarCambioEstado(estado, datos = {}) {
             // Hijo 2 solo informa estados, no controla otros hijos
@@ -6370,8 +6375,8 @@
         } else {
           setTimeout(inicializarAplicacion, 0);
         }
-      } // Cierre de la función anónima del módulo
-      </script>
+      }
+    </script>
 </head>
 
 <body>
