@@ -962,17 +962,12 @@ window.addEventListener('beforeunload', () => {
 });
 
 // Exportar funciones principales
-export {
+export default {
     inicializarMapa,
     actualizarModoMapa,
     buscarCoordenadasParada,
     obtenerNombreParada,
-    actualizarMarcadorParada
-};
-
-export default {
-    inicializarMapa,
-    limpiarRecursos,
     actualizarMarcadorParada,
+    limpiarRecursos,
     cargarDatosParada
 };
