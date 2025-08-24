@@ -452,11 +452,60 @@ function buscarCoordenadasTramo(tramoId) {
 /**
  * Crea el mapa y añade los elementos
  * @param {Object} opciones - Opciones para crear el mapa
+ * @returns {L.Map} Instancia del mapa de Leaflet
  */
-function crearMapaConElementos(opciones) {
-    // Esta función debería implementar la creación del mapa con Leaflet
-    console.log('[MAPA] Creando mapa con elementos:', opciones);
-    // Implementación pendiente
+function crearMapaConElementos(opciones = {}) {
+    console.log('[MAPA] Creando mapa con opciones:', opciones);
+    
+    // Obtener el contenedor o crearlo si no existe
+    let mapContainer = document.getElementById(opciones.containerId || 'mapa');
+    
+    if (!mapContainer) {
+        console.warn(`[MAPA] No se encontró el contenedor con ID '${opciones.containerId}', creando uno nuevo`);
+        mapContainer = document.createElement('div');
+        mapContainer.id = opciones.containerId || 'mapa';
+        mapContainer.style.width = '100%';
+        mapContainer.style.height = '100%';
+        document.body.appendChild(mapContainer);
+    }
+    
+    // Configuración por defecto
+    const defaultOptions = {
+        center: [39.4699, -0.3763], // Valencia
+        zoom: 14,
+        minZoom: 12,
+        maxZoom: 18,
+        zoomControl: false,
+        attributionControl: true
+    };
+    
+    // Combinar opciones
+    const mapOptions = { ...defaultOptions, ...opciones };
+    
+    try {
+        // Crear el mapa
+        const map = L.map(mapContainer, {
+            center: mapOptions.center,
+            zoom: mapOptions.zoom,
+            minZoom: mapOptions.minZoom,
+            maxZoom: mapOptions.maxZoom,
+            zoomControl: mapOptions.zoomControl,
+            attributionControl: mapOptions.attributionControl
+        });
+        
+        // Añadir capa base de OpenStreetMap
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            maxZoom: mapOptions.maxZoom
+        }).addTo(map);
+        
+        console.log('[MAPA] Mapa creado exitosamente');
+        return map;
+        
+    } catch (error) {
+        console.error('[MAPA] Error al crear el mapa:', error);
+        throw error;
+    }
 }
 
 /**
@@ -911,6 +960,15 @@ document.addEventListener('DOMContentLoaded', inicializar);
 window.addEventListener('beforeunload', () => {
     limpiarRecursos();
 });
+
+// Exportar funciones principales
+export {
+    inicializarMapa,
+    actualizarModoMapa,
+    buscarCoordenadasParada,
+    obtenerNombreParada,
+    actualizarMarcadorParada
+};
 
 export default {
     inicializarMapa,
