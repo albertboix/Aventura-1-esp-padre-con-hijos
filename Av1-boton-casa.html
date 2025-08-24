@@ -10,8 +10,7 @@
         TIPOS_MENSAJE, 
         inicializarMensajeria, 
         enviarMensaje, 
-        registrarControlador,
-        TIPOS_MENSAJE
+        registrarControlador
       } from './mensajeria.js';
       
       // Initialize notificarError if not already defined
@@ -275,7 +274,7 @@
         
       } catch (error) {
         const errorMsg = 'Error crítico al cargar módulos';
-        logger.error(errorMsg, error);
+        console.error(errorMsg, error);
         
         // Mostrar mensaje de error al usuario
         const errorContainer = document.createElement('div');
@@ -880,32 +879,92 @@
       
       // Manejador de cambio de modo
       async function manejarCambioModo(datos = {}) {
+        // Validar datos de entrada
+        const validacion = validarCambioModo(datos);
+        if (!validacion.valido) {
+          throw new Error(validacion.error);
+        }
+        
+        const { modo: modoSolicitado, motivo = 'Cambio de modo solicitado' } = validacion;
+        const modoAnterior = estadoApp.modo;
+        
+        // Validar modo
+        if (modoSolicitado !== 'casa' && modoSolicitado !== 'aventura') {
+          const errorMsg = `Modo no válido: ${modoSolicitado}`;
+          console.error(`[${CONFIG.IFRAME_ID}] ${errorMsg}`);
+          
+          // Enviar mensaje de error al padre
+          if (enviarMensaje) {
+            try {
+              await enviarMensaje(
+                'padre',
+                TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_CONFIRMACION,
+                {
+                  estado: 'error',
+                  error: errorMsg,
+                  modo: modoAnterior,
+                  modoSolicitado,
+                  motivo,
+                  timestamp: new Date().toISOString(),
+                  origen: CONFIG.IFRAME_ID,
+                  destino: 'padre',
+                  version: '1.0',
+                  metadata: {
+                    forzar: Boolean(datos.forzar),
+                    solicitante: datos.origen || 'sistema',
+                    timestampSolicitud: datos.timestamp || new Date().toISOString(),
+                    timestampError: new Date().toISOString()
+                  }
+                },
+                { maxRetries: 3, retryDelay: 1000, timeout: 5000 }
+              );
+            } catch (error) {
+              console.error(`[${CONFIG.IFRAME_ID}] Error al notificar error de cambio de modo:`, error);
+            }
+          }
+          
+          throw new Error(errorMsg);
+        }
+        
+        // Si ya está en el modo solicitado, notificar al padre y salir
+        if (modoSolicitado === modoAnterior) {
+          console.log(`[${CONFIG.IFRAME_ID}] Ya está en modo ${modoSolicitado}, notificando al padre...`);
+          
+          if (enviarMensaje) {
+            try {
+              await enviarMensaje(
+                'padre',
+                TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_CONFIRMACION,
+                {
+                  estado: 'completado',
+                  modo: modoSolicitado,
+                  modoAnterior,
+                  motivo: 'Ya estaba en el modo solicitado',
+                  timestamp: new Date().toISOString(),
+                  origen: CONFIG.IFRAME_ID,
+                  destino: 'padre',
+                  version: '1.0',
+                  metadata: {
+                    forzar: Boolean(datos.forzar),
+                    solicitante: datos.origen || 'sistema',
+                    timestampSolicitud: datos.timestamp || new Date().toISOString()
+                  }
+                },
+                { maxRetries: 3, retryDelay: 1000, timeout: 5000 }
+              );
+            } catch (error) {
+              console.error(`[${CONFIG.IFRAME_ID}] Error al notificar confirmación de modo:`, error);
+            }
+          }
+          
+          return true;
+        }
+        
         try {
-          // Validar datos de entrada
-          const validacion = validarCambioModo(datos);
-          if (!validacion.valido) {
-            throw new Error(validacion.error);
-          }
-          
-          const { modo, motivo } = validacion;
-          
-          // Validar modo
-          if (modo !== 'casa' && modo !== 'aventura') {
-            throw new Error(`Modo no válido: ${modo}`);
-          }
-          
-          const modoAnterior = estadoApp.modo;
-          
-          // Si ya está en el modo solicitado, no hacer nada
-          if (modo === modoAnterior) {
-            console.log(`[${CONFIG.IFRAME_ID}] Ya está en modo ${modo}, ignorando solicitud`);
-            return true;
-          }
-          
-          console.log(`[${CONFIG.IFRAME_ID}] Cambiando de modo ${modoAnterior} a ${modo}...`);
+          console.log(`[${CONFIG.IFRAME_ID}] Cambiando de modo ${modoAnterior} a ${modoSolicitado}...`);
           
           // Actualizar el estado local
-          estadoApp.modo = modo;
+          estadoApp.modo = modoSolicitado;
           
           // Actualizar la interfaz
           actualizarInterfaz();
@@ -914,50 +973,87 @@
           if (enviarMensaje) {
             try {
               await enviarMensaje(
-                'padre', 
-                TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_CONFIRMACION, 
+                'padre',
+                TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_CONFIRMACION,
                 {
-                  exito: true,
-                  datos: {
-                    modoAnterior,
-                    modoNuevo: modo,
-                    motivo,
-                    timestamp: new Date().toISOString()
+                  estado: 'completado',
+                  modo: modoSolicitado,
+                  modoAnterior,
+                  motivo: motivo || 'Cambio de modo exitoso',
+                  timestamp: new Date().toISOString(),
+                  origen: CONFIG.IFRAME_ID,
+                  destino: 'padre',
+                  version: '1.0',
+                  metadata: {
+                    forzar: Boolean(datos.forzar),
+                    solicitante: datos.origen || 'sistema',
+                    timestampSolicitud: datos.timestamp || new Date().toISOString()
                   }
                 },
-                { 
-                  maxRetries: 3,
-                  retryDelay: 1000,
-                  timeout: 5000
-                }
+                { maxRetries: 3, retryDelay: 1000, timeout: 5000 }
               );
               console.log(`[${CONFIG.IFRAME_ID}] Confirmación de cambio de modo enviada al padre`);
             } catch (notifyError) {
-              console.error(`[${CONFIG.IFRAME_ID}] Error al notificar error de cambio de modo:`, notifyError);
+              console.error(`[${CONFIG.IFRAME_ID}] Error al notificar confirmación de modo:`, notifyError);
+              throw notifyError; // Relanzar para que se maneje en el catch externo
             }
           } else {
             console.warn(`[${CONFIG.IFRAME_ID}] No se pudo enviar confirmación: Mensajería no disponible`);
           }
           
-          console.log(`[${CONFIG.IFRAME_ID}] Modo cambiado exitosamente a ${modo}`);
+          console.log(`[${CONFIG.IFRAME_ID}] Modo cambiado exitosamente a ${modoSolicitado}`);
           return true;
+          
         } catch (error) {
           const errorMsg = `Error al cambiar el modo: ${error.message}`;
           console.error(`[${CONFIG.IFRAME_ID}] ${errorMsg}`, error);
           
-          // Notificar el error
+          // Notificar el error al padre
+          if (enviarMensaje) {
+            try {
+              await enviarMensaje(
+                'padre',
+                TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_CONFIRMACION,
+                {
+                  estado: 'error',
+                  error: error.message,
+                  modo: modoAnterior,
+                  modoSolicitado,
+                  motivo: motivo || 'Error al cambiar de modo',
+                  timestamp: new Date().toISOString(),
+                  origen: CONFIG.IFRAME_ID,
+                  destino: 'padre',
+                  version: '1.0',
+                  metadata: {
+                    forzar: Boolean(datos.forzar),
+                    solicitante: datos.origen || 'sistema',
+                    timestampSolicitud: datos.timestamp || new Date().toISOString(),
+                    timestampError: new Date().toISOString(),
+                    stack: error.stack
+                  }
+                },
+                { maxRetries: 3, retryDelay: 1000, timeout: 5000 }
+              );
+            } catch (notifyError) {
+              console.error(`[${CONFIG.IFRAME_ID}] Error al notificar error de cambio de modo:`, notifyError);
+            }
+          }
+          
+          // También notificar a través del sistema de notificaciones local
           try {
             await notificarEstado('error_cambio_modo', {
               error: error.message,
-              motivo: datos.motivo || 'desconocido',
-              modoAnterior: estadoApp.modo,
-              modoIntentado: datos.modo
+              motivo: motivo || 'desconocido',
+              modoAnterior,
+              modoIntentado: modoSolicitado,
+              stack: error.stack
             });
           } catch (notifyError) {
-            console.error(`[${CONFIG.IFRAME_ID}] Error al notificar el error:`, notifyError);
+            console.error(`[${CONFIG.IFRAME_ID}] Error al notificar el error localmente:`, notifyError);
           }
           
-          return false;
+          // Relanzar el error para que el llamador pueda manejarlo si es necesario
+          throw error;
         }
       }
       
@@ -1229,7 +1325,7 @@
           
         } catch (error) {
           const errorMsg = 'Error al habilitar controles';
-          logger.error(errorMsg, error);
+          console.error(errorMsg, error);
           throw new Error(`${errorMsg}: ${error.message}`);
         }
       }
@@ -1258,7 +1354,7 @@
           
         } catch (error) {
           const errorMsg = 'Error al deshabilitar controles';
-          logger.error(errorMsg, error);
+          console.error(errorMsg, error);
           throw new Error(`${errorMsg}: ${error.message}`);
         }
       }
@@ -1703,7 +1799,7 @@
           
         } catch (error) {
           const errorMsg = 'Error al inicializar la aplicación';
-          logger.error(errorMsg, error);
+          console.error(errorMsg, error);
           await notificarError('inicializacion_aplicacion', error);
           mostrarError('Error al inicializar la aplicación. Por favor, recarga la página.');
           throw error;
@@ -1790,7 +1886,7 @@
           
         } catch (error) {
           const errorMsg = 'Error al cargar el estado';
-          logger.error(errorMsg, error);
+          console.error(errorMsg, error);
           await notificarError('carga_estado', error);
           throw error; // Relanzar para que el llamador pueda manejarlo
         }
