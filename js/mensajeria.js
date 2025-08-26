@@ -1,10 +1,52 @@
 /**
  * Sistema de Mensajería para Comunicación entre Iframes
  * Maneja la comunicación bidireccional entre iframes padre e hijo
- * @version 2.0.0
+ * @version 2.0.1
  */
 
+// Códigos de error estandarizados
+export const ERROR_CODES = {
+  // Errores de inicialización
+  NOT_INITIALIZED: 'MESSAGING_NOT_INITIALIZED',
+  ALREADY_INITIALIZED: 'MESSAGING_ALREADY_INITIALIZED',
+  INVALID_CONFIG: 'INVALID_CONFIGURATION',
+  
+  // Errores de mensajes
+  INVALID_MESSAGE: 'INVALID_MESSAGE_FORMAT',
+  UNKNOWN_MESSAGE_TYPE: 'UNKNOWN_MESSAGE_TYPE',
+  MESSAGE_TIMEOUT: 'MESSAGE_TIMEOUT',
+  
+  // Errores de red/IO
+  TARGET_NOT_FOUND: 'TARGET_IFRAME_NOT_FOUND',
+  POST_MESSAGE_FAILED: 'POST_MESSAGE_FAILED',
+  
+  // Errores de validación
+  VALIDATION_ERROR: 'VALIDATION_ERROR',
+  MISSING_REQUIRED_FIELD: 'MISSING_REQUIRED_FIELD',
+  INVALID_FIELD_TYPE: 'INVALID_FIELD_TYPE',
+  
+  // Errores de autenticación/permisos
+  UNAUTHORIZED: 'UNAUTHORIZED_ACCESS',
+  PERMISSION_DENIED: 'PERMISSION_DENIED',
+  
+  // Errores del sistema
+  INTERNAL_ERROR: 'INTERNAL_ERROR',
+  NOT_IMPLEMENTED: 'NOT_IMPLEMENTED',
+  SERVICE_UNAVAILABLE: 'SERVICE_UNAVAILABLE'
+};
+
+// Niveles de severidad de errores
+export const ERROR_SEVERITY = {
+  INFO: 'info',
+  WARNING: 'warning',
+  ERROR: 'error',
+  CRITICAL: 'critical'
+};
+
 // ================== ERROR HANDLING ==================
+
+// Alias para compatibilidad
+export const ERROR_TYPES = ERROR_CODES;
 
 /**
  * Wraps a function with error handling
@@ -309,23 +351,35 @@ export const TIPOS_MENSAJE = {
 /**
  * Niveles de logging
  */
-export const LOG_LEVELS = {
-  ERROR: 0,
-  WARN: 1,
-  INFO: 2,
-  DEBUG: 3
+const LOG_LEVELS = {
+  DEBUG: 0,
+  INFO: 1,
+  WARN: 2,
+  ERROR: 3,
+  NONE: 4
 };
+
+// Exportar LOG_LEVELS para uso externo
+export { LOG_LEVELS };
+
+// Configuración de logging
+let logLevel = LOG_LEVELS.INFO;
+
 
 /**
  * Configuración por defecto del sistema de mensajería
+ * @type {Object}
  */
 const CONFIG_DEFAULT = {
-  timeout: 10000,
+  debug: false,
+  logLevel: LOG_LEVELS.INFO, // Usar constantes para mejor legibilidad
+  timeout: 5000, // 5 segundos por defecto
+  maxRetries: 3,
+  retryDelay: 1000,
+  iframeId: null,
   maxReintentos: 3,
   tiempoEsperaBase: 1000,
-  factorBackoff: 2,
-  logLevel: LOG_LEVELS.INFO,
-  debug: false
+  factorBackoff: 2
 };
 
 // ================== VARIABLES GLOBALES ==================
@@ -698,34 +752,62 @@ function validarMensaje(mensaje) {
  */
 export async function inicializarMensajeria(config = {}) {
   try {
-    log(LOG_LEVELS.INFO, 'Inicializando sistema de mensajería...', config);
-    
     // Validar configuración
     if (!config.iframeId) {
-      throw new Error('Se requiere un iframeId para inicializar la mensajería');
+      const error = new Error('Se requiere un iframeId para inicializar la mensajería');
+      error.code = 'ERR_INVALID_CONFIG';
+      throw error;
+    }
+    
+    if (sistemaInicializado) {
+      log(LOG_LEVELS.WARN, 'El sistema de mensajería ya estaba inicializado');
+      return Promise.resolve();
     }
     
     // Aplicar configuración
     configuracion = { ...CONFIG_DEFAULT, ...config };
     iframeId = configuracion.iframeId;
     
+    // Configurar nivel de log
+    logLevel = configuracion.debug ? LOG_LEVELS.DEBUG : 
+              configuracion.logLevel || LOG_LEVELS.INFO;
+    
+    log(LOG_LEVELS.INFO, 'Inicializando sistema de mensajería...', {
+      iframeId: '***',
+      logLevel: Object.keys(LOG_LEVELS).find(key => LOG_LEVELS[key] === logLevel)
+    });
+    
+    // Inicializar manejadores
+    manejadores = new Map();
+    mensajesPendientes = new Map();
+    contadorMensajes = 0;
+    
     // Configurar listener de mensajes
     if (typeof window !== 'undefined') {
+      // Remover cualquier listener previo para evitar duplicados
+      window.removeEventListener('message', manejarMensajeRecibido, false);
       window.addEventListener('message', manejarMensajeRecibido, false);
       log(LOG_LEVELS.DEBUG, 'Event listener de mensajes configurado');
     }
     
     sistemaInicializado = true;
     
-    log(LOG_LEVELS.INFO, 'Sistema de mensajería inicializado correctamente', {
-      iframeId,
-      configuracion
-    });
+    log(LOG_LEVELS.INFO, 'Sistema de mensajería inicializado correctamente');
     
     return Promise.resolve();
     
   } catch (error) {
-    log(LOG_LEVELS.ERROR, 'Error al inicializar la mensajería', error);
+    log(LOG_LEVELS.ERROR, 'Error al inicializar la mensajería', {
+      message: error.message,
+      code: error.code,
+      stack: configuracion.debug ? error.stack : undefined
+    });
+    
+    // Limpiar en caso de error
+    if (sistemaInicializado) {
+      await limpiar();
+    }
+    
     throw error;
   }
 }
@@ -1007,25 +1089,32 @@ function enviarRespuesta(mensajeOriginal, datos = null, error = null) {
     error,
     version: '1.0.0'
   };
-  
+      
   // Enviar respuesta sin esperar confirmación
   enviarMensajeDirecto(respuesta, { esperarRespuesta: false }).catch(err => {
     log(LOG_LEVELS.ERROR, 'Error al enviar respuesta', err);
+    limpiar();
   });
 }
 
+// ... rest of the code ...
+
 /**
- * Limpia mensajes pendientes que han expirado
+ * Limpia los mensajes expirados de la cola de mensajes pendientes
  */
 function limpiarMensajesExpirados() {
   const ahora = Date.now();
-  for (const [id, pendiente] of mensajesPendientes.entries()) {
-    if (ahora - pendiente.timestamp > configuracion.timeout) {
-      clearTimeout(pendiente.timeoutId);
-      pendiente.reject(new Error(`Mensaje expirado: ${id}`));
+  let eliminados = 0;
+      
+  for (const [id, mensaje] of mensajesPendientes.entries()) {
+    if (mensaje.tiempoExpiracion && ahora > mensaje.tiempoExpiracion) {
       mensajesPendientes.delete(id);
-      log(LOG_LEVELS.DEBUG, `Mensaje expirado eliminado: ${id}`);
+      eliminados++;
     }
+  }
+      
+  if (eliminados > 0) {
+    log(LOG_LEVELS.DEBUG, `Se eliminaron ${eliminados} mensajes expirados`);
   }
 }
 
@@ -1324,9 +1413,6 @@ async function enviarConfiguracion(config) {
     throw error;
   }
 }
-
-// Hacer la función disponible en la API
-export { enviarConfiguracion };
 
 // ================== MANEJADORES DE CONFIGURACIÓN ==================
 
