@@ -54,7 +54,7 @@
       };
       
       // Utilidad de logging estandarizada
-      const logger = (() => {
+      window.logger = (() => {
         // Función interna para el registro de logs
         const log = (nivel, nivelTexto, mensaje, datos) => {
           // Si el nivel de log está deshabilitado o es inferior al nivel configurado, no hacer nada
@@ -125,6 +125,109 @@
           }
         };
       })();
+      
+      // Inicializar el logger globalmente si no existe
+      if (!window.logger) {
+        // Logger temporal hasta que se inicialice el real
+        const tempLogger = (() => {
+          const log = (nivel, nivelTexto, mensaje, datos) => {
+            // Si CONFIG no está disponible, usar valores por defecto
+            const logLevel = window.CONFIG?.LOG_LEVEL ?? 0; // DEBUG por defecto
+            const iframeId = window.CONFIG?.IFRAME_ID || 'unknown-iframe';
+            
+            if (logLevel > nivel) return;
+            
+            const timestamp = new Date().toISOString();
+            const prefijo = `[${timestamp}] [${iframeId}] [${nivelTexto}]`;
+            
+            // Determinar el método de consola a utilizar
+            let metodoConsola = 'log';
+            if (nivel === LOG_LEVELS.WARN) metodoConsola = 'warn';
+            else if (nivel >= LOG_LEVELS.ERROR) metodoConsola = 'error';
+            
+            // Registrar el mensaje
+            try {
+              if (datos !== undefined) {
+                console[metodoConsola](`${prefijo} ${mensaje}`, datos);
+              } else {
+                console[metodoConsola](`${prefijo} ${mensaje}`);
+              }
+            } catch (e) {
+              console.error(`Error al registrar log: ${e.message}`);
+            }
+          };
+          
+          return {
+            debug: (mensaje, datos) => log(LOG_LEVELS.DEBUG, 'DEBUG', mensaje, datos),
+            info: (mensaje, datos) => log(LOG_LEVELS.INFO, 'INFO', mensaje, datos),
+            warn: (mensaje, datos) => log(LOG_LEVELS.WARN, 'WARN', mensaje, datos),
+            error: (mensaje, error, datos = {}) => {
+              if (error) {
+                datos = {
+                  ...datos,
+                  error: {
+                    mensaje: error.message,
+                    stack: error.stack,
+                    ...(error.details && { detalles: error.details })
+                  }
+                };
+              }
+              log(LOG_LEVELS.ERROR, 'ERROR', mensaje, Object.keys(datos).length ? datos : undefined);
+            }
+          };
+        })();
+
+        // Asignar logger temporal
+        window.logger = tempLogger;
+
+        // Sobrescribir con la implementación completa una vez que todo esté listo
+        document.addEventListener('DOMContentLoaded', () => {
+          window.logger = (() => {
+            const log = (nivel, nivelTexto, mensaje, datos) => {
+              if (!window.CONFIG || window.CONFIG.LOG_LEVEL > nivel) return;
+              
+              const timestamp = new Date().toISOString();
+              const prefijo = `[${timestamp}] [${window.CONFIG.IFRAME_ID}] [${nivelTexto}]`;
+              
+              let metodoConsola = 'log';
+              if (nivel === LOG_LEVELS.WARN) metodoConsola = 'warn';
+              else if (nivel >= LOG_LEVELS.ERROR) metodoConsola = 'error';
+              
+              try {
+                if (datos !== undefined) {
+                  console[metodoConsola](`${prefijo} ${mensaje}`, datos);
+                } else {
+                  console[metodoConsola](`${prefijo} ${mensaje}`);
+                }
+              } catch (e) {
+                console.error(`Error al registrar log: ${e.message}`);
+              }
+            };
+            
+            return {
+              debug: (mensaje, datos) => log(LOG_LEVELS.DEBUG, 'DEBUG', mensaje, datos),
+              info: (mensaje, datos) => log(LOG_LEVELS.INFO, 'INFO', mensaje, datos),
+              warn: (mensaje, datos) => log(LOG_LEVELS.WARN, 'WARN', mensaje, datos),
+              error: (mensaje, error, datos = {}) => {
+                if (error) {
+                  datos = {
+                    ...datos,
+                    error: {
+                      mensaje: error.message,
+                      stack: error.stack,
+                      ...(error.details && { detalles: error.details })
+                    }
+                  };
+                }
+                log(LOG_LEVELS.ERROR, 'ERROR', mensaje, Object.keys(datos).length ? datos : undefined);
+              }
+            };
+          })();
+        });
+      }
+      
+      // Referencia local al logger
+      const logger = window.logger;
       
       // Modos de operación
       const MODOS = {
@@ -229,7 +332,7 @@
 
       // Cargar módulos requeridos
       let mensajeria, funcionesMapa;
-      let enviarMensaje, registrarControlador, TIPOS_MENSAJE;
+      // TIPOS_MENSAJE is already imported, no need to declare it again
       // Remove duplicate declarations that might conflict with imported modules
       
       try {
@@ -245,14 +348,13 @@
         if (mensajeria) {
           // Only assign these if they're not already defined to avoid redeclaration
           if (typeof enviarMensaje === 'undefined') {
-            ({ enviarMensaje, registrarControlador, TIPOS_MENSAJE } = mensajeria);
+            ({ 
+              enviarMensaje, 
+              inicializarMensajeria, 
+              registrarControlador, 
+              TIPOS_MENSAJE 
+            } = mensajeria);
           }
-          ({ 
-            inicializarMensajeria, 
-            enviarMensaje, 
-            registrarControlador, 
-            TIPOS_MENSAJE 
-          } = mensajeria);
           
           // Hacer que las funciones estén disponibles globalmente para compatibilidad
           window.inicializarMensajeria = inicializarMensajeria;
@@ -308,7 +410,12 @@
       
       // Estado inicial de la aplicación
       const ESTADO_INICIAL = {
-        modo: 'casa', // 'casa' o 'aventura'
+        modo: {
+          actual: 'casa',        // 'casa' o 'aventura'
+          anterior: null,        // Último modo activo
+          ultimoCambio: null,    // Timestamp del último cambio
+          cambioEnProgreso: false // Si hay un cambio de modo en curso
+        },
         gpsActivo: false,
         controlesHabilitados: true,
         puntoActual: null,
@@ -693,16 +800,18 @@
       /**
        * Valida los datos de entrada para el cambio de modo
        * @param {Object} datos - Datos a validar
-       * @returns {Object} { valido: boolean, error?: string, modo?: string }
+       * @returns {Object} { valido: boolean, error?: string, modo?: string, motivo?: string }
        */
       function validarCambioModo(datos = {}) {
-        const { modo, motivo = 'desconocido' } = datos;
+        // Extraer modo del objeto datos o del objeto modo si existe
+        const modoSolicitado = datos.modo?.actual || datos.modo || null;
+        const motivo = datos.motivo || 'desconocido';
         
         // Validar que el modo sea válido
-        if (!Object.values(MODOS).includes(modo)) {
+        if (!modoSolicitado || !Object.values(MODOS).includes(modoSolicitado)) {
           return { 
             valido: false, 
-            error: `${MENSAJES.ERROR.TIPO_INVALIDO}: '${modo}'. Debe ser uno de: ${Object.values(MODOS).join(', ')}`
+            error: `${MENSAJES.ERROR.TIPO_INVALIDO}: '${modoSolicitado}'. Debe ser uno de: ${Object.values(MODOS).join(', ')}`
           };
         }
         
@@ -717,7 +826,7 @@
         // Si todo es válido, devolver los datos normalizados
         return { 
           valido: true, 
-          modo,
+          modo: modoSolicitado, // Devolver solo el string del modo
           motivo: motivo.trim() || 'sin motivo especificado'
         };
       }
@@ -886,7 +995,7 @@
         }
         
         const { modo: modoSolicitado, motivo = 'Cambio de modo solicitado' } = validacion;
-        const modoAnterior = estadoApp.modo;
+        const modoAnterior = estadoApp.modo.actual;
         
         // Validar modo
         if (modoSolicitado !== 'casa' && modoSolicitado !== 'aventura') {
@@ -902,7 +1011,7 @@
                 {
                   estado: 'error',
                   error: errorMsg,
-                  modo: modoAnterior,
+                  modo: estadoApp.modo,
                   modoSolicitado,
                   motivo,
                   timestamp: new Date().toISOString(),
@@ -937,7 +1046,7 @@
                 TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_CONFIRMACION,
                 {
                   estado: 'completado',
-                  modo: modoSolicitado,
+                  modo: estadoApp.modo,
                   modoAnterior,
                   motivo: 'Ya estaba en el modo solicitado',
                   timestamp: new Date().toISOString(),
@@ -963,8 +1072,19 @@
         try {
           console.log(`[${CONFIG.IFRAME_ID}] Cambiando de modo ${modoAnterior} a ${modoSolicitado}...`);
           
-          // Actualizar el estado local
-          estadoApp.modo = modoSolicitado;
+          // Actualizar el estado local con el nuevo modo estructurado
+          const nuevoModo = {
+            actual: modoSolicitado,
+            anterior: modoAnterior,
+            ultimoCambio: new Date().toISOString(),
+            cambioEnProgreso: false
+          };
+          
+          // Usar actualizarEstado para mantener la consistencia
+          await estadoApp.actualizarEstado({
+            ...estadoApp,
+            modo: nuevoModo
+          });
           
           // Actualizar la interfaz
           actualizarInterfaz();
@@ -977,7 +1097,7 @@
                 TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_CONFIRMACION,
                 {
                   estado: 'completado',
-                  modo: modoSolicitado,
+                  modo: nuevoModo,
                   modoAnterior,
                   motivo: motivo || 'Cambio de modo exitoso',
                   timestamp: new Date().toISOString(),
@@ -1366,13 +1486,14 @@
       function actualizarInterfaz() {
         try {
           const { modo, gpsActivo, controlesHabilitados, puntoActual, tramoActual } = estadoApp;
+          const modoActual = modo.actual; // Acceder al modo actual desde el objeto modo
           
           // 1. Actualizar el botón GPS
           const gpsBtn = document.getElementById('gps-casa-btn');
           if (gpsBtn) {
             // Actualizar clases según el modo
-            gpsBtn.classList.toggle('modo-casa', modo === 'casa');
-            gpsBtn.classList.toggle('modo-aventura', modo === 'aventura');
+            gpsBtn.classList.toggle('modo-casa', modoActual === 'casa');
+            gpsBtn.classList.toggle('modo-aventura', modoActual === 'aventura');
             
             // Actualizar estado activo/inactivo
             gpsBtn.classList.toggle('activo', gpsActivo);
@@ -1394,9 +1515,17 @@
           // Indicador de modo
           actualizarIndicador(
             'indicador-modo',
-            `Modo: ${modo || 'no definido'}`,
-            `modo-indicador modo-${modo || 'desconocido'}`
+            `Modo: ${modoActual || 'no definido'}`,
+            `modo-indicador modo-${modoActual || 'desconocido'}`
           );
+          
+          // Actualizar el botón de cambio de modo si existe
+          const botonCambioModo = document.getElementById('boton-cambio-modo');
+          if (botonCambioModo) {
+            botonCambioModo.textContent = modoActual === 'casa' ? 'Modo Aventura' : 'Modo Casa';
+            botonCambioModo.title = `Cambiar a modo ${modoActual === 'casa' ? 'aventura' : 'casa'}`;
+            botonCambioModo.disabled = !controlesHabilitados;
+          }
           
           // Indicador de GPS
           actualizarIndicador(
