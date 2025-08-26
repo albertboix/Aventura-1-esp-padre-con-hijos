@@ -82,7 +82,12 @@
 
         // Estado global de la aplicación
         let estadoApp = {
-            modo: 'aventura',
+            modo: {
+                actual: 'aventura',
+                anterior: null,
+                ultimoCambio: new Date().toISOString(),
+                cambioEnProgreso: false
+            },
             controlesHabilitados: false,
             retoActual: null,
             retosCompletados: [],
@@ -388,14 +393,6 @@
             console.log(`[HIJO4] Controles deshabilitados: ${mensaje?.datos?.motivo || 'sin motivo especificado'}`);
         }
         
-        // Función para manejar cambios de modo
-        function manejarCambioModo(mensaje) {
-            if (mensaje.datos && mensaje.datos.modo) {
-                estadoApp.modo = mensaje.datos.modo;
-                console.log(`[HIJO4] Modo cambiado a: ${estadoApp.modo}`);
-            }
-        }
-
         // ================== FUNCIONES DE UTILIDAD ==================
         function mostrarMensaje(mensaje, tipo = 'info', duracion = 3000) {
             console.log(`[${CONFIG.iframeId}] ${tipo.toUpperCase()}: ${mensaje}`);
@@ -500,7 +497,7 @@
             console.log(`[${CONFIG.iframeId}] Habilitando controles en modo: ${modo}`);
             
             estadoApp.controlesHabilitados = true;
-            estadoApp.modo = modo;
+            // No actualizamos estadoApp.modo aquí, ya que se maneja en manejarCambioModo
             retosDisabled = false;
             
             // Actualizar interfaz
@@ -532,60 +529,147 @@
         }
 
         // ================== FUNCIONES DE MANEJO DE MODO ==================
+        /**
+         * Actualiza la interfaz según el modo actual
+         * @param {string} modo - Modo actual ('casa' o 'aventura')
+         */
+        function actualizarInterfazModo(modo) {
+            console.log(`[${CONFIG.iframeId}] Actualizando interfaz para modo: ${modo}`);
+            
+            // Actualizar clases CSS según el modo
+            document.body.classList.toggle('modo-casa', modo === 'casa');
+            document.body.classList.toggle('modo-aventura', modo === 'aventura');
+            
+            // Ocultar/mostrar elementos según el modo
+            const elementosAventura = document.querySelectorAll('.solo-aventura');
+            elementosAventura.forEach(el => {
+                el.style.display = modo === 'aventura' ? 'block' : 'none';
+            });
+            
+            // Si estamos en modo casa, cerramos cualquier reto abierto
+            if (modo === 'casa' && estadoApp.retoActual) {
+                cerrarReto();
+            }
+            
+            // Forzar re-renderizado si hay un reto activo
+            if (elementoActual) {
+                renderizarRetoActual();
+            }
+        }
+        
+        /**
+         * Maneja la confirmación de cambio de modo
+         */
+        async function manejarConfirmacionCambioModo(mensaje) {
+            const { modo, timestamp, exito, motivo } = mensaje.datos || {};
+            if (estadoApp.modo.cambioEnProgreso && modo === estadoApp.modo.actual) {
+                estadoApp.modo.cambioEnProgreso = false;
+                console.log(`[${CONFIG.iframeId}] Modo ${modo} confirmado`, motivo ? `(Motivo: ${motivo})` : '');
+                
+                // Actualizar la interfaz con el nuevo modo
+                actualizarInterfazModo(modo);
+            }
+        }
+        
+        /**
+         * Sincroniza el estado del modo con otros componentes
+         */
+        async function manejarEstadoModo(mensaje) {
+            // Ignorar mensajes propios
+            if (mensaje.origen === CONFIG.iframeId) return;
+            
+            const { modo } = mensaje.datos || {};
+            if (modo && modo !== estadoApp.modo.actual) {
+                console.log(`[${CONFIG.iframeId}] Sincronizando modo con ${mensaje.origen}: ${modo}`);
+                await manejarCambioModo({ 
+                    datos: { 
+                        modo, 
+                        motivo: 'sincronizacion',
+                        forzar: true // Evita la confirmación para sincronización
+                    } 
+                });
+            }
+        }
+        
+        /**
+         * Maneja el cambio de modo
+         */
         async function manejarCambioModo(mensaje) {
             try {
-                const { modo, timestamp, motivo = 'cambio_modo' } = mensaje.datos || {};
+                const { 
+                    modo, 
+                    timestamp = Date.now(), 
+                    motivo = 'cambio_modo',
+                    forzar = false
+                } = mensaje.datos || {};
                 
                 // Validar modo
                 if (modo !== 'casa' && modo !== 'aventura') {
                     throw new Error(`Modo no válido: ${modo}`);
                 }
-
-                console.log(`[${CONFIG.iframeId}] Cambiando a modo: ${modo}`, motivo ? `(Motivo: ${motivo})` : '');
                 
-                const modoAnterior = estadoApp.modo;
-                estadoApp.modo = modo;
-
+                // Ignorar si ya está en el modo solicitado
+                if (modo === estadoApp.modo.actual && !forzar) {
+                    console.log(`[${CONFIG.iframeId}] Ya está en modo ${modo}, ignorando...`);
+                    return { estado: 'ignorado', motivo: 'ya_en_modo_solicitado' };
+                }
+                
+                console.log(`[${CONFIG.iframeId}] Iniciando cambio a modo: ${modo}`, `(Motivo: ${motivo})`);
+                
+                // Actualizar estado
+                const modoAnterior = estadoApp.modo.actual;
+                estadoApp.modo.anterior = modoAnterior;
+                estadoApp.modo.actual = modo;
+                estadoApp.modo.ultimoCambio = new Date().toISOString();
+                estadoApp.modo.cambioEnProgreso = !forzar; // Solo marcar como en progreso si no es forzado
+                
                 // Actualizar controles según el modo
                 enableControls(modo);
-
-                // Si cambiamos a modo casa, cerrar retos abiertos
-                if (modo === 'casa' && estadoApp.retoActual) {
-                    cerrarReto();
+                
+                // Si es un cambio forzado (sincronización), actualizar la interfaz directamente
+                if (forzar) {
+                    actualizarInterfazModo(modo);
+                    return { estado: 'ok', modoAnterior, modoNuevo: modo, timestamp };
                 }
-
-                // Renderizar el reto actual con el nuevo modo
-                if (elementoActual) {
-                    renderizarRetoActual();
-                }
-
+                
                 // Enviar confirmación al padre
                 if (enviarMensaje) {
                     await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_CONFIRMACION, {
                         modo,
+                        modoAnterior,
                         timestamp,
                         origen: CONFIG.iframeId,
                         exito: true,
-                        modoAnterior
+                        motivo
                     });
                     
                     // Broadcast del nuevo estado a todos los componentes
                     await enviarMensaje('todos', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_ESTADO, {
                         modo,
+                        modoAnterior,
                         timestamp: Date.now(),
                         origen: CONFIG.iframeId
                     });
                 }
-
+                
+                // Actualizar la interfaz después de confirmar el cambio
+                actualizarInterfazModo(modo);
+                
                 return {
                     estado: 'ok',
                     modoAnterior,
                     modoNuevo: modo,
-                    timestamp: Date.now()
+                    timestamp
                 };
-
+                
             } catch (error) {
                 console.error(`[${CONFIG.iframeId}] Error al cambiar modo:`, error);
+                
+                // Revertir el cambio de modo en caso de error
+                if (mensaje.datos?.modo) {
+                    estadoApp.modo.actual = estadoApp.modo.anterior || 'casa';
+                    estadoApp.modo.cambioEnProgreso = false;
+                }
                 
                 // Notificar error al padre
                 if (enviarMensaje) {
@@ -595,13 +679,8 @@
                         stack: error.stack,
                         origen: CONFIG.iframeId,
                         modo: mensaje.datos?.modo,
-                        modoAnterior: estadoApp.modo
+                        modoAnterior: estadoApp.modo.anterior
                     }).catch(console.error);
-                }
-                
-                // Revertir al modo anterior en caso de error
-                if (mensaje.datos?.modo) {
-                    estadoApp.modo = mensaje.datos.modo;
                 }
                 
                 return {
@@ -617,6 +696,11 @@
         async function inicializarSistemaRetos() {
             try {
                 console.log(`[${CONFIG.iframeId}] Iniciando sistema de retos...`);
+                
+                // Registrar manejadores de mensajes
+                registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejarCambioModo);
+                registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_ESTADO, manejarEstadoModo);
+                registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_CONFIRMACION, manejarConfirmacionCambioModo);
 
                 // Inicializar interfaz
                 inicializarInterfaz();
@@ -697,7 +781,7 @@
         
         const modoAnterior = estadoApp.modo;
         function inicializarInterfazRetos() {
-            estadoApp.modo = 'aventura'; // Set default mode
+            // El modo se establece a través de manejarCambioModo
             
             if (!document.getElementById('reto-contenido')) {
                 const container = document.createElement('div');
@@ -710,7 +794,7 @@
                 const buttonContainer = document.createElement('div');
                 buttonContainer.id = 'button-container';
                 buttonContainer.className = 'button-container';
-                
+            
                 // Crear botones
                 const btnEnviar = document.createElement('button');
                 btnEnviar.id = 'btnEnviar';
