@@ -11,24 +11,81 @@
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <!-- Scripts -->
+</head>
+<body>
+    <div id="map" style="width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 0;"></div>
     <script type="module">
         'use strict';
         
-        // Importar módulos necesarios (deben estar al nivel superior del módulo)
-        import { 
-            TIPOS_MENSAJE as TIPOS_MENSAJE_IMPORTADOS, 
+        // Importar módulos necesarios
+        import * as mensajeria from './js/mensajeria.js';
+        
+        // Desestructurar las importaciones
+        const {
+            TIPOS_MENSAJE,
             enviarMensaje, 
             registrarControlador, 
             inicializarMensajeria,
             ERROR_TYPES,
             ERROR_SEVERITY,
             ERROR_CODES,
-            manejadorErrores as errorHandler
-        } from './js/mensajeria.js';
-        
-        // Alias para consistencia
-        const TIPOS_MENSAJE = TIPOS_MENSAJE_IMPORTADOS;
-        
+            manejadorErrores: errorHandler
+        } = mensajeria;
+
+        // Estado global de la aplicación
+        const estadoApp = {
+            // Estados del sistema
+            inicializado: false,
+            mensajeriaInicializada: false,
+            
+            // Modo de operación
+            modo: 'inicio', // 'inicio', 'navegacion', 'pausa', 'error'
+            
+            // Estado de la navegación
+            navegacion: {
+                activa: false,
+                destino: null,
+                ruta: null,
+                modo: 'caminando',
+                estado: 'inactivo'
+            },
+            
+            // Estado de la interfaz de usuario
+            ui: {
+                controlesHabilitados: true,
+                tema: 'claro',
+                idioma: 'es'
+            },
+            
+            // Estado de los sensores
+            sensores: {
+                gps: {
+                    disponible: false,
+                    ultimaPosicion: null,
+                    precision: 0
+                },
+                brujula: {
+                    disponible: false,
+                    direccion: 0
+                }
+            },
+            
+            // Configuración
+            config: {
+                debug: true,
+                logLevel: 1, // 0: debug, 1: info, 2: warn, 3: error, 4: none
+                tiempoEsperaRespuesta: 5000 // ms
+            },
+            
+            // Referencias a componentes
+            componentes: {
+                mapa: null,
+                navegacion: null,
+                interfaz: null
+            }
+        };
+
+
         // Alias para mensajes de navegación
         const NAV_MSG = TIPOS_MENSAJE.NAVEGACION;
         const SISTEMA_MSG = TIPOS_MENSAJE.SISTEMA;
@@ -302,7 +359,7 @@
             }
         };
 
-        //COORDENADAS DE LAS PARADAS //
+        // COORDENADAS PARADAS //
        
        const COORDENADAS_PARADAS = [
  {
@@ -3035,7 +3092,190 @@
             }
         }
 
+        // Inicialización del mapa
+        function inicializarMapa() {
+            try {
+                logger.info('Inicializando mapa...');
+                
+                // Verificar si ya está inicializado
+                if (estadoApp.componentes.mapa) {
+                    logger.warn('El mapa ya está inicializado');
+                    return estadoApp.componentes.mapa;
+                }
+                
+                // Verificar que exista el contenedor del mapa
+                const mapContainer = document.getElementById('map');
+                if (!mapContainer) {
+                    throw new Error('No se encontró el contenedor del mapa');
+                }
+                
+                // Inicializar el mapa de Leaflet
+                const map = L.map('map').setView([39.4699, -0.3763], 13);
+                
+                // Añadir capa de OpenStreetMap
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                }).addTo(map);
+                
+                // Guardar referencia al mapa en el estado
+                estadoApp.componentes.mapa = map;
+                
+                // Configurar eventos del mapa
+                map.on('load', () => {
+                    logger.info('Mapa cargado correctamente');
+                    estadoApp.sensores.gps.disponible = true;
+                });
+                
+                map.on('error', (error) => {
+                    logger.error('Error en el mapa:', error);
+                    estadoApp.sensores.gps.disponible = false;
+                });
+                
+                logger.info('Mapa inicializado correctamente');
+                return map;
+                
+            } catch (error) {
+                const errorMsg = 'Error al inicializar el mapa';
+                logger.error(errorMsg, error);
+                
+                // Notificar al padre sobre el error
+                if (estadoApp.mensajeriaInicializada) {
+                    enviarMensaje('padre', SISTEMA_MSG.ERROR, {
+                        tipo: 'error_mapa',
+                        mensaje: errorMsg,
+                        detalles: error.message,
+                        timestamp: new Date().toISOString()
+                    }).catch(err => {
+                        console.error('Error al notificar error del mapa:', err);
+                    });
+                }
+                
+                throw error; // Relanzar para manejo posterior
+            }
+        }
+
         // Función para inicializar la aplicación
+        async function inicializar() {
+            const inicioTiempo = performance.now();
+            let pasoActual = 'preparacion';
+            
+            try {
+                // 0. Verificar si ya está inicializado
+                if (estadoApp.inicializado) {
+                    logger.warn('La aplicación ya está inicializada');
+                    return;
+                }
+                
+                logger.info('🚀 Iniciando inicialización de la aplicación...');
+                
+                // 1. Configuración inicial
+                pasoActual = 'configuracion';
+                logger.info('⚙️  Configurando aplicación...');
+                await new Promise(resolve => setTimeout(resolve, 0)); // Permitir que la UI se actualice
+                
+                // 2. Inicializar el sistema de mensajería
+                pasoActual = 'inicializar_mensajeria';
+                logger.info('📡 Inicializando sistema de mensajería...');
+                
+                try {
+                    await inicializarMensajeria({
+                        debug: estadoApp.config.debug,
+                        logLevel: estadoApp.config.logLevel,
+                        iframeId: 'av1-coordenadas',
+                        tiempoEsperaRespuesta: estadoApp.config.tiempoEsperaRespuesta
+                    });
+                    estadoApp.mensajeriaInicializada = true;
+                    logger.info('✅ Sistema de mensajería inicializado correctamente');
+                } catch (error) {
+                    throw new Error(`Error al inicializar mensajería: ${error.message}`);
+                }
+                
+                // 3. Registrar manejadores de mensajes
+                pasoActual = 'registrar_manejadores';
+                logger.info('🔄 Registrando manejadores de mensajes...');
+                registrarManejadoresMensajes();
+                
+                // 4. Inicializar componentes principales
+                pasoActual = 'inicializar_componentes';
+                logger.info('🔧 Inicializando componentes...');
+                
+                // 4.1 Inicializar el mapa
+                try {
+                    await inicializarMapa();
+                    logger.info('✅ Mapa inicializado correctamente');
+                } catch (error) {
+                    logger.warn('⚠️  El mapa no pudo ser inicializado, continuando sin él...', error);
+                    // Continuar sin el mapa si es posible
+                }
+                
+                // 4.2 Configurar eventos de la interfaz
+                pasoActual = 'configurar_eventos';
+                logger.info('🎛️  Configurando eventos de la interfaz...');
+                configurarEventos();
+                
+                // 5. Inicialización completada
+                pasoActual = 'finalizacion';
+                estadoApp.inicializado = true;
+                const tiempoTotal = ((performance.now() - inicioTiempo) / 1000).toFixed(2);
+                
+                logger.info(`✨ Aplicación inicializada correctamente en ${tiempoTotal} segundos`);
+                
+                // 6. Notificar al padre que estamos listos
+                try {
+                    await enviarMensaje('padre', SISTEMA_MSG.INICIO_COMPLETO, {
+                        timestamp: new Date().toISOString(),
+                        version: '1.0.0',
+                        componentes: ['mapa', 'navegacion', 'ui'],
+                        estado: 'listo',
+                        tiempoInicializacion: tiempoTotal
+                    });
+                } catch (error) {
+                    logger.warn('No se pudo notificar al padre sobre la inicialización:', error);
+                }
+                
+                return true;
+                
+            } catch (error) {
+                const errorMsg = `❌ Error durante la inicialización (${pasoActual}): ${error.message}`;
+                logger.error(errorMsg, error);
+                
+                // Notificar al padre sobre el error si es posible
+                if (estadoApp.mensajeriaInicializada) {
+                    try {
+                        await enviarMensaje('padre', SISTEMA_MSG.ERROR, {
+                            tipo: `error_inicializacion_${pasoActual}`,
+                            mensaje: errorMsg,
+                            detalles: error.toString(),
+                            stack: error.stack,
+                            timestamp: new Date().toISOString(),
+                            paso: pasoActual
+                        });
+                    } catch (e) {
+                        console.error('No se pudo notificar el error al padre:', e);
+                    }
+                }
+                
+                // Mostrar error en la interfaz si es posible
+                try {
+                    const errorContainer = document.getElementById('error-container') || document.body;
+                    errorContainer.innerHTML = `
+                        <div style="color: white; background: #e74c3c; padding: 15px; margin: 10px; border-radius: 5px;">
+                            <h3>Error de inicialización</h3>
+                            <p>${errorMsg}</p>
+                            <p>Por favor, recarga la página o contacta con soporte.</p>
+                            <button onclick="window.location.reload()" style="padding: 5px 10px; margin-top: 10px;">
+                                Recargar aplicación
+                            </button>
+                        </div>
+                    `;
+                } catch (e) {
+                    console.error('No se pudo mostrar el mensaje de error:', e);
+                }
+                
+                return false;
+            }
+        }
+
         function inicializarAplicacion() {
             // Inicializar cuando el DOM esté listo
             if (document.readyState === 'loading') {
@@ -3059,8 +3299,29 @@
 
         }
 
-        // Inicializar la aplicación cuando se carga el script
-        document.addEventListener('DOMContentLoaded', inicializarAplicacion);
+        // Inicializar la aplicación cuando el DOM esté listo
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                // Inicializar el sistema de mensajería primero
+                await inicializarMensajeria({
+                    iframeId: 'hijo2-botones',
+                    debug: true,
+                    logLevel: 1
+                });
+                
+                // Registrar manejadores de mensajes
+                registrarManejadoresMensajes();
+                
+                // Inicializar la aplicación
+                await inicializarAplicacion();
+                
+                logger.info('Aplicación inicializada correctamente');
+            } catch (error) {
+                console.error('Error al inicializar la aplicación:', error);
+                // Mostrar mensaje de error al usuario
+                alert('Error al inicializar la aplicación. Por favor, recarga la página.');
+            }
+        });
     </script>
     
     <!-- Exportar variables al ámbito global -->
