@@ -1585,7 +1585,7 @@
             if (!estadoApp.modo.cambioPendiente) return;
             
             const { modoSolicitado, timestampSolicitud } = estadoApp.modo.cambioPendiente;
-            const tiempoEspera = 5000; // 5 segundos de tiempo de espera
+            const tiempoEspera = 10000; // 10 segundos de tiempo de espera
             const tiempoTranscurrido = Date.now() - timestampSolicitud;
             
             // Verificar tiempo de espera
@@ -1595,37 +1595,63 @@
                 return;
             }
             
-            // Verificar confirmaciones
-            const componentesEsperados = Object.keys(CONFIG.HIJOS);
-            const confirmaciones = componentesEsperados.map(id => ({
+            // Verificar confirmaciones de los componentes requeridos
+            const componentesRequeridos = Object.keys(CONFIG.HIJOS).filter(id => 
+                // Solo esperamos confirmación de componentes que estén activos
+                document.getElementById(id)?.contentWindow !== undefined
+            );
+            
+            const confirmaciones = componentesRequeridos.map(id => ({
                 id,
                 confirmado: !!estadoApp.modo.componentesConfirmados[id],
-                datos: estadoApp.modo.componentesConfirmados[id] || {}
+                datos: estadoApp.modo.componentesConfirmados[id] || {},
+                nombre: CONFIG.HIJOS[id]?.nombre || id
             }));
             
-            const todosConfirmados = confirmaciones.every(c => c.confirmado);
+            const confirmados = confirmaciones.filter(c => c.confirmado);
+            const pendientes = confirmaciones.filter(c => !c.confirmado);
+            
+            console.log(`[${CONFIG.ID_PADRE}] Confirmaciones de cambio a modo ${modoSolicitado}:`, {
+                confirmados: confirmados.map(c => c.id),
+                pendientes: pendientes.map(p => p.id),
+                errores: Object.keys(estadoApp.modo.errores)
+            });
+            
+            // Considerar el cambio exitoso si al menos un componente ha confirmado
+            const hayConfirmaciones = confirmados.length > 0;
             const hayErrores = Object.keys(estadoApp.modo.errores).length > 0;
             
-            if (todosConfirmados) {
-                // Éxito: todos los componentes confirmaron
-                console.log(`[${CONFIG.ID_PADRE}] Todos los componentes confirmaron el cambio a modo ${modoSolicitado}`);
+            if (hayConfirmaciones) {
+                // Éxito: al menos un componente confirmó
+                console.log(`[${CONFIG.ID_PADRE}] Cambio a modo ${modoSolicitado} confirmado por ${confirmados.length} componentes`);
                 
                 // Actualizar estado global
                 estadoApp.modo.actual = modoSolicitado;
+                estadoApp.modo.anterior = estadoApp.modo.anterior || 'casa'; // Guardar el modo anterior
                 
                 // Notificar a todos los componentes del cambio exitoso
                 await Promise.all(
-                    Object.values(CONFIG.HIJOS).map(hijo =>
-                        enviarMensaje(hijo.id, TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_CONFIRMACION, {
-                            modo: modoSolicitado,
-                            estado: 'confirmado',
-                            timestamp: new Date().toISOString(),
-                            origen: CONFIG.ID_PADRE,
-                            destino: hijo.id,
-                            version: '1.0',
-                            confirmado: true
-                        }).catch(console.error)
-                    )
+                    Object.values(CONFIG.HIJOS).map(hijo => {
+                        if (document.getElementById(hijo.id)?.contentWindow) {
+                            return enviarMensaje(hijo.id, TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_CONFIRMACION, {
+                                modo: modoSolicitado,
+                                estado: 'confirmado',
+                                timestamp: new Date().toISOString(),
+                                origen: CONFIG.ID_PADRE,
+                                destino: hijo.id,
+                                version: '1.0',
+                                confirmado: true,
+                                metadata: {
+                                    confirmados: confirmados.map(c => c.id),
+                                    pendientes: pendientes.map(p => p.id)
+                                }
+                            }).catch(error => {
+                                console.warn(`[${CONFIG.ID_PADRE}] Error notificando a ${hijo.id}:`, error);
+                                return { id: hijo.id, error: error.message };
+                            });
+                        }
+                        return Promise.resolve();
+                    })
                 );
                 
                 // Limpiar estado
@@ -1633,12 +1659,19 @@
                 estadoApp.modo.componentesConfirmados = {};
                 estadoApp.modo.errores = {};
                 
-            } else if (!hayErrores) {
-                // Si no hay errores pero faltan confirmaciones, volver a verificar
-                setTimeout(verificarConfirmacionesModo, 100);
+                console.log(`[${CONFIG.ID_PADRE}] Cambio a modo ${modoSolicitado} completado exitosamente`);
+                
+            } else if (!hayErrores && tiempoTranscurrido < 5000) {
+                // Si no hay errores, esperamos un poco más por confirmaciones
+                console.log(`[${CONFIG.ID_PADRE}] Esperando confirmaciones... (${tiempoTranscurrido}ms)`);
+                setTimeout(verificarConfirmacionesModo, 200);
             } else {
-                // Manejar errores de confirmación
-                manejarErrorCambioModo('Error en la confirmación de componentes', estadoApp.modo.errores);
+                // Manejar errores de confirmación o tiempo de espera agotado
+                const mensajeError = hayErrores 
+                    ? 'Error en la confirmación de componentes' 
+                    : 'No se recibieron confirmaciones a tiempo';
+                console.error(`[${CONFIG.ID_PADRE}] ${mensajeError}:`, estadoApp.modo.errores);
+                manejarErrorCambioModo(mensajeError, estadoApp.modo.errores);
             }
         }
         
