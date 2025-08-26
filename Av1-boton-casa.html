@@ -1264,6 +1264,20 @@
         const { tipo, id, exito, datos = {}, mensaje: mensajeTexto } = mensaje.datos || {};
         const idOperacion = id || 'desconocido';
         
+        // Manejar confirmaciones de cambio de modo
+        if (tipo === TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO) {
+          console.log(`[${CONFIG.IFRAME_ID}] Confirmación de cambio de modo recibida:`, mensaje);
+          
+          if (exito) {
+            // Actualizar la interfaz para reflejar el nuevo modo
+            actualizarInterfaz();
+            console.log(`[${CONFIG.IFRAME_ID}] Interfaz actualizada al modo: ${estadoApp.modo.actual}`);
+          } else {
+            console.warn(`[${CONFIG.IFRAME_ID}] Error en cambio de modo:`, mensajeTexto || 'Error desconocido');
+          }
+          return;
+        }
+        
         // Log detallado de la confirmación
         console.log(`[${CONFIG.IFRAME_ID}] Confirmación recibida`, {
           tipo: tipo || 'sin_tipo',
@@ -1549,7 +1563,12 @@
           // 3. Actualizar clases del body para estilos contextuales
           document.body.classList.toggle('controles-deshabilitados', !controlesHabilitados);
           document.body.classList.toggle('gps-activo', gpsActivo);
-          document.body.classList.toggle(`modo-${modo}`, !!modo);
+          
+          // Actualizar clase de modo en el body
+          document.body.classList.remove('modo-casa', 'modo-aventura');
+          if (modoActual) {
+            document.body.classList.add(`modo-${modoActual}`);
+          }
           
           // 4. Actualizar controles interactivos
           const controles = document.querySelectorAll('button, .control-interactivo');
@@ -2022,6 +2041,24 @@
       }
 
       // Inicializar la aplicación cuando el DOM esté listo
+      document.addEventListener('DOMContentLoaded', async () => {
+        try {
+          logger.info('Inicializando aplicación...');
+          
+          // Inicializar la aplicación
+          await inicializarAplicacion();
+          
+          // Solicitar el array de paradas al padre
+          await solicitarArrayParadas();
+          
+          logger.info('Aplicación inicializada correctamente');
+        } catch (error) {
+          logger.error('Error al inicializar la aplicación:', error);
+          mostrarError('Error al inicializar la aplicación', error);
+        }
+      });
+
+      // Si el DOM ya está listo, inicializar de inmediato
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
           inicializarAplicacion().catch(error => {
@@ -2029,7 +2066,6 @@
           });
         });
       } else {
-        // Si el DOM ya está listo, inicializar de inmediato
         inicializarAplicacion().catch(error => {
           logger.error('Error crítico durante la inicialización', error);
         });
