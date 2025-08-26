@@ -29,7 +29,7 @@ const MAX_INTENTOS_SINCRONIZACION = 5;
  * Inicializa el sistema de mapa with las paradas y coordenadas
  * @param {Object} opciones - Opciones de inicialización
  */
-export function inicializarMapa(opciones = {}) {
+function inicializarMapa(opciones = {}) {
     console.log('[MAPA] Inicializando mapa...');
     
     // Comprobar si tenemos el array de paradas
@@ -963,6 +963,17 @@ window.addEventListener('beforeunload', () => {
 
 // Exportar funciones principales
 export default {
+    inicializarMapa,
+    actualizarModoMapa,
+    buscarCoordenadasParada,
+    obtenerNombreParada,
+    actualizarMarcadorParada,
+    limpiarRecursos,
+    cargarDatosParada
+};
+
+// Exportar funciones individualmente para pruebas
+export {
     inicializarMapa,
     actualizarModoMapa,
     buscarCoordenadasParada,
