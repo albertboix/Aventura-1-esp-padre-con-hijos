@@ -394,7 +394,7 @@ if (typeof window !== 'undefined') {
         TIPOS_MENSAJE,
         inicializarMensajeria: withErrorHandling(inicializarMensajeria, 'mensajeria:inicializar'),
         registrarControlador,
-        registrarManejador,
+        registrarManejador: registrarControlador,
         enviarMensaje: withErrorHandling(enviarMensaje, 'mensajeria:enviar'),
         enviarMensajeDirecto: withErrorHandling(enviarMensajeDirecto, 'mensajeria:enviarDirecto'),
         enviarATodosLosIframes: withErrorHandling(enviarATodosLosIframes, 'mensajeria:enviarATodos'),
@@ -447,43 +447,248 @@ function log(nivel, mensaje, datos = null) {
 /**
  * Valida la estructura de un mensaje
  * @param {Object} mensaje - Mensaje a validar
- * @returns {boolean} true si es válido
+ * @returns {{valido: boolean, error?: string}} Resultado de la validación
  */
 function validarMensaje(mensaje) {
   // Validación básica de la estructura del mensaje
-  if (!mensaje || typeof mensaje !== 'object') {
-    console.error('Mensaje no es un objeto:', mensaje);
-    return false;
+  if (!mensaje || typeof mensaje !== 'object' || Array.isArray(mensaje)) {
+    return { 
+      valido: false, 
+      error: 'El mensaje debe ser un objeto' 
+    };
   }
   
   // Validar campos obligatorios
-  const camposRequeridos = ['tipo', 'destino', 'origen', 'datos'];
-  for (const campo of camposRequeridos) {
-    if (!(campo in mensaje)) {
-      console.error(`Falta campo requerido '${campo}' en mensaje:`, mensaje);
-      return false;
+  const camposRequeridos = [
+    { nombre: 'tipo', tipo: 'string' },
+    { nombre: 'destino', tipo: 'string' },
+    { nombre: 'origen', tipo: 'string' },
+    { nombre: 'datos', tipo: 'object' }
+  ];
+  
+  for (const { nombre, tipo } of camposRequeridos) {
+    if (!(nombre in mensaje)) {
+      return { 
+        valido: false, 
+        error: `Falta el campo requerido '${nombre}'` 
+      };
+    }
+    
+    if (tipo === 'object') {
+      if (mensaje[nombre] === null || typeof mensaje[nombre] !== 'object' || Array.isArray(mensaje[nombre])) {
+        return { 
+          valido: false, 
+          error: `El campo '${nombre}' debe ser un objeto` 
+        };
+      }
+    } else if (typeof mensaje[nombre] !== tipo) {
+      return { 
+        valido: false, 
+        error: `El campo '${nombre}' debe ser de tipo ${tipo}` 
+      };
     }
   }
   
   // Validar estructura de datos según el tipo de mensaje
   const esquema = ESQUEMAS_MENSAJES[mensaje.tipo];
-  if (esquema) {
-    // Validar propiedades requeridas
-    for (const prop of esquema.propiedadesRequeridas || []) {
-      if (!(prop in mensaje.datos) && mensaje.datos[prop] !== 0) {
-        console.error(`Falta propiedad requerida '${prop}' en mensaje ${mensaje.tipo}:`, mensaje);
-        return false;
+  
+  if (!esquema) {
+    log(LOG_LEVELS.DEBUG, `No hay esquema de validación para el tipo de mensaje: ${mensaje.tipo}`, {
+      tipo: mensaje.tipo,
+      mensajesDisponibles: Object.keys(ESQUEMAS_MENSAJES)
+    });
+    return { valido: true }; // No fallar si no hay esquema
+  }
+
+  // Validar propiedades requeridas
+  if (esquema.propiedadesRequeridas) {
+    for (const prop of esquema.propiedadesRequeridas) {
+      if (mensaje.datos[prop] === undefined || mensaje.datos[prop] === null) {
+        return { 
+          valido: false, 
+          error: `Falta la propiedad requerida '${prop}' en los datos del mensaje` 
+        };
       }
-    }
-    
-    // Ejecutar validación personalizada si existe
-    if (esquema.validar && !esquema.validar(mensaje.datos)) {
-      console.error(`Validación fallida para mensaje ${mensaje.tipo}:`, mensaje);
-      return false;
     }
   }
   
-  return true;
+  // Validar propiedades según el esquema
+  if (esquema.propiedades) {
+    for (const [prop, reglas] of Object.entries(esquema.propiedades)) {
+      // Si el campo es opcional y no está presente, lo saltamos
+      if (reglas.optional && mensaje.datos[prop] === undefined) continue;
+      
+      // Si el campo está presente, lo validamos
+      if (mensaje.datos[prop] !== undefined) {
+        // Validar tipo
+        if (reglas.type) {
+          let tipoValido = false;
+          const tipoEsperado = reglas.type;
+          const tipoReal = typeof mensaje.datos[prop];
+          
+          if (tipoEsperado === 'array') {
+            tipoValido = Array.isArray(mensaje.datos[prop]);
+          } else if (tipoEsperado === 'number') {
+            tipoValido = !isNaN(mensaje.datos[prop]);
+          } else if (tipoEsperado === 'integer') {
+            tipoValido = Number.isInteger(mensaje.datos[prop]);
+          } else if (tipoEsperado === 'date') {
+            tipoValido = !isNaN(new Date(mensaje.datos[prop]).getTime());
+          } else {
+            tipoValido = tipoReal === tipoEsperado;
+          }
+          
+          if (!tipoValido) {
+            return { 
+              valido: false, 
+              error: `Tipo inválido para '${prop}': se esperaba ${tipoEsperado}, se obtuvo ${tipoReal}` 
+            };
+          }
+        }
+        
+        // Validar enum
+        if (reglas.enum && !reglas.enum.includes(mensaje.datos[prop])) {
+          return { 
+            valido: false, 
+            error: `Valor inválido para '${prop}': ${mensaje.datos[prop]}. Valores permitidos: ${reglas.enum.join(', ')}` 
+          };
+        }
+        
+        // Validar rango numérico
+        if (typeof mensaje.datos[prop] === 'number') {
+          if (reglas.minimum !== undefined && mensaje.datos[prop] < reglas.minimum) {
+            return { 
+              valido: false, 
+              error: `El valor de '${prop}' debe ser mayor o igual a ${reglas.minimum}` 
+            };
+          }
+          
+          if (reglas.maximum !== undefined && mensaje.datos[prop] > reglas.maximum) {
+            return { 
+              valido: false, 
+              error: `El valor de '${prop}' debe ser menor o igual a ${reglas.maximum}` 
+            };
+          }
+        }
+        
+        // Validar longitud de cadenas y arrays
+        if (reglas.minLength !== undefined) {
+          const longitud = Array.isArray(mensaje.datos[prop]) 
+            ? mensaje.datos[prop].length 
+            : String(mensaje.datos[prop]).length;
+            
+          if (longitud < reglas.minLength) {
+            return { 
+              valido: false, 
+              error: `El campo '${prop}' debe tener al menos ${reglas.minLength} caracteres` 
+            };
+          }
+        }
+        
+        if (reglas.maxLength !== undefined) {
+          const longitud = Array.isArray(mensaje.datos[prop]) 
+            ? mensaje.datos[prop].length 
+            : String(mensaje.datos[prop]).length;
+            
+          if (longitud > reglas.maxLength) {
+            return { 
+              valido: false, 
+              error: `El campo '${prop}' no debe exceder los ${reglas.maxLength} caracteres` 
+            };
+          }
+        }
+        
+        // Validar patrón de expresión regular
+        if (reglas.pattern && typeof mensaje.datos[prop] === 'string') {
+          const regex = new RegExp(reglas.pattern);
+          if (!regex.test(mensaje.datos[prop])) {
+            return { 
+              valido: false, 
+              error: `El formato del campo '${prop}' es inválido` 
+            };
+          }
+        }
+        
+        // Validar objetos anidados
+        if (reglas.type === 'object' && reglas.properties) {
+          if (typeof mensaje.datos[prop] !== 'object' || mensaje.datos[prop] === null) {
+            return { 
+              valido: false, 
+              error: `El campo '${prop}' debe ser un objeto` 
+            };
+          }
+          
+          const resultado = validarMensaje({
+            tipo: mensaje.tipo,
+            origen: mensaje.origen,
+            destino: mensaje.destino,
+            datos: mensaje.datos[prop]
+          });
+          
+          if (!resultado.valido) {
+            return { 
+              valido: false, 
+              error: `Error en el campo '${prop}': ${resultado.error}` 
+            };
+          }
+        }
+        
+        // Validar arrays de objetos
+        if (reglas.type === 'array' && reglas.items) {
+          if (!Array.isArray(mensaje.datos[prop])) {
+            return { 
+              valido: false, 
+              error: `El campo '${prop}' debe ser un arreglo` 
+            };
+          }
+          
+          for (let i = 0; i < mensaje.datos[prop].length; i++) {
+            const item = mensaje.datos[prop][i];
+            if (reglas.items.type === 'object' && typeof item === 'object' && item !== null) {
+              const resultado = validarMensaje({
+                tipo: mensaje.tipo,
+                origen: mensaje.origen,
+                destino: mensaje.destino,
+                datos: item
+              });
+              
+              if (!resultado.valido) {
+                return { 
+                  valido: false, 
+                  error: `Error en el elemento ${i} de '${prop}': ${resultado.error}` 
+                };
+              }
+            } else if (typeof item !== reglas.items.type) {
+              return { 
+                valido: false, 
+                error: `Tipo inválido para el elemento ${i} de '${prop}': se esperaba ${reglas.items.type}` 
+              };
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  // Ejecutar validación personalizada si existe
+  if (esquema.validar) {
+    try {
+      const resultado = esquema.validar(mensaje.datos);
+      if (resultado === false || (typeof resultado === 'object' && !resultado.valido)) {
+        return {
+          valido: false,
+          error: typeof resultado === 'object' ? resultado.error : 'Validación personalizada fallida'
+        };
+      }
+    } catch (error) {
+      return {
+        valido: false,
+        error: `Error en la validación personalizada: ${error.message}`
+      };
+    }
+  }
+  
+  return { valido: true };
 }
 
 /**
