@@ -537,8 +537,9 @@ async function enviarMensajeDirecto(mensaje, opciones = {}) {
   } = opciones;
   
   // Validar mensaje
-  if (!validarMensaje(mensaje)) {
-    throw new Error('Estructura de mensaje inválida');
+  const validacion = validarMensaje(mensaje);
+  if (!validacion.valido) {
+    throw new Error('Estructura de mensaje inválida: ' + validacion.error);
   }
   
   logger.debug(`Enviando mensaje tipo: ${mensaje.tipo}`, mensaje);
