@@ -53,12 +53,9 @@
     </div>
 
     <script type="module">
-        import {
-            TIPOS_MENSAJE,
-            inicializarMensajeria,
-            registrarControlador,
-            enviarMensaje
-        } from './js/mensajeria.js';
+        import { logger, configurarUtils, crearObjetoError } from './js/utils.js';
+        
+        configurarUtils({ iframeId: 'hijo4', debug: false });
 
         const CONFIG = {
             IFRAME_ID: 'hijo4',
@@ -69,45 +66,37 @@
             retoActualId: null
         };
 
-        function log(mensaje, ...datos) {
-            if (CONFIG.DEBUG) {
-                console.log(`[${CONFIG.IFRAME_ID}] ${mensaje}`, ...datos);
-            }
-        }
-
         async function manejarMostrarReto(mensaje) {
-            log('Recibido mensaje para mostrar reto:', mensaje);
+            logger.info('Recibido mensaje para mostrar reto:', mensaje);
             const { retoId, titulo, descripcion } = mensaje.datos;
             
             estadoReto.retoActualId = retoId;
             document.getElementById('reto-titulo').textContent = titulo || 'Nuevo Reto';
             document.getElementById('reto-body').innerHTML = descripcion || '<p>Completa la tarea indicada.</p>';
             
-            // El padre controla la visibilidad del iframe, aquí solo preparamos el contenido.
-            // Devolvemos una confirmación.
             return { exito: true, retoMostrado: retoId };
         }
 
         async function inicializar() {
-            log('Inicializando...');
+            logger.info('Inicializando...');
             await inicializarMensajeria({ iframeId: CONFIG.IFRAME_ID, debug: CONFIG.DEBUG });
 
             registrarControlador(TIPOS_MENSAJE.RETO.MOSTRAR, manejarMostrarReto);
 
             document.getElementById('btn-completado').addEventListener('click', async () => {
                 if (estadoReto.retoActualId) {
-                    log(`Enviando reto completado: ${estadoReto.retoActualId}`);
+                    logger.info(`Enviando reto completado: ${estadoReto.retoActualId}`);
                     await enviarMensaje('padre', TIPOS_MENSAJE.RETO.COMPLETADO, { retoId: estadoReto.retoActualId });
                 }
             });
 
             document.getElementById('btn-ocultar').addEventListener('click', async () => {
-                log('Solicitando ocultar reto.');
+                logger.info('Solicitando ocultar reto.');
                 await enviarMensaje('padre', TIPOS_MENSAJE.RETO.OCULTAR, {});
             });
 
             await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.INICIALIZACION_COMPLETADA, { componente: CONFIG.IFRAME_ID });
-            log('Inicialización completada y notificada.');
+            logger.info('Inicialización completada y notificada.');
         }
 
         inicializar();
