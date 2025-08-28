@@ -53,6 +53,9 @@
 
     <!-- SCRIPT PRINCIPAL UNIFICADO DE LA APLICACIÓN -->
     <script type="module">
+import { logger, configurarUtils, crearObjetoError } from './js/utils.js';
+configurarUtils({ iframeId: 'padre', debug: true });
+
         // 1. IMPORTACIONES Y CONFIGURACIÓN
         import { TIPOS_MENSAJE, inicializarMensajeria, registrarControlador, enviarMensaje } from './js/mensajeria.js';
         import { inicializarMapa } from './js/funciones-mapa.js';
@@ -150,7 +153,7 @@
 
         // 4. LÓGICA DE ARRANQUE
         document.addEventListener('DOMContentLoaded', async () => {
-            console.log(`[${CONFIG.ID_PADRE}] DOM cargado. Iniciando aplicación...`);
+            logger.info('DOM cargado. Iniciando aplicación...');
             updateMapDebug('DOM Cargado. Iniciando...');
             try {
                 await inicializarSistemaMensajeria();
@@ -159,11 +162,12 @@
                 await iniciarSistemaMapa();
                 updateMapDebug('Mapa OK.');
                 await notificarInicializacionAHijos();
-                console.log(`[${CONFIG.ID_PADRE}] ===== INICIALIZACIÓN COMPLETADA =====`);
+                logger.info('===== INICIALIZACIÓN COMPLETADA =====');
                 updateMapDebug('Sistema listo.', 3000);
             } catch (error) {
-                console.error(`[${CONFIG.ID_PADRE}] ERROR FATAL DE INICIALIZACIÓN:`, error);
+                logger.error('ERROR FATAL DE INICIALIZACIÓN:', error);
                 updateMapDebug(`Error fatal: ${error.message}`);
+                crearObjetoError('inicializacion', error);
             }
         });
 
@@ -172,7 +176,7 @@
             if (estadoApp.mensajeriaInicializada) return;
             await inicializarMensajeria({ iframeId: CONFIG.ID_PADRE, logLevel: CONFIG.LOG_LEVEL });
             estadoApp.mensajeriaInicializada = true;
-            console.log(`[${CONFIG.ID_PADRE}] Sistema de mensajería inicializado.`);
+            logger.info('Sistema de mensajería inicializado.');
         }
 
         async function iniciarSistemaMapa() {
@@ -182,23 +186,23 @@
             if (!mapaInstance) throw new Error('inicializarMapa no devolvió una instancia del mapa.');
             window.mapa = mapaInstance;
             estadoApp.mapaInicializado = true;
-            console.log(`[${CONFIG.ID_PADRE}] Mapa inicializado.`);
+            logger.info('Mapa inicializado.');
             setTimeout(() => window.mapa.invalidateSize(), 100);
             window.addEventListener('resize', () => setTimeout(() => window.mapa?.invalidateSize(), 100));
         }
 
         async function notificarInicializacionAHijos() {
-            console.log(`[${CONFIG.ID_PADRE}] Notificando inicialización a los hijos...`);
+            logger.info('Notificando inicialización a los hijos...');
             const promesas = Object.values(CONFIG.HIJOS).map(hijo =>
                 enviarMensaje(hijo.id, TIPOS_MENSAJE.SISTEMA.INICIALIZACION, {
                     padre: CONFIG.ID_PADRE,
                     modo: estadoApp.modo.actual,
                     paradaActual: estadoApp.paradaActual,
                     aventuraParadas: AVENTURA_PARADAS
-                }).catch(err => console.warn(`[${CONFIG.ID_PADRE}] No se pudo notificar a ${hijo.nombre}:`, err.message))
+                }).catch(err => logger.warn(`No se pudo notificar a ${hijo.nombre}:`, err.message))
             );
             await Promise.allSettled(promesas);
-            console.log(`[${CONFIG.ID_PADRE}] Notificación a hijos completada.`);
+            logger.info('Notificación a hijos completada.');
         }
 
         // 6. REGISTRO DE CONTROLADORES DE MENSAJES
@@ -217,17 +221,17 @@
             for (const tipo in controladores) {
                 registrarControlador(tipo, controladores[tipo]);
             }
-            console.log(`[${CONFIG.ID_PADRE}] Controladores de mensajes registrados.`);
+            logger.info('Controladores de mensajes registrados.');
         }
 
         // 7. IMPLEMENTACIÓN DE MANEJADORES
-        function manejarErrorSistema(msg) { console.error(`[${CONFIG.ID_PADRE}] Error de ${msg.origen}:`, msg.datos); updateMapDebug(`Error de ${msg.origen}: ${msg.datos?.mensaje || 'Desconocido'}`); }
-        function manejarHijoInicializado(msg) { console.log(`[${CONFIG.ID_PADRE}] Hijo ${msg.origen} inicializado.`); estadoApp.hijosInicializados.add(msg.origen); }
-        function manejarSolicitudArrayParadas(msg) { console.log(`[${CONFIG.ID_PADRE}] ${msg.origen} solicita array de paradas.`); return { exito: true, paradas: AVENTURA_PARADAS }; }
+        function manejarErrorSistema(msg) { logger.error(`Error de ${msg.origen}:`, msg.datos); updateMapDebug(`Error de ${msg.origen}: ${msg.datos?.mensaje || 'Desconocido'}`); }
+        function manejarHijoInicializado(msg) { logger.info(`Hijo ${msg.origen} inicializado.`); estadoApp.hijosInicializados.add(msg.origen); }
+        function manejarSolicitudArrayParadas(msg) { logger.info(`${msg.origen} solicita array de paradas.`); return { exito: true, paradas: AVENTURA_PARADAS }; }
         async function manejarCambioModo(msg) {
             const { modo } = msg.datos;
             if (modo === estadoApp.modo.actual) return { exito: true, mensaje: "Ya en este modo." };
-            console.log(`[${CONFIG.ID_PADRE}] Cambiando a modo: ${modo}.`);
+            logger.info(`Cambiando a modo: ${modo}.`);
             estadoApp.modo.anterior = estadoApp.modo.actual;
             estadoApp.modo.actual = modo;
             
@@ -237,7 +241,7 @@
 
             // Si entramos en modo casa, habilitamos todos los controles
             if (modo === 'casa') {
-                console.log(`[${CONFIG.ID_PADRE}] Modo casa activado. Habilitando controles en todos los hijos.`);
+                logger.info(`Modo casa activado. Habilitando controles en todos los hijos.`);
                 await enviarMensaje('todos', TIPOS_MENSAJE.UI.HABILITAR_CONTROLES, {});
             }
 
@@ -249,7 +253,7 @@
             if (!punto || !punto.padreid) {
                 return { exito: false, error: "Datos de punto inválidos." };
             }
-            console.log(`[${CONFIG.ID_PADRE}] Recibida selección de punto en modo casa: ${punto.padreid}`);
+            logger.info(`Recibida selección de punto en modo casa: ${punto.padreid}`);
 
             // 1. Orquestar al mapa para que se centre en el punto
             await enviarMensaje('mapa', TIPOS_MENSAJE.NAVEGACION.ESTABLECER_DESTINO, { punto });
@@ -272,14 +276,14 @@
             if (respuestaMedios.exito && respuestaMedios.datosPunto) {
                 const datosPunto = respuestaMedios.datosPunto;
                 // Aquí se podría mostrar la imagen/video en un overlay del padre si se desea
-                console.log(`[${CONFIG.ID_PADRE}] Medios para ${puntoId}:`, { img: datosPunto.imagen, video: datosPunto.video });
+                logger.info(`Medios para ${puntoId}:`, { img: datosPunto.imagen, video: datosPunto.video });
             }
 
             return { exito: true, mensaje: `Orquestación para ${punto.padreid} iniciada.` };
         }
 
-        function manejarAudioFinalizado(msg) { console.log(`[${CONFIG.ID_PADRE}] Audio finalizado reportado por ${msg.origen}.`); }
-        function manejarRetoCompletado(msg) { console.log(`[${CONFIG.ID_PADRE}] Reto ${msg.datos.retoId} completado.`); manejarOcultarReto(); }
+        function manejarAudioFinalizado(msg) { logger.info(`Audio finalizado reportado por ${msg.origen}.`); }
+        function manejarRetoCompletado(msg) { logger.info(`Reto ${msg.datos.retoId} completado.`); manejarOcultarReto(); }
         function manejarMostrarReto() { document.getElementById('hijo4').style.display = 'block'; return { exito: true }; }
         function manejarOcultarReto() { document.getElementById('hijo4').style.display = 'none'; return { exito: true }; }
 
