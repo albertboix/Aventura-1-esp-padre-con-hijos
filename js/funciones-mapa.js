@@ -641,6 +641,28 @@ function manejarCambioParada(mensaje) {
 }
 
 /**
+ * Manejador para el mensaje de llegada a parada.
+ * @param {Object} mensaje - Mensaje recibido con los datos de la parada.
+ */
+function manejarLlegadaParada(mensaje) {
+    try {
+        const { punto } = mensaje.datos || {};
+        if (!punto) {
+            console.warn('[MAPA] No se recibió punto en el mensaje de llegada a parada');
+            return { exito: false, error: 'No se recibió punto' };
+        }
+        // Aquí puedes actualizar el estado del mapa, mostrar popup, etc.
+        console.log('[MAPA] Llegada a parada detectada:', punto);
+        // Ejemplo: mostrar información de la parada
+        // mostrarPopupParada(punto);
+        return { exito: true, punto };
+    } catch (error) {
+        console.error('[MAPA] Error en manejarLlegadaParada:', error);
+        return { exito: false, error: error.message };
+    }
+}
+
+/**
  * Carga los datos de una parada específica desde el padre
  * @param {string} paradaId - ID de la parada a cargar
  * @returns {Promise<boolean>} - True si se cargaron los datos correctamente
@@ -837,7 +859,8 @@ const CONFIG = {
  */
 async function notificarError(tipo, error) {
   console.error(`[${CONFIG.IFRAME_ID}] Error (${tipo}):`, error);
-  if (enviarMensaje) {
+  // Solo enviar mensaje si estamos en un iframe y window.parent es accesible
+  if (typeof window !== 'undefined' && window.parent && window.parent !== window && typeof enviarMensaje === 'function') {
     try {
       await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
         tipo,
