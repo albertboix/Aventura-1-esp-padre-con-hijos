@@ -619,6 +619,28 @@ function registrarManejadoresMensajes() {
 }
 
 /**
+ * Manejador para el mensaje de cambio de parada.
+ * @param {Object} mensaje - Mensaje recibido con los datos de la parada.
+ */
+function manejarCambioParada(mensaje) {
+    try {
+        const { punto } = mensaje.datos || {};
+        if (!punto) {
+            console.warn('[MAPA] No se recibió punto en el mensaje de cambio de parada');
+            return { exito: false, error: 'No se recibió punto' };
+        }
+        // Aquí puedes actualizar el estado del mapa, centrarlo, resaltar parada, etc.
+        console.log('[MAPA] Cambio de parada solicitado:', punto);
+        // Ejemplo: centrar el mapa en la parada si tienes la función centrarMapa
+        // centrarMapa(punto.coordenadas);
+        return { exito: true, punto };
+    } catch (error) {
+        console.error('[MAPA] Error en manejarCambioParada:', error);
+        return { exito: false, error: error.message };
+    }
+}
+
+/**
  * Carga los datos de una parada específica desde el padre
  * @param {string} paradaId - ID de la parada a cargar
  * @returns {Promise<boolean>} - True si se cargaron los datos correctamente
