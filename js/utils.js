@@ -119,3 +119,6 @@ export function crearObjetoError(tipo, error, datosAdicionales = {}) {
     logger.error(`Error creado: ${tipo}`, errorInfo);
     return errorInfo;
 }
+
+// Si este archivo es solo un stub, no es necesario modificarlo.
+// Si se usa como utilitario, importa desde './js/utils.js' y configura el logger si corresponde.
