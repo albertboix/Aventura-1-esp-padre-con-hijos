@@ -982,3 +982,25 @@ export {
     limpiarRecursos,
     cargarDatosParada
 };
+
+/**
+ * Manejador para el mensaje de actualización GPS.
+ * @param {Object} mensaje - Mensaje recibido con los datos de GPS.
+ */
+function manejarActualizacionGPS(mensaje) {
+    try {
+        const { coordenadas } = mensaje.datos || {};
+        if (!coordenadas) {
+            console.warn('[MAPA] No se recibieron coordenadas en el mensaje de actualización GPS');
+            return { exito: false, error: 'No se recibieron coordenadas' };
+        }
+        // Aquí puedes actualizar el estado del mapa, marcador de usuario, etc.
+        console.log('[MAPA] Actualización GPS recibida:', coordenadas);
+        // Ejemplo: actualizar marcador de posición
+        // actualizarMarcadorGPS(coordenadas);
+        return { exito: true, coordenadas };
+    } catch (error) {
+        console.error('[MAPA] Error en manejarActualizacionGPS:', error);
+        return { exito: false, error: error.message };
+    }
+}
