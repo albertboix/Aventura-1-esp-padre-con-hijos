@@ -29,12 +29,31 @@
           };
       }
       
+      // Inicializar logger primero
+      window.logger = {
+        debug: (mensaje, datos) => {
+          if (CONFIG.DEBUG) console.debug(`[${CONFIG.IFRAME_ID}] DEBUG: ${mensaje}`, datos || '');
+        },
+        info: (mensaje, datos) => {
+          console.info(`[${CONFIG.IFRAME_ID}] INFO: ${mensaje}`, datos || '');
+        },
+        warn: (mensaje, datos) => {
+          console.warn(`[${CONFIG.IFRAME_ID}] WARN: ${mensaje}`, datos || '');
+        },
+        error: (mensaje, error) => {
+          console.error(`[${CONFIG.IFRAME_ID}] ERROR: ${mensaje}`, error || '');
+          if (error && error.stack) {
+            console.error(error.stack);
+          }
+        }
+      };
+
       // Hacer las constantes disponibles globalmente
       window.TIPOS_MENSAJE = TIPOS_MENSAJE;
       window.Mensajeria = {
         inicializarMensajeria: withErrorHandling(inicializarMensajeria, 'boton-casa:inicializar'),
         enviarMensaje: withErrorHandling(enviarMensaje, 'boton-casa:enviar'),
-        registrarControlador,
+        registrarControlador: withErrorHandling(registrarControlador, 'boton-casa:registrarControlador'),
         TIPOS_MENSAJE
       };
       
@@ -928,14 +947,10 @@
       }
 
       /**
-       * Maneja el clic en el botón principal de GPS/Modo.
+       * Maneja el evento de clic en el botón de GPS/Casa
+       * @returns {Promise<void>}
        */
       async function manejarClickGPS() {
-        if (!estadoApp.mensajeriaInicializada) {
-          logger.error('El sistema de mensajería no está inicializado');
-          return;
-        }
-        
         const modoActual = estadoApp.modo?.actual || 'casa';
         const nuevoModo = modoActual === 'aventura' ? 'casa' : 'aventura';
         
@@ -1764,15 +1779,23 @@
       // Inicializar la aplicación cuando el DOM esté listo
       document.addEventListener('DOMContentLoaded', async () => {
         try {
-          logger.info('Inicializando aplicación...');
+          // Inicializar mensajería primero
+          await Mensajeria.inicializarMensajeria({
+            iframeId: CONFIG.IFRAME_ID,
+            debug: CONFIG.DEBUG,
+            logLevel: CONFIG.LOG_LEVEL
+          });
           
-          // Inicializar la aplicación
+          // Luego inicializar la aplicación
           await inicializarAplicacion();
+          
+          // Registrar manejadores de eventos
+          configurarManejadoresEventos();
           
           logger.info('Aplicación inicializada correctamente');
         } catch (error) {
-          logger.error('Error al inicializar la aplicación:', error);
-          mostrarError('Error al inicializar la aplicación', error);
+          console.error('Error al inicializar la aplicación:', error);
+          window.notificarError('inicializacion', error);
         }
       });
 
