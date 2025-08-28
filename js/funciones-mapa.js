@@ -27,23 +27,16 @@ const MAX_INTENTOS_SINCRONIZACION = 5;
  */
 function inicializarMapa(opciones = {}) {
     logger.info('[MAPA] Inicializando mapa...');
-    
-    // Comprobar si tenemos el array de paradas
     let arrayParadas;
-    
     if (opciones.arrayParadas) {
-        // Usar array proporcionado en las opciones
         arrayParadas = opciones.arrayParadas;
         procesarArrayParadas(arrayParadas);
     } else if (window.AVENTURA_PARADAS) {
-        // Usar array global si está disponible
         arrayParadas = window.AVENTURA_PARADAS;
         procesarArrayParadas(arrayParadas);
     } else {
         logger.info('[MAPA] No se encontró array de paradas, solicitando al padre...');
-        
-        // Verificar si la mensajería está disponible
-        if (enviarMensaje) {
+        if (typeof enviarMensaje === 'function') {
             enviarMensaje('padre', TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS, {
                 timestamp: Date.now()
             }).then(respuesta => {
@@ -58,8 +51,6 @@ function inicializarMapa(opciones = {}) {
                 logger.error('[MAPA] Error al solicitar array de paradas:', error);
                 crearObjetoError('solicitud_paradas_error', error);
             });
-            
-            // Salir de la función - la inicialización continuará cuando recibamos respuesta
             return;
         } else {
             logger.error('[MAPA] No hay array de paradas disponible ni sistema de mensajería');
@@ -177,7 +168,7 @@ function intentarObtenerParadasEmergencia() {
  * @returns {Array} - Array básico con algunas paradas esenciales
  */
 function generarArrayParadasEmergencia() {
-    // Implementar un array mínimo con las paradas más importantes
+    // Corrige ceros a la izquierda en los IDs numéricos
     return [
         { 
             padreid: "padre-P-0", 
@@ -187,7 +178,6 @@ function generarArrayParadasEmergencia() {
             reto_id: "R-2",
             coordenadas: { lat: 39.47876, lng: -0.37626 } 
         },
-        // Añadir algunas paradas más esenciales aquí
         { 
             padreid: "padre-P-36", 
             tipo: "parada", 
