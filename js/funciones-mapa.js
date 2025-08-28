@@ -52,16 +52,16 @@ function inicializarMapa(opciones = {}) {
             enviarMensaje('padre', TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS, {
                 timestamp: Date.now()
             }).then(respuesta => {
-                if (respuesta && respuesta.exito && respuesta.datos && respuesta.datos.AVENTURA_PARADAS) {
+                if (respuesta && respuesta.exito && respuesta.paradas) {
                     console.log('[MAPA] Array de paradas recibido del padre');
-                    procesarArrayParadas(respuesta.datos.AVENTURA_PARADAS);
+                    procesarArrayParadas(respuesta.paradas);
                 } else {
-                    console.error('[MAPA] Respuesta inválida del padre:', respuesta);
-                    intentarObtenerParadasEmergencia();
+                    console.error('[MAPA] Respuesta inválida del padre al solicitar paradas:', respuesta);
+                    notificarError('solicitud_paradas_fallida', new Error('No se recibieron paradas válidas del padre.'));
                 }
             }).catch(error => {
                 console.error('[MAPA] Error al solicitar array de paradas:', error);
-                intentarObtenerParadasEmergencia();
+                notificarError('solicitud_paradas_error', error);
             });
             
             // Salir de la función - la inicialización continuará cuando recibamos respuesta
@@ -172,54 +172,9 @@ async function solicitarArrayParadasAlPadre() {
  * cuando el sistema de mensajería falla
  */
 function intentarObtenerParadasEmergencia() {
-    console.log('[MAPA] Intentando obtener paradas por métodos alternativos...');
-    
-    // Método 1: Intentar acceder directamente al array desde window.parent
-    if (window.parent && window.parent !== window) {
-        try {
-            if (window.parent.AVENTURA_PARADAS) {
-                console.log('[MAPA] Array de paradas encontrado en window.parent');
-                procesarArrayParadas(window.parent.AVENTURA_PARADAS);
-                return;
-            }
-        } catch (error) {
-            console.error('[MAPA] Error al acceder a window.parent.AVENTURA_PARADAS:', error);
-        }
-    }
-    
-    // Método 2: Intentar mediante postMessage (sin usar mensajeria.js)
-    try {
-        window.parent.postMessage({ 
-            tipo: 'solicitar_array_paradas', 
-            origen: 'funciones-mapa',
-            timestamp: Date.now() 
-        }, '*');
-        
-        // Configurar un listener temporal para la respuesta
-        const listener = event => {
-            if (event.data && event.data.tipo === 'respuesta_array_paradas' && 
-                event.data.datos && Array.isArray(event.data.datos.AVENTURA_PARADAS)) {
-                window.removeEventListener('message', listener);
-                procesarArrayParadas(event.data.datos.AVENTURA_PARADAS);
-            }
-        };
-        
-        window.addEventListener('message', listener);
-        
-        // Eliminar el listener después de un tiempo prudencial
-        setTimeout(() => {
-            window.removeEventListener('message', listener);
-            console.warn('[MAPA] No se recibió respuesta mediante postMessage');
-        }, 10000);
-        
-    } catch (error) {
-        console.error('[MAPA] Error al solicitar array mediante postMessage:', error);
-    }
-    
-    // Método 3: Cargar un array de paradas mínimo para funcionamiento básico
-    console.warn('[MAPA] Usando array de paradas de emergencia (mínimo)');
-    const paradasEmergencia = generarArrayParadasEmergencia();
-    procesarArrayParadas(paradasEmergencia);
+    console.error('[MAPA] No se pudo obtener el array de paradas a través de la mensajería. El mapa no puede continuar la inicialización.');
+    notificarError('obtencion_paradas_critico', new Error('Fallo total al obtener el array de paradas.'));
+    // Ya no se intenta acceder a window.parent ni usar postMessage directamente.
 }
 
 /**
