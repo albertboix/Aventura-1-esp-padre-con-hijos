@@ -790,10 +790,19 @@ export async function inicializarMensajeria(config = {}) {
       log(LOG_LEVELS.DEBUG, 'Event listener de mensajes configurado');
     }
     
+    // Inicialización exitosa
     sistemaInicializado = true;
-    
+  
+    // Registrar manejadores del sistema
+    try {
+      registrarControlador(TIPOS_MENSAJE.SISTEMA.CONFIGURACION, manejarConfiguracionSistema);
+      log(LOG_LEVELS.DEBUG, 'Manejadores del sistema registrados');
+    } catch (error) {
+      log(LOG_LEVELS.ERROR, 'Error al registrar manejadores del sistema', error);
+      throw error;
+    }
+  
     log(LOG_LEVELS.INFO, 'Sistema de mensajería inicializado correctamente');
-    
     return Promise.resolve();
     
   } catch (error) {
@@ -1461,9 +1470,6 @@ async function manejarConfiguracionSistema(mensaje) {
     await enviarRespuesta(mensaje, null, 'Error al aplicar configuración');
   }
 }
-
-// Registrar el manejador de configuración
-registrarControlador(TIPOS_MENSAJE.SISTEMA.CONFIGURACION, manejarConfiguracionSistema);
 
 // ================== COMPATIBILIDAD HACIA ATRÁS ==================
 // Hacer las funciones disponibles globalmente con alias
