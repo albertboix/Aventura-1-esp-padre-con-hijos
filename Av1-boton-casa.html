@@ -41,124 +41,60 @@
       // Hacer notificarError disponible globalmente
       window.notificarError = notificarError;
 
-      // ================== CONFIGURACIÓN ESTÁNDAR ==================
+      // Configuración estándar
+      const CONFIG = {
+        IFRAME_ID: 'hijo5-casa',
+        LOG_LEVEL: 1, // 0: debug, 1: info, 2: warn, 3: error, 4: none
+        DEBUG: true,
+        REINTENTOS: {
+          MAXIMOS: 3,
+          TIEMPO_ESPERA: 1000,
+          FACTOR: 2
+        },
+        ESTADO_INICIAL: {
+          modo: 'casa',
+          controlesHabilitados: true,
+          puntoActual: null,
+          gpsActivo: false,
+          tramoActual: null,
+          ultimoError: null
+        }
+      };
+      window.CONFIG = CONFIG;
+
       // ================== CONSTANTES ==================
       
-      // Niveles de log
-      const LOG_LEVELS = {
-        DEBUG: 0,
-        INFO: 1,
-        WARN: 2,
-        ERROR: 3,
-        NONE: 4,
-      };
-      
-      // Utilidad de logging estandarizada
-      window.logger = (() => {
-        // Función interna para el registro de logs
-        const log = (nivel, nivelTexto, mensaje, datos) => {
-          // Si el nivel de log está deshabilitado o es inferior al nivel configurado, no hacer nada
-          if (CONFIG.LOG_LEVEL > nivel) return;
-          
-          const timestamp = new Date().toISOString();
-          const prefijo = `[${timestamp}] [${CONFIG.IFRAME_ID}] [${nivelTexto}]`;
-          
-          // Determinar el método de consola a utilizar
-          let metodoConsola = 'log';
-          if (nivel === LOG_LEVELS.WARN) metodoConsola = 'warn';
-          else if (nivel >= LOG_LEVELS.ERROR) metodoConsola = 'error';
-          
-          // Registrar el mensaje
-          if (datos !== undefined) {
-            console[metodoConsola](`${prefijo} ${mensaje}`, datos);
-          } else {
-            console[metodoConsola](`${prefijo} ${mensaje}`);
-          }
-        };
-        
-        return {
-          /**
-           * Registra un mensaje de depuración
-           * @param {string} mensaje - Mensaje a registrar
-           * @param {*} [datos] - Datos adicionales a registrar
-           */
-          debug: (mensaje, datos) => {
-            log(LOG_LEVELS.DEBUG, 'DEBUG', mensaje, datos);
-          },
-          
-          /**
-           * Registra un mensaje informativo
-           * @param {string} mensaje - Mensaje a registrar
-           * @param {*} [datos] - Datos adicionales a registrar
-           */
-          info: (mensaje, datos) => {
-            log(LOG_LEVELS.INFO, 'INFO', mensaje, datos);
-          },
-          
-          /**
-           * Registra un mensaje de advertencia
-           * @param {string} mensaje - Mensaje a registrar
-           * @param {*} [datos] - Datos adicionales a registrar
-           */
-          warn: (mensaje, datos) => {
-            log(LOG_LEVELS.WARN, 'WARN', mensaje, datos);
-          },
-          
-          /**
-           * Registra un mensaje de error
-           * @param {string} mensaje - Mensaje a registrar
-           * @param {Error} error - Objeto de error
-           * @param {Object} [datosAdicionales] - Datos adicionales a registrar
-           */
-          error: (mensaje, error, datosAdicionales = {}) => {
-            const datos = { ...datosAdicionales };
-            
-            if (error) {
-              datos.error = {
-                mensaje: error.message,
-                stack: error.stack,
-                ...(error.details && { detalles: error.details })
-              };
-            }
-            
-            log(LOG_LEVELS.ERROR, 'ERROR', mensaje, Object.keys(datos).length ? datos : undefined);
-          }
-        };
-      })();
-      
-      // Inicializar el logger globalmente si no existe
       // Configuración del logger
       const loggerConfig = {
-        level: window.CONFIG?.LOG_LEVEL ?? LOG_LEVELS.INFO,
+        level: window.CONFIG?.LOG_LEVEL ?? 1, // Default to INFO level
         debug: window.CONFIG?.DEBUG ?? false
       };
 
       // Implementación del logger
       window.logger = {
         debug: (mensaje, datos) => {
-          if (loggerConfig.level <= LOG_LEVELS.DEBUG) {
-            console.debug(`[DEBUG] ${mensaje}`, datos || '');
+          if (loggerConfig.level <= 0) { // DEBUG level
+            console.debug(`[${CONFIG.IFRAME_ID}] DEBUG: ${mensaje}`, datos || '');
           }
         },
         
         info: (mensaje, datos) => {
-          if (loggerConfig.level <= LOG_LEVELS.INFO) {
-            console.info(`[INFO] ${mensaje}`, datos || '');
+          if (loggerConfig.level <= 1) { // INFO level
+            console.info(`[${CONFIG.IFRAME_ID}] INFO: ${mensaje}`, datos || '');
           }
         },
         
         warn: (mensaje, datos) => {
-          if (loggerConfig.level <= LOG_LEVELS.WARN) {
-            console.warn(`[WARN] ${mensaje}`, datos || '');
+          if (loggerConfig.level <= 2) { // WARN level
+            console.warn(`[${CONFIG.IFRAME_ID}] WARN: ${mensaje}`, datos || '');
           }
         },
         
         error: (mensaje, error) => {
-          if (loggerConfig.level <= LOG_LEVELS.ERROR) {
-            if (error instanceof Error) {
-              console.error(`[ERROR] ${mensaje}`, error.message, error.stack);
-            } else {
-              console.error(`[ERROR] ${mensaje}`, error || '');
+          if (loggerConfig.level <= 3) { // ERROR level
+            console.error(`[${CONFIG.IFRAME_ID}] ERROR: ${mensaje}`, error || '');
+            if (error && error.stack) {
+              console.error(error.stack);
             }
           }
         },
@@ -171,107 +107,30 @@
           loggerConfig.debug = debug;
         }
       };
-
-      // Logger temporal hasta que se inicialice el real
-      window.loggerTemporal = (() => {
-        const log = (nivel, nivelTexto, mensaje, datos) => {
-          // Usar el logger real si está disponible, si no, usar console
-            const logLevel = window.CONFIG?.LOG_LEVEL ?? 0; // DEBUG por defecto
-            const iframeId = window.CONFIG?.IFRAME_ID || 'unknown-iframe';
-            
-            if (logLevel > nivel) return;
-            
-            const timestamp = new Date().toISOString();
-            const prefijo = `[${timestamp}] [${iframeId}] [${nivelTexto}]`;
-            
-            // Determinar el método de consola a utilizar
-            let metodoConsola = 'log';
-            if (nivel === LOG_LEVELS.WARN) metodoConsola = 'warn';
-            else if (nivel >= LOG_LEVELS.ERROR) metodoConsola = 'error';
-            
-            // Registrar el mensaje
-            try {
-              if (datos !== undefined) {
-                console[metodoConsola](`${prefijo} ${mensaje}`, datos);
-              } else {
-                console[metodoConsola](`${prefijo} ${mensaje}`);
-              }
-            } catch (e) {
-              console.error(`Error al registrar log: ${e.message}`);
-            }
-          };
-          
-          return {
-            debug: (mensaje, datos) => log(LOG_LEVELS.DEBUG, 'DEBUG', mensaje, datos),
-            info: (mensaje, datos) => log(LOG_LEVELS.INFO, 'INFO', mensaje, datos),
-            warn: (mensaje, datos) => log(LOG_LEVELS.WARN, 'WARN', mensaje, datos),
-            error: (mensaje, error, datos = {}) => {
-              if (error) {
-                datos = {
-                  ...datos,
-                  error: {
-                    mensaje: error.message,
-                    stack: error.stack,
-                    ...(error.details && { detalles: error.details })
-                  }
-                };
-              }
-              log(LOG_LEVELS.ERROR, 'ERROR', mensaje, Object.keys(datos).length ? datos : undefined);
-            }
-          };
-        })();
-        
-        // Inicializar el logger temporal
-        window.loggerTemporal = window.loggerTemporal();
-
-        // Sobrescribir con la implementación completa una vez que todo esté listo
-        document.addEventListener('DOMContentLoaded', () => {
-          window.logger = (() => {
-            const log = (nivel, nivelTexto, mensaje, datos) => {
-              // Si el nivel de log está deshabilitado o es inferior al nivel configurado, no hacer nada
-              if (!window.CONFIG || window.CONFIG.LOG_LEVEL > nivel) return;
-              
-              const timestamp = new Date().toISOString();
-              const prefijo = `[${timestamp}] [${window.CONFIG.IFRAME_ID}] [${nivelTexto}]`;
-              
-              let metodoConsola = 'log';
-              if (nivel === LOG_LEVELS.WARN) metodoConsola = 'warn';
-              else if (nivel >= LOG_LEVELS.ERROR) metodoConsola = 'error';
-              
-              try {
-                if (datos !== undefined) {
-                  console[metodoConsola](`${prefijo} ${mensaje}`, datos);
-                } else {
-                  console[metodoConsola](`${prefijo} ${mensaje}`);
-                }
-              } catch (e) {
-                console.error(`Error al registrar log: ${e.message}`);
-              }
-            };
-            
-            return {
-              debug: (mensaje, datos) => log(LOG_LEVELS.DEBUG, 'DEBUG', mensaje, datos),
-              info: (mensaje, datos) => log(LOG_LEVELS.INFO, 'INFO', mensaje, datos),
-              warn: (mensaje, datos) => log(LOG_LEVELS.WARN, 'WARN', mensaje, datos),
-              error: (mensaje, error, datos = {}) => {
-                if (error) {
-                  datos = {
-                    ...datos,
-                    error: {
-                      mensaje: error.message,
-                      stack: error.stack,
-                      ...(error.details && { detalles: error.details })
-                    }
-                  };
-                }
-                log(LOG_LEVELS.ERROR, 'ERROR', mensaje, Object.keys(datos).length ? datos : undefined);
-              }
-            };
-          });
-        });
       
       // Referencia local al logger
       const logger = window.logger;
+
+      // Inicialización del sistema de mensajería
+      document.addEventListener('DOMContentLoaded', async () => {
+        try {
+          // Inicializar mensajería
+          await inicializarMensajeria({
+            iframeId: CONFIG.IFRAME_ID,
+            logLevel: CONFIG.LOG_LEVEL,
+            debug: CONFIG.DEBUG
+          });
+          
+          logger.info('Mensajería inicializada correctamente');
+          
+          // Inicializar la aplicación
+          await inicializarAplicacion();
+          
+        } catch (error) {
+          console.error('Error al inicializar la aplicación:', error);
+          notificarError('inicializacion', error);
+        }
+      });
       
       // Modos de operación
       const MODOS = {
@@ -310,26 +169,6 @@
         }
       };
       
-      // Constantes de configuración
-      const CONFIG = {
-        IFRAME_ID: 'hijo5-casa',
-        DEBUG: true,
-        LOG_LEVEL: LOG_LEVELS.INFO,
-        REINTENTOS: {
-          MAXIMOS: 3,
-          TIEMPO_ESPERA: 1000,
-          FACTOR: 2
-        },
-        ESTADO_INICIAL: {
-          modo: 'casa',
-          controlesHabilitados: true,
-          puntoActual: null,
-          gpsActivo: false,
-          tramoActual: null,
-          ultimoError: null
-        }
-      };
-
       // Configuración de importaciones dinámicas
       const MODULOS = {
         mensajeria: './mensajeria.js',
@@ -1092,7 +931,12 @@
        * Maneja el clic en el botón principal de GPS/Modo.
        */
       async function manejarClickGPS() {
-        const modoActual = estadoApp.modo.actual;
+        if (!estadoApp.mensajeriaInicializada) {
+          logger.error('El sistema de mensajería no está inicializado');
+          return;
+        }
+        
+        const modoActual = estadoApp.modo?.actual || 'casa';
         const nuevoModo = modoActual === 'aventura' ? 'casa' : 'aventura';
         
         logger.info(`Solicitando cambio de modo a: ${nuevoModo}`);
