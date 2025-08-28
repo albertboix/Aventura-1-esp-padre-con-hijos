@@ -946,24 +946,7 @@
         }
       }
 
-      /**
-       * Maneja el evento de clic en el botón de GPS/Casa
-       * @returns {Promise<void>}
-       */
-      async function manejarClickGPS() {
-        const modoActual = estadoApp.modo?.actual || 'casa';
-        const nuevoModo = modoActual === 'aventura' ? 'casa' : 'aventura';
-        
-        logger.info(`Solicitando cambio de modo a: ${nuevoModo}`);
-        
-        try {
-          await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, { modo: nuevoModo });
-          // La actualización de la UI se hará cuando el padre confirme el cambio y lo notifique de vuelta.
-        } catch (error) {
-          logger.error(`Error al solicitar cambio de modo a ${nuevoModo}`, error);
-          notificarError('solicitud_cambio_modo', error);
-        }
-      }
+      // La función manejarClickGPS ha sido movida más abajo en el código
 
       /**
        * Maneja las solicitudes de estado de la aplicación
@@ -1601,7 +1584,8 @@
        * @param {Event} event - Evento de clic
        */
       async function manejarClickGPS(event) {
-        const nuevoModo = estadoApp.modo.actual === 'aventura' ? 'casa' : 'aventura';
+        const modoActual = estadoApp.modo?.actual || 'casa';
+        const nuevoModo = modoActual === 'aventura' ? 'casa' : 'aventura';
         logger.info(`Solicitando cambio de modo a: ${nuevoModo}`);
         try {
           await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, { modo: nuevoModo });
@@ -2179,24 +2163,34 @@
         <div id="paradas-list"></div>
     </div>
   </div>
-  <script>
+  <script type="module">
     // Código de inicialización de la aplicación
     document.addEventListener('DOMContentLoaded', async () => {
       try {
+        // Asegurarse de que el logger esté disponible
+        if (!window.logger) {
+          window.logger = {
+            info: (msg, data) => console.info(`[${CONFIG?.IFRAME_ID || 'app'}] ${msg}`, data || ''),
+            error: (msg, error) => console.error(`[${CONFIG?.IFRAME_ID || 'app'}] ERROR: ${msg}`, error || ''),
+            debug: (msg, data) => console.debug(`[${CONFIG?.IFRAME_ID || 'app'}] DEBUG: ${msg}`, data || ''),
+            warn: (msg, data) => console.warn(`[${CONFIG?.IFRAME_ID || 'app'}] WARN: ${msg}`, data || '')
+          };
+        }
+
         if (typeof window.mensajeriaInicializada === 'undefined') {
-          logger.info('Inicializando sistema de mensajería...');
+          window.logger.info('Inicializando sistema de mensajería...');
           await inicializarMensajeria({
             iframeId: CONFIG.IFRAME_ID,
             debug: CONFIG.DEBUG,
             logLevel: CONFIG.LOG_LEVEL
           });
           window.mensajeriaInicializada = true;
-          logger.info('Sistema de mensajería inicializado correctamente');
+          window.logger.info('Sistema de mensajería inicializado correctamente');
         } else {
-          logger.info('El sistema de mensajería ya está inicializado');
+          window.logger.info('El sistema de mensajería ya está inicializado');
         }
       } catch (error) {
-        logger.error('Error al inicializar el sistema de mensajería:', error);
+        console.error('Error al inicializar el sistema de mensajería:', error);
         throw new Error(`Error al inicializar el sistema de mensajería: ${error.message}`);
       }
     });
