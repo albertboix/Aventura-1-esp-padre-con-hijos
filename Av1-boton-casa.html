@@ -1035,192 +1035,77 @@
         // Validar datos de entrada
         const validacion = validarCambioModo(datos);
         if (!validacion.valido) {
-          throw new Error(validacion.error);
+          logger.error('Datos de cambio de modo inválidos', validacion.error);
+          return { exito: false, error: validacion.error };
         }
         
-        const { modo: modoSolicitado, motivo = 'Cambio de modo solicitado' } = validacion;
+        const { modo: modoSolicitado } = validacion;
         const modoAnterior = estadoApp.modo.actual;
         
-        // Validar modo
-        if (modoSolicitado !== 'casa' && modoSolicitado !== 'aventura') {
-          const errorMsg = `Modo no válido: ${modoSolicitado}`;
-          console.error(`[${CONFIG.IFRAME_ID}] ${errorMsg}`);
-          
-          // Enviar mensaje de error al padre
-          if (enviarMensaje) {
-            try {
-              await enviarMensaje(
-                'padre',
-                TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_CONFIRMACION,
-                {
-                  estado: 'error',
-                  error: errorMsg,
-                  modo: estadoApp.modo,
-                  modoSolicitado,
-                  motivo,
-                  timestamp: new Date().toISOString(),
-                  origen: CONFIG.IFRAME_ID,
-                  destino: 'padre',
-                  version: '1.0',
-                  metadata: {
-                    forzar: Boolean(datos.forzar),
-                    solicitante: datos.origen || 'sistema',
-                    timestampSolicitud: datos.timestamp || new Date().toISOString(),
-                    timestampError: new Date().toISOString()
-                  }
-                },
-                { maxRetries: 3, retryDelay: 1000, timeout: 5000 }
-              );
-            } catch (error) {
-              console.error(`[${CONFIG.IFRAME_ID}] Error al notificar error de cambio de modo:`, error);
-            }
-          }
-          
-          throw new Error(errorMsg);
+        if (modoSolicitado === modoAnterior) {
+          logger.info(`Ya se encuentra en modo ${modoSolicitado}.`);
+          return { exito: true, mensaje: 'Ya en este modo' };
         }
         
-        // Si ya está en el modo solicitado, notificar al padre y salir
-        if (modoSolicitado === modoAnterior) {
-          console.log(`[${CONFIG.IFRAME_ID}] Ya está en modo ${modoSolicitado}, notificando al padre...`);
-          
-          if (enviarMensaje) {
-            try {
-              await enviarMensaje(
-                'padre',
-                TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_CONFIRMACION,
-                {
-                  estado: 'completado',
-                  modo: estadoApp.modo,
-                  modoAnterior,
-                  motivo: 'Ya estaba en el modo solicitado',
-                  timestamp: new Date().toISOString(),
-                  origen: CONFIG.IFRAME_ID,
-                  destino: 'padre',
-                  version: '1.0',
-                  metadata: {
-                    forzar: Boolean(datos.forzar),
-                    solicitante: datos.origen || 'sistema',
-                    timestampSolicitud: datos.timestamp || new Date().toISOString()
-                  }
-                },
-                { maxRetries: 3, retryDelay: 1000, timeout: 5000 }
-              );
-            } catch (error) {
-              console.error(`[${CONFIG.IFRAME_ID}] Error al notificar confirmación de modo:`, error);
-            }
-          }
-          
-          return true;
-        }
+        logger.info(`Cambiando de modo ${modoAnterior} a ${modoSolicitado}`);
         
         try {
-          console.log(`[${CONFIG.IFRAME_ID}] Cambiando de modo ${modoAnterior} a ${modoSolicitado}...`);
+          await estadoApp.actualizarEstado({ modo: { actual: modoSolicitado, anterior: modoAnterior } });
           
-          // Actualizar el estado local con el nuevo modo estructurado
-          const nuevoModo = {
-            actual: modoSolicitado,
-            anterior: modoAnterior,
-            ultimoCambio: new Date().toISOString(),
-            cambioEnProgreso: false
-          };
+          // Actualizar la interfaz de este componente
+          actualizarInterfazPorModo(modoSolicitado);
           
-          // Usar actualizarEstado para mantener la consistencia
-          await estadoApp.actualizarEstado({
-            ...estadoApp,
-            modo: nuevoModo
-          });
-          
-          // Actualizar la interfaz
-          actualizarInterfaz();
-          
-          // Notificar al padre del cambio de modo exitoso
-          if (enviarMensaje) {
-            try {
-              await enviarMensaje(
-                'padre',
-                TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_CONFIRMACION,
-                {
-                  estado: 'completado',
-                  modo: nuevoModo,
-                  modoAnterior,
-                  motivo: motivo || 'Cambio de modo exitoso',
-                  timestamp: new Date().toISOString(),
-                  origen: CONFIG.IFRAME_ID,
-                  destino: 'padre',
-                  version: '1.0',
-                  metadata: {
-                    forzar: Boolean(datos.forzar),
-                    solicitante: datos.origen || 'sistema',
-                    timestampSolicitud: datos.timestamp || new Date().toISOString()
-                  }
-                },
-                { maxRetries: 3, retryDelay: 1000, timeout: 5000 }
-              );
-              console.log(`[${CONFIG.IFRAME_ID}] Confirmación de cambio de modo enviada al padre`);
-            } catch (notifyError) {
-              console.error(`[${CONFIG.IFRAME_ID}] Error al notificar confirmación de modo:`, notifyError);
-              throw notifyError; // Relanzar para que se maneje en el catch externo
-            }
-          } else {
-            console.warn(`[${CONFIG.IFRAME_ID}] No se pudo enviar confirmación: Mensajería no disponible`);
-          }
-          
-          console.log(`[${CONFIG.IFRAME_ID}] Modo cambiado exitosamente a ${modoSolicitado}`);
-          return true;
+          logger.info(`Modo cambiado a ${modoSolicitado} exitosamente.`);
+          return { exito: true, modo: modoSolicitado };
           
         } catch (error) {
-          const errorMsg = `Error al cambiar el modo: ${error.message}`;
-          console.error(`[${CONFIG.IFRAME_ID}] ${errorMsg}`, error);
-          
-          // Notificar el error al padre
-          if (enviarMensaje) {
-            try {
-              await enviarMensaje(
-                'padre',
-                TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_CONFIRMACION,
-                {
-                  estado: 'error',
-                  error: error.message,
-                  modo: modoAnterior,
-                  modoSolicitado,
-                  motivo: motivo || 'Error al cambiar de modo',
-                  timestamp: new Date().toISOString(),
-                  origen: CONFIG.IFRAME_ID,
-                  destino: 'padre',
-                  version: '1.0',
-                  metadata: {
-                    forzar: Boolean(datos.forzar),
-                    solicitante: datos.origen || 'sistema',
-                    timestampSolicitud: datos.timestamp || new Date().toISOString(),
-                    timestampError: new Date().toISOString(),
-                    stack: error.stack
-                  }
-                },
-                { maxRetries: 3, retryDelay: 1000, timeout: 5000 }
-              );
-            } catch (notifyError) {
-              console.error(`[${CONFIG.IFRAME_ID}] Error al notificar error de cambio de modo:`, notifyError);
-            }
-          }
-          
-          // También notificar a través del sistema de notificaciones local
-          try {
-            await notificarEstado('error_cambio_modo', {
-              error: error.message,
-              motivo: motivo || 'desconocido',
-              modoAnterior,
-              modoIntentado: modoSolicitado,
-              stack: error.stack
-            });
-          } catch (notifyError) {
-            console.error(`[${CONFIG.IFRAME_ID}] Error al notificar el error localmente:`, notifyError);
-          }
-          
-          // Relanzar el error para que el llamador pueda manejarlo si es necesario
-          throw error;
+          logger.error(`Error al cambiar a modo ${modoSolicitado}`, error);
+          notificarError('cambio_modo', error);
+          return { exito: false, error: error.message };
         }
       }
       
+      /**
+       * Actualiza la UI local (botón y lista de paradas) según el modo.
+       * @param {string} modo - 'casa' o 'aventura'.
+       */
+      function actualizarInterfazPorModo(modo) {
+        const btn = document.getElementById('gps-casa-btn');
+        const paradasWindow = document.getElementById('paradas-window');
+
+        if (modo === 'casa') {
+          btn.classList.remove('on');
+          btn.classList.add('off');
+          btn.title = "Cambiar a modo Aventura (GPS ON)";
+          paradasWindow.classList.add('visible');
+          paradasWindow.classList.remove('hidden');
+        } else { // modo 'aventura'
+          btn.classList.remove('off');
+          btn.classList.add('on');
+          btn.title = "Cambiar a modo Casa (GPS OFF)";
+          paradasWindow.classList.add('hidden');
+          paradasWindow.classList.remove('visible');
+        }
+      }
+
+      /**
+       * Maneja el clic en el botón principal de GPS/Modo.
+       */
+      async function manejarClickGPS() {
+        const modoActual = estadoApp.modo.actual;
+        const nuevoModo = modoActual === 'aventura' ? 'casa' : 'aventura';
+        
+        logger.info(`Solicitando cambio de modo a: ${nuevoModo}`);
+        
+        try {
+          await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, { modo: nuevoModo });
+          // La actualización de la UI se hará cuando el padre confirme el cambio y lo notifique de vuelta.
+        } catch (error) {
+          logger.error(`Error al solicitar cambio de modo a ${nuevoModo}`, error);
+          notificarError('solicitud_cambio_modo', error);
+        }
+      }
+
       /**
        * Maneja las solicitudes de estado de la aplicación
        * @param {Object} mensaje - Mensaje de solicitud de estado
@@ -1857,43 +1742,18 @@
        * @param {Event} event - Evento de clic
        */
       async function manejarClickGPS(event) {
-        event.stopPropagation();
-        
+        const nuevoModo = estadoApp.modo.actual === 'aventura' ? 'casa' : 'aventura';
+        logger.info(`Solicitando cambio de modo a: ${nuevoModo}`);
         try {
-          const nuevoEstado = !estadoApp.gpsActivo;
-          console.log(`[${CONFIG.IFRAME_ID}] Cambiando estado GPS a: ${nuevoEstado ? 'ACTIVO' : 'INACTIVO'}`);
-          
-          // Actualizar estado local
-          await estadoApp.actualizarEstado({
-            gpsActivo: nuevoEstado,
-            ultimaAccion: nuevoEstado ? 'activar_gps' : 'desactivar_gps',
-            timestamp: new Date().toISOString()
-          });
-          
-          // Notificar al padre del cambio
-          await notificarEstado('cambio_estado_gps', { 
-            gpsActivo: nuevoEstado 
-          });
-          
-          // Mostrar/ocultar ventana de paradas si está disponible
-          const ventanaParadas = document.getElementById('paradas-window');
-          if (ventanaParadas) {
-            if (nuevoEstado) {
-              ventanaParadas.classList.add('visible');
-            } else {
-              ventanaParadas.classList.remove('visible');
-            }
-          }
-          
+          await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, { modo: nuevoModo });
         } catch (error) {
-          console.error(`[${CONFIG.IFRAME_ID}] Error al manejar clic en GPS:`, error);
-          notificarError('error_gps', error);
+          notificarError('cambio_modo_click', error);
         }
       }
       
       /**
-       * Maneja la selección de un punto (parada o tramo)
-       * @param {string} idPunto - ID del punto seleccionado
+       * Maneja la selección de un punto de la lista en modo casa
+       * @param {string} idPunto - ID del punto seleccionado (ej. 'padre-P-5')
        */
       async function manejarSeleccionPunto(idPunto) {
         try {
@@ -1905,66 +1765,30 @@
             throw new Error(validacionId.mensaje);
           }
           
-          // Encontrar el punto en el array de puntosRuta
-          const punto = puntosRuta.find(p => p.padreid === idPunto);
+          const punto = estadoApp.puntosRuta.find(p => p.padreid === idPunto);
           if (!punto) {
             throw new Error(`No se encontró el punto con ID: ${idPunto}`);
           }
           
-          // Validar la estructura del punto
-          const validacionPunto = validarPunto(punto);
-          if (!validacionPunto.valido) {
-            throw new Error(`Punto inválido: ${validacionPunto.errores.join('; ')}`);
-          }
+          // Notificar al padre sobre la selección para que orqueste a los demás hijos
+          await enviarMensaje('padre', TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, { punto });
           
-          // Actualizar estado local
-          const actualizacion = {
-            puntoActual: punto,
-            ultimaAccion: 'seleccion_punto',
-            timestamp: new Date().toISOString()
-          };
+          // Actualizar la interfaz para resaltar el punto seleccionado
+          estadoApp.puntoActual = punto;
+          actualizarInterfaz();
           
-          // Actualizar según el tipo de punto
-          if (punto.tipo === 'parada' || punto.parada !== undefined) {
-            actualizacion.paradaActual = punto.parada;
-          } else if (punto.tipo === 'tramo' || punto.tramo !== undefined) {
-            actualizacion.tramoActual = punto.tramo;
-          }
-          
-          await estadoApp.actualizarEstado(actualizacion);
-          
-          // Notificar al padre
-          await notificarEstado('punto_seleccionado', { 
-            tipo: punto.tipo,
-            id: punto.padreid,
-            nombre: punto.nombre,
-            datosAdicionales: punto
-          });
-          
-          // Resaltar el punto seleccionado
-          document.querySelectorAll('.parada-tramo-btn').forEach(btn => {
-            btn.classList.toggle('actual', btn.dataset.idPunto === idPunto);
-          });
+          return true;
           
         } catch (error) {
-          console.error(`[${CONFIG.IFRAME_ID}] Error al manejar selección de punto:`, error);
           notificarError('seleccion_punto', error);
+          return false;
         }
       }
       
       // Inicializar la aplicación cuando el DOM esté listo
       // ================== INICIALIZACIÓN ==================
       /**
-       * Inicializa la aplicación
-       * @returns {Promise<boolean>} True si la inicialización fue exitosa
-       */
-      /**
-       * Inicializa la aplicación
-       * @returns {Promise<boolean>} True si la inicialización fue exitosa
-       */
-      /**
-       * Inicializa la aplicación
-       * @returns {Promise<boolean>} True si la inicialización fue exitosa
+       * Inicializa la aplicación, la mensajería y solicita los datos de la ruta.
        */
       async function inicializarAplicacion() {
         logger.info('Inicializando aplicación...');
@@ -1974,28 +1798,19 @@
           window.CONFIG = CONFIG;
           window.estadoApp = estadoApp;
           
-          // Configurar manejadores de eventos
+          // Configurar manejadores de eventos de la UI
           configurarManejadoresUI();
           
-          // Inicializar componentes
-          logger.debug('Inicializando componentes...');
+          // Inicializar componentes de comunicación
+          logger.debug('Inicializando componentes de comunicación...');
           await Promise.all([
             inicializarMensajeriaApp(),
             registrarManejadores()
           ]);
           
-          // Configurar estado inicial
-          estadoApp = {
-            ...estadoApp,
-            ...CONFIG.ESTADO_INICIAL,
-            inicializado: true
-          };
-          
-          // Cargar estado inicial y actualizar la interfaz
-          logger.debug('Cargando estado inicial...');
-          await cargarEstado();
-          actualizarInterfaz();
-          
+          // Solicitar los datos de la ruta al padre para construir la UI
+          await solicitarPuntosRuta();
+
           // Notificar al padre que la aplicación está lista
           logger.debug('Notificando al padre que la aplicación está lista...');
           await notificarEstado('aplicacion_inicializada', {
@@ -2007,74 +1822,75 @@
           return true;
           
         } catch (error) {
-          const errorMsg = 'Error al inicializar la aplicación';
-          console.error(errorMsg, error);
-          await notificarError('inicializacion_aplicacion', error);
-          mostrarError('Error al inicializar la aplicación. Por favor, recarga la página.');
-          throw error;
+          logger.error('Fallo catastrófico durante la inicialización', error);
+          mostrarError('No se pudo iniciar el componente.', error);
+          return false;
         }
       }
       
-      // Array completo de paradas y tramos con padreid añadido
-      const puntosRuta = [
-        { padreid: "padre-P-0", tipo: "inicio", parada: 0, nombre: "Torres de Serranos (start)" },
-        { padreid: "padre-TR-1", tipo: "tramo", tramo: 1, nombre: "Torres de Serranos → Plaza de la crida (Puente de Serranos)" },
-        { padreid: "padre-P-1", tipo: "parada", parada: 1, nombre: "Plaza de la crida (Puente de Serranos)" },
-        { padreid: "padre-TR-2", tipo: "tramo", tramo: 2, nombre: "Plaza de la crida → Calle Muro de Santa Ana" },
-        { padreid: "padre-P-2", tipo: "parada", parada: 2, nombre: "Calle Muro de Santa Ana" },
-        { padreid: "padre-TR-3", tipo: "tramo", tramo: 3, nombre: "Calle Muro de Santa Ana → Palacio de los Borgia" },
-        { padreid: "padre-P-3", tipo: "parada", parada: 3, nombre: "Iglesia de San Lorenzo" },
-        { padreid: "padre-TR-4", tipo: "tramo", tramo: 4, nombre: "Iglesia de San Lorenzo → Plaza de la Virgen" },
-        { padreid: "padre-P-4", tipo: "parada", parada: 4, nombre: "Plaza de la Virgen Reto 6" },
-        { padreid: "padre-P-5", tipo: "parada", parada: 5, nombre: "Plaza de la Virgen Reto 7" },
-        { padreid: "padre-TR-5", tipo: "tramo", tramo: 5, nombre: "Plaza de la Virgen → Plaza de la Almoína" },
-        { padreid: "padre-P-6", tipo: "parada", parada: 6, nombre: "Panel cerámico muro Catedral" },
-        { padreid: "padre-P-7", tipo: "parada", parada: 7, nombre: "Capilla exterior catedral Reto 10" },
-        { padreid: "padre-P-8", tipo: "parada", parada: 8, nombre: "Capilla exterior catedral Reto 11" },
-        { padreid: "padre-P-9", tipo: "parada", parada: 9, nombre: "Arco Novo Catedral y Puerta Negra Basílica" },
-        { padreid: "padre-P-10", tipo: "parada", parada: 10, nombre: "Casa del Punt de Gantxo" },
-        { padreid: "padre-TR-6", tipo: "tramo", tramo: 6, nombre: "Plaza de la Almoína → Plaza Decimo Junio Bruto (Museo Arqueológico de la Almoína)" },
-        { padreid: "padre-P-11", tipo: "parada", parada: 11, nombre: "Museo arqueológico La Almoína" },
-        { padreid: "padre-P-12", tipo: "parada", parada: 12, nombre: "Museo arqueológico La Almoína" },
-        { padreid: "padre-P-13", tipo: "parada", parada: 13, nombre: "Vista de la Catedral, Cimborrio" },
-        { padreid: "padre-TR-7", tipo: "tramo", tramo: 7, nombre: "Museo arqueológico La Almoína → Palacio Arzobispal" },
-        { padreid: "padre-P-14", tipo: "parada", parada: 14, nombre: "Palacio Arzobispal y Puerta Románica de la Catedral" },
-        { padreid: "padre-P-15", tipo: "parada", parada: 15, nombre: "Puerta Románica de la Catedral" },
-        { padreid: "padre-TR-8", tipo: "tramo", tramo: 8, nombre: "Puerta Románica de la Catedral → Plaza del Ayuntamiento" },
-        { padreid: "padre-P-16", tipo: "parada", parada: 16, nombre: "Plaza del Ayuntamiento" },
-        { padreid: "padre-TR-9", tipo: "tramo", tramo: 9, nombre: "Plaza del Ayuntamiento → Edificio del Ayuntamiento de València" },
-        { padreid: "padre-P-17", tipo: "parada", parada: 17, nombre: "Edificio del Ayuntamiento" },
-        { padreid: "padre-P-18", tipo: "parada", parada: 18, nombre: "Edificio del Ayuntamiento" },
-        { padreid: "padre-TR-10", tipo: "tramo", tramo: 10, nombre: "Edificio del Ayuntamiento → Estación del Norte" },
-        { padreid: "padre-P-19", tipo: "parada", parada: 19, nombre: "Estación del Norte" },
-        { padreid: "padre-TR-11", tipo: "tramo", tramo: 11, nombre: "Estación del Norte → Plaza de Toros de València" },
-        { padreid: "padre-TR-12", tipo: "tramo", tramo: 12, nombre: "Plaza de Toros → Casa estilo Árabe" },
-        { padreid: "padre-P-20", tipo: "parada", parada: 20, nombre: "Casa estilo Árabe" },
-        { padreid: "padre-P-21", tipo: "parada", parada: 21, nombre: "Casa estilo Árabe, mitad Aventura" },
-        { padreid: "padre-TR-13", tipo: "tramo", tramo: 13, nombre: "Casa estilo Árabe → Palacio de Comunicaciones (Correos)" },
-        { padreid: "padre-P-22", tipo: "parada", parada: 22, nombre: "Palacio de Comunicaciones: Correos" },
-        { padreid: "padre-P-23", tipo: "parada", parada: 23, nombre: "Edificio Suay" },
-        { padreid: "padre-TR-14", tipo: "tramo", tramo: 14, nombre: "Palacio de Comunicaciones → Banco de València" },
-        { padreid: "padre-P-24", tipo: "parada", parada: 24, nombre: "Banco de Valencia" },
-        { padreid: "padre-TR-15", tipo: "tramo", tramo: 15, nombre: "Banco de València → Palacio del Marqués de Dos Aguas (Museo Nacional de Cerámica)" },
-        { padreid: "padre-P-25", tipo: "parada", parada: 25, nombre: "Palacio del Marqués de Dos Aguas (Museo Nacional de Cerámica)" },
-        { padreid: "padre-TR-16", tipo: "tramo", tramo: 16, nombre: "Palacio del Marqués → Mercado Central" },
-        { padreid: "padre-P-26", tipo: "parada", parada: 26, nombre: "Mercado central" },
-        { padreid: "padre-TR-17", tipo: "tramo", tramo: 17, nombre: "Mercado Central → Lonja de la Seda" },
-        { padreid: "padre-P-27", tipo: "parada", parada: 27, nombre: "Lonja de la Seda" },
-        { padreid: "padre-TR-18", tipo: "tramo", tramo: 18, nombre: "Lonja de la Seda → Plaza Redonda" },
-        { padreid: "padre-P-28", tipo: "parada", parada: 28, nombre: "Plaza Redonda" },
-        { padreid: "padre-TR-19", tipo: "tramo", tramo: 19, nombre: "Plaza Redonda → Iglesia de los Santos Juanes" },
-        { padreid: "padre-P-29", tipo: "parada", parada: 29, nombre: "Iglesia de los Santos Juanes" },
-        { padreid: "padre-TR-20", tipo: "tramo", tramo: 20, nombre: "Iglesia de los Santos Juanes → Mercado Central" },
-        { padreid: "padre-TR-21", tipo: "tramo", tramo: 21, nombre: "Mercado Central → Palacio de la Generalitat" },
-        { padreid: "padre-P-30", tipo: "parada", parada: 30, nombre: "Palau de la Generalitat" },
-        { padreid: "padre-TR-22", tipo: "tramo", tramo: 22, nombre: "Palacio de la Generalitat → Torres de Serranos (Final)" },
-        { padreid: "padre-P-31", tipo: "parada", parada: 31, nombre: "Torres de Serranos (Final)" }
-      ];
+      /**
+       * Solicita el array de puntos de la ruta al padre a través de mensajería.
+       */
+      async function solicitarPuntosRuta() {
+        try {
+          logger.info('Solicitando puntos de la ruta al padre...');
+          const respuesta = await enviarMensaje('padre', TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS, {});
+          
+          if (respuesta && respuesta.exito && Array.isArray(respuesta.paradas)) {
+            logger.info(`Recibidos ${respuesta.paradas.length} puntos de ruta.`);
+            estadoApp.puntosRuta = respuesta.paradas; // Guardar los datos en el estado
+            renderizarPuntosRuta(respuesta.paradas); // Renderizar los botones
+          } else {
+            throw new Error('La respuesta del padre para los puntos de ruta no fue válida.');
+          }
+        } catch (error) {
+          logger.error('Error al solicitar los puntos de la ruta', error);
+          notificarError('solicitud_puntos_ruta', error);
+          // Opcional: Mostrar un error en la UI de este hijo.
+          const container = document.getElementById('paradas-list');
+          if(container) container.innerHTML = '<p style="color: red;">Error al cargar la ruta.</p>';
+        }
+      }
 
       /**
-       * Carga el estado inicial de la aplicación
+       * Genera los botones para las paradas y tramos en la UI a partir de los datos recibidos.
+       * @param {Array} puntos - El array de puntos de la ruta.
+       */
+      function renderizarPuntosRuta(puntos) {
+        const container = document.getElementById('paradas-list');
+        if (!container) {
+          logger.error('No se encontró el contenedor #paradas-list para renderizar los puntos.');
+          return;
+        }
+        
+        container.innerHTML = ''; // Limpiar contenido previo
+        
+        puntos.forEach(punto => {
+          const btn = document.createElement('button');
+          // Asignar clases CSS según el tipo de punto (parada, tramo, inicio)
+          const tipoClase = punto.tipo ? `${punto.tipo}-btn` : 'parada-btn';
+          btn.className = `parada-tramo-btn ${tipoClase}`;
+          btn.dataset.idPunto = punto.padreid; // Usar el padreid único para identificar el botón
+          
+          const iconClass = punto.tipo === 'parada' ? 'fa-map-marker-alt' : (punto.tipo === 'tramo' ? 'fa-route' : 'fa-flag-checkered');
+          const puntoId = punto.parada_id || punto.tramo_id || 'Inicio';
+
+          btn.innerHTML = `
+            <span class="btn-content">
+              <div class="btn-title">
+                <i class="fas ${iconClass} btn-icon"></i>
+                ${punto.tipo.charAt(0).toUpperCase() + punto.tipo.slice(1)} ${puntoId}
+              </div>
+              <div class="btn-desc">${punto.nombre || 'Sin nombre'}</div>
+            </span>
+          `;
+          container.appendChild(btn);
+        });
+        logger.info('Botones de puntos de ruta renderizados dinámicamente.');
+      }
+
+      /**
+       * Carga el estado inicial de la aplicación (si existe)
        * @returns {Promise<void>}
        */
       async function cargarEstado() {
@@ -2108,9 +1924,6 @@
           
           // Inicializar la aplicación
           await inicializarAplicacion();
-          
-          // Solicitar el array de paradas al padre
-          await solicitarArrayParadas();
           
           logger.info('Aplicación inicializada correctamente');
         } catch (error) {
@@ -2219,20 +2032,20 @@
       z-index: 10002;
       cursor: pointer;
       font-size: 16px;
-      /* Estado inicial (OFF) */
-      background-color: #f44336;
-      border-color: #d32f2f;
+      /* Estado por defecto (ON / aventura) */
+      background-color: #4CAF50; /* Verde */
+      border-color: #45a049;
     }
     
     /* Estado ON - Verde */
     #gps-casa-btn.on {
       background-color: #4CAF50 !important;
-      border-color: #45a049 !important;
+      border-color: #45a049;
     }
     
     /* Estado OFF - Rojo */
     #gps-casa-btn.off {
-      background-color: #f44336 !important;
+      background-color: #f44336 !important; /* Rojo */
       border-color: #d32f2f !important;
     }
     #gps-casa-btn:hover {
@@ -2274,7 +2087,7 @@
       background: rgba(255, 255, 255, 0.95);
       border-radius: 20px;
       box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-      display: none; /* Se controla desde JavaScript */
+      display: none; /* Oculto por defecto, se muestra en modo casa */
       padding: 0;
       border: 1px solid #e0e0e0;
       max-width: 300px;
@@ -2493,17 +2306,10 @@
 </head>
 <body>
   <div id="zona-boton-casa">
-    <button id="gps-casa-btn" class="on" title="Activar GPS" aria-label="Activar GPS">
-      <span class="button-content">
-        <span class="satellite-emoji">📡</span>
-        <span class="gps-label">ON</span>
-      </span>
+    <button id="gps-casa-btn" class="on" title="Cambiar a modo Casa (GPS OFF)" aria-label="Cambiar Modo">
     </button>
-    <div id="paradas-container" class="paradas-container">
-      <!-- Las paradas y tramos se agregarán aquí dinámicamente -->
-    </div>
-    <div id="paradas-window">
-      <div id="paradas-list"></div>
+    <div id="paradas-window" class="hidden">
+        <div id="paradas-list"></div>
     </div>
   </div>
   <script>
