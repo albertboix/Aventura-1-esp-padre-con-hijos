@@ -14,7 +14,7 @@
         /* Estilos generales, mapa, debug, logo, iframes, etc. */
         html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; background: transparent; }
         iframe { background: transparent; border: none; }
-        #mapa { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; background-color: #f5f5f5; }
+        #mapa { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 3; background-color: #f5f5f5; }
         #map-debug { position: fixed; top: 10px; left: 10px; background: rgba(255, 255, 255, 0.9); padding: 5px 8px; border-radius: 5px; z-index: 5000; font-size: 12px; font-family: monospace; display: none; transition: opacity 0.5s; }
         #logo-aventura { position: fixed; top: -13px; left: 50%; transform: translateX(-50%); width: 190px; height: 140px; z-index: 3000; object-fit: contain; }
         #fondo-blanco { position: fixed; top: -24px; left: 50%; transform: translateX(-50%); width: 210px; height: 150px; z-index: 2999; background: white; border-bottom-left-radius: 24px; border-bottom-right-radius: 24px; }
@@ -208,7 +208,7 @@
                 [TIPOS_MENSAJE.SISTEMA.INICIALIZACION_COMPLETADA]: manejarHijoInicializado,
                 [TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO]: manejarCambioModo,
                 [TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS]: manejarSolicitudArrayParadas,
-                [TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA]: manejarCambioParada,
+                [TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA]: manejarSeleccionPuntoCasa, // Renombrado para claridad
                 [TIPOS_MENSAJE.AUDIO.FINALIZADO]: manejarAudioFinalizado,
                 [TIPOS_MENSAJE.RETO.MOSTRAR]: manejarMostrarReto,
                 [TIPOS_MENSAJE.RETO.OCULTAR]: manejarOcultarReto,
@@ -230,17 +230,54 @@
             console.log(`[${CONFIG.ID_PADRE}] Cambiando a modo: ${modo}.`);
             estadoApp.modo.anterior = estadoApp.modo.actual;
             estadoApp.modo.actual = modo;
+            
+            // Notificar a todos los hijos del cambio de modo
             const promesas = Object.values(CONFIG.HIJOS).map(h => enviarMensaje(h.id, TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, { modo }));
             await Promise.allSettled(promesas);
+
+            // Si entramos en modo casa, habilitamos todos los controles
+            if (modo === 'casa') {
+                console.log(`[${CONFIG.ID_PADRE}] Modo casa activado. Habilitando controles en todos los hijos.`);
+                await enviarMensaje('todos', TIPOS_MENSAJE.UI.HABILITAR_CONTROLES, {});
+            }
+
             return { exito: true, modoCambiado: modo };
         }
-        function manejarCambioParada(msg) {
-            const idx = parseInt(msg.datos?.parada);
-            if (!isNaN(idx) && idx >= 0 && idx < AVENTURA_PARADAS.length) {
-                estadoApp.paradaActual = idx;
-                console.log(`[${CONFIG.ID_PADRE}] Cambiando a parada índice: ${idx}`);
+
+        async function manejarSeleccionPuntoCasa(msg) {
+            const { punto } = msg.datos;
+            if (!punto || !punto.padreid) {
+                return { exito: false, error: "Datos de punto inválidos." };
             }
+            console.log(`[${CONFIG.ID_PADRE}] Recibida selección de punto en modo casa: ${punto.padreid}`);
+
+            // 1. Orquestar al mapa para que se centre en el punto
+            await enviarMensaje('mapa', TIPOS_MENSAJE.NAVEGACION.ESTABLECER_DESTINO, { punto });
+
+            // 2. Orquestar al hijo de audio para que cargue el audio correspondiente
+            if (punto.audio_id) {
+                await enviarMensaje(CONFIG.HIJOS.AUDIO.id, TIPOS_MENSAJE.AUDIO.REPRODUCIR, { id: punto.audio_id });
+            }
+
+            // 3. Orquestar al hijo de retos si hay un reto
+            if (punto.reto_id) {
+                await manejarMostrarReto({ datos: { retoId: punto.reto_id } });
+            } else {
+                await manejarOcultarReto(); // Ocultar si no hay reto
+            }
+
+            // 4. Obtener y mostrar medios (imagen/video) desde hijo2
+            const puntoId = punto.parada_id || punto.tramo_id;
+            const respuestaMedios = await enviarMensaje(CONFIG.HIJOS.COORDENADAS.id, TIPOS_MENSAJE.DATOS.SOLICITAR_PARADA, { puntoId });
+            if (respuestaMedios.exito && respuestaMedios.datosPunto) {
+                const datosPunto = respuestaMedios.datosPunto;
+                // Aquí se podría mostrar la imagen/video en un overlay del padre si se desea
+                console.log(`[${CONFIG.ID_PADRE}] Medios para ${puntoId}:`, { img: datosPunto.imagen, video: datosPunto.video });
+            }
+
+            return { exito: true, mensaje: `Orquestación para ${punto.padreid} iniciada.` };
         }
+
         function manejarAudioFinalizado(msg) { console.log(`[${CONFIG.ID_PADRE}] Audio finalizado reportado por ${msg.origen}.`); }
         function manejarRetoCompletado(msg) { console.log(`[${CONFIG.ID_PADRE}] Reto ${msg.datos.retoId} completado.`); manejarOcultarReto(); }
         function manejarMostrarReto() { document.getElementById('hijo4').style.display = 'block'; return { exito: true }; }
