@@ -405,6 +405,7 @@
        * @returns {Promise<boolean>} True si la inicialización fue exitosa
        */
       async function inicializarMensajeriaApp() {
+        // Verificar si ya está inicializado
         if (estadoApp.mensajeriaInicializada) {
           logger.info('La mensajería ya está inicializada');
           return true;
@@ -413,7 +414,7 @@
         try {
           logger.info('Inicializando mensajería...');
           
-          // Validar que la función de inicialización esté disponible
+          // Validar dependencias
           if (typeof inicializarMensajeria !== 'function') {
             throw new Error('La función inicializarMensajeria no está disponible');
           }
@@ -423,24 +424,61 @@
             throw new Error('Configuración no válida: falta IFRAME_ID');
           }
           
-          // Inicializar la mensajería con la configuración actual
-          await inicializarMensajeria({
+          // Configuración de mensajería
+          const configMensajeria = {
             iframeId: CONFIG.IFRAME_ID,
             debug: CONFIG.DEBUG,
             logLevel: CONFIG.LOG_LEVEL,
-            reintentos: CONFIG.REINTENTOS
-          });
+            reintentos: CONFIG.REINTENTOS,
+            // Asegurar que no se registren manejadores automáticamente
+            registrarManejadoresPorDefecto: false
+          };
+          
+          logger.debug('Configuración de mensajería:', configMensajeria);
+          
+          // Inicializar la mensajería
+          try {
+            await inicializarMensajeria(configMensajeria);
+            logger.info('Módulo de mensajería inicializado correctamente');
+          } catch (initError) {
+            logger.error('Error en inicializarMensajeria:', initError);
+            throw new Error(`No se pudo inicializar la mensajería: ${initError.message}`);
+          }
           
           // Actualizar el estado
-          await estadoApp.actualizar({ mensajeriaInicializada: true });
+          estadoApp.mensajeriaInicializada = true;
           logger.info('Mensajería inicializada correctamente');
           return true;
           
         } catch (error) {
-          const errorInfo = await notificarError('inicializacion_mensajeria', error);
-          logger.error('Error al inicializar la mensajería', errorInfo);
-          throw error;
-        }
+          const errorInfo = {
+            message: error.message,
+            stack: error.stack,
+            code: error.code,
+            config: {
+              iframeId: CONFIG.IFRAME_ID,
+              debug: CONFIG.DEBUG,
+              logLevel: CONFIG.LOG_LEVEL
+            }
+          };
+          
+          logger.error('Error crítico al inicializar la mensajería:', errorInfo);
+          
+          // Notificar al padre si es posible
+          try {
+            if (typeof enviarMensaje === 'function') {
+              await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
+                tipo: 'inicializacion_mensajeria',
+                mensaje: error.message,
+                origen: CONFIG.IFRAME_ID,
+                timestamp: new Date().toISOString()
+              });
+            }
+          } catch (e) {
+            // Ignorar errores al notificar
+          }
+          
+          throw error; // Relanzar el error para que lo maneje el llamador
       }
 
       /**
@@ -448,63 +486,54 @@
        * @returns {Promise<boolean>} True si los manejadores se registraron correctamente
        */
       async function registrarManejadores() {
+        const manejadores = [
+          // Mensajes del sistema
+          { tipo: TIPOS_MENSAJE.SISTEMA.CONFIGURACION, manejador: manejarConfiguracionSistema },
+          { tipo: TIPOS_MENSAJE.SISTEMA.ESTADO, manejador: manejarActualizacionEstado },
+          { tipo: TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejador: manejarCambioModo },
+          
+          // Mensajes de navegación
+          { tipo: TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, manejador: manejarCambioParada },
+          { tipo: TIPOS_MENSAJE.NAVEGACION.ESTADO, manejador: manejarEstadoNavegacion },
+          
+          // Mensajes de control
+          { tipo: TIPOS_MENSAJE.CONTROL.HABILITAR, manejador: manejarHabilitarControles },
+          { tipo: TIPOS_MENSAJE.CONTROL.DESHABILITAR, manejador: manejarDeshabilitarControles },
+          
+          // Mensajes de datos
+          { tipo: TIPOS_MENSAJE.DATOS.ACTUALIZACION, manejador: manejarActualizacionDatos }
+        ];
+        
         try {
           logger.info('Registrando manejadores de mensajes...');
           
-          // Validar que las funciones necesarias estén disponibles
-          if (typeof registrarManejadorMensaje !== 'function') {
-            throw new Error('La función registrarManejadorMensaje no está disponible');
+          // Verificar que la mensajería esté inicializada
+          if (!estadoApp.mensajeriaInicializada) {
+            throw new Error('La mensajería no está inicializada');
           }
           
-          if (typeof registrarControlador !== 'function') {
-            throw new Error('La función registrarControlador no está disponible');
-          }
-          
-          if (typeof inicializarMensajeria !== 'function') {
-            throw new Error('La función inicializarMensajeria no está disponible en el módulo');
-          }
-          
-          // Validar configuración
-          if (!CONFIG || !CONFIG.IFRAME_ID) {
-            throw new Error('Configuración no válida: falta IFRAME_ID');
-          }
-          
-          if (!TIPOS_MENSAJE) {
-            throw new Error('TIPOS_MENSAJE no está definido');
-          }
-          
-          logger.info('Validaciones de manejadores completadas');
-          
-          // Definir manejadores del sistema
-          const manejadoresSistema = [
-            { tipo: TIPOS_MENSAJE.SISTEMA.INICIALIZACION, manejador: manejarInicializacion },
-            { tipo: TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejador: manejarCambioModo },
-            { tipo: TIPOS_MENSAJE.SISTEMA.CONFIRMACION, manejador: manejarConfirmacion },
-            { tipo: TIPOS_MENSAJE.SISTEMA.ACTUALIZAR_ESTADO, manejador: manejarActualizacionEstado },
-            { tipo: TIPOS_MENSAJE.SISTEMA.SOLICITAR_ESTADO, manejador: manejarSolicitudEstado },
-            { tipo: TIPOS_MENSAJE.SISTEMA.ERROR, manejador: manejarError }
-          ];
-          
-          // Registrar manejadores específicos del componente si existen
-          if (typeof manejarMensajeEspecifico === 'function') {
-            manejadoresSistema.push({
-              tipo: TIPOS_MENSAJE.ESPECIFICO,
-              manejador: manejarMensajeEspecifico
-            });
-          }
-          
-          // Registrar todos los manejadores
-          for (const { tipo, manejador } of manejadoresSistema) {
-            if (typeof manejador === 'function') {
-              registrarControlador(tipo, manejador);
-              if (CONFIG.DEBUG) {
-                console.log(`[${CONFIG.IFRAME_ID}] Manejador registrado para: ${tipo}`);
+          // Registrar cada manejador con manejo de errores individual
+          const resultados = [];
+          for (const { tipo, manejador } of manejadores) {
+            try {
+              if (typeof manejador !== 'function') {
+                throw new Error(`El manejador para ${tipo} no es una función`);
               }
+              registrarControlador(tipo, manejador);
+              resultados.push({ tipo, resultado: true });
+            } catch (error) {
+              resultados.push({ tipo, resultado: false, error });
             }
           }
           
+          // Verificar si todos los manejadores se registraron correctamente
+          const errores = resultados.filter(resultado => !resultado.resultado);
+          if (errores.length > 0) {
+            throw new Error(`No se pudieron registrar todos los manejadores: ${errores.map(resultado => resultado.tipo).join(', ')}`);
+          }
+          
           estadoApp.manejadoresRegistrados = true;
-          console.log(`[${CONFIG.IFRAME_ID}] Todos los manejadores de mensajes registrados`);
+          logger.info('Manejadores de mensajes registrados correctamente');
           return true;
           
         } catch (error) {
@@ -1644,12 +1673,13 @@
           // Configurar manejadores de eventos de la UI
           configurarManejadoresUI();
           
-          // Inicializar componentes de comunicación
-          logger.debug('Inicializando componentes de comunicación...');
-          await Promise.all([
-            inicializarMensajeriaApp(),
-            registrarManejadores()
-          ]);
+          // 1. Primero inicializar la mensajería
+          logger.debug('Inicializando sistema de mensajería...');
+          await inicializarMensajeriaApp();
+          
+          // 2. Luego registrar manejadores de mensajes
+          logger.debug('Registrando manejadores de mensajes...');
+          await registrarManejadores();
           
           // Solicitar los datos de la ruta al padre para construir la UI
           await solicitarPuntosRuta();
@@ -2166,34 +2196,89 @@
   <script type="module">
     // Código de inicialización de la aplicación
     document.addEventListener('DOMContentLoaded', async () => {
+      // Inicializar logger si no existe
+      if (!window.logger) {
+        const getPrefix = () => {
+          try {
+            return window.CONFIG && window.CONFIG.IFRAME_ID ? window.CONFIG.IFRAME_ID : 'app';
+          } catch (e) {
+            return 'app';
+          }
+        };
+        
+        window.logger = {
+          info: (msg, data) => console.info(`[${getPrefix()}] ${msg}`, data || ''),
+          error: (msg, error) => console.error(`[${getPrefix()}] ERROR: ${msg}`, error || ''),
+          debug: (msg, data) => console.debug(`[${getPrefix()}] DEBUG: ${msg}`, data || ''),
+          warn: (msg, data) => console.warn(`[${getPrefix()}] WARN: ${msg}`, data || '')
+        };
+      }
+      
       try {
-        // Asegurarse de que el logger esté disponible
-        if (!window.logger) {
-          window.logger = {
-            info: (msg, data) => console.info(`[${CONFIG?.IFRAME_ID || 'app'}] ${msg}`, data || ''),
-            error: (msg, error) => console.error(`[${CONFIG?.IFRAME_ID || 'app'}] ERROR: ${msg}`, error || ''),
-            debug: (msg, data) => console.debug(`[${CONFIG?.IFRAME_ID || 'app'}] DEBUG: ${msg}`, data || ''),
-            warn: (msg, data) => console.warn(`[${CONFIG?.IFRAME_ID || 'app'}] WARN: ${msg}`, data || '')
-          };
-        }
 
+        // Inicialización principal de la aplicación
+        window.logger.info('Iniciando inicialización de la aplicación...');
+        
+        // Inicializar la mensajería si no está ya inicializada
         if (typeof window.mensajeriaInicializada === 'undefined') {
           window.logger.info('Inicializando sistema de mensajería...');
-          await inicializarMensajeria({
-            iframeId: CONFIG.IFRAME_ID,
-            debug: CONFIG.DEBUG,
-            logLevel: CONFIG.LOG_LEVEL
-          });
+          
+          // Verificar que la configuración esté disponible
+          if (!window.CONFIG) {
+            throw new Error('La configuración de la aplicación no está disponible');
+          }
+          
+          // Inicializar la mensajería
+          await inicializarMensajeriaApp();
+          
+          // Registrar manejadores de mensajes
+          await registrarManejadores();
+          
           window.mensajeriaInicializada = true;
           window.logger.info('Sistema de mensajería inicializado correctamente');
         } else {
           window.logger.info('El sistema de mensajería ya está inicializado');
         }
+        
+        // 3. Inicializar la interfaz de usuario
+        window.logger.info('Inicializando interfaz de usuario...');
+        await actualizarInterfaz();
+        
+        window.logger.info('Aplicación inicializada correctamente');
       } catch (error) {
-        console.error('Error al inicializar el sistema de mensajería:', error);
-        throw new Error(`Error al inicializar el sistema de mensajería: ${error.message}`);
-      }
-    });
-  </script>
+        const errorMsg = 'Error durante la inicialización de la aplicación';
+        const errorDetails = error instanceof Error ? error.message : String(error);
+        
+        // Usar logger si está disponible, si no usar console
+        const logError = window.logger ? window.logger.error : console.error;
+        logError(errorMsg, error);
+        
+        // Mostrar mensaje de error al usuario
+        try {
+          const errorContainer = document.createElement('div');
+          errorContainer.style.cssText = [
+            'position: fixed;',
+            'top: 0;',
+            'left: 0;',
+            'right: 0;',
+            'background: #ff4444;',
+            'color: white;',
+            'padding: 1rem;',
+            'z-index: 10000;',
+            'text-align: center;',
+            'font-family: Arial, sans-serif;'
+          ].join(' ');
+          
+          errorContainer.textContent = `${errorMsg}: ${errorDetails}`;
+          document.body.prepend(errorContainer);
+        } catch (e) {
+          console.error('No se pudo mostrar el mensaje de error:', e);
+        }
+          
+          // Relanzar el error para que pueda ser manejado por el sistema
+          throw error;
+        }
+      });
+    </script>
 </body>
 </html>
