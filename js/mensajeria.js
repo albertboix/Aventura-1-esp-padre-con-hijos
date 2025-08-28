@@ -1,3 +1,6 @@
+import { logger, configurarUtils, crearObjetoError } from '../js/utils.js';
+configurarUtils({ iframeId: 'mensajeria', debug: true });
+
 /**
  * Sistema de Mensajería para Comunicación entre Iframes
  * Maneja la comunicación bidireccional entre iframes padre e hijo
@@ -59,340 +62,11 @@ function withErrorHandling(fn, context) {
         try {
             return await fn.apply(this, args);
         } catch (error) {
-            console.error(`[${context}] Error:`, error);
+            logger.error(`[${context}] Error:`, error);
             throw error;
         }
     };
 }
-
-/**
- * Notifica un error al sistema
- * @param {string} tipo - Tipo de error
- * @param {Error|string} error - Objeto de error o mensaje
- * @param {Object} [datosAdicionales={}] - Datos adicionales
- * @returns {Object} Información del error
- */
-function notificarError(tipo, error, datosAdicionales = {}) {
-    const errorObj = error instanceof Error ? error : new Error(String(error));
-    const errorInfo = {
-        tipo,
-        mensaje: errorObj.message,
-        stack: errorObj.stack,
-        ...datosAdicionales,
-        timestamp: new Date().toISOString()
-    };
-    
-    console.error(`[Mensajería] Error (${tipo}):`, errorInfo);
-    return errorInfo;
-}
-
-// ================== CONSTANTES Y CONFIGURACIÓN ==================
-
-/**
- * Tipos de mensajes soportados por el sistema
- * @namespace TIPOS_MENSAJE
- */
-export const TIPOS_MENSAJE = {
-  // Mensajes del sistema
-  SISTEMA: {
-    /**
-     * Inicialización del sistema
-     * @event SISTEMA.INICIALIZACION
-     */
-    INICIALIZACION: 'SISTEMA.INICIALIZACION',
-    
-    /**
-     * Cambios de configuración en tiempo real (tema, idioma, opciones)
-     * @event SISTEMA.CONFIGURACION
-     */
-    CONFIGURACION: 'SISTEMA.CONFIGURACION',
-    
-    /**
-     * Sincronización de estado
-     * @event SISTEMA.SINCRONIZAR
-     */
-    SINCRONIZAR: 'SISTEMA.SINCRONIZAR',
-    
-    /**
-     * Confirmación de operación
-     * @event SISTEMA.CONFIRMACION
-     */
-    CONFIRMACION: 'SISTEMA.CONFIRMACION',
-    
-    /**
-     * Notificación de error
-     * @event SISTEMA.ERROR
-     */
-    ERROR: 'SISTEMA.ERROR',
-    
-    /**
-     * Cambio de modo (casa/aventura)
-     * @event SISTEMA.CAMBIO_MODO
-     */
-    CAMBIO_MODO: 'SISTEMA.CAMBIO_MODO',
-    
-    /**
-     * Confirmación de cambio de modo
-     * @event SISTEMA.CAMBIO_MODO_CONFIRMACION
-     */
-    CAMBIO_MODO_CONFIRMACION: 'SISTEMA.CAMBIO_MODO_CONFIRMACION',
-    
-    /**
-     * Confirmación de inicialización
-     * @event SISTEMA.INICIALIZACION_COMPLETADA
-     */
-    INICIALIZACION_COMPLETADA: 'SISTEMA.INICIALIZACION_COMPLETADA'
-  },
-  
-  // Navegación y control del mapa
-  NAVEGACION: {
-    /**
-     * Estado actual de la navegación
-     * @event NAVEGACION.ESTADO
-     */
-    ESTADO: 'NAVEGACION.ESTADO',
-    
-    /**
-     * Cambio de parada actual
-     * @event NAVEGACION.CAMBIO_PARADA
-     */
-    CAMBIO_PARADA: 'NAVEGACION.CAMBIO_PARADA',
-    
-    /**
-     * Llegada a una parada detectada
-     * @event NAVEGACION.LLEGADA_DETECTADA
-     */
-    LLEGADA_DETECTADA: 'NAVEGACION.LLEGADA_DETECTADA',
-    
-    /**
-     * Establecer nuevo destino de navegación
-     * @event NAVEGACION.ESTABLECER_DESTINO
-     */
-    ESTABLECER_DESTINO: 'NAVEGACION.ESTABLECER_DESTINO'
-  },
-  
-  // Control de interfaz de usuario
-  UI: {
-    /**
-     * Actualización de la interfaz
-     * @event UI.ACTUALIZAR
-     */
-    ACTUALIZAR: 'UI.ACTUALIZAR',
-    
-    /**
-     * Habilitar controles de interfaz
-     * @event UI.HABILITAR_CONTROLES
-     */
-    HABILITAR_CONTROLES: 'UI.HABILITAR_CONTROLES',
-    
-    /**
-     * Deshabilitar controles de interfaz
-     * @event UI.DESHABILITAR_CONTROLES
-     */
-    DESHABILITAR_CONTROLES: 'UI.DESHABILITAR_CONTROLES'
-  },
-  
-  // Audio y multimedia
-  AUDIO: {
-    /**
-     * Estado actual del reproductor de audio
-     * @event AUDIO.ESTADO
-     */
-    ESTADO: 'AUDIO.ESTADO',
-    
-    /**
-     * Comando de control de audio
-     * @event AUDIO.COMANDO
-     */
-    COMANDO: 'AUDIO.COMANDO',
-    
-    /**
-     * Reproducir audio
-     * @event AUDIO.REPRODUCIR
-     */
-    REPRODUCIR: 'AUDIO.REPRODUCIR',
-    
-    /**
-     * Pausar reproducción
-     * @event AUDIO.PAUSAR
-     */
-    PAUSAR: 'AUDIO.PAUSAR',
-    
-    /**
-     * Reproducción finalizada
-     * @event AUDIO.FINALIZADO
-     */
-    FINALIZADO: 'AUDIO.FINALIZADO'
-  },
-  
-  // GPS y geolocalización
-  GPS: {
-    /**
-     * Actualización de posición GPS
-     * @event GPS.ACTUALIZAR
-     */
-    ACTUALIZAR: 'GPS.ACTUALIZAR',
-    
-    /**
-     * Comando de control GPS
-     * @event GPS.COMANDO
-     */
-    COMANDO: 'GPS.COMANDO',
-    
-    /**
-     * Estado actual del GPS
-     * @event GPS.ESTADO
-     */
-    ESTADO: 'GPS.ESTADO',
-    
-    /**
-     * Notificación de nueva posición
-     * @event GPS.POSICION_ACTUALIZADA
-     */
-    POSICION_ACTUALIZADA: 'GPS.POSICION_ACTUALIZADA'
-  },
-  
-  // Retos y actividades
-  RETO: {
-    /**
-     * Estado actual de los retos
-     * @event RETO.ESTADO
-     */
-    ESTADO: 'RETO.ESTADO',
-    
-    /**
-     * Nuevo reto disponible
-     * @event RETO.NUEVO
-     */
-    NUEVO: 'RETO.NUEVO',
-    
-    /**
-     * Mostrar un reto
-     * @event RETO.MOSTRAR
-     */
-    MOSTRAR: 'RETO.MOSTRAR',
-    
-    /**
-     * Ocultar un reto
-     * @event RETO.OCULTAR
-     */
-    OCULTAR: 'RETO.OCULTAR',
-    
-    /**
-     * Abrir un reto específico
-     * @event RETO.ABRIR
-     */
-    ABRIR: 'RETO.ABRIR',
-    
-    /**
-     * Reto completado
-     * @event RETO.COMPLETADO
-     */
-    COMPLETADO: 'RETO.COMPLETADO'
-  },
-  
-  // Control de estado de la aplicación
-  CONTROL: {
-    /**
-     * Estado de los controles
-     * @event CONTROL.ESTADO
-     */
-    ESTADO: 'CONTROL.ESTADO',
-    
-    /**
-     * Abrir una URL en el navegador
-     * @event UI.ABRIR_URL
-     */
-    ABRIR_URL: 'UI.ABRIR_URL'
-  },
-  
-  // Datos y sincronización
-  DATOS: {
-    /**
-     * Solicitar lista de paradas
-     * @event DATOS.SOLICITAR_PARADAS
-     */
-    SOLICITAR_PARADAS: 'DATOS.SOLICITAR_PARADAS',
-    
-    /**
-     * Solicitar información de una parada específica
-     * @event DATOS.SOLICITAR_PARADA
-     */
-    SOLICITAR_PARADA: 'DATOS.SOLICITAR_PARADA',
-    
-    /**
-     * Notificar actualización del array de paradas
-     * @event DATOS.ARRAY_ACTUALIZADO
-     */
-    ARRAY_ACTUALIZADO: 'DATOS.ARRAY_ACTUALIZADO',
-    
-    /**
-     * Verificar hash de datos
-     * @event DATOS.VERIFICAR_HASH
-     */
-    VERIFICAR_HASH: 'DATOS.VERIFICAR_HASH',
-    
-    /**
-     * Actualizar información de una parada
-     * @event DATOS.ACTUALIZAR_PARADA
-     */
-    ACTUALIZAR_PARADA: 'DATOS.ACTUALIZAR_PARADA'
-  },
-  
-  // Compatibilidad con mensajes anteriores (mantener por compatibilidad)
-  LEGACY: {
-    CONTROLES_HABILITADOS: 'sistema:controles_habilitados',
-    CONTROLES_DESHABILITADOS: 'sistema:controles_deshabilitados',
-    HABILITAR_CONTROLES: 'sistema:habilitar_controles',
-    DESHABILITAR_CONTROLES: 'sistema:deshabilitar_controles'
-  }
-};
-
-/**
- * Niveles de logging
- */
-const LOG_LEVELS = {
-  DEBUG: 0,
-  INFO: 1,
-  WARN: 2,
-  ERROR: 3,
-  NONE: 4
-};
-
-// Exportar LOG_LEVELS para uso externo
-export { LOG_LEVELS };
-
-// Configuración de logging
-let logLevel = LOG_LEVELS.INFO;
-
-
-/**
- * Configuración por defecto del sistema de mensajería
- * @type {Object}
- */
-const CONFIG_DEFAULT = {
-  debug: false,
-  logLevel: LOG_LEVELS.INFO, // Usar constantes para mejor legibilidad
-  timeout: 5000, // 5 segundos por defecto
-  maxRetries: 3,
-  retryDelay: 1000,
-  iframeId: null,
-  maxReintentos: 3,
-  tiempoEsperaBase: 1000,
-  factorBackoff: 2
-};
-
-// ================== VARIABLES GLOBALES ==================
-
-let configuracion = { ...CONFIG_DEFAULT };
-let iframeId = null;
-let manejadores = new Map();
-let mensajesPendientes = new Map();
-let contadorMensajes = 0;
-let sistemaInicializado = false;
-let iframesRegistrados = new Set(); // Registro de iframes activos
-
-// ================== FUNCIONES DE REGISTRO DE IFRAMES ==================
 
 /**
  * Registra un iframe en el sistema para comunicación directa
@@ -400,7 +74,7 @@ let iframesRegistrados = new Set(); // Registro de iframes activos
  */
 export function registrarIframe(id) {
   iframesRegistrados.add(id);
-  log(LOG_LEVELS.DEBUG, `Iframe registrado: ${id}`);
+  logger.debug(`Iframe registrado: ${id}`);
 }
 
 /**
@@ -466,39 +140,6 @@ function generarIdMensaje() {
 }
 
 /**
- * Función de logging con niveles
- * @param {number} nivel - Nivel de log
- * @param {string} mensaje - Mensaje a loggear
- * @param {*} datos - Datos adicionales
- */
-function log(nivel, mensaje, datos = null) {
-  if (nivel <= configuracion.logLevel) {
-    const prefijo = `[Mensajería-${iframeId || 'Sin ID'}]`;
-    const timestamp = new Date().toISOString();
-    const nivelTexto = Object.keys(LOG_LEVELS)[nivel] || 'UNKNOWN';
-    
-    const mensajeCompleto = `${timestamp} ${prefijo} [${nivelTexto}] ${mensaje}`;
-    
-    switch (nivel) {
-      case LOG_LEVELS.ERROR:
-        console.error(mensajeCompleto, datos);
-        break;
-      case LOG_LEVELS.WARN:
-        console.warn(mensajeCompleto, datos);
-        break;
-      case LOG_LEVELS.INFO:
-        console.info(mensajeCompleto, datos);
-        break;
-      case LOG_LEVELS.DEBUG:
-        if (configuracion.debug) {
-          console.debug(mensajeCompleto, datos);
-        }
-        break;
-    }
-  }
-}
-
-/**
  * Valida la estructura de un mensaje
  * @param {Object} mensaje - Mensaje a validar
  * @returns {{valido: boolean, error?: string}} Resultado de la validación
@@ -547,7 +188,7 @@ function validarMensaje(mensaje) {
   const esquema = ESQUEMAS_MENSAJES[mensaje.tipo];
   
   if (!esquema) {
-    log(LOG_LEVELS.DEBUG, `No hay esquema de validación para el tipo de mensaje: ${mensaje.tipo}`, {
+    logger.debug(`No hay esquema de validación para el tipo de mensaje: ${mensaje.tipo}`, {
       tipo: mensaje.tipo,
       mensajesDisponibles: Object.keys(ESQUEMAS_MENSAJES)
     });
@@ -760,7 +401,7 @@ export async function inicializarMensajeria(config = {}) {
     }
     
     if (sistemaInicializado) {
-      log(LOG_LEVELS.WARN, 'El sistema de mensajería ya estaba inicializado');
+      logger.warn('El sistema de mensajería ya estaba inicializado');
       return Promise.resolve();
     }
     
@@ -772,7 +413,7 @@ export async function inicializarMensajeria(config = {}) {
     logLevel = configuracion.debug ? LOG_LEVELS.DEBUG : 
               configuracion.logLevel || LOG_LEVELS.INFO;
     
-    log(LOG_LEVELS.INFO, 'Inicializando sistema de mensajería...', {
+    logger.info('Inicializando sistema de mensajería...', {
       iframeId: '***',
       logLevel: Object.keys(LOG_LEVELS).find(key => LOG_LEVELS[key] === logLevel)
     });
@@ -787,7 +428,7 @@ export async function inicializarMensajeria(config = {}) {
       // Remover cualquier listener previo para evitar duplicados
       window.removeEventListener('message', manejarMensajeRecibido, false);
       window.addEventListener('message', manejarMensajeRecibido, false);
-      log(LOG_LEVELS.DEBUG, 'Event listener de mensajes configurado');
+      logger.debug('Event listener de mensajes configurado');
     }
     
     // Inicialización exitosa
@@ -796,17 +437,17 @@ export async function inicializarMensajeria(config = {}) {
     // Registrar manejadores del sistema
     try {
       registrarControlador(TIPOS_MENSAJE.SISTEMA.CONFIGURACION, manejarConfiguracionSistema);
-      log(LOG_LEVELS.DEBUG, 'Manejadores del sistema registrados');
+      logger.debug('Manejadores del sistema registrados');
     } catch (error) {
-      log(LOG_LEVELS.ERROR, 'Error al registrar manejadores del sistema', error);
+      logger.error('Error al registrar manejadores del sistema', error);
       throw error;
     }
   
-    log(LOG_LEVELS.INFO, 'Sistema de mensajería inicializado correctamente');
+    logger.info('Sistema de mensajería inicializado correctamente');
     return Promise.resolve();
     
   } catch (error) {
-    log(LOG_LEVELS.ERROR, 'Error al inicializar la mensajería', {
+    logger.error('Error al inicializar la mensajería', {
       message: error.message,
       code: error.code,
       stack: configuracion.debug ? error.stack : undefined
@@ -836,7 +477,7 @@ export function registrarControlador(tipo, manejador) {
   }
   
   manejadores.set(tipo, manejador);
-  log(LOG_LEVELS.DEBUG, `Manejador registrado para tipo: ${tipo}`);
+  logger.debug(`Manejador registrado para tipo: ${tipo}`);
 }
 
 /**
@@ -900,7 +541,7 @@ async function enviarMensajeDirecto(mensaje, opciones = {}) {
     throw new Error('Estructura de mensaje inválida');
   }
   
-  log(LOG_LEVELS.DEBUG, `Enviando mensaje tipo: ${mensaje.tipo}`, mensaje);
+  logger.debug(`Enviando mensaje tipo: ${mensaje.tipo}`, mensaje);
   
   try {
     // Determinar la ventana destino
@@ -931,7 +572,7 @@ async function enviarMensajeDirecto(mensaje, opciones = {}) {
     
     // Si no se espera respuesta, resolver inmediatamente
     if (!esperarRespuesta) {
-      log(LOG_LEVELS.DEBUG, `Mensaje enviado sin esperar respuesta: ${mensaje.idMensaje}`);
+      logger.debug(`Mensaje enviado sin esperar respuesta: ${mensaje.idMensaje}`);
       return { exito: true, mensaje: 'Mensaje enviado correctamente' };
     }
     
@@ -949,11 +590,11 @@ async function enviarMensajeDirecto(mensaje, opciones = {}) {
         timestamp: Date.now()
       });
       
-      log(LOG_LEVELS.DEBUG, `Esperando respuesta para mensaje: ${mensaje.idMensaje}`);
+      logger.debug(`Esperando respuesta para mensaje: ${mensaje.idMensaje}`);
     });
     
   } catch (error) {
-    log(LOG_LEVELS.ERROR, 'Error al enviar mensaje', { mensaje, error: error.message });
+    logger.error('Error al enviar mensaje', { mensaje, error: error.message });
     throw error;
   }
 }
@@ -979,7 +620,7 @@ async function enviarATodosLosIframes(mensaje, opciones = {}) {
       
       try {
         iframe.contentWindow.postMessage(mensajeIndividual, '*');
-        log(LOG_LEVELS.DEBUG, `Mensaje enviado a ${iframeId}: ${mensajeIndividual.tipo}`);
+        logger.debug(`Mensaje enviado a ${iframeId}: ${mensajeIndividual.tipo}`);
         
         if (opciones.esperarRespuesta !== false) {
           const promesa = new Promise((resolve, reject) => {
@@ -998,7 +639,7 @@ async function enviarATodosLosIframes(mensaje, opciones = {}) {
           promesas.push(promesa);
         }
       } catch (error) {
-        log(LOG_LEVELS.ERROR, `Error enviando a ${iframeId}`, error);
+        logger.error(`Error enviando a ${iframeId}`, error);
         promesas.push(Promise.resolve({ destino: iframeId, error: error.message }));
       }
     }
@@ -1021,11 +662,11 @@ async function manejarMensajeRecibido(event) {
     
     // Validar que sea un mensaje válido
     if (!validarMensaje(mensaje)) {
-      log(LOG_LEVELS.DEBUG, 'Mensaje recibido no válido, ignorando', mensaje);
+      logger.debug('Mensaje recibido no válido, ignorando', mensaje);
       return;
     }
     
-    log(LOG_LEVELS.DEBUG, `Mensaje recibido tipo: ${mensaje.tipo}`, mensaje);
+    logger.debug(`Mensaje recibido tipo: ${mensaje.tipo}`, mensaje);
     
     // Verificar si es una respuesta a un mensaje pendiente
     if (mensaje.esRespuesta && mensaje.idMensajeOriginal) {
@@ -1040,7 +681,7 @@ async function manejarMensajeRecibido(event) {
           mensajePendiente.resolve(mensaje.datos || mensaje);
         }
         
-        log(LOG_LEVELS.DEBUG, `Respuesta procesada para mensaje: ${mensaje.idMensajeOriginal}`);
+        logger.debug(`Respuesta procesada para mensaje: ${mensaje.idMensajeOriginal}`);
         return;
       }
     }
@@ -1048,7 +689,7 @@ async function manejarMensajeRecibido(event) {
     // Buscar manejador para el tipo de mensaje
     const manejador = manejadores.get(mensaje.tipo);
     if (!manejador) {
-      log(LOG_LEVELS.WARN, `No hay manejador para el tipo de mensaje: ${mensaje.tipo}`);
+      logger.warn(`No hay manejador para el tipo de mensaje: ${mensaje.tipo}`);
       
       // Enviar respuesta de error si se espera una respuesta
       if (!mensaje.esRespuesta) {
@@ -1067,7 +708,7 @@ async function manejarMensajeRecibido(event) {
       }
       
     } catch (error) {
-      log(LOG_LEVELS.ERROR, `Error en el manejador para ${mensaje.tipo}`, error);
+      logger.error(`Error en el manejador para ${mensaje.tipo}`, error);
       
       // Enviar respuesta de error
       if (!mensaje.esRespuesta) {
@@ -1076,7 +717,7 @@ async function manejarMensajeRecibido(event) {
     }
     
   } catch (error) {
-    log(LOG_LEVELS.ERROR, 'Error al procesar mensaje recibido', error);
+    logger.error('Error al procesar mensaje recibido', error);
   }
 }
 
@@ -1102,12 +743,10 @@ function enviarRespuesta(mensajeOriginal, datos = null, error = null) {
       
   // Enviar respuesta sin esperar confirmación
   enviarMensajeDirecto(respuesta, { esperarRespuesta: false }).catch(err => {
-    log(LOG_LEVELS.ERROR, 'Error al enviar respuesta', err);
+    logger.error('Error al enviar respuesta', err);
     limpiar();
   });
 }
-
-// ... rest of the code ...
 
 /**
  * Limpia los mensajes expirados de la cola de mensajes pendientes
@@ -1124,7 +763,7 @@ function limpiarMensajesExpirados() {
   }
       
   if (eliminados > 0) {
-    log(LOG_LEVELS.DEBUG, `Se eliminaron ${eliminados} mensajes expirados`);
+    logger.debug(`Se eliminaron ${eliminados} mensajes expirados`);
   }
 }
 
@@ -1306,7 +945,7 @@ export async function enviarCambioModo(destino, nuevoModo, datosExtra = {}, time
     if (timeoutId) clearTimeout(timeoutId);
     
     // Registrar error y relanzar
-    console.error(`[Mensajería] Error al cambiar a modo ${nuevoModo}:`, error);
+    logger.error(`Error al cambiar a modo ${nuevoModo}:`, error);
     throw error;
   }
 }
@@ -1330,7 +969,7 @@ export function limpiar() {
   sistemaInicializado = false;
   iframeId = null;
   
-  log(LOG_LEVELS.INFO, 'Sistema de mensajería limpiado');
+  logger.info('Sistema de mensajería limpiado');
 }
 
 // ================== CONFIGURACIÓN DE LIMPIEZA AUTOMÁTICA ==================
