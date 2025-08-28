@@ -2,356 +2,175 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Av1-botones-coordenadas-(hijo2)</title>
-    <!-- Leaflet CSS -->
-    <!-- Load Leaflet from CDN without integrity check -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <!-- Scripts -->
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: sans-serif;
+        }
+
+        /* Contenedor de botones */
+        .button-container {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 65px;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            padding: 0 5px;
+            box-sizing: border-box;
+            z-index: 1000;
+        }
+
+        /* Estilo base de los botones */
+        .nav-button {
+            position: relative;
+            border: none;
+            color: white;
+            text-align: center;
+            text-decoration: none;
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            cursor: pointer;
+            height: 50px;
+            width: 16%; /* Ajustado para 6 botones */
+            clip-path: polygon(20% 0%, 80% 0%, 100% 100%, 0% 100%);
+            transition: background-color 0.3s, transform 0.1s;
+            background: linear-gradient(to bottom, #2ecc71, #27ae60); /* Verde degradado */
+        }
+
+        /* Colores específicos de cada botón - Eliminados para usar el nuevo sistema de habilitado/deshabilitado */
+
+        /* Estados de los botones */
+        .nav-button:active {
+            transform: scale(0.95);
+        }
+        .nav-button.active {
+            box-shadow: 0 0 15px 3px #fff; /* Resplandor blanco cuando está activo */
+        }
+        .nav-button.disabled,
+        .nav-button:disabled {
+            background: linear-gradient(to bottom, #e74c3c, #c0392b) !important; /* Rojo degradado */
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        /* Estilos para el cambio de modo - Simplificados */
+        .modo-aventura #btn-gps.active {
+            /* En modo aventura y activo, el botón GPS se pone de un color especial */
+            background: #1abc9c !important; /* Turquesa, mantenemos para estado activo especial */
+        }
+
+        /* Estilos para deshabilitar toda la UI */
+        body.controles-deshabilitados .button-container {
+            pointer-events: none;
+            opacity: 0.6;
+        }
+
+        /* Estilos del Modal para imagen/video */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.8);
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        .modal-content {
+            position: relative;
+            background-color: #111;
+            padding: 20px;
+            border-radius: 5px;
+            max-width: 90%;
+            max-height: 90%;
+            text-align: center;
+        }
+        .modal-close {
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            color: #fff;
+            background-color: #e74c3c;
+            font-size: 25px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 50%;
+            width: 35px;
+            height: 35px;
+            line-height: 35px;
+            text-align: center;
+        }
+        .modal-title {
+            color: white;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+        .media-container img, .media-container video {
+            max-width: 100%;
+            max-height: 70vh;
+            border: 2px solid #fff;
+        }
+    </style>
 </head>
-<body>
-    <div id="map" style="width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 0;"></div>
+<body class="modo-casa">
+
+    <div class="button-container">
+        <a href="#" id="btn-punto" class="nav-button"><i class="fas fa-map-marker-alt"></i></a>
+        <a href="mapas/Av1_mapa.jpg" id="btn-mapa" class="nav-button" target="_blank"><i class="fas fa-map"></i></a>
+        <a href="mapas/Av1_mapa.jpg" id="btn-brujula" class="nav-button" target="_blank"><i class="fas fa-compass"></i></a>
+        <a href="#" id="btn-gps" class="nav-button"><i class="fas fa-directions"></i></a>
+        <a href="#" id="btn-imagen" class="nav-button"><i class="fas fa-image"></i></a>
+        <a href="#" id="btn-video" class="nav-button"><i class="fas fa-video"></i></a>
+    </div>
+
+    <div id="modal-medios" class="modal">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <h3 id="modal-title" class="modal-title"></h3>
+            <div class="media-container"></div>
+        </div>
+    </div>
+
     <script type="module">
         'use strict';
         
-        // Importar módulos necesarios
-        import * as mensajeria from './js/mensajeria.js';
-        
-        // Desestructurar las importaciones
-        const {
+        // =================================================================================
+        // 1. IMPORTACIONES Y CONFIGURACIÓN ÚNICA
+        // =================================================================================
+        import {
             TIPOS_MENSAJE,
             enviarMensaje, 
             registrarControlador, 
-            inicializarMensajeria,
-            ERROR_TYPES,
-            ERROR_SEVERITY,
-            ERROR_CODES,
-            manejadorErrores: errorHandler
-        } = mensajeria;
+            inicializarMensajeria
+        } from './js/mensajeria.js';
 
-        // Estado global de la aplicación
-        const estadoApp = {
-            // Estados del sistema
-            inicializado: false,
-            mensajeriaInicializada: false,
-            
-            // Modo de operación
-            modo: 'inicio', // 'inicio', 'navegacion', 'pausa', 'error'
-            
-            // Estado de la navegación
-            navegacion: {
-                activa: false,
-                destino: null,
-                ruta: null,
-                modo: 'caminando',
-                estado: 'inactivo'
-            },
-            
-            // Estado de la interfaz de usuario
-            ui: {
-                controlesHabilitados: true,
-                tema: 'claro',
-                idioma: 'es'
-            },
-            
-            // Estado de los sensores
-            sensores: {
-                gps: {
-                    disponible: false,
-                    ultimaPosicion: null,
-                    precision: 0
-                },
-                brujula: {
-                    disponible: false,
-                    direccion: 0
-                }
-            },
-            
-            // Configuración
-            config: {
-                debug: true,
-                logLevel: 1, // 0: debug, 1: info, 2: warn, 3: error, 4: none
-                tiempoEsperaRespuesta: 5000 // ms
-            },
-            
-            // Referencias a componentes
-            componentes: {
-                mapa: null,
-                navegacion: null,
-                interfaz: null
-            }
-        };
-
-
-        // Alias para mensajes de navegación
         const NAV_MSG = TIPOS_MENSAJE.NAVEGACION;
         const SISTEMA_MSG = TIPOS_MENSAJE.SISTEMA;
-        
-        // Esquemas de validación para mensajes
-        const ESQUEMAS_VALIDACION = {
-            // Mensajes de navegación
-            [NAV_MSG.INICIAR]: {
-                required: ['destino', 'modo'],
-                properties: {
-                    destino: { type: 'object', required: ['lat', 'lng'] },
-                    modo: { type: 'string', enum: ['caminando', 'enBicicleta', 'accesible'] },
-                    ruta: { type: 'object', optional: true }
-                }
-            },
-            [NAV_MSG.DETENER]: {
-                required: ['motivo'],
-                properties: {
-                    motivo: { type: 'string' },
-                    forzado: { type: 'boolean', optional: true }
-                }
-            },
-            [NAV_MSG.ORIENTACION]: {
-                required: ['grados', 'precision'],
-                properties: {
-                    grados: { type: 'number', minimum: 0, maximum: 360 },
-                    precision: { type: 'number', minimum: 0, maximum: 100 },
-                    timestamp: { type: 'number', optional: true }
-                }
-            },
-            [NAV_MSG.CAMBIO_PARADA]: {
-                required: ['paradaId', 'parada'],
-                properties: {
-                    paradaId: { type: 'string' },
-                    parada: { type: 'object' },
-                    indice: { type: 'number', optional: true },
-                    total: { type: 'number', optional: true }
-                }
-            },
-            [NAV_MSG.ESTABLECER_DESTINO]: {
-                required: ['destino'],
-                properties: {
-                    destino: { type: 'object', required: ['lat', 'lng'] },
-                    nombre: { type: 'string', optional: true },
-                    modo: { type: 'string', optional: true }
-                }
-            },
-            
-            // Mensajes del sistema
-            [SISTEMA_MSG.ERROR]: {
-                required: ['tipo', 'mensaje'],
-                properties: {
-                    tipo: { type: 'string' },
-                    mensaje: { type: 'string' },
-                    codigo: { type: 'string', optional: true },
-                    stack: { type: 'string', optional: true },
-                    contexto: { type: 'object', optional: true }
-                }
-            },
-            [SISTEMA_MSG.CONFIGURACION]: {
-                required: ['tema', 'idioma'],
-                properties: {
-                    tema: { type: 'string' },
-                    idioma: { type: 'string' },
-                    opciones: { type: 'object', optional: true }
-                }
-            },
-            [SISTEMA_MSG.SINCRONIZAR]: {
-                required: ['estado'],
-                properties: {
-                    estado: { type: 'object' },
-                    componente: { type: 'string', optional: true },
-                    timestamp: { type: 'number', optional: true }
-                }
-            },
-            [SISTEMA_MSG.CONFIRMACION]: {
-                required: ['tipo', 'exito'],
-                properties: {
-                    tipo: { type: 'string' },
-                    exito: { type: 'boolean' },
-                    mensaje: { type: 'string', optional: true },
-                    datos: { type: 'object', optional: true }
-                }
-            },
-            
-            // Mensajes de UI
-            [TIPOS_MENSAJE.UI.ACTUALIZAR]: {
-                required: ['tipo'],
-                properties: {
-                    tipo: { type: 'string', enum: ['mensaje', 'estado', 'modo'] },
-                    contenido: { type: ['string', 'object'], optional: true },
-                    duracion: { type: 'number', optional: true },
-                    prioridad: { type: 'string', enum: ['baja', 'media', 'alta'], optional: true }
-                }
-            },
-            
-            // Mensajes de GPS
-            [TIPOS_MENSAJE.GPS.ACTUALIZAR]: {
-                required: ['lat', 'lng'],
-                properties: {
-                    lat: { type: 'number', minimum: -90, maximum: 90 },
-                    lng: { type: 'number', minimum: -180, maximum: 180 },
-                    precision: { type: 'number', minimum: 0, optional: true },
-                    altitud: { type: 'number', optional: true },
-                    velocidad: { type: 'number', minimum: 0, optional: true },
-                    rumbo: { type: 'number', minimum: 0, maximum: 360, optional: true },
-                    timestamp: { type: 'number', optional: true }
-                }
-            },
-            [TIPOS_MENSAJE.GPS.COMANDO]: {
-                required: ['accion'],
-                properties: {
-                    accion: { type: 'string', enum: ['iniciar', 'detener', 'pausar', 'reanudar'] },
-                    opciones: { type: 'object', optional: true }
-                }
-            },
-            
-            // Mensajes de datos
-            [TIPOS_MENSAJE.DATOS.ARRAY_ACTUALIZADO]: {
-                required: ['tipo', 'datos'],
-                properties: {
-                    tipo: { type: 'string' },
-                    datos: { type: 'array' },
-                    hash: { type: 'string', optional: true },
-                    timestamp: { type: 'number', optional: true }
-                }
-            },
-            [TIPOS_MENSAJE.DATOS.SOLICITUD]: {
-                required: ['tipo', 'filtros'],
-                properties: {
-                    tipo: { type: 'string' },
-                    filtros: { type: 'object' },
-                    paginacion: { type: 'object', optional: true }
-                }
-            }
-        };
-        
-        /**
-         * Valida los datos de un mensaje según su tipo
-         * @param {string} tipo - Tipo de mensaje (de TIPOS_MENSAJE)
-         * @param {Object} datos - Datos a validar
-         * @throws {Error} Si la validación falla
-         */
-        function validarDatosMensaje(tipo, datos) {
-            const esquema = ESQUEMAS_VALIDACION[tipo];
-            if (!esquema) {
-                logger.warn(`No hay esquema de validación para el tipo de mensaje: ${tipo}`);
-                return; // No hay esquema de validación para este tipo
-            }
-            
-            // Verificar campos requeridos
-            if (esquema.required) {
-                for (const campo of esquema.required) {
-                    if (datos[campo] === undefined || datos[campo] === null) {
-                        throw new Error(`Campo requerido faltante: ${campo}`);
-                    }
-                }
-            }
-            
-            // Validar propiedades según el esquema
-            if (esquema.properties) {
-                for (const [prop, reglas] of Object.entries(esquema.properties)) {
-                    // Si el campo es opcional y no está presente, lo saltamos
-                    if (reglas.optional && datos[prop] === undefined) continue;
-                    
-                    // Si el campo es requerido o está presente, lo validamos
-                    if (datos[prop] !== undefined) {
-                        if (reglas.type && typeof datos[prop] !== reglas.type) {
-                            throw new Error(`Tipo inválido para ${prop}: se esperaba ${reglas.type}, se obtuvo ${typeof datos[prop]}`);
-                        }
-                        
-                        if (reglas.enum && !reglas.enum.includes(datos[prop])) {
-                            throw new Error(`Valor inválido para ${prop}: ${datos[prop]}. Valores permitidos: ${reglas.enum.join(', ')}`);
-                        }
-                        
-                        if (reglas.minimum !== undefined && datos[prop] < reglas.minimum) {
-                            throw new Error(`${prop} debe ser mayor o igual a ${reglas.minimum}`);
-                        }
-                        
-                        if (reglas.maximum !== undefined && datos[prop] > reglas.maximum) {
-                            throw new Error(`${prop} debe ser menor o igual a ${reglas.maximum}`);
-                        }
-                        
-                        // Validar objetos anidados
-                        if (reglas.type === 'object' && reglas.required) {
-                            for (const campo of reglas.required) {
-                                if (datos[prop][campo] === undefined || datos[prop][campo] === null) {
-                                    throw new Error(`Campo requerido faltante en ${prop}: ${campo}`);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        /**
-         * Envía un mensaje con lógica de reintento
-         * @param {string} destino - Destinatario del mensaje
-         * @param {string} tipo - Tipo de mensaje (de TIPOS_MENSAJE)
-         * @param {Object} datos - Datos del mensaje
-         * @param {number} [intentos=0] - Número de intentos actual (uso interno)
-         * @returns {Promise<Object>} Respuesta del mensaje
-         */
-        async function enviarMensajeConReintento(destino, tipo, datos = {}, intentos = 0) {
-            try {
-                // Validar los datos antes de enviar
-                if (ESQUEMAS_VALIDACION[tipo]) {
-                    validarDatosMensaje(tipo, datos);
-                }
-                
-                const mensaje = {
-                    ...datos,
-                    timestamp: new Date().toISOString(),
-                    origen: CONFIG.IFRAME_ID,
-                    destino,
-                    version: '1.0',
-                    intento: intentos + 1
-                };
-                
-                return await enviarMensaje(destino, tipo, mensaje);
-            } catch (error) {
-                if (intentos < CONFIG.REINTENTOS.MAXIMOS) {
-                    const tiempoEspera = CONFIG.REINTENTOS.TIEMPO_ESPERA * Math.pow(CONFIG.REINTENTOS.FACTOR, intentos);
-                    logger.warn(`Reintentando envío (${intentos + 1}/${CONFIG.REINTENTOS.MAXIMOS}) en ${tiempoEspera}ms`, { tipo, error });
-                    
-                    await new Promise(resolve => setTimeout(resolve, tiempoEspera));
-                    return enviarMensajeConReintento(destino, tipo, datos, intentos + 1);
-                }
-                
-                logger.error('Número máximo de reintentos alcanzado', { tipo, error });
-                throw error;
-            }
-        }
-        
-        // Configuración global para este módulo
+
         const CONFIG = {
-            // Identificador único para esta instancia
             ID_APLICACION: 'av1-coordenadas',
-            
-            // Configuración de mensajería
-            MENSAJERIA: {
-                TIEMPO_ESPERA_RESPUESTA: 5000, // 5 segundos
-                MAX_REINTENTOS: 3,
-                TIEMPO_ENTRE_REINTENTOS: 1000 // 1 segundo
-            },
-            
-            // Configuración de navegación
-            NAVEGACION: {
-                PRECISION_GPS: 10, // metros
-                INTERVALO_ACTUALIZACION: 1000, // 1 segundo
-                RADIO_LLEGADA: 10, // metros
-                TIEMPO_ESTIMADO_POR_METRO: 1.2 // segundos por metro (ajustar según velocidad promedio)
-            },
-            
-            // Configuración de la interfaz
-            UI: {
-                TIEMPO_MENSAJE_PREDETERMINADO: 3000, // 3 segundos
-                TEMA_PREDETERMINADO: 'claro',
-                IDIOMA_PREDETERMINADO: 'es'
-            },
-            
-            // Depuración
-            IFRAME_ID: 'hijo2-botones',
+            IFRAME_ID: 'hijo2',
             DEBUG: true,
-            LOG_LEVEL: 1, // 0: debug, 1: info, 2: warn, 3: error, 4: none
+            LOG_LEVEL: 1, // 0: debug, 1: info, 2: warn, 3: error
+            NAVEGACION: {
+                RADIO_LLEGADA: 15, // metros
+            },
             REINTENTOS: {
                 MAXIMOS: 3,
                 TIEMPO_ESPERA: 1000,
@@ -359,2979 +178,881 @@
             }
         };
 
-        // COORDENADAS PARADAS //
-       
-       const COORDENADAS_PARADAS = [
- {
-     id: 'P-0',
-     tipo: "inicio",
-     parada: 0, // ← Parada 0 – INICIO (223, 226, 228, 229) reto 2 //
-     nombre: "Torres de Serranos (start)",
-     coordenadas: { lat: 39.47876, lng: -0.37626 },
-     imagen: 'fotos_Av1/00_torres_de_serranos_back.jpg',
-     video: 'videos/parada_0.mp4',
- },
- {
-     id: 'TR-1',
-     tipo: "tramo",
-     tramo: 1, // ← tramo 1 (Torres de Serranos → Plaza de la crida) (2, 126,) //
-     nombre: "Torres de Serranos → Plaza de la crida (Puente de Serranos)",
-     inicio: { lat: 39.47876, lng: -0.37626 },
-     waypoints: [
-         { lat: 39.47905, lng: -0.37613 },
-         { lat: 39.47933, lng: -0.37647 },
-         { lat: 39.47943, lng: -0.37636 }
-     ],
-     fin: { lat: 39.47959, lng: -0.37583 },
-     imagen: 'fotos_Av1/01_torres_de_serranos_front.jpg',
-     video: 'videos/tramo_1.mp4',
- },
- {
-     id: 'P-1',
-     tipo: "parada",
-     parada: 1, // ← Parada 1 - Plaza de la crida (Puente de Serranos) (233) Reto 3 //
-     nombre: "Plaza de la crida (Puente de Serranos)",
-     coordenadas: { lat: 39.47959, lng: -0.37583 },
-     imagen: 'fotos_Av1/01_torres_de_serranos_front.jpg',
- },
- {
-     id: 'TR-2',
-     tipo: "tramo",
-     tramo: 2, // ← tramo 2 (Plaza de la crida → Calle Muro de Santa Ana) (81) //
-     nombre: "Plaza de la crida → Calle Muro de Santa Ana",
-     inicio: { lat: 39.47959, lng: -0.37583 },
-     waypoints: [
-         { lat: 39.47939, lng: -0.3752 },
-         { lat: 39.47902, lng: -0.37465 },
-         { lat: 39.47866, lng: -0.3747 }
-     ],
-     fin: { lat: 39.47866, lng: -0.3747 },
-     imagen: 'muro de Santa ana.jpg',
-     video: 'videos/tramo 2_2.mp4',
- },
- {
-     id: 'P-2',
-     tipo: "parada",
-     parada: 2, // ← Parada 2 (Calle Muro de Santa Ana) (68) Reto 4 //
-     nombre: "Calle Muro de Santa Ana",
-     coordenadas: { lat: 39.47866, lng: -0.3747 },
-     imagen: 'muro de Santa ana.jpg',
- },
- {
-     id: 'TR-3',
-     tipo: "tramo",
-     tramo: 3, // ← tramo 3 (Calle Muro de Santa Ana → Palacio de los Borgia) (52) //
-     nombre: "Calle Muro de Santa Ana → Palacio de los Borgia",
-     inicio: { lat: 39.47866, lng: -0.3747 },
-     waypoints: [],
-     fin: { lat: 39.47768, lng: -0.3749 },
-     imagen: 'fotos_Av1/02_cortes_valencianas.jpg',
-     video: 'videos/tramo_3.mp4',
- },
- {
-     id: 'P-3',
-     tipo: "parada",
-     parada: 3, // ← Parada 3 (Iglesia de San Lorenzo) (686, 682-B, 462, 683, 684) Reto 5 //
-     nombre: "Iglesia de San Lorenzo",
-     coordenadas: { lat: 39.47768, lng: -0.3749 },
-     imagen: 'fotos_Av1/03_iglesia_de_san_lorenzo.jpg',
- },
- {
-     id: 'TR-4',
-     tipo: "tramo",
-     tramo: 4, // ← tramo 4 (Iglesia de San Lorenzo → Plaza de la Virgen) (465-B) //
-     nombre: "Iglesia de San Lorenzo → Plaza de la Virgen",
-     inicio: { lat: 39.47768, lng: -0.3749 },
-     waypoints: [],
-     fin: { lat: 39.47656, lng: -0.37529 },
-     imagen: 'fotos_Av1/04_plaza_de_la_virgen.jpg',
-     video: 'videos/tramo_4.mp4',
- },
- {
-     id: 'P-4',
-     tipo: "parada",
-     parada: 4, // ← Parada 4 (Plaza de la Virgen) (466, 467) Reto 6 //
-     nombre: "Plaza de la Virgen Reto 6",
-     coordenadas: { lat: 39.47656, lng: -0.37529 },
-     imagen: 'fotos_Av1/04_plaza_de_la_virgen.jpg',
- },
- {
-     id: 'P-5',
-     tipo: "parada",
-     parada: 5, // ← Parada 5 (Plaza de la Virgen) (468) Reto 7, 8 Puzzle plaza de la virgen //
-     nombre: "Plaza de la Virgen Reto 7",
-     coordenadas: { lat: 39.47656, lng: -0.37529 },
-     imagen: 'fotos_Av1/04_plaza_de_la_virgen.jpg',
- },
- {
-     id: 'TR-5',
-     tipo: "tramo",
-     tramo: 5, // ← tramo 5 (Plaza de la Virgen → Plaza de la Almoína) (477-B, 479, 141, 83, 8-C) //
-     nombre: "Plaza de la Virgen → Plaza de la Almoína",
-     inicio: { lat: 39.47656, lng: -0.37529 },
-     waypoints: [
-         { lat: 39.4766, lng: -0.37473 },
-         { lat: 39.47656, lng: -0.37453 },
-         { lat: 39.47606, lng: -0.3746 }
-     ],
-     fin: { lat: 39.47604, lng: -0.37451 },
-     imagen: 'fotos_Av1/05_plaza_de_la_almoina.jpg',
-     video: 'videos/tramo_5.mp4',
- },
- {
-     id: 'P-6',
-     tipo: "parada",
-     parada: 6, // ← Parada 6 (Panel cerámico muro Catedral) (434, 440, 441, 442) Reto 9 //
-     nombre: "Panel cerámico muro Catedral",
-     coordenadas: { lat: 39.47604, lng: -0.37451 },
-     imagen: 'fotos_Av1/06_panel_ceramico_muro_norte_catedral.jpg',
- },
- {
-     id: 'P-7',
-     tipo: "parada",
-     parada: 7, // ← Parada 7 (Capilla exterior catedral) (443, 444, 445) Reto 10 //
-     nombre: "Capilla exterior catedral Reto 10",
-     coordenadas: { lat: 39.47604, lng: -0.37451 },
-     imagen: 'fotos_Av1/07!!!_capilla_exterior_catedral.jpg',
- },
- {
-     id: 'P-8',
-     tipo: "parada",
-     parada: 8, // ← Parada 8 (Capilla exterior catedral) (445) Reto 11 //
-     nombre: "Capilla exterior catedral Reto 11",
-     coordenadas: { lat: 39.47604, lng: -0.37451 },
-     imagen: 'fotos_Av1/07!!!_capilla_exterior_catedral.jpg',
- },
- {
-     id: 'P-9',
-     tipo: "parada",
-     parada: 9, // ← Parada 9 (Arco Novo Catedral y Puerta Negra Basílica) (446, 355, 447, 11-B, 451, 452) //
-     nombre: "Arco Novo Catedral y Puerta Negra Basílica",
-     coordenadas: { lat: 39.47604, lng: -0.37451 },
-     imagen: 'fotos_Av1/08_arco_novo_catedral.jpg',
-     imagen2: 'fotos_Av1/09_puerta_negra_relieve_basilica.jpg',
- },
- // PARADA 10
- {
-     id: 'P-10',
-     tipo: "parada",
-     parada: 10,
-     nombre: "Casa del Punt de Gantxo",
-     coordenadas: { lat: 39.47604, lng: -0.37451 },
-     imagen: 'fotos_Av1/10_casa_del_punt_de_gantxo.jpg',
- },
- {
-     id: 'TR-6',
-     tipo: "tramo",
-     tramo: 6, // ← tramo 6 (Plaza de la Almoína → Plaza Decimo Junio Bruto) (457, 10-B) //
-     nombre: "Plaza de la Almoína → Plaza Decimo Junio Bruto (Museo Arqueológico de la Almoína)",
-     inicio: { lat: 39.47594, lng: -0.37474 },
-     waypoints: [],
-     fin: { lat: 39.4762, lng: -0.37412 },
-     imagen: 'fotos_Av1/05_plaza_de_la_almoina.jpg',
-     video: 'videos/tramo_6.mp4',
- },
- {
-     id: 'P-11',
-     tipo: "parada",
-     parada: 11, // ← Parada 11 (Museo arqueológico La Almoína) (458) Reto 13 //
-     nombre: "Museo arqueológico La Almoína",
-     coordenadas: { lat: 39.4762, lng: -0.37412 },
-     imagen: 'fotos_Av1/27_museo_la_almoina.jpg',
- },
- {
-     id: 'P-12',
-     tipo: "parada",
-     parada: 12, // ← Parada 12 (Museo arqueológico La Almoína) (459, 460, 461) //
-     nombre: "Museo arqueológico La Almoína",
-     coordenadas: { lat: 39.4762, lng: -0.37412 },
-     imagen: 'fotos_Av1/27_museo_la_almoina.jpg',
- },
- {
-     id: 'P-13',
-     tipo: "parada",
-     parada: 13, // ← Parada 13 (Vista de la Catedral, Cimborrio) (8-C, 464) Reto14 //
-     nombre: "Vista de la Catedral, Cimborrio",
-     coordenadas: { lat: 39.4762, lng: -0.37412 },
-     imagen: 'fotos_Av1/05_plaza_de_la_almoina.jpg',
- },
- {
-     id: 'TR-7',
-     tipo: "tramo",
-     tramo: 7, // ← tramo 7 (Museo arqueológico La Almoína → Palacio Arzobispal) (85) //
-     nombre: "Museo arqueológico La Almoína → Palacio Arzobispal",
-     inicio: { lat: 39.47611, lng: -0.37478 },
-     waypoints: [
-         { lat: 39.47604, lng: -0.37442 },
-         { lat: 39.47584, lng: -0.37443 },
-         { lat: 39.47561, lng: -0.37451 }
-     ],
-     fin: { lat: 39.4755, lng: -0.37436 },
-     imagen: 'fotos_Av1/11_palacio_arzobispal.jpg',
-     video: 'videos/parada_8.mp4',
- },
- {
-     id: 'P-14',
-     tipo: "parada",
-     parada: 14, // ← Parada 14 (Palacio Arzobispal y Puerta Románica de la Catedral) (673, 86, 426-B, 141, 437, 438) Reto 15 //
-     nombre: "Palacio Arzobispal y Puerta Románica de la Catedral",
-     coordenadas: { lat: 39.4755, lng: -0.37436 },
-     imagen: 'fotos_Av1/12_puerta_romanica_catedral.jpg',
- },
- {
-     id: 'P-15',
-     tipo: "parada",
-     parada: 15, // ← Parada 15 (Puerta Románica de la Catedral) (439) //
-     nombre: "Puerta Románica de la Catedral",
-     coordenadas: { lat: 39.47561, lng: -0.37465 },
-     imagen: 'fotos_Av1/12_puerta_romanica_catedral.jpg',
- },
- {
-     id: 'TR-8',
-     tipo: "tramo",
-     tramo: 8, // ← tramo 8 (Puerta Románica de la Catedral → Plaza del Ayuntamiento) (125) //
-     nombre: "Puerta Románica de la Catedral → Plaza del Ayuntamiento",
-     inicio: { lat: 39.47561, lng: -0.37465 },
-     waypoints: [
-         { lat: 39.4756, lng: -0.37466 },
-         { lat: 39.47514, lng: -0.37494 },
-         { lat: 39.47447, lng: -0.3754 },
-         { lat: 39.47378, lng: -0.3756 },
-         { lat: 39.47212, lng: -0.37676 }
-     ],
-     fin: { lat: 39.47056, lng: -0.37677 },
-     imagen: 'fotos_Av1/13_plaza_del_ayuntamiento.jpg',
-     video: 'videos/tramo_8.mp4',
- },
- {
-     id: 'P-16',
-     tipo: "parada",
-     parada: 16, // ← Parada 16 (Plaza del Ayuntamiento) (13-B, 263, 332, 14-C) //
-     nombre: "Plaza del Ayuntamiento",
-     coordenadas: { lat: 39.47056, lng: -0.37677 },
-     imagen: 'fotos_Av1/13_plaza_del_ayuntamiento.jpg',
- },
- {
-     id: 'TR-9',
-     tipo: "tramo",
-     tramo: 9, // ← tramo 9 (Plaza del Ayuntamiento → Edificio del Ayuntamiento) (334, 335) //
-     nombre: "Plaza del Ayuntamiento → Edificio del Ayuntamiento de València",
-     inicio: { lat: 39.47056, lng: -0.37677 },
-     waypoints: [],
-     fin: { lat: 39.46971, lng: -0.37693 },
-     imagen: 'fotos_Av1/14_ayuntamiento.jpg',
-     video: 'videos/tramo_9.mp4',
- },
- {
-     id: 'P-17',
-     tipo: "parada",
-     parada: 17, // ← Parada 17 (Edificio del Ayuntamiento) (336, 337, 338) Reto 16 //
-     nombre: "Edificio del Ayuntamiento",
-     coordenadas: { lat: 39.46971, lng: -0.37693 },
-     imagen: 'fotos_Av1/14_ayuntamiento.jpg',
- },
- {
-     id: 'P-18',
-     tipo: "parada",
-     parada: 18, // ← Parada 18 (Edificio del Ayuntamiento) (339, 340, 341, 54) //
-     nombre: "Edificio del Ayuntamiento",
-     coordenadas: { lat: 39.46971, lng: -0.37693 },
-     imagen: 'fotos_Av1/14_ayuntamiento.jpg',
- },
- {
-     id: 'TR-10',
-     tipo: "tramo",
-     tramo: 10, // ← tramo 10 (Edificio del Ayuntamiento → Estación del Norte) (87, 15-C) //
-     nombre: "Edificio del Ayuntamiento → Estación del Norte",
-     inicio: { lat: 39.46971, lng: -0.37693 },
-     waypoints: [
-         { lat: 39.46795, lng: -0.37701 }
-     ],
-     fin: { lat: 39.46722, lng: -0.37702 },
-     imagen: 'fotos_Av1/15_plaza_de_toros_y_estacion_del_norte.jpg',
-     video: 'videos/tramo_10.mp4',
- },
- {
-     id: 'P-19',
-     tipo: "parada",
-     parada: 19, // ← Parada 19 (Estación del Norte) (326) Reto 17, 18 Puzzle Estación del Norte//
-     nombre: "Estación del Norte",
-     coordenadas: { lat: 39.46722, lng: -0.37702 },
-     imagen: 'fotos_Av1/15_plaza_de_toros_y_estacion_del_norte.jpg',
- },
- {
-     id: 'TR-11',
-     tipo: "tramo",
-     tramo: 11, // ← tramo 11 (Estación del Norte → Plaza de Toros) (20-C, 323-B, 88) //
-     nombre: "Estación del Norte → Plaza de Toros de València",
-     inicio: { lat: 39.46722, lng: -0.37702 },
-     waypoints: [],
-     fin: { lat: 39.46709, lng: -0.37595 },
-     imagen: 'fotos_Av1/15_plaza_de_toros_y_estacion_del_norte.jpg',
-     video: 'videos/tramo_11.mp4',
- },
- {
-     id: 'TR-12',
-     tipo: "tramo",
-     tramo: 12, // ← Tramo 12 (Plaza de Toros → Casa estilo Árabe) (89, 3-D) //
-     nombre: "Plaza de Toros → Casa estilo Árabe",
-     inicio: { lat: 39.46709, lng: -0.37595 },
-     waypoints: [
-         { lat: 39.46714, lng: -0.37498 }
-     ],
-     fin: { lat: 39.46753, lng: -0.37511 },
-     imagen: 'fotos_Av1/16!!!!_casa_estilo_arabe.jpg',
-     video: 'videos/parada_13.mp4',
- },
- {
-     id: 'P-20',
-     tipo: "parada",
-     parada: 20, // ← Parada 20 (Casa estilo Árabe) (99) Reto 19 //
-     nombre: "Casa estilo Árabe",
-     coordenadas: { lat: 39.46753, lng: -0.37511 },
-     imagen: 'fotos_Av1/16!!!!_casa_estilo_arabe.jpg',
- },
- {
-     id: 'P-21',
-     tipo: "parada",
-     parada: 21, // ← Parada 21 (Casa estilo Árabe, mitad Aventura) (100) //
-     nombre: "Casa estilo Árabe, mitad Aventura",
-     coordenadas: { lat: 39.46753, lng: -0.37511 },
-     imagen: 'fotos_Av1/16!!!!_casa_estilo_arabe.jpg',
- },
- {
-     id: 'TR-13',
-     tipo: "tramo",
-     tramo: 13, // ← tramo 13 (Casa estilo Árabe → Palacio de Comunicaciones) (21-B) //
-     nombre: "Casa estilo Árabe → Palacio de Comunicaciones (Correos)",
-     inicio: { lat: 39.46753, lng: -0.37511 },
-     waypoints: [],
-     fin: { lat: 39.46942, lng: -0.37559 },
-     imagen: 'fotos_Av1/17_correos.jpg',
-     video: 'videos/tramo_13.mp4',
- },
- {
-     id: 'P-22',
-     tipo: "parada",
-     parada: 22, // ← Parada 22 (Palacio de Comunicaciones) (21-C) //
-     nombre: "Palacio de Comunicaciones: Correos",
-     coordenadas: { lat: 39.46942, lng: -0.37559 },
-     imagen: 'fotos_Av1/17_correos.jpg',
- },
- {
-     id: 'P-23',
-     tipo: "parada",
-     parada: 23, // ← Parada 23 (Edificio Suay) (22-C) //
-     nombre: "Edificio Suay",
-     coordenadas: { lat: 39.46942, lng: -0.37559 },
-     imagen: 'fotos_Av1/18_edificio_suay.jpg',
- },
- {
-     id: 'TR-14',
-     tipo: "tramo",
-     tramo: 14, // ← tramo 14 (Palacio de Comunicaciones → Banco de València) (90) //
-     nombre: "Palacio de Comunicaciones → Banco de València",
-     inicio: { lat: 39.46942, lng: -0.37559 },
-     waypoints: [
-         { lat: 39.4699, lng: -0.37573 },
-         { lat: 39.4703, lng: -0.3759 },
-         { lat: 39.47039, lng: -0.37505 },
-         { lat: 39.47043, lng: -0.37427 }
-     ],
-     fin: { lat: 39.47061, lng: -0.37408 },
-     imagen: 'fotos_Av1/19_banco_de_valencia.jpg',
-     video: 'videos/tramo_14.mp4',
- },
- {
-     id: 'P-24',
-     tipo: "parada",
-     parada: 24, // ← Parada 24 (Banco de Valencia) (23-C) //
-     nombre: "Banco de Valencia",
-     coordenadas: { lat: 39.47061, lng: -0.37408 },
-     imagen: 'fotos_Av1/19_banco_de_valencia.jpg',
- },
- {
-     id: 'TR-15',
-     tipo: "tramo",
-     tramo: 15, // ← tramo 15 (Banco de València → Palacio del Marqués de Dos Aguas) (91) //
-     nombre: "Banco de València → Palacio del Marqués de Dos Aguas (Museo Nacional de Cerámica)",
-     inicio: { lat: 39.47061, lng: -0.37408 },
-     waypoints: [
-         { lat: 39.47119, lng: -0.37423 },
-         { lat: 39.47214, lng: -0.37446 },
-         { lat: 39.47275, lng: -0.37445 }
-     ],
-     fin: { lat: 39.47276, lng: -0.37467 },
-     imagen: 'fotos_Av1/20!!!!_ marques_de_dos aguas.jpg',
-     video: 'videos/parada_16.mp4',
- },
- {
-     id: 'P-25',
-     tipo: "parada",
-     parada: 25, // ← Parada 25 (Palacio del Marqués de Dos Aguas) (24-C, 25-C, 26-C, 27-C, 28-C, 29-C, 30-C, 31-C, 32-C, 33-C, 34-C, 35-C) //
-     nombre: "Palacio del Marqués de Dos Aguas (Museo Nacional de Cerámica)",
-     coordenadas: { lat: 39.47276, lng: -0.37467 },
-     imagen: 'fotos_Av1/20!!!!_ marques_de_dos aguas.jpg',
- },
- {
-     id: 'TR-16',
-     tipo: "tramo",
-     tramo: 16, // ← tramo 16 (Palacio del Marqués → Mercado Central) (92, 93) //
-     nombre: "Palacio del Marqués → Mercado Central",
-     inicio: { lat: 39.47276, lng: -0.37467 },
-     waypoints: [
-         { lat: 39.47315, lng: -0.37608 },
-         { lat: 39.47261, lng: -0.37654 },
-         { lat: 39.47225, lng: -0.37686 },
-         { lat: 39.47265, lng: -0.37725 }
-     ],
-     fin: { lat: 39.47377, lng: -0.37832 },
-     imagen: 'fotos_Av1/21_mercado_central.jpg',
-     video: 'videos/tramo_16.mp4',
- },
- {
-     id: 'P-26',
-     tipo: "parada",
-     parada: 26, // ← Parada 26 (Mercado central) (36-C, 37-C, 38-C, 39-C, 40-C, 41-C, 42-C, 43-C) //
-     nombre: "Mercado central",
-     coordenadas: { lat: 39.47377, lng: -0.37832 },
-     imagen: 'fotos_Av1/21_mercado_central.jpg',
- },
- {
-     id: 'TR-17',
-     tipo: "tramo",
-     tramo: 17, // ← tramo 17 (Mercado Central → Iglesia de los Santos Juanes) (94) //
-     nombre: "Mercado Central → Iglesia de los Santos Juanes",
-     inicio: { lat: 39.47377, lng: -0.37832 },
-     waypoints: [],
-     fin: { lat: 39.47425, lng: -0.37895 },
-     imagen: 'fotos_Av1/22_iglesia_san_juan_del_mercado.jpg',
-     video: 'videos/tramo_17.mp4',
- },
- {
-     id: 'P-27',
-     tipo: "parada",
-     parada: 27, // ← Parada 27 (Iglesia de los Santos Juanes) (44-C, 45-C, 46-C, 47-C, 48-C, 49-C, 50-C, 51-C, 52-C, 53-C, 54-C, 55-C, 56-C, 57-C, 58-C) //
-     nombre: "Iglesia de los Santos Juanes reto 24",
-     coordenadas: { lat: 39.47425, lng: -0.37895 },
-     imagen: 'fotos_Av1/22_iglesia_san_juan_del_mercado.jpg',
- },
- {
-     id: 'P-28',
-     tipo: "parada",
-     parada: 28, // ← Parada 28 (Iglesia de los Santos Juanes) (59-C) Reto 25 //
-     nombre: "Iglesia de los Santos Juanes reto 25",
-     coordenadas: { lat: 39.47425, lng: -0.37895 },
-     imagen: 'fotos_Av1/22_iglesia_san_juan_del_mercado.jpg',
- },
- {
-     id: 'TR-18',
-     tipo: "tramo",
-     tramo: 18, // ← tramo 18 (Iglesia Santos Juanes → Lonja de València) (95) //
-     nombre: "Iglesia Santos Juanes → Lonja de València (Mercado de la Seda)",
-     inicio: { lat: 39.47425, lng: -0.37895 },
-     waypoints: [],
-     fin: { lat: 39.47426, lng: -0.37862 },
-     imagen: 'fotos_Av1/23_lonja.jpg',
-     video: 'videos/parada_19.mp4',
- },
- {
-     id: 'P-29',
-     tipo: "parada",
-     parada: 29, // ← Parada 29 (Lonja Puerta de Los Pecados barquero) (60-C) //
-     nombre: "Lonja Puerta de Los Pecados barquero",
-     coordenadas: { lat: 39.4742, lng: -0.37851 },
-     imagen: 'fotos_Av1/23_lonja.jpg',
- },
- {
-     id: 'P-30',
-     tipo: "parada",
-     parada: 30, // ← Parada 30 (Lonja Puerta de Los Pecados árbol muerto) (60-C) //
-     nombre: "Lonja Puerta de Los Pecados árbol muerto",
-     coordenadas: { lat: 39.4742, lng: -0.37851 },
-     imagen: 'fotos_Av1/23_lonja.jpg',
- },
- {
-     id: 'TR-19',
-     tipo: "tramo",
-     tramo: 19, // ← tramo 19 (Lonja Gárgolas) (96) //
-     nombre: "Lonja Gárgolas",
-     inicio: { lat: 39.4742, lng: -0.37851 },
-     waypoints: [],
-     fin: { lat: 39.4742, lng: -0.37881 },
-     imagen: 'fotos_Av1/23_lonja.jpg',
- },
- {
-     id: 'P-31',
-     tipo: "parada",
-     parada: 31, // ← Parada 31 (Lonja Gárgolas ángel vasija) (61-C) //
-     nombre: "Lonja Gárgolas ángel vasija",
-     coordenadas: { lat: 39.4742, lng: -0.37881 },
-     imagen: 'fotos_Av1/23_lonja.jpg',
- },
- {
-     id: 'P-32',
-     tipo: "parada",
-     parada: 32, // ← Parada 32 (Lonja Gárgolas barbudo y león) (61-C) //
-     nombre: "Lonja Gárgolas barbudo y león",
-     coordenadas: { lat: 39.4742, lng: -0.37881 },
-     imagen: 'fotos_Av1/23_lonja.jpg',
- },
- {
-     id: 'P-33',
-     tipo: "parada",
-     parada: 33, // ← Parada 33 (Lonja Gárgolas fornicador ventana) (61-C) //
-     nombre: "Lonja Gárgolas fornicador ventana",
-     coordenadas: { lat: 39.47439, lng: -0.37887 },
-     imagen: 'fotos_Av1/23_lonja.jpg',
- },
- {
-     id: 'TR-20',
-     tipo: "tramo",
-     tramo: 20, // ← tramo 20 (Lonja → Plaza del Doctor Collado) (97) //
-     nombre: "Lonja → Plaza del Doctor Collado",
-     inicio: { lat: 39.47426, lng: -0.37862 },
-     waypoints: [
-         { lat: 39.47445, lng: -0.37889 },
-         { lat: 39.47459, lng: -0.37868 },
-         { lat: 39.47475, lng: -0.37842 },
-         { lat: 39.47436, lng: -0.37799 }
-     ],
-     fin: { lat: 39.47444, lng: -0.3779 },
-     imagen: 'fotos_Av1/24_lonja2.jpg',
-     video: 'videos/tramo_20.mp4',
- },
- {
-     id: 'TR-21',
-     tipo: "tramo",
-     tramo: 21, // ← tramo 21 (Plaza del Doctor Collado → Plaza del Negrito) (333, 397, 41, 398, 198, 671, 522, 32-C) //
-     nombre: "Plaza del Doctor Collado → Plaza del Negrito (Fuente del Negrito)",
-     inicio: { lat: 39.47444, lng: -0.3779 },
-     waypoints: [
-         { lat: 39.47473, lng: -0.37763 },
-         { lat: 39.47493, lng: -0.37761 },
-         { lat: 39.47559, lng: -0.37772 }
-     ],
-     fin: { lat: 39.47611, lng: -0.37741 },
-     imagen: 'fotos_Av1/25_fuente_del_negrito.jpg',
-     video: 'videos/parada_21.mp4',
- },
- {
-     id: 'P-34',
-     tipo: "parada",
-     parada: 34, // ← Parada 34 (Fuente del Negrito) (382, 501) Reto 32 //
-     nombre: "Fuente del Negrito",
-     coordenadas: { lat: 39.47611, lng: -0.37741 },
-     imagen: 'fotos_Av1/25_fuente_del_negrito.jpg',
- },
- {
-     id: 'TR-22',
-     tipo: "tramo",
-     tramo: 22, // ← tramo 22 (Plaza del Negrito → Calle Caballeros) (33-B, 486, 480-B) //
-     nombre: "Plaza del Negrito → Calle Caballeros",
-     inicio: { lat: 39.47611, lng: -0.37741 },
-     waypoints: [
-         { lat: 39.47663, lng: -0.3773 },
-         { lat: 39.47661, lng: -0.37685 }
-     ],
-     fin: { lat: 39.47668, lng: -0.37671 },
-     imagen: 'fotos_Av1/26_palau_de_la_generalitat.jpg',
-     video: 'videos/parada_22.mp4',
- },
- {
-     id: 'P-35',
-     tipo: "parada",
-     parada: 35, // ← Parada 35 (Palau de la Generalitat) (481-B, 482-B, 2-D) //
-     nombre: "Palau de la Generalitat",
-     coordenadas: { lat: 39.47668, lng: -0.37671 },
-     imagen: 'fotos_Av1/26_palau_de_la_generalitat.jpg',
- },
- {
-     id: 'TR-23',
-     tipo: "tramo",
-     tramo: 23, // ← tramo 23 (Palacio de la Generalitat → Calle de los Serranos - FINAL) //
-     nombre: "Palacio de la Generalitat → Calle de los Serranos (FINAL)",
-     inicio: { lat: 39.47668, lng: -0.37671 },
-     waypoints: [
-         { lat: 39.47661, lng: -0.37685 },
-         { lat: 39.47687, lng: -0.37686 }
-     ],
-     fin: { lat: 39.47773, lng: -0.37671 },
-     imagen: 'fotos_Av1/00_torres_de_serranos_back.jpg',
-     video: 'videos/parada_24.mp4',
- },
- {
-     id: 'P-36',
-     tipo: "parada",
-     parada: 36, // ← Parada 36 (Torres de Serranos Final) (audio despedida) //
-     nombre: "Torres de Serranos Final",
-     coordenadas: { lat: 39.47773, lng: -0.37671 },
-     imagen: 'fotos_Av1/00_torres_de_serranos_back.jpg',
- }
-];
-
-        /**
-         * Obtiene las coordenadas de un tramo específico
-         * @param {number} numTramo - Número del tramo a obtener
-         * @returns {Object} Objeto con las coordenadas del tramo o null si no se encuentra
-         */
-        function obtenerCoordenadasTramo(numTramo) {
-            const tramo = COORDENADAS_PARADAS.find(item => 
-                item.tipo === 'tramo' && item.tramo === numTramo
-            );
-            
-            if (!tramo) {
-                logger.error(`No se encontró el tramo número ${numTramo}`);
-                return null;
-            }
-            
-            return {
-                id: tramo.id,
-                nombre: tramo.nombre,
-                inicio: tramo.inicio,
-                waypoints: tramo.waypoints || [],
-                fin: tramo.fin,
-                imagen: tramo.imagen,
-                video: tramo.video
-            };
-        }
-
-        // ================== ESTADO DE LA APLICACIÓN ==================
-        
-        // Logger
         const logger = {
-            debug: (mensaje, datos) => {
-                if (CONFIG.DEBUG && CONFIG.LOG_LEVEL <= 0) {
-                    console.debug(`[DEBUG] ${mensaje}`, datos || '');
-                }
-            },
-            info: (mensaje, datos) => {
-                if (CONFIG.LOG_LEVEL <= 1) {
-                    console.log(`[INFO] ${mensaje}`, datos || '');
-                }
-            },
-            warn: (mensaje, datos) => {
-                if (CONFIG.LOG_LEVEL <= 2) {
-                    console.warn(`[WARN] ${mensaje}`, datos || '');
-                }
-            },
-            error: (mensaje, error, datos) => {
-                if (CONFIG.LOG_LEVEL <= 3) {
-                    console.error(`[ERROR] ${mensaje}`, error || '', datos || '');
-                }
-            }
+            debug: (mensaje, ...datos) => CONFIG.LOG_LEVEL <= 0 && console.debug(`[${CONFIG.IFRAME_ID}]`, mensaje, ...datos),
+            info: (mensaje, ...datos) => CONFIG.LOG_LEVEL <= 1 && console.log(`[${CONFIG.IFRAME_ID}]`, mensaje, ...datos),
+            warn: (mensaje, ...datos) => CONFIG.LOG_LEVEL <= 2 && console.warn(`[${CONFIG.IFRAME_ID}]`, mensaje, ...datos),
+            error: (mensaje, ...datos) => CONFIG.LOG_LEVEL <= 3 && console.error(`[${CONFIG.IFRAME_ID}]`, mensaje, ...datos),
         };
-        
-        // Estado de la aplicación
-        const estado = {
-            // Propiedades generales
+
+        // =================================================================================
+        // 2. ESTADO GLOBAL ÚNICO DE LA APLICACIÓN
+        // =================================================================================
+        const estadoApp = {
+            inicializado: false,
             mensajeriaInicializada: false,
-            controlesHabilitados: true,
-            modoCompass: false,
-            
-            // Estado del modo
-            modo: {
-                actual: 'casa',
-                anterior: null,
-                ultimoCambio: new Date().toISOString(),
-                cambioEnProgreso: false
-            },
-            configuracion: {
-                distanciaUmbral: 30, // metros para considerar que se ha llegado a una parada
-                distanciaMinimaParaPuntoInteres: 30 // metros mínimos para mostrar botón de punto de interés
-            },
-            // Estado de la navegación
+            modo: 'casa', // 'casa' o 'aventura'
+            paradas: [],
             navegacion: {
                 activa: false,
-                pausada: false,
-                puntoDestino: null,
-                puntoActual: null,
-                ruta: [],
-                ultimaUbicacion: null,
-                ultimaActualizacion: null,
-                ultimoPuntoCompletado: null,
-                proximoPunto: null,
-                distanciaAlDestino: null,
-                tiempoEstimado: null,
-                orientacion: 0, // En grados (0-360)
-                precision: null // Precisión del GPS en metros
+                destinoActual: null,
+                ultimaUbicacion: null, // {lat, lng}
+                puntoActual: null, // El objeto de parada/tramo actual
             },
-            // Configuración de la aplicación
-            configuracion: {
-                modoOscuro: false,
-                notificaciones: true,
-                sonidos: true,
-                vibracion: true,
-                actualizacionTiempoReal: true
-            },
-            // Estado de los controles
-            controles: {
-                habilitados: true,
-                motivoDeshabilitacion: null,
-                estadoAnterior: null
-            },
-            // Estado de la brújula
-            brujula: {
-                activa: false,
-                soportada: false,
-                calibrando: false,
-                precision: 0
-            },
-            // Estado del GPS
-            gps: {
-                activo: false,
-                soportado: false,
-                permisoConcedido: false,
-                ultimaUbicacion: null,
-                precision: 0,
-                estado: 'inactivo' // inactivo, obteniendo, activo, error
-            },
-            // Estado de los botones
-            botones: {
-                puntoInteres: {
-                    estado: 'inactivo', // inactivo, activo, deshabilitado
-                    texto: 'Punto de Interés',
-                    icono: 'fa-map-marker-alt',
-                    accion: 'seleccionarPuntoInteres'
-                },
-                gps: {
-                    estado: 'inactivo',
-                    texto: 'Iniciar Navegación',
-                    icono: 'fa-directions',
-                    accion: 'toggleNavegacion'
-                },
-                brujula: {
-                    estado: 'inactivo',
-                    texto: 'Brújula',
-                    icono: 'fa-compass',
-                    accion: 'toggleBrujula'
-                },
-                ayuda: {
-                    estado: 'activo',
-                    texto: 'Ayuda',
-                    icono: 'fa-question-circle',
-                    accion: 'mostrarAyuda'
-                },
-                repetir: {
-                    estado: 'inactivo',
-                    texto: 'Repetir',
-                    icono: 'fa-redo',
-                    accion: 'repetirUltimaAccion'
-                }
-            },
-            // Historial de acciones
-            historial: {
-                acciones: [],
-                ultimaAccion: null,
-                maxAcciones: 10
-            },
-            // Estado de la interfaz
-            ui: {
-                cargando: false,
-                mensaje: null,
-                tipoMensaje: 'info', // info, exito, error, advertencia
-                mostrarMensaje: false,
-                tiempoMensaje: 5000 // ms
+            controlesHabilitados: true,
+            elementosDOM: {
+                btnPunto: document.getElementById('btn-punto'),
+                btnMapa: document.getElementById('btn-mapa'),
+                btnBrujula: document.getElementById('btn-brujula'),
+                btnGps: document.getElementById('btn-gps'),
+                btnImagen: document.getElementById('btn-imagen'),
+                btnVideo: document.getElementById('btn-video'),
+                modal: document.getElementById('modal-medios'),
+                modalTitle: document.getElementById('modal-title'),
+                modalMediaContainer: document.querySelector('.media-container'),
+                modalClose: document.querySelector('.modal-close'),
             }
         };
-        
-        // Inicializar mensajería
-        inicializarMensajeria().then(() => {
-            logger.info('Mensajería inicializada correctamente');
-            // Solicitar el array de paradas al padre
-            return solicitarArrayParadas();
-        }).then(() => {
-            logger.info('Array de paradas cargado correctamente');
-        }).catch(error => {
-            logger.error('Error durante la inicialización:', error);
-        });
-        
-        /**
-         * Solicita el array de paradas al padre
-         * @returns {Promise<void>}
-         */
-        async function solicitarArrayParadas() {
-            try {
-                logger.info('Solicitando array de paradas al padre...');
-                const respuesta = await enviarMensaje('padre', TIPOS_MENSAJE.DATOS.SOLICITAR_ARRAY_PARADAS, {
-                    timestamp: new Date().toISOString()
-                });
-                
-                if (respuesta && respuesta.exito && Array.isArray(respuesta.paradas)) {
-                    // Almacenar las paradas en el estado
-                    estado.paradas = respuesta.paradas;
-                    logger.info(`Se recibieron ${respuesta.paradas.length} paradas del padre`);
-                    
-                    // Notificar a los componentes que necesitan las paradas
-                    actualizarInterfaz();
-                    return respuesta.paradas;
-                } else {
-                    throw new Error('Respuesta inválida del padre al solicitar paradas');
-                }
-            } catch (error) {
-                logger.error('Error al solicitar el array de paradas:', error);
-                throw error; // Relanzar para manejarlo en el catch del flujo principal
-            }
+
+     // ================== COORDENADAS DE LAS PARADAS ==================
+       
+          const COORDENADAS_PARADAS = [
+    {
+        id: 'P-0',
+        tipo: "inicio",
+        parada: 0, // ← Parada 0 – INICIO (223, 226, 228, 229) reto 2 //
+        nombre: "Torres de Serranos (start)",
+        coordenadas: { lat: 39.47876, lng: -0.37626 },
+        imagen: 'fotos_Av1/00_torres_de_serranos_back.jpg',
+        video: 'videos/parada_0.mp4',
+    },
+    {
+        id: 'TR-1',
+        tipo: "tramo",
+        tramo: 1, // ← tramo 1 (Torres de Serranos → Plaza de la crida) (2, 126,) //
+        nombre: "Torres de Serranos → Plaza de la crida (Puente de Serranos)",
+        inicio: { lat: 39.47876, lng: -0.37626 },
+        waypoints: [
+            { lat: 39.47905, lng: -0.37613 },
+            { lat: 39.47933, lng: -0.37647 },
+            { lat: 39.47943, lng: -0.37636 }
+        ],
+        fin: { lat: 39.47959, lng: -0.37583 },
+        imagen: 'fotos_Av1/01_torres_de_serranos_front.jpg',
+        video: 'videos/tramo_1.mp4',
+    },
+    {
+        id: 'P-1',
+        tipo: "parada",
+        parada: 1, // ← Parada 1 - Plaza de la crida (Puente de Serranos) (233) Reto 3 //
+        nombre: "Plaza de la crida (Puente de Serranos)",
+        coordenadas: { lat: 39.47959, lng: -0.37583 },
+        imagen: 'fotos_Av1/01_torres_de_serranos_front.jpg',
+    },
+    {
+        id: 'TR-2',
+        tipo: "tramo",
+        tramo: 2, // ← tramo 2 (Plaza de la crida → Calle Muro de Santa Ana) (81) //
+        nombre: "Plaza de la crida → Calle Muro de Santa Ana",
+        inicio: { lat: 39.47959, lng: -0.37583 },
+        waypoints: [
+            { lat: 39.47939, lng: -0.3752 },
+            { lat: 39.47902, lng: -0.37465 },
+            { lat: 39.47866, lng: -0.3747 }
+        ],
+        fin: { lat: 39.47866, lng: -0.3747 },
+        imagen: 'muro de Santa ana.jpg',
+        video: 'videos/tramo 2_2.mp4',
+    },
+    {
+        id: 'P-2',
+        tipo: "parada",
+        parada: 2, // ← Parada 2 (Calle Muro de Santa Ana) (68) Reto 4 //
+        nombre: "Calle Muro de Santa Ana",
+        coordenadas: { lat: 39.47866, lng: -0.3747 },
+        imagen: 'muro de Santa ana.jpg',
+    },
+    {
+        id: 'TR-3',
+        tipo: "tramo",
+        tramo: 3, // ← tramo 3 (Calle Muro de Santa Ana → Palacio de los Borgia) (52) //
+        nombre: "Calle Muro de Santa Ana → Palacio de los Borgia",
+        inicio: { lat: 39.47866, lng: -0.3747 },
+        waypoints: [],
+        fin: { lat: 39.47768, lng: -0.3749 },
+        imagen: 'fotos_Av1/02_cortes_valencianas.jpg',
+        video: 'videos/tramo_3.mp4',
+    },
+    {
+        id: 'P-3',
+        tipo: "parada",
+        parada: 3, // ← Parada 3 (Iglesia de San Lorenzo) (686, 682-B, 462, 683, 684) Reto 5 //
+        nombre: "Iglesia de San Lorenzo",
+        coordenadas: { lat: 39.47768, lng: -0.3749 },
+        imagen: 'fotos_Av1/03_iglesia_de_san_lorenzo.jpg',
+    },
+    {
+        id: 'TR-4',
+        tipo: "tramo",
+        tramo: 4, // ← tramo 4 (Iglesia de San Lorenzo → Plaza de la Virgen) (465-B) //
+        nombre: "Iglesia de San Lorenzo → Plaza de la Virgen",
+        inicio: { lat: 39.47768, lng: -0.3749 },
+        waypoints: [],
+        fin: { lat: 39.47656, lng: -0.37529 },
+        imagen: 'fotos_Av1/04_plaza_de_la_virgen.jpg',
+        video: 'videos/tramo_4.mp4',
+    },
+    {
+        id: 'P-4',
+        tipo: "parada",
+        parada: 4, // ← Parada 4 (Plaza de la Virgen) (466, 467) Reto 6 //
+        nombre: "Plaza de la Virgen Reto 6",
+        coordenadas: { lat: 39.47656, lng: -0.37529 },
+        imagen: 'fotos_Av1/04_plaza_de_la_virgen.jpg',
+    },
+    {
+        id: 'P-5',
+        tipo: "parada",
+        parada: 5, // ← Parada 5 (Plaza de la Virgen) (468) Reto 7, 8 Puzzle plaza de la virgen //
+        nombre: "Plaza de la Virgen Reto 7",
+        coordenadas: { lat: 39.47656, lng: -0.37529 },
+        imagen: 'fotos_Av1/04_plaza_de_la_virgen.jpg',
+    },
+    {
+        id: 'TR-5',
+        tipo: "tramo",
+        tramo: 5, // ← tramo 5 (Plaza de la Virgen → Plaza de la Almoína) (477-B, 479, 141, 83, 8-C) //
+        nombre: "Plaza de la Virgen → Plaza de la Almoína",
+        inicio: { lat: 39.47656, lng: -0.37529 },
+        waypoints: [
+            { lat: 39.4766, lng: -0.37473 },
+            { lat: 39.47656, lng: -0.37453 },
+            { lat: 39.47606, lng: -0.3746 }
+        ],
+        fin: { lat: 39.47604, lng: -0.37451 },
+        imagen: 'fotos_Av1/05_plaza_de_la_almoina.jpg',
+        video: 'videos/tramo_5.mp4',
+    },
+    {
+        id: 'P-6',
+        tipo: "parada",
+        parada: 6, // ← Parada 6 (Panel cerámico muro Catedral) (434, 440, 441, 442) Reto 9 //
+        nombre: "Panel cerámico muro Catedral",
+        coordenadas: { lat: 39.47604, lng: -0.37451 },
+        imagen: 'fotos_Av1/06_panel_ceramico_muro_norte_catedral.jpg',
+    },
+    {
+        id: 'P-7',
+        tipo: "parada",
+        parada: 7, // ← Parada 7 (Capilla exterior catedral) (443, 444, 445) Reto 10 //
+        nombre: "Capilla exterior catedral Reto 10",
+        coordenadas: { lat: 39.47604, lng: -0.37451 },
+        imagen: 'fotos_Av1/07!!!_capilla_exterior_catedral.jpg',
+    },
+    {
+        id: 'P-8',
+        tipo: "parada",
+        parada: 8, // ← Parada 8 (Capilla exterior catedral) (445) Reto 11 //
+        nombre: "Capilla exterior catedral Reto 11",
+        coordenadas: { lat: 39.47604, lng: -0.37451 },
+        imagen: 'fotos_Av1/07!!!_capilla_exterior_catedral.jpg',
+    },
+    {
+        id: 'P-9',
+        tipo: "parada",
+        parada: 9, // ← Parada 9 (Arco Novo Catedral y Puerta Negra Basílica) (446, 355, 447, 11-B, 451, 452) //
+        nombre: "Arco Novo Catedral y Puerta Negra Basílica",
+        coordenadas: { lat: 39.47604, lng: -0.37451 },
+        imagen: 'fotos_Av1/08_arco_novo_catedral.jpg',
+        imagen2: 'fotos_Av1/09_puerta_negra_relieve_basilica.jpg',
+    },
+    // PARADA 10
+    {
+        id: 'P-10',
+        tipo: "parada",
+        parada: 10,
+        nombre: "Casa del Punt de Gantxo",
+        coordenadas: { lat: 39.47604, lng: -0.37451 },
+        imagen: 'fotos_Av1/10_casa_del_punt_de_gantxo.jpg',
+    },
+    {
+        id: 'TR-6',
+        tipo: "tramo",
+        tramo: 6, // ← tramo 6 (Plaza de la Almoína → Plaza Decimo Junio Bruto) (457, 10-B) //
+        nombre: "Plaza de la Almoína → Plaza Decimo Junio Bruto (Museo Arqueológico de la Almoína)",
+        inicio: { lat: 39.47594, lng: -0.37474 },
+        waypoints: [],
+        fin: { lat: 39.4762, lng: -0.37412 },
+        imagen: 'fotos_Av1/05_plaza_de_la_almoina.jpg',
+        video: 'videos/tramo_6.mp4',
+    },
+    {
+        id: 'P-11',
+        tipo: "parada",
+        parada: 11, // ← Parada 11 (Museo arqueológico La Almoína) (458) Reto 13 //
+        nombre: "Museo arqueológico La Almoína",
+        coordenadas: { lat: 39.4762, lng: -0.37412 },
+        imagen: 'fotos_Av1/27_museo_la_almoina.jpg',
+    },
+    {
+        id: 'P-12',
+        tipo: "parada",
+        parada: 12, // ← Parada 12 (Museo arqueológico La Almoína) (459, 460, 461) //
+        nombre: "Museo arqueológico La Almoína",
+        coordenadas: { lat: 39.4762, lng: -0.37412 },
+        imagen: 'fotos_Av1/27_museo_la_almoina.jpg',
+    },
+    {
+        id: 'P-13',
+        tipo: "parada",
+        parada: 13, // ← Parada 13 (Vista de la Catedral, Cimborrio) (8-C, 464) Reto14 //
+        nombre: "Vista de la Catedral, Cimborrio",
+        coordenadas: { lat: 39.4762, lng: -0.37412 },
+        imagen: 'fotos_Av1/05_plaza_de_la_almoina.jpg',
+    },
+    {
+        id: 'TR-7',
+        tipo: "tramo",
+        tramo: 7, // ← tramo 7 (Museo arqueológico La Almoína → Palacio Arzobispal) (85) //
+        nombre: "Museo arqueológico La Almoína → Palacio Arzobispal",
+        inicio: { lat: 39.47611, lng: -0.37478 },
+        waypoints: [
+            { lat: 39.47604, lng: -0.37442 },
+            { lat: 39.47584, lng: -0.37443 },
+            { lat: 39.47561, lng: -0.37451 }
+        ],
+        fin: { lat: 39.4755, lng: -0.37436 },
+        imagen: 'fotos_Av1/11_palacio_arzobispal.jpg',
+        video: 'videos/parada_8.mp4',
+    },
+    {
+        id: 'P-14',
+        tipo: "parada",
+        parada: 14, // ← Parada 14 (Palacio Arzobispal y Puerta Románica de la Catedral) (673, 86, 426-B, 141, 437, 438) Reto 15 //
+        nombre: "Palacio Arzobispal y Puerta Románica de la Catedral",
+        coordenadas: { lat: 39.4755, lng: -0.37436 },
+        imagen: 'fotos_Av1/12_puerta_romanica_catedral.jpg',
+    },
+    {
+        id: 'P-15',
+        tipo: "parada",
+        parada: 15, // ← Parada 15 (Puerta Románica de la Catedral) (439) //
+        nombre: "Puerta Románica de la Catedral",
+        coordenadas: { lat: 39.47561, lng: -0.37465 },
+        imagen: 'fotos_Av1/12_puerta_romanica_catedral.jpg',
+    },
+    {
+        id: 'TR-8',
+        tipo: "tramo",
+        tramo: 8, // ← tramo 8 (Puerta Románica de la Catedral → Plaza del Ayuntamiento) (125) //
+        nombre: "Puerta Románica de la Catedral → Plaza del Ayuntamiento",
+        inicio: { lat: 39.47561, lng: -0.37465 },
+        waypoints: [
+            { lat: 39.4756, lng: -0.37466 },
+            { lat: 39.47514, lng: -0.37494 },
+            { lat: 39.47447, lng: -0.3754 },
+            { lat: 39.47378, lng: -0.3756 },
+            { lat: 39.47212, lng: -0.37676 }
+        ],
+        fin: { lat: 39.47056, lng: -0.37677 },
+        imagen: 'fotos_Av1/13_plaza_del_ayuntamiento.jpg',
+        video: 'videos/tramo_8.mp4',
+    },
+    {
+        id: 'P-16',
+        tipo: "parada",
+        parada: 16, // ← Parada 16 (Plaza del Ayuntamiento) (13-B, 263, 332, 14-C) //
+        nombre: "Plaza del Ayuntamiento",
+        coordenadas: { lat: 39.47056, lng: -0.37677 },
+        imagen: 'fotos_Av1/13_plaza_del_ayuntamiento.jpg',
+    },
+    {
+        id: 'TR-9',
+        tipo: "tramo",
+        tramo: 9, // ← tramo 9 (Plaza del Ayuntamiento → Edificio del Ayuntamiento) (334, 335) //
+        nombre: "Plaza del Ayuntamiento → Edificio del Ayuntamiento de València",
+        inicio: { lat: 39.47056, lng: -0.37677 },
+        waypoints: [],
+        fin: { lat: 39.46971, lng: -0.37693 },
+        imagen: 'fotos_Av1/14_ayuntamiento.jpg',
+        video: 'videos/tramo_9.mp4',
+    },
+    {
+        id: 'P-17',
+        tipo: "parada",
+        parada: 17, // ← Parada 17 (Edificio del Ayuntamiento) (336, 337, 338) Reto 16 //
+        nombre: "Edificio del Ayuntamiento",
+        coordenadas: { lat: 39.46971, lng: -0.37693 },
+        imagen: 'fotos_Av1/14_ayuntamiento.jpg',
+    },
+    {
+        id: 'P-18',
+        tipo: "parada",
+        parada: 18, // ← Parada 18 (Edificio del Ayuntamiento) (339, 340, 341, 54) //
+        nombre: "Edificio del Ayuntamiento",
+        coordenadas: { lat: 39.46971, lng: -0.37693 },
+        imagen: 'fotos_Av1/14_ayuntamiento.jpg',
+    },
+    {
+        id: 'TR-10',
+        tipo: "tramo",
+        tramo: 10, // ← tramo 10 (Edificio del Ayuntamiento → Estación del Norte) (87, 15-C) //
+        nombre: "Edificio del Ayuntamiento → Estación del Norte",
+        inicio: { lat: 39.46971, lng: -0.37693 },
+        waypoints: [
+            { lat: 39.46795, lng: -0.37701 }
+        ],
+        fin: { lat: 39.46722, lng: -0.37702 },
+        imagen: 'fotos_Av1/15_plaza_de_toros_y_estacion_del_norte.jpg',
+        video: 'videos/tramo_10.mp4',
+    },
+    {
+        id: 'P-19',
+        tipo: "parada",
+        parada: 19, // ← Parada 19 (Estación del Norte) (326) Reto 17, 18 Puzzle Estación del Norte//
+        nombre: "Estación del Norte",
+        coordenadas: { lat: 39.46722, lng: -0.37702 },
+        imagen: 'fotos_Av1/15_plaza_de_toros_y_estacion_del_norte.jpg',
+    },
+    {
+        id: 'TR-11',
+        tipo: "tramo",
+        tramo: 11, // ← tramo 11 (Estación del Norte → Plaza de Toros) (20-C, 323-B, 88) //
+        nombre: "Estación del Norte → Plaza de Toros de València",
+        inicio: { lat: 39.46722, lng: -0.37702 },
+        waypoints: [],
+        fin: { lat: 39.46709, lng: -0.37595 },
+        imagen: 'fotos_Av1/15_plaza_de_toros_y_estacion_del_norte.jpg',
+        video: 'videos/tramo_11.mp4',
+    },
+    {
+        id: 'TR-12',
+        tipo: "tramo",
+        tramo: 12, // ← Tramo 12 (Plaza de Toros → Casa estilo Árabe) (89, 3-D) //
+        nombre: "Plaza de Toros → Casa estilo Árabe",
+        inicio: { lat: 39.46709, lng: -0.37595 },
+        waypoints: [
+            { lat: 39.46714, lng: -0.37498 }
+        ],
+        fin: { lat: 39.46753, lng: -0.37511 },
+        imagen: 'fotos_Av1/16!!!!_casa_estilo_arabe.jpg',
+        video: 'videos/parada_13.mp4',
+    },
+    {
+        id: 'P-20',
+        tipo: "parada",
+        parada: 20, // ← Parada 20 (Casa estilo Árabe) (99) Reto 19 //
+        nombre: "Casa estilo Árabe",
+        coordenadas: { lat: 39.46753, lng: -0.37511 },
+        imagen: 'fotos_Av1/16!!!!_casa_estilo_arabe.jpg',
+    },
+    {
+        id: 'P-21',
+        tipo: "parada",
+        parada: 21, // ← Parada 21 (Casa estilo Árabe, mitad Aventura) (100) //
+        nombre: "Casa estilo Árabe, mitad Aventura",
+        coordenadas: { lat: 39.46753, lng: -0.37511 },
+        imagen: 'fotos_Av1/16!!!!_casa_estilo_arabe.jpg',
+    },
+    {
+        id: 'TR-13',
+        tipo: "tramo",
+        tramo: 13, // ← tramo 13 (Casa estilo Árabe → Palacio de Comunicaciones) (21-B) //
+        nombre: "Casa estilo Árabe → Palacio de Comunicaciones (Correos)",
+        inicio: { lat: 39.46753, lng: -0.37511 },
+        waypoints: [],
+        fin: { lat: 39.46942, lng: -0.37559 },
+        imagen: 'fotos_Av1/17_correos.jpg',
+        video: 'videos/tramo_13.mp4',
+    },
+    {
+        id: 'P-22',
+        tipo: "parada",
+        parada: 23, // ← Parada 23 (Edificio Suay) (22-C) //
+        nombre: "Edificio Suay",
+        coordenadas: { lat: 39.46942, lng: -0.37559 },
+        imagen: 'fotos_Av1/18_edificio_suay.jpg',
+    },
+    {
+        id: 'TR-14',
+        tipo: "tramo",
+        tramo: 14, // ← tramo 14 (Palacio de Comunicaciones → Banco de València) (90) //
+        nombre: "Palacio de Comunicaciones → Banco de València",
+        inicio: { lat: 39.46942, lng: -0.37559 },
+        waypoints: [
+            { lat: 39.4699, lng: -0.37573 },
+            { lat: 39.4703, lng: -0.3759 },
+            { lat: 39.47039, lng: -0.37505 },
+            { lat: 39.47043, lng: -0.37427 }
+        ],
+        fin: { lat: 39.47061, lng: -0.37408 },
+        imagen: 'fotos_Av1/19_banco_de_valencia.jpg',
+        video: 'videos/tramo_14.mp4',
+    },
+    {
+        id: 'P-24',
+        tipo: "parada",
+        parada: 24, // ← Parada 24 (Banco de Valencia) (23-C) //
+        nombre: "Banco de Valencia",
+        coordenadas: { lat: 39.47061, lng: -0.37408 },
+        imagen: 'fotos_Av1/19_banco_de_valencia.jpg',
+    },
+    {
+        id: 'TR-15',
+        tipo: "tramo",
+        tramo: 15, // ← tramo 15 (Banco de València → Palacio del Marqués de Dos Aguas) (91) //
+        nombre: "Banco de València → Palacio del Marqués de Dos Aguas (Museo Nacional de Cerámica)",
+        inicio: { lat: 39.47061, lng: -0.37408 },
+        waypoints: [
+            { lat: 39.47119, lng: -0.37423 },
+            { lat: 39.47214, lng: -0.37446 },
+            { lat: 39.47275, lng: -0.37445 }
+        ],
+        fin: { lat: 39.47276, lng: -0.37467 },
+        imagen: 'fotos_Av1/20!!!!_ marques_de_dos aguas.jpg',
+        video: 'videos/parada_16.mp4',
+    },
+    {
+        id: 'P-25',
+        tipo: "parada",
+        parada: 25, // ← Parada 25 (Palacio del Marqués de Dos Aguas) (24-C, 25-C, 26-C, 27-C, 28-C, 29-C, 30-C, 31-C, 32-C, 33-C, 34-C, 35-C) //
+        nombre: "Palacio del Marqués de Dos Aguas (Museo Nacional de Cerámica)",
+        coordenadas: { lat: 39.47276, lng: -0.37467 },
+        imagen: 'fotos_Av1/20!!!!_ marques_de_dos aguas.jpg',
+    },
+    {
+        id: 'TR-16',
+        tipo: "tramo",
+        tramo: 16, // ← tramo 16 (Palacio del Marqués → Mercado Central) (92, 93) //
+        nombre: "Palacio del Marqués → Mercado Central",
+        inicio: { lat: 39.47276, lng: -0.37467 },
+        waypoints: [
+            { lat: 39.47315, lng: -0.37608 },
+            { lat: 39.47261, lng: -0.37654 },
+            { lat: 39.47225, lng: -0.37686 },
+            { lat: 39.47265, lng: -0.37725 }
+        ],
+        fin: { lat: 39.47377, lng: -0.37832 },
+        imagen: 'fotos_Av1/21_mercado_central.jpg',
+        video: 'videos/tramo_16.mp4',
+    },
+    {
+        id: 'P-26',
+        tipo: "parada",
+        parada: 26, // ← Parada 26 (Mercado central) (36-C, 37-C, 38-C, 39-C, 40-C, 41-C, 42-C, 43-C) //
+        nombre: "Mercado central",
+        coordenadas: { lat: 39.47377, lng: -0.37832 },
+        imagen: 'fotos_Av1/21_mercado_central.jpg',
+    },
+    {
+        id: 'TR-17',
+        tipo: "tramo",
+        tramo: 17, // ← tramo 17 (Mercado Central → Iglesia de los Santos Juanes) (94) //
+        nombre: "Mercado Central → Iglesia de los Santos Juanes",
+        inicio: { lat: 39.47377, lng: -0.37832 },
+        waypoints: [],
+        fin: { lat: 39.47425, lng: -0.37895 },
+        imagen: 'fotos_Av1/22_iglesia_san_juan_del_mercado.jpg',
+        video: 'videos/tramo_17.mp4',
+    },
+    {
+        id: 'P-27',
+        tipo: "parada",
+        parada: 27, // ← Parada 27 (Iglesia de los Santos Juanes) (44-C, 45-C, 46-C, 47-C, 48-C, 49-C, 50-C, 51-C, 52-C, 53-C, 54-C, 55-C, 56-C, 57-C, 58-C) //
+        nombre: "Iglesia de los Santos Juanes reto 24",
+        coordenadas: { lat: 39.47425, lng: -0.37895 },
+        imagen: 'fotos_Av1/22_iglesia_san_juan_del_mercado.jpg',
+    },
+    {
+        id: 'P-28',
+        tipo: "parada",
+        parada: 28, // ← Parada 28 (Iglesia de los Santos Juanes) (59-C) Reto 25 //
+        nombre: "Iglesia de los Santos Juanes reto 25",
+        coordenadas: { lat: 39.47425, lng: -0.37895 },
+        imagen: 'fotos_Av1/22_iglesia_san_juan_del_mercado.jpg',
+    },
+    {
+        id: 'TR-18',
+        tipo: "tramo",
+        tramo: 18, // ← tramo 18 (Iglesia Santos Juanes → Lonja de València) (95) //
+        nombre: "Iglesia Santos Juanes → Lonja de València (Mercado de la Seda)",
+        inicio: { lat: 39.47425, lng: -0.37895 },
+        waypoints: [],
+        fin: { lat: 39.47426, lng: -0.37862 },
+        imagen: 'fotos_Av1/23_lonja.jpg',
+        video: 'videos/parada_19.mp4',
+    },
+    {
+        id: 'P-29',
+        tipo: "parada",
+        parada: 29, // ← Parada 29 (Lonja Puerta de Los Pecados barquero) (60-C) //
+        nombre: "Lonja Puerta de Los Pecados barquero",
+        coordenadas: { lat: 39.4742, lng: -0.37851 },
+        imagen: 'fotos_Av1/23_lonja.jpg',
+    },
+    {
+        id: 'P-30',
+        tipo: "parada",
+        parada: 30, // ← Parada 30 (Lonja Puerta de Los Pecados árbol muerto) (60-C) //
+        nombre: "Lonja Puerta de Los Pecados árbol muerto",
+        coordenadas: { lat: 39.4742, lng: -0.37851 },
+        imagen: 'fotos_Av1/23_lonja.jpg',
+    },
+    {
+        id: 'TR-19',
+        tipo: "tramo",
+        tramo: 19, // ← tramo 19 (Lonja Gárgolas) (96) //
+        nombre: "Lonja Gárgolas",
+        inicio: { lat: 39.4742, lng: -0.37851 },
+        waypoints: [],
+        fin: { lat: 39.4742, lng: -0.37881 },
+        imagen: 'fotos_Av1/23_lonja.jpg',
+    },
+    {
+        id: 'P-31',
+        tipo: "parada",
+        parada: 31, // ← Parada 31 (Lonja Gárgolas ángel vasija) (61-C) //
+        nombre: "Lonja Gárgolas ángel vasija",
+        coordenadas: { lat: 39.4742, lng: -0.37881 },
+        imagen: 'fotos_Av1/23_lonja.jpg',
+    },
+    {
+        id: 'P-32',
+        tipo: "parada",
+        parada: 32, // ← Parada 32 (Lonja Gárgolas barbudo y león) (61-C) //
+        nombre: "Lonja Gárgolas barbudo y león",
+        coordenadas: { lat: 39.4742, lng: -0.37881 },
+        imagen: 'fotos_Av1/23_lonja.jpg',
+    },
+    {
+        id: 'P-33',
+        tipo: "parada",
+        parada: 33, // ← Parada 33 (Lonja Gárgolas fornicador ventana) (61-C) //
+        nombre: "Lonja Gárgolas fornicador ventana",
+        coordenadas: { lat: 39.47439, lng: -0.37887 },
+        imagen: 'fotos_Av1/23_lonja.jpg',
+    },
+    {
+        id: 'TR-20',
+        tipo: "tramo",
+        tramo: 20, // ← tramo 20 (Lonja → Plaza del Doctor Collado) (97) //
+        nombre: "Lonja → Plaza del Doctor Collado",
+        inicio: { lat: 39.47426, lng: -0.37862 },
+        waypoints: [
+            { lat: 39.47445, lng: -0.37889 },
+            { lat: 39.47459, lng: -0.37868 },
+            { lat: 39.47475, lng: -0.37842 },
+            { lat: 39.47436, lng: -0.37799 }
+        ],
+        fin: { lat: 39.47444, lng: -0.3779 },
+        imagen: 'fotos_Av1/24_lonja2.jpg',
+        video: 'videos/tramo_20.mp4',
+    },
+    {
+        id: 'TR-21',
+        tipo: "tramo",
+        tramo: 21, // ← tramo 21 (Plaza del Doctor Collado → Plaza del Negrito) (333, 397, 41, 398, 198, 671, 522, 32-C) //
+        nombre: "Plaza del Doctor Collado → Plaza del Negrito (Fuente del Negrito)",
+        inicio: { lat: 39.47444, lng: -0.3779 },
+        waypoints: [
+            { lat: 39.47473, lng: -0.37763 },
+            { lat: 39.47493, lng: -0.37761 },
+            { lat: 39.47559, lng: -0.37772 }
+        ],
+        fin: { lat: 39.47611, lng: -0.37741 },
+        imagen: 'fotos_Av1/25_fuente_del_negrito.jpg',
+        video: 'videos/parada_21.mp4',
+    },
+    {
+        id: 'P-34',
+        tipo: "parada",
+        parada: 34, // ← Parada 34 (Fuente del Negrito) (382, 501) Reto 32 //
+        nombre: "Fuente del Negrito",
+        coordenadas: { lat: 39.47611, lng: -0.37741 },
+        imagen: 'fotos_Av1/25_fuente_del_negrito.jpg',
+    },
+    {
+        id: 'TR-22',
+        tipo: "tramo",
+        tramo: 22, // ← tramo 22 (Plaza del Negrito → Calle Caballeros) (33-B, 486, 480-B) //
+        nombre: "Plaza del Negrito → Calle Caballeros",
+        inicio: { lat: 39.47611, lng: -0.37741 },
+        waypoints: [
+            { lat: 39.47663, lng: -0.3773 },
+            { lat: 39.47661, lng: -0.37685 }
+        ],
+        fin: { lat: 39.47668, lng: -0.37671 },
+        imagen: 'fotos_Av1/26_palau_de_la_generalitat.jpg',
+        video: 'videos/parada_22.mp4',
+    },
+    {
+        id: 'P-35',
+        tipo: "parada",
+        parada: 35, // ← Parada 35 (Palau de la Generalitat) (481-B, 482-B, 2-D) //
+        nombre: "Palau de la Generalitat",
+        coordenadas: { lat: 39.47668, lng: -0.37671 },
+        imagen: 'fotos_Av1/26_palau_de_la_generalitat.jpg',
+    },
+    {
+        id: 'TR-23',
+        tipo: "tramo",
+        tramo: 23, // ← tramo 23 (Palacio de la Generalitat → Calle de los Serranos - FINAL) //
+        nombre: "Palacio de la Generalitat → Calle de los Serranos (FINAL)",
+        inicio: { lat: 39.47668, lng: -0.37671 },
+        waypoints: [
+            { lat: 39.47661, lng: -0.37685 },
+            { lat: 39.47687, lng: -0.37686 }
+        ],
+        fin: { lat: 39.47773, lng: -0.37671 },
+        imagen: 'fotos_Av1/00_torres_de_serranos_back.jpg',
+        video: 'videos/parada_24.mp4',
+    },
+    {
+        id: 'P-36',
+        tipo: "parada",
+        parada: 36, // ← Parada 36 (Torres de Serranos Final) (audio despedida) //
+        nombre: "Torres de Serranos Final",
+        coordenadas: { lat: 39.47773, lng: -0.37671 },
+        imagen: 'fotos_Av1/00_torres_de_serranos_back.jpg',
+    }
+];
+
+        estadoApp.paradas = COORDENADAS_PARADAS;
+
+        // =================================================================================
+        // 4. FUNCIONES DE LÓGICA Y UTILIDADES
+        // =================================================================================
+
+        function habilitarControles(habilitar) {
+            estadoApp.controlesHabilitados = habilitar;
+            document.body.classList.toggle('controles-deshabilitados', !habilitar);
+            logger.info(`Controles ${habilitar ? 'habilitados' : 'deshabilitados'}`);
         }
-        
-        // Registrar controladores de mensajes
-        registrarControlador(TIPOS_MENSAJE.INICIAR_NAV, (datos) => {
-            logger.info('Iniciando navegación', datos);
-            try {
-                if (datos && datos.destino) {
-                    iniciarNavegacionADestino(datos.destino);
-                    return { exito: true, mensaje: 'Navegación iniciada' };
-                } else {
-                    throw new Error('Datos de destino no proporcionados');
-                }
-            } catch (error) {
-                logger.error('Error al iniciar navegación', error);
-                return { exito: false, error: error.message };
-            }
-        });
-        
-        registrarControlador(TIPOS_MENSAJE.PARAR_NAV, () => {
-            logger.info('Deteniendo navegación');
-            try {
-                detenerNavegacion();
-                return { exito: true, mensaje: 'Navegación detenida' };
-            } catch (error) {
-                logger.error('Error al detener navegación', error);
-                return { exito: false, error: error.message };
-            }
-        });
-        
-        registrarControlador(TIPOS_MENSAJE.ACTUALIZAR_UBICACION, (datos) => {
-            logger.debug('Actualizando ubicación', datos);
-            try {
-                if (datos && datos.ubicacion) {
-                    actualizarUbicacion(datos.ubicacion);
-                    return { exito: true };
-                } else {
-                    throw new Error('Datos de ubicación no proporcionados');
-                }
-            } catch (error) {
-                logger.error('Error al actualizar ubicación', error);
-                return { exito: false, error: error.message };
-            }
-        });
-        
-        // Controladores para habilitar/deshabilitar controles
-        registrarControlador(TIPOS_MENSAJE.HABILITAR_CONTROLES, (datos) => {
-            logger.info('Habilitando controles', datos);
-            habilitarControles(datos?.motivo);
-            return { exito: true };
-        });
-        
-        registrarControlador(TIPOS_MENSAJE.DESHABILITAR_CONTROLES, (datos) => {
-            logger.info('Deshabilitando controles', datos);
-            deshabilitarControles(datos?.motivo);
-            return { exito: true };
-        });
-        
-        // Inicializar la interfaz
-        document.addEventListener('DOMContentLoaded', () => {
-            inicializarInterfaz();
-            inicializarEventos();
-            verificarCompatibilidad();
-            actualizarEstadoBotones();
-        });
-        
-        // Función para actualizar el estado de los botones
-        function actualizarEstadoBotones() {
-            Object.entries(estado.botones).forEach(([id, boton]) => {
-                const elemento = document.getElementById(`btn-${id}`);
-                if (elemento) {
-                    // Actualizar clases según el estado
-                    elemento.classList.toggle('active', boton.estado === 'activo');
-                    elemento.classList.toggle('disabled', boton.estado === 'deshabilitado');
-                    
-                    // Actualizar icono y texto si es necesario
-                    const icono = elemento.querySelector('i');
-                    if (icono) {
-                        icono.className = `fas ${boton.icono}`;
-                    }
-                    
-                    const texto = elemento.querySelector('span');
-                    if (texto) {
-                        texto.textContent = boton.texto;
-                    }
-                }
-            });
+
+        function actualizarInterfazModo(modo) {
+            logger.info(`[MODO] Actualizando interfaz a modo: ${modo}`);
+            document.body.classList.remove('modo-casa', 'modo-aventura');
+            document.body.classList.add(`modo-${modo}`);
         }
-        
-        // Función para manejar clics en botones
-        function manejarClicBoton(botonId) {
-            const boton = estado.botones[botonId];
-            if (!boton || boton.estado === 'deshabilitado' || !estado.controles.habilitados) {
-                return;
-            }
-            
-            // Ejecutar la acción correspondiente
-            switch(boton.accion) {
-                case 'seleccionarPuntoInteres':
-                    seleccionarPuntoInteres();
-                    break;
-                case 'toggleNavegacion':
-                    toggleNavegacion();
-                    break;
-                case 'toggleBrujula':
-                    toggleBrujula();
-                    break;
-                case 'mostrarAyuda':
-                    mostrarAyuda();
-                    break;
-                case 'repetirUltimaAccion':
-                    repetirUltimaAccion();
-                    break;
-            }
-            
-            // Registrar acción en el historial
-            registrarAccion(boton.accion, { botonId });
-        }
-        
-        // Funciones de utilidad
-        function habilitarControles(motivo = null) {
-            estado.controles.habilitados = true;
-            estado.controles.motivoDeshabilitacion = null;
-            actualizarEstadoBotones();
-            logger.info('Controles habilitados', { motivo });
-        }
-        
-        function deshabilitarControles(motivo = 'Sin motivo especificado') {
-            estado.controles.habilitados = false;
-            estado.controles.motivoDeshabilitacion = motivo;
-            actualizarEstadoBotones();
-            logger.info('Controles deshabilitados', { motivo });
-        }
-        
-        function registrarAccion(accion, datos = {}) {
-            const accionRegistro = {
-                tipo: accion,
-                timestamp: new Date().toISOString(),
-                datos
-            };
-            
-            // Mantener un máximo de acciones en el historial
-            if (estado.historial.acciones.length >= estado.historial.maxAcciones) {
-                estado.historial.acciones.shift();
-            }
-            
-            estado.historial.acciones.push(accionRegistro);
-            estado.historial.ultimaAccion = accionRegistro;
-        }
-        
-        // Funciones de acción de botones
-        async function seleccionarPuntoInteres() {
-            try {
-                logger.info('Seleccionando punto de interés');
-                // Actualizar estado del botón
-                estado.botones.puntoInteres.estado = 'activo';
-                actualizarEstadoBotones();
-                
-                // Aquí iría la lógica para seleccionar un punto de interés
-                // Por ahora, simulamos una selección exitosa
-                setTimeout(() => {
-                    estado.botones.puntoInteres.estado = 'inactivo';
-                    actualizarEstadoBotones();
-                    mostrarMensaje('Punto de interés seleccionado', 'exito');
-                }, 1000);
-                
-            } catch (error) {
-                logger.error('Error al seleccionar punto de interés', error);
-                mostrarMensaje('Error al seleccionar punto de interés', 'error');
-                estado.botones.puntoInteres.estado = 'inactivo';
-                actualizarEstadoBotones();
-            }
-        }
-        
-        async function toggleNavegacion() {
-            try {
-                if (estado.navegacion.activa) {
-                    // Detener navegación
-                    logger.info('Deteniendo navegación');
-                    await detenerNavegacion();
-                    estado.botones.gps.texto = 'Iniciar Navegación';
-                    estado.botones.gps.icono = 'fa-directions';
-                } else {
-                    // Iniciar navegación
-                    logger.info('Iniciando navegación');
-                    await iniciarNavegacion();
-                    estado.botones.gps.texto = 'Detener Navegación';
-                    estado.botones.gps.icono = 'fa-stop';
-                }
-                actualizarEstadoBotones();
-            } catch (error) {
-                logger.error('Error al alternar navegación', error);
-                mostrarMensaje('Error al alternar navegación', 'error');
-            }
-        }
-        
-        async function toggleBrujula() {
-            try {
-                if (estado.brujula.activa) {
-                    // Desactivar brújula
-                    logger.info('Desactivando brújula');
-                    await detenerSeguimientoOrientacion();
-                    estado.brujula.activa = false;
-                    estado.botones.brujula.estado = 'inactivo';
-                    estado.botones.brujula.icono = 'fa-compass';
-                } else {
-                    // Activar brújula
-                    logger.info('Activando brújula');
-                    await iniciarSeguimientoOrientacion();
-                    estado.brujula.activa = true;
-                    estado.botones.brujula.estado = 'activo';
-                    estado.botones.brujula.icono = 'fa-compass';
-                }
-                actualizarEstadoBotones();
-            } catch (error) {
-                logger.error('Error al alternar brújula', error);
-                mostrarMensaje('Error al alternar brújula', 'error');
-            }
-        }
-        
-        function mostrarAyuda() {
-            logger.info('Mostrando ayuda');
-            mostrarMensaje('Mostrando ayuda...', 'info');
-            // Aquí iría la lógica para mostrar la ayuda
-        }
-        
-        function repetirUltimaAccion() {
-            logger.info('Repitiendo última acción');
-            if (estado.historial.ultimaAccion) {
-                const { tipo, datos } = estado.historial.ultimaAccion;
-                manejarClicBoton(datos.botonId);
-            } else {
-                mostrarMensaje('No hay acciones recientes para repetir', 'info');
-            }
-        }
-        
-        // Funciones de navegación
-        async function iniciarNavegacion() {
-            try {
-                estado.navegacion.activa = true;
-                // Aquí iría la lógica para iniciar la navegación
-                mostrarMensaje('Navegación iniciada', 'exito');
-                return true;
-            } catch (error) {
-                logger.error('Error al iniciar navegación', error);
-                throw error;
-            }
-        }
-        
-        // Función para detener la navegación
-        async function detenerNavegacion() {
-            // Guardar el estado actual antes de limpiar
-            const estabaActiva = estado.navegacion.activa;
-            const motivo = estado.navegacion.estado === 'error' ? 'error' : 'usuario';
-            
-            try {
-                // Actualizar estado
-                estado.navegacion.activa = false;
-                estado.navegacion.estado = 'inactiva';
-                
-                // Detener el seguimiento de posición
-                if (estado.navegacion.idSeguimiento && navigator.geolocation) {
-                    navigator.geolocation.clearWatch(estado.navegacion.idSeguimiento);
-                    estado.navegacion.idSeguimiento = null;
-                }
-                
-                // Detener la orientación del dispositivo
-                if (window.DeviceOrientationEvent) {
-                    window.removeEventListener('deviceorientation', manejarOrientacion, true);
-                }
-                
-                // Limpiar la línea de dirección si existe
-                if (estado.navegacion.lineaDireccion) {
-                    estado.navegacion.lineaDireccion.remove();
-                    estado.navegacion.lineaDireccion = null;
-                }
-                
-                // Limpiar el marcador de destino si existe
-                if (estado.navegacion.marcadorDestino) {
-                    estado.navegacion.marcadorDestino.remove();
-                    estado.navegacion.marcadorDestino = null;
-                }
-                
-                // Notificar al padre que la navegación se ha detenido
-                if (estabaActiva) {
-                    await enviarMensajeConReintento('padre', NAV_MSG.DETENIDA, {
-                        datos: {
-                            motivo: motivo === 'error' ? 'Error en la navegación' : 'Solicitado por el usuario',
-                            ultimoPunto: estado.navegacion.ultimaParadaCompletada,
-                            siguientePunto: estado.navegacion.siguienteParada,
-                            precision: estado.navegacion.precisionActual || 'media'
-                        }
-                    });
-                    
-                    mostrarMensaje('Navegación detenida', 'info');
-                }
-                
-                // Reiniciar el estado de navegación
-                estado.navegacion.distanciaActual = null;
-                estado.navegacion.direccionDestino = null;
-                estado.navegacion.siguienteParada = null;
-                estado.navegacion.ultimaParadaCompletada = null;
-                estado.navegacion.precisionActual = null;
-                
-                return true;
-                
-            } catch (error) {
-                logger.error('Error al detener navegación:', error);
-                
-                // Notificar error al padre
-                await enviarMensajeConReintento('padre', SISTEMA_MSG.ERROR, {
-                    datos: {
-                        tipo: 'error_detener_navegacion',
-                        mensaje: error.message,
-                        stack: error.stack
-                    }
-                });
-                
-                throw error;
-            }
-        }
-        
-        // Función para mostrar mensajes al usuario
-        function mostrarMensaje(mensaje, tipo = 'info') {
-            estado.ui.mensaje = mensaje;
-            estado.ui.tipoMensaje = tipo;
-            estado.ui.mostrarMensaje = true;
-            
-            // Ocultar el mensaje después del tiempo configurado
-            setTimeout(() => {
-                estado.ui.mostrarMensaje = false;
-            }, estado.ui.tiempoMensaje);
-            
-            logger.info(`Mensaje [${tipo}]: ${mensaje}`);
-        }
-        
-        // Función para verificar la compatibilidad del navegador
-        function verificarCompatibilidad() {
-            // Verificar si el navegador soporta la API de geolocalización
-            estado.gps.soportado = 'geolocation' in navigator;
-            
-            // Verificar si el navegador soporta la API de orientación
-            estado.brujula.soportada = 'DeviceOrientationEvent' in window;
-            
-            // Actualizar estado de los botones según la compatibilidad
-            if (!estado.brujula.soportada) {
-                estado.botones.brujula.estado = 'deshabilitado';
-                estado.botones.brujula.texto = 'Brújula no soportada';
-            }
-            
-            if (!estado.gps.soportado) {
-                estado.botones.gps.estado = 'deshabilitado';
-                estado.botones.gps.texto = 'GPS no soportado';
-                mostrarMensaje('Tu navegador no soporta la funcionalidad de GPS', 'advertencia');
-            }
-            
-            actualizarEstadoBotones();
-        }
-        
-        /**
-         * Muestra un medio (imagen o video) en un modal
-         * @param {string} tipo - Tipo de medio a mostrar ('imagen' o 'video')
-         */
+
         function mostrarMedioEnModal(tipo) {
-            // Obtener el elemento actual
-            const elementoActual = COORDENADAS_PARADAS.find(item => 
-                item.id === estado.navegacion.puntoActual.id
-            );
-            
+            const { modal, modalTitle, modalMediaContainer } = estadoApp.elementosDOM;
+            const elementoActual = estadoApp.navegacion.puntoActual;
+
             if (!elementoActual) {
-                actualizarStatus('No se encontró el elemento actual', 'error');
+                logger.warn('No hay un punto actual definido para mostrar medios.');
                 return;
             }
-            
-            const mediaPath = tipo === 'imagen' 
-                ? elementoActual.imagen 
-                : (elementoActual.video || '');
-                
+
+            const mediaPath = tipo === 'imagen' ? elementoActual.imagen : elementoActual.video;
             if (!mediaPath) {
-                actualizarStatus(`No hay ${tipo} disponible para este elemento`, 'advertencia');
+                logger.warn(`No hay ${tipo} disponible para ${elementoActual.nombre}`);
                 return;
             }
-            
-            const modal = document.getElementById('modal-medios');
-            const tituloMedio = document.getElementById('titulo-medio');
-            const mediaContainer = document.querySelector('.media-container');
-            
-            if (!modal || !tituloMedio || !mediaContainer) {
-                console.error('Elementos del modal no encontrados');
-                return;
-            }
-            
-            // Actualizar título
-            tituloMedio.textContent = elementoActual.nombre || 'Elemento sin nombre';
-            mediaContainer.innerHTML = '';
-            
+
+            modalTitle.textContent = elementoActual.nombre;
+            modalMediaContainer.innerHTML = ''; // Limpiar contenido anterior
+
             if (tipo === 'imagen') {
                 const img = document.createElement('img');
                 img.src = mediaPath;
-                img.alt = `Imagen de ${elementoActual.nombre || 'elemento actual'}`;
-                img.style.maxWidth = '100%';
-                img.style.maxHeight = '70vh';
-                mediaContainer.appendChild(img);
+                img.alt = `Imagen de ${elementoActual.nombre}`;
+                modalMediaContainer.appendChild(img);
             } else {
                 const video = document.createElement('video');
                 video.src = mediaPath;
                 video.controls = true;
                 video.autoplay = true;
-                video.style.maxWidth = '100%';
-                video.style.maxHeight = '70vh';
-                mediaContainer.appendChild(video);
+                modalMediaContainer.appendChild(video);
             }
-            
             modal.style.display = 'flex';
         }
 
-        /**
-         * Configura los manejadores de eventos de la interfaz
-         */
-        function configurarEventos() {
-            // Botón Punto de interés
-            elementos.btnPunto.addEventListener('click', manejarClickPunto);
+        // =================================================================================
+        // 5. MANEJADORES DE EVENTOS DE BOTONES
+        // =================================================================================
+
+        async function manejarClickPunto() {
+            if (!estadoApp.controlesHabilitados) return;
+            logger.info("Botón 'Punto de Interés' presionado.");
             
-            // Configurar evento de clic en el botón de imagen
-            const btnImagen = document.getElementById('btn-imagen');
-            if (btnImagen) {
-                btnImagen.addEventListener('click', () => mostrarMediaActual('imagen'));
+            if (!estadoApp.navegacion.ultimaUbicacion) {
+                logger.warn("No se puede solicitar destino sin una ubicación actual del usuario.");
+                // Opcional: Pedir al padre que inicie el GPS para obtener ubicación
+                return;
             }
-            
-            // Configurar evento de clic en el botón de video
-            const btnVideo = document.getElementById('btn-video');
-            if (btnVideo) {
-                btnVideo.addEventListener('click', () => mostrarMediaActual('video'));
-            }
-            
-            // Configurar cierre del modal
-            const modal = document.getElementById('modal-medios');
-            const btnCerrar = document.querySelector('.cerrar');
-            
-            if (btnCerrar) {
-                btnCerrar.addEventListener('click', () => {
-                    if (modal) modal.style.display = 'none';
-                    // Detener cualquier video que se esté reproduciendo
-                    const videos = modal?.querySelectorAll('video');
-                    videos?.forEach(video => video.pause());
+
+            try {
+                await enviarMensaje('padre', NAV_MSG.ESTABLECER_DESTINO, { // <-- CAMBIO AQUÍ
+                    ubicacionActual: estadoApp.navegacion.ultimaUbicacion
                 });
+                logger.info("Solicitud de destino enviada al padre con ubicación actual.");
+            } catch (error) {
+                logger.error("Error al enviar solicitud de destino:", error);
+            }
+        }
+
+        async function manejarClickGps() {
+            if (!estadoApp.controlesHabilitados) return;
+            
+            const nuevoModo = estadoApp.modo === 'aventura' ? 'casa' : 'aventura';
+            logger.info(`Solicitando cambio a modo: ${nuevoModo}`);
+            
+            try {
+                await enviarMensaje('padre', SISTEMA_MSG.CAMBIO_MODO, { modo: nuevoModo });
+            } catch (error) {
+                logger.error(`Error al solicitar cambio a modo ${nuevoModo}`, error);
+            }
+        }
+
+        // =================================================================================
+        // 6. MANEJADORES DE MENSAJES DEL PADRE
+        // =================================================================================
+
+        async function manejarCambioModo(mensaje) {
+            const { modo } = mensaje.datos;
+            if (!modo || (modo !== 'casa' && modo !== 'aventura')) {
+                logger.error(`Modo no válido recibido: ${modo}`);
+                return { exito: false, error: `Modo no válido: ${modo}` };
             }
             
-            // Cerrar modal al hacer clic fuera del contenido
+            logger.info(`Recibida orden de cambiar a modo: ${modo}`);
+            estadoApp.modo = modo;
+            actualizarInterfazModo(modo);
+
+            if (modo === 'aventura') {
+                estadoApp.navegacion.activa = true;
+                estadoApp.elementosDOM.btnGps.classList.add('active');
+                enviarMensaje('padre', NAV_MSG.INICIAR, {}).catch(logger.error);
+            } else { // modo === 'casa'
+                estadoApp.navegacion.activa = false;
+                estadoApp.elementosDOM.btnGps.classList.remove('active');
+                enviarMensaje('padre', NAV_MSG.DETENER, { motivo: 'cambio_a_modo_casa' }).catch(logger.error);
+            }
+            return { exito: true, modoActual: estadoApp.modo };
+        }
+
+        function manejarActualizacionUbicacion(mensaje) {
+            const { lat, lng } = mensaje.datos;
+            estadoApp.navegacion.ultimaUbicacion = { lat, lng };
+            logger.debug("Ubicación actual actualizada:", estadoApp.navegacion.ultimaUbicacion);
+            return { exito: true };
+        }
+
+        function manejarCambioPuntoActual(mensaje) {
+            const { puntoId } = mensaje.datos;
+            const nuevoPunto = estadoApp.paradas.find(p => p.id === puntoId);
+            if (nuevoPunto) {
+                estadoApp.navegacion.puntoActual = nuevoPunto;
+                logger.info("Punto actual de navegación actualizado:", nuevoPunto.nombre);
+            } else {
+                logger.warn(`No se encontró el punto con id: ${puntoId}`);
+            }
+            return { exito: true };
+        }
+
+        /**
+         * Maneja las solicitudes de datos de una parada específica.
+         * @param {object} mensaje - El mensaje con el ID de la parada solicitada.
+         * @returns {object} La información completa de la parada o un error.
+         */
+        function manejarSolicitudDatosParada(mensaje) {
+            const { puntoId } = mensaje.datos;
+            logger.info(`Recibida solicitud de datos para el punto: ${puntoId}`);
+            const punto = COORDENADAS_PARADAS.find(p => p.id === puntoId);
+
+            if (punto) {
+                logger.info(`Enviando datos para: ${punto.nombre}`);
+                return { exito: true, datosPunto: punto };
+            } else {
+                logger.error(`No se encontraron datos para el punto con id: ${puntoId}`);
+                return { exito: false, error: `Punto no encontrado: ${puntoId}` };
+            }
+        }
+
+        function registrarManejadoresMensajes() {
+            logger.info('Registrando manejadores de mensajes...');
+            
+            registrarControlador(SISTEMA_MSG.CAMBIO_MODO, manejarCambioModo);
+            registrarControlador(TIPOS_MENSAJE.UI.HABILITAR_CONTROLES, () => habilitarControles(true)); // <-- CAMBIO AQUÍ
+            registrarControlador(TIPOS_MENSAJE.UI.DESHABILITAR_CONTROLES, () => habilitarControles(false)); // <-- CAMBIO AQUÍ
+            registrarControlador(TIPOS_MENSAJE.GPS.ACTUALIZAR, manejarActualizacionUbicacion);
+            registrarControlador(NAV_MSG.CAMBIO_PARADA, manejarCambioPuntoActual);
+            registrarControlador(TIPOS_MENSAJE.DATOS.SOLICITAR_PARADA, manejarSolicitudDatosParada);
+            
+            logger.info('Manejadores registrados.');
+        }
+
+        // =================================================================================
+        // 7. INICIALIZACIÓN
+        // =================================================================================
+
+        function configurarEventosUI() {
+            const { btnPunto, btnGps, btnImagen, btnVideo, modal, modalClose } = estadoApp.elementosDOM;
+
+            btnPunto.addEventListener('click', (e) => { e.preventDefault(); manejarClickPunto(); });
+            btnGps.addEventListener('click', (e) => { e.preventDefault(); manejarClickGps(); });
+            btnImagen.addEventListener('click', (e) => { e.preventDefault(); mostrarMedioEnModal('imagen'); });
+            btnVideo.addEventListener('click', (e) => { e.preventDefault(); mostrarMedioEnModal('video'); });
+
+            modalClose.addEventListener('click', () => {
+                modal.style.display = 'none';
+                const videoEl = modal.querySelector('video');
+                if (videoEl) videoEl.pause();
+            });
+
             window.addEventListener('click', (event) => {
                 if (event.target === modal) {
                     modal.style.display = 'none';
-                    // Detener cualquier video que se esté reproduciendo
-                    const videos = modal.querySelectorAll('video');
-                    videos.forEach(video => video.pause());
+                    const videoEl = modal.querySelector('video');
+                    if (videoEl) videoEl.pause();
                 }
             });
             
-            // Los botones de mapa y brújula son enlaces directos sin manejadores
-            // Botón GPS
-            elementos.btnGps.addEventListener('click', manejarClickGps);
-            
-            // Eventos táctiles para feedback
-            const botones = document.querySelectorAll('.nav-button');
-            botones.forEach(boton => {
-                boton.addEventListener('touchstart', (e) => {
-                    if (!boton.disabled) {
-                        boton.style.transform = 'scale(0.95)';
-                    }
-                }, { passive: true });
-                
-                boton.addEventListener('touchend', (e) => {
-                    if (!boton.disabled) {
-                        boton.style.transform = '';
-                    }
-                }, { passive: true });
-            });
+            logger.info('Eventos de UI configurados.');
         }
 
-        /**
-         * @description Maneja el clic en un punto de interés y solicita al padre el punto de interés más cercano
-         * @returns {Promise<Object>} Promesa que se resuelve con la respuesta del padre
-         */
-        async function manejarClickPunto() {
-            if (!estado.controlesHabilitados) return;
-            
-            try {
-                console.log('[MANEJADOR] Punto de interés clickeado');
-                actualizarEstado('Buscando puntos de interés cercanos...', 'info');
-                
-                // Solicitar al padre el punto de interés más cercano
-                await enviarMensajeConReintento('padre', 'NAVEGACION.SOLICITAR_DESTINO', {
-                    datos: {
-                        modo: estado.modo,
-                        contexto: 'seleccion_usuario',
-                        precisionRequerida: 'alta'
-                    }
-                });
-                
-                // Actualizar interfaz
-                actualizarEstado('Selecciona un punto de interés en el mapa', 'info');
-                
-            } catch (error) {
-                logger.error('Error al manejar el botón de punto:', error);
-                actualizarEstado('Error al seleccionar punto de interés', 'error');
-                estado.botones.puntoInteres.estado = 'inactivo';
-                actualizarEstadoBotones();
-            }
-        }
-
-        /**
-         * Maneja el evento de clic en el botón de GPS
-         * Inicia o detiene la navegación según el estado actual
-         * @returns {Promise<boolean>} true si la operación fue exitosa, false en caso contrario
-         */
-        async function manejarClickGps() {
-            if (!estado.controlesHabilitados) return false;
-            
-            try {
-                estado.botones.gps.estado = 'activo';
-                actualizarEstadoBotones();
-                
-                if (estado.navegacion.activa) {
-                    // Detener navegación
-                    await detenerNavegacion();
-                    
-                    // Notificar al padre
-                    await enviarMensajeConReintento('padre', NAV_MSG.DETENER, {
-                        datos: {
-                            motivo: 'Solicitado por el usuario'
-                        }
-                    });
-                    
-                    actualizarEstado('Navegación detenida', 'info');
-                    estado.botones.gps.texto = 'Iniciar Navegación';
-                    estado.botones.gps.icono = 'fa-directions';
-                } else {
-                    // Iniciar navegación
-                    try {
-                        await iniciarNavegacion();
-                        
-                        // Notificar al padre
-                        if (estado.navegacion.puntoDestino) {
-                            await enviarMensajeConReintento('padre', NAV_MSG.INICIAR, {
-                                datos: {
-                                    destino: estado.navegacion.puntoDestino,
-                                    modo: estado.modo
-                                }
-                            });
-                        }
-                        
-                        // Notificar inicio de navegación exitoso
-                        await enviarMensajeConReintento('padre', NAV_MSG.INICIADA, {
-                            datos: {
-                                destino: estado.navegacion.puntoDestino,
-                                modo: estado.modo,
-                                precision: estado.navegacion.precisionActual || 'media'
-                            }
-                        });
-                        
-                        actualizarEstado('Navegación activa', 'exito');
-                        estado.botones.gps.texto = 'Detener Navegación';
-                        estado.botones.gps.icono = 'fa-stop';
-                    } catch (error) {
-                        logger.error('Error al iniciar navegación:', error);
-                        actualizarEstado('Error al iniciar navegación', 'error');
-                        estado.navegacion.estado = 'inactiva';
-                        estado.navegacion.activa = false;
-                        
-                        // Notificar error al padre
-                        await enviarMensajeConReintento('padre', SISTEMA_MSG.ERROR, {
-                            datos: {
-                                tipo: 'error_inicio_navegacion',
-                                mensaje: error.message,
-                                stack: error.stack
-                            }
-                        });
-                        
-                        throw error; // Re-lanzar para que sea manejado por el catch externo
-                    }
-                }
-                
-                return true;
-            } catch (error) {
-                logger.error('Error al manejar el botón GPS:', error);
-                actualizarEstado('Error en la navegación GPS', 'error');
-                
-                // Notificar error al padre
-                enviarMensajeConReintento('padre', SISTEMA_MSG.ERROR, {
-                    datos: {
-                        tipo: 'error_inicio_navegacion',
-                        mensaje: error.message,
-                        stack: error.stack
-                    }
-                }).catch(console.error);
-                
-                estado.botones.gps.estado = 'inactivo';
-                actualizarEstadoBotones();
-                return false;
-            }
-        }
-        
-        // Función para actualizar la posición del usuario
-        function actualizarPosicionUsuario(posicion) {
-            if (!posicion || !posicion.coords) {
-                console.error('Posición inválida:', posicion);
+        async function inicializar() {
+            if (estadoApp.inicializado) {
+                logger.warn('Intento de reinicializar la aplicación.');
                 return;
             }
-            
-            const { latitude: lat, longitude: lng, heading: direccion } = posicion.coords;
-            const ubicacionActual = { lat, lng };
-            
-            // Actualizar posición en el mapa
-            if (typeof window.actualizarPosicionEnMapa === 'function') {
-                window.actualizarPosicionEnMapa(lat, lng, direccion);
-            } else {
-                console.warn('La función actualizarPosicionEnMapa no está disponible');
-            }
-            
-            // Actualizar el estado de los botones según la ubicación actual
-            actualizarEstadoBotones(ubicacionActual);
-            
-            // Si no hay siguiente parada, intentar establecer la primera
-            if (!estado.navegacion.siguienteParada) {
-                estado.navegacion.siguienteParada = encontrarSiguienteParada(estado.navegacion.ultimaParadaCompletada?.id);
-                if (estado.navegacion.siguienteParada) {
-                    console.log(`Siguiente parada establecida: ${estado.navegacion.siguienteParada.nombre}`);
-                    
-                    // Notificar al padre sobre la nueva parada de navegación
-                    enviarMensajeConReintento('padre', NAV_MSG.SIGUIENTE_PARADA_ESTABLECIDA, {
-                        datos: {
-                            paradaId: estado.navegacion.siguienteParada.id,
-                            nombre: estado.navegacion.siguienteParada.nombre,
-                            esPrimeraParada: !estado.navegacion.ultimaParadaCompletada
-                        }
-                    }).catch(console.error);
-                }
-            }
-            
-            // Verificar proximidad a la siguiente parada/tramo
-            if (estado.navegacion.siguienteParada) {
-                const puntoDestino = estado.navegacion.siguienteParada.coordenadas || 
-                                   estado.navegacion.siguienteParada.inicio;
-            
-                if (puntoDestino) {
-                    const distancia = calcularDistancia(
-                        lat, lng, 
-                        puntoDestino.lat, 
-                        puntoDestino.lng
-                    );
-                    
-                    estado.navegacion.distanciaActual = distancia;
-                    
-                    // Si estamos dentro del umbral, marcar como completado
-                    if (distancia <= estado.configuracion.distanciaUmbral) {
-                        marcarParadaCompletada(estado.navegacion.siguienteParada);
-                    }
-                    
-                    // Si hay un destino activo, actualizar dirección y línea
-                    if (estado.navegacion.puntoDestino) {
-                        const direccionDestino = calcularDireccion(lat, lng, puntoDestino.lat, puntoDestino.lng);
-                        estado.navegacion.direccionDestino = direccionDestino;
-                        actualizarLineaDireccion(lat, lng, direccionDestino);
-                    }
-                }
-            }
-        }
-        
-        // Función para calcular la dirección hacia el destino
-        function calcularDireccion(lat1, lon1, lat2, lon2) {
-            const dLon = (lon2 - lon1) * Math.PI / 180;
-            const y = Math.sin(dLon) * Math.cos(lat2 * Math.PI / 180);
-            const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
-                     Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLon);
-            let brng = Math.atan2(y, x) * 180 / Math.PI;
-            return (brng + 360) % 360;
-        }
-        
-        // Función para actualizar la línea de dirección al destino
-        function actualizarLineaDireccion(lat, lng, direccion) {
-            if (!mapa) return;
-            
-            // Calcular un punto a cierta distancia en la dirección del destino
-            const R = 0.0001; // Radio pequeño para la línea de dirección
-            const lat2 = lat + (R * Math.cos(direccion * Math.PI / 180));
-            const lng2 = lng + (R * Math.sin(direccion * Math.PI / 180));
-            
-            // Crear o actualizar la línea de dirección
-            const puntoActual = [lat, lng];
-            const puntoDireccion = [lat2, lng2];
-            
-            if (estado.navegacion.lineaDireccion) {
-                estado.navegacion.lineaDireccion.setLatLngs([puntoActual, puntoDireccion]);
-            } else {
-                estado.navegacion.lineaDireccion = L.polyline([puntoActual, puntoDireccion], {
-                    color: '#3388ff',
-                    weight: 2,
-                    opacity: 0.7,
-                    dashArray: '5, 5'
-                }).addTo(mapa);
-            }
-        }
-        
-        // Función para marcar una parada como completada
-        function marcarParadaCompletada(parada) {
-            console.log(`Parada completada: ${parada.nombre || parada.id}`);
-            
-            // Actualizar la última parada completada
-            estado.navegacion.ultimaParadaCompletada = parada;
-            
-            // Encontrar la siguiente parada
-            estado.navegacion.siguienteParada = encontrarSiguienteParada(parada.id);
-            
-            // Notificar al padre que se ha completado una parada
-            if (enviarMensaje) {
-                enviarMensajeConReintento('padre', NAV_MSG.LLEGADA_DETECTADA, {
-                    datos: {
-                        paradaId: parada.id,
-                        nombre: parada.nombre
-                    }
-                }).catch(error => {
-                    console.error('Error al notificar parada completada:', error);
-                });
-            }
-            
-            // Si no hay más paradas, notificar finalización
-            if (!estado.navegacion.siguienteParada) {
-                console.log('¡Ruta completada!');
-                if (enviarMensaje) {
-                    enviarMensajeConReintento('padre', NAV_MSG.RUTA_COMPLETADA, {
-                        datos: {}
-                    });
-                }
-            }
-            
-            estado.navegacion.puntoDestino = null;
-        }
-        
-        // Función para manejar errores de geolocalización
-        function manejarErrorPosicion(error) {
-            console.error('Error de geolocalización:', error);
-            let mensaje = 'Error de GPS';
-            
-            switch(error.code) {
-                case error.PERMISSION_DENIED:
-                    mensaje = 'Se ha denegado el acceso a la geolocalización';
-                    break;
-                case error.POSITION_UNAVAILABLE:
-                    mensaje = 'La información de ubicación no está disponible';
-                    break;
-                case error.TIMEOUT:
-                    mensaje = 'Tiempo de espera de geolocalización agotado';
-                    break;
-            }
-            
-            actualizarEstado(mensaje, 'error');
-        }
-        
-        // Función llamada cuando se alcanza un destino
-        async function destinoAlcanzado() {
-            // Detener la navegación
-            detenerNavegacion();
-        }
-        
-        // Función auxiliar para calcular distancia entre dos puntos en metros
-        function calcularDistancia(lat1, lon1, lat2, lon2) {
-            const R = 6371e3; // Radio de la Tierra en metros
-            const φ1 = lat1 * Math.PI / 180;
-            const φ2 = lat2 * Math.PI / 180;
-            const Δφ = (lat2 - lat1) * Math.PI / 180;
-            const Δλ = (lon2 - lon1) * Math.PI / 180;
-            
-            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-                      Math.cos(φ1) * Math.cos(φ2) *
-                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            
-            return Math.round(R * c);
-        }
-        
-        // Función para actualizar el estado con la distancia al destino
-        /**
-         * Actualiza el estado de la distancia (función vacía, mantiene compatibilidad)
-         * @deprecated Esta función se mantiene por compatibilidad pero no realiza ninguna acción
-         */
-        function actualizarEstadoDistancia() {
-            // Función vacía - se ha eliminado la funcionalidad de mensajes de distancia
-        }
+            logger.info('🚀 Iniciando inicialización de la aplicación...');
 
-        /**
-         * Maneja el clic en el botón de mapa
-         * Solicita al padre que muestre el mapa
-         * @returns {Promise<void>}
-         */
-        async function manejarClickMapa() {
-            if (!estado.controlesHabilitados) return;
-            
             try {
-                console.log('Acción: Mostrar mapa');
-                // Implementar lógica para mostrar el mapa
-                await enviarMensajeConReintento('padre', NAV_MSG.MOSTRAR_MAPA, {
-                    datos: {}
-                });
-                
-            } catch (error) {
-                console.error('Error al manejar el botón mapa:', error);
-            }
-        }
-
-        /**
-         * Maneja el clic en el botón de brújula
-         * Alterna el modo brújula y notifica al padre del cambio
-         */
-        function manejarClickBrujula() {
-            if (!estado.controlesHabilitados) return;
-            
-            try {
-                // Alternar modo brújula
-                estado.modoCompass = !estado.modoCompass;
-                
-                // Actualizar UI
-                elementos.btnCompass.classList.toggle('active', estado.modoCompass);
-                
-                console.log(`Modo brújula: ${estado.modoCompass ? 'activado' : 'desactivado'}`);
-                
-                // Notificar al padre del cambio de modo
-                enviarMensajeConReintento('padre', NAV_MSG.MODO_BRUJULA, {
-                    datos: {
-                        activo: estado.modoCompass
-                    }
-                }).catch(console.error);
-                
-                // Iniciar/Detener seguimiento de orientación según el modo
-                if (estado.modoCompass) {
-                    iniciarSeguimientoOrientacion();
-                } else {
-                    detenerSeguimientoOrientacion();
-                }
-                
-            } catch (error) {
-                console.error('Error al manejar el botón brújula:', error);
-            }
-        }
-
-        // Funciones de seguimiento de orientación
-        let watchId = null;
-        
-        function iniciarSeguimientoOrientacion() {
-            if ('DeviceOrientationEvent' in window) {
-                // Verificar permisos en dispositivos iOS 13+
-                if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                    DeviceOrientationEvent.requestPermission()
-                        .then(permissionState => {
-                            if (permissionState === 'granted') {
-                                window.addEventListener('deviceorientation', manejarOrientacion, true);
-                            }
-                        })
-                        .catch(console.error);
-                } else {
-                    // Navegadores que no requieren solicitud de permiso
-                    window.addEventListener('deviceorientation', manejarOrientacion, true);
-                }
-            }
-        }
-        
-        function detenerSeguimientoOrientacion() {
-            window.removeEventListener('deviceorientation', manejarOrientacion, true);
-        }
-        
-        /**
-         * Maneja los eventos de orientación del dispositivo
-         * @param {DeviceOrientationEvent} event - Evento de orientación del dispositivo
-         */
-        function manejarOrientacion(event) {
-            if (event.alpha !== null && estado.modoCompass) {
-                const alpha = event.alpha;  // Grados de rotación (0-360)
-                // Enviar actualización de orientación al padre
-                enviarMensajeConReintento('padre', NAV_MSG.ORIENTACION, {
-                    datos: {
-                        grados: alpha
-                    }
-                }).catch(console.error);
-            }
-        }
-
-        /**
-         * Maneja la configuración del sistema (tema, idioma, etc.)
-         * @param {Object} mensaje - Mensaje de configuración
-         * @returns {Promise<Object>} Respuesta con el estado actualizado
-         */
-        async function manejarConfiguracion(mensaje) {
-            try {
-                // Validar el mensaje usando el esquema definido
-                validarMensaje(mensaje, ESQUEMAS_VALIDACION[SISTEMA_MSG.CONFIGURACION]);
-                
-                const { tema, idioma, opciones } = mensaje.datos;
-                
-                // Actualizar configuración local
-                if (tema) {
-                    // Aplicar tema
-                    document.documentElement.setAttribute('data-tema', tema);
-                    estado.configuracion.tema = tema;
-                }
-                
-                if (idioma) {
-                    // Actualizar idioma
-                    estado.configuracion.idioma = idioma;
-                    // Aquí iría la lógica para actualizar los textos de la interfaz
-                }
-                
-                if (opciones) {
-                    // Actualizar opciones adicionales
-                    estado.configuracion.opciones = { ...estado.configuracion.opciones, ...opciones };
-                }
-                
-                logger.info('Configuración actualizada', estado.configuracion);
-                
-                // Enviar confirmación al padre
-                return {
-                    exito: true,
-                    mensaje: 'Configuración actualizada correctamente',
-                    configuracion: estado.configuracion
-                };
-                
-            } catch (error) {
-                logger.error('Error al manejar configuración:', error);
-                throw new Error(`Error de configuración: ${error.message}`);
-            }
-        }
-        
-        /**
-         * Maneja la sincronización de estado con el padre
-         * @param {Object} mensaje - Mensaje de sincronización
-         * @returns {Promise<Object>} Estado actual del componente
-         */
-        async function manejarSincronizacion(mensaje) {
-            try {
-                validarMensaje(mensaje, ESQUEMAS_VALIDACION[SISTEMA_MSG.SINCRONIZAR]);
-                
-                // Actualizar estado local con el estado recibido si es necesario
-                if (mensaje.datos && mensaje.datos.estado) {
-                    // Aquí iría la lógica para actualizar el estado local
-                    // con el estado recibido del padre
-                    estado = { ...estado, ...mensaje.datos.estado };
-                }
-                
-                // Devolver el estado actual del componente
-                return {
-                    exito: true,
-                    estado: estado,
-                    timestamp: Date.now()
-                };
-                
-            } catch (error) {
-                logger.error('Error en sincronización:', error);
-                throw new Error(`Error de sincronización: ${error.message}`);
-            }
-        }
-        
-        /**
-         * Maneja la confirmación de operaciones
-         * @param {Object} mensaje - Mensaje de confirmación
-         */
-        async function manejarConfirmacion(mensaje) {
-            try {
-                validarMensaje(mensaje, ESQUEMAS_VALIDACION[SISTEMA_MSG.CONFIRMACION]);
-                
-                const { tipo, exito, mensaje: mensajeConfirmacion, datos } = mensaje.datos;
-                
-                logger.info(`Confirmación recibida - Tipo: ${tipo}, Éxito: ${exito}`, {
-                    mensaje: mensajeConfirmacion,
-                    datos
-                });
-                
-                // Aquí se puede agregar lógica específica basada en el tipo de confirmación
-                
-            } catch (error) {
-                logger.error('Error al procesar confirmación:', error);
-            }
-        }
-
-        /**
-         * Maneja la habilitación de controles
-         * @param {Object} mensaje - Mensaje de habilitación
-         */
-        function manejarHabilitarControles(mensaje) {
-            try {
-                validarMensaje(mensaje, {
-                    origen: { type: 'string', required: true },
-                    timestamp: { type: 'string', required: true },
-                    datos: { type: 'object', optional: true }
-                });
-                
-                estado.controlesHabilitados = true;
-                console.log('Controles habilitados por:', mensaje.origen || 'origen desconocido');
-                
-                // Actualizar la interfaz
-                document.body.classList.remove('controles-deshabilitados');
-                
-                // Notificar confirmación
-                enviarMensajeConReintento(mensaje.origen, SISTEMA_MSG.CONFIRMACION, {
-                    tipo: 'controles_habilitados',
-                    estado: 'completado',
-                    timestamp: new Date().toISOString()
-                }).catch(console.error);
-                
-            } catch (error) {
-                console.error('Error al habilitar controles:', error);
-                notificarError('habilitar_controles', error, { origen: mensaje?.origen });
-            }
-        }
-
-        /**
-         * Maneja la deshabilitación de controles
-         * @param {Object} mensaje - Mensaje de deshabilitación
-         */
-        function manejarDeshabilitarControles(mensaje) {
-            try {
-                validarMensaje(mensaje, {
-                    origen: { type: 'string', required: true },
-                    timestamp: { type: 'string', required: true },
-                    datos: { 
-                        type: 'object',
-                        properties: {
-                            motivo: { type: 'string', optional: true },
-                            mostrarMensaje: { type: 'boolean', optional: true }
-                        }
-                    }
-                });
-                
-                const { motivo = 'No especificado', mostrarMensaje = true } = mensaje.datos || {};
-                
-                estado.controlesHabilitados = false;
-                console.log(`Controles deshabilitados por: ${mensaje.origen} - Motivo: ${motivo}`);
-                
-                // Actualizar la interfaz
-                document.body.classList.add('controles-deshabilitados');
-                
-                // Mostrar mensaje al usuario si es necesario
-                if (mostrarMensaje) {
-                    actualizarEstado(`Controles deshabilitados: ${motivo}`, 'advertencia');
-                }
-                
-                // Notificar confirmación
-                enviarMensajeConReintento(mensaje.origen, SISTEMA_MSG.CONFIRMACION, {
-                    tipo: 'controles_deshabilitados',
-                    estado: 'completado',
-                    timestamp: new Date().toISOString()
-                }).catch(console.error);
-                
-            } catch (error) {
-                console.error('Error al deshabilitar controles:', error);
-                notificarError('deshabilitar_controles', error, { origen: mensaje?.origen });
-            }
-        }
-
-        /**
-         * Maneja el cambio de parada en la navegación
-         * @param {Object} mensaje - Mensaje de cambio de parada
-         */
-        function manejarCambioParada(mensaje) {
-            try {
-                validarMensaje(mensaje, {
-                    origen: { type: 'string', required: true },
-                    timestamp: { type: 'string', required: true },
-                    datos: {
-                        type: 'object',
-                        required: ['paradaId', 'nombre'],
-                        properties: {
-                            paradaId: { type: 'string' },
-                            nombre: { type: 'string' },
-                            coordenadas: {
-                                type: 'object',
-                                required: ['lat', 'lng'],
-                                properties: {
-                                    lat: { type: 'number' },
-                                    lng: { type: 'number' }
-                                }
-                            },
-                            esFinal: { type: 'boolean', optional: true }
-                        }
-                    }
-                });
-                
-                const { paradaId, nombre, coordenadas, esFinal } = mensaje.datos;
-                
-                // Actualizar estado de navegación
-                estado.navegacion.paradaActual = { id: paradaId, nombre, coordenadas };
-                
-                if (esFinal) {
-                    estado.navegacion.rutaCompletada = true;
-                    // Notificar llegada al destino final
-                    enviarMensajeConReintento('padre', NAV_MSG.LLEGADA_DETECTADA, {
-                        tipo: 'destino_final',
-                        paradaId,
-                        nombre,
-                        timestamp: new Date().toISOString()
-                    }).catch(console.error);
-                }
-                
-                // Actualizar UI
-                actualizarEstado(`Próxima parada: ${nombre}`, 'info');
-                
-            } catch (error) {
-                console.error('Error al procesar cambio de parada:', error);
-                notificarError('cambio_parada', error, { origen: mensaje?.origen });
-            }
-        }
-        
-        /**
-         * Maneja la solicitud de establecer un nuevo destino
-         * @param {Object} mensaje - Mensaje con los datos del destino
-         */
-        function manejarEstablecerDestino(mensaje) {
-            try {
-                validarMensaje(mensaje, {
-                    origen: { type: 'string', required: true },
-                    timestamp: { type: 'string', required: true },
-                    datos: {
-                        type: 'object',
-                        required: ['destino'],
-                        properties: {
-                            destino: {
-                                type: 'object',
-                                required: ['id', 'nombre', 'coordenadas'],
-                                properties: {
-                                    id: { type: 'string' },
-                                    nombre: { type: 'string' },
-                                    coordenadas: {
-                                        type: 'object',
-                                        required: ['lat', 'lng'],
-                                        properties: {
-                                            lat: { type: 'number' },
-                                            lng: { type: 'number' }
-                                        }
-                                    }
-                                }
-                            },
-                            opciones: { type: 'object', optional: true }
-                        }
-                    }
-                });
-                
-                const { destino, opciones = {} } = mensaje.datos;
-                
-                // Actualizar estado de navegación
-                estado.navegacion.destino = destino;
-                estado.navegacion.rutaCompletada = false;
-                
-                // Iniciar navegación si no está activa
-                if (!estado.navegacion.activa) {
-                    iniciarNavegacion(destino, opciones);
-                }
-                
-                // Confirmar recepción
-                enviarMensajeConReintento(mensaje.origen, NAV_MSG.DESTINO_ESTABLECIDO, {
-                    destinoId: destino.id,
-                    nombre: destino.nombre,
-                    timestamp: new Date().toISOString()
-                }).catch(console.error);
-                
-            } catch (error) {
-                console.error('Error al establecer destino:', error);
-                notificarError('establecer_destino', error, { origen: mensaje?.origen });
-                
-                // Notificar error al remitente
-                enviarMensajeConReintento(mensaje.origen, SISTEMA_MSG.ERROR, {
-                    tipo: 'error_establecer_destino',
-                    mensaje: error.message,
-                    timestamp: new Date().toISOString()
-                }).catch(console.error);
-            }
-        }
-        
-        /**
-         * Maneja las actualizaciones de la interfaz de usuario
-         * @param {Object} mensaje - Mensaje con las actualizaciones de UI
-         */
-        function manejarActualizacionUI(mensaje) {
-            try {
-                validarMensaje(mensaje, {
-                    origen: { type: 'string', required: true },
-                    timestamp: { type: 'string', required: true },
-                    datos: { type: 'object', required: true }
-                });
-                
-                const { accion, parametros = {} } = mensaje.datos;
-                
-                switch (accion) {
-                    case 'mostrar_mensaje':
-                        const { texto, tipo = 'info', duracion } = parametros;
-                        mostrarMensaje(texto, tipo, duracion);
-                        break;
-                        
-                    case 'actualizar_estado':
-                        actualizarEstado(parametros.texto, parametros.tipo);
-                        break;
-                        
-                    case 'alternar_modo_compass':
-                        if (typeof parametros.activo === 'boolean') {
-                            estado.modoCompass = parametros.activo;
-                            // Actualizar UI según el modo
-                            document.querySelectorAll('.compass-control')
-                                .forEach(el => el.classList.toggle('activo', estado.modoCompass));
-                        }
-                        break;
-                        
-                    default:
-                        console.warn('Acción de UI no reconocida:', accion);
-                }
-                
-            } catch (error) {
-                console.error('Error al actualizar la interfaz:', error);
-                notificarError('actualizacion_ui', error, { origen: mensaje?.origen });
-            }
-        }
-        
-        /**
-         * Maneja las actualizaciones de GPS
-         * @param {Object} mensaje - Mensaje con datos de GPS
-         * @returns {Promise<Object>} Estado actualizado de la navegación
-         */
-        async function manejarActualizacionGPS(mensaje) {
-            try {
-                // Validar el mensaje usando el esquema definido
-                validarMensaje(mensaje, {
-                    origen: { type: 'string', required: true },
-                    timestamp: { type: 'string', required: true },
-                    datos: {
-                        type: 'object',
-                        required: ['coordenadas'],
-                        properties: {
-                            coordenadas: {
-                                type: 'object',
-                                required: ['lat', 'lng'],
-                                properties: {
-                                    lat: { type: 'number' },
-                                    lng: { type: 'number' },
-                                    precision: { type: 'number', optional: true },
-                                    altitud: { type: 'number', optional: true },
-                                    rumbo: { type: 'number', optional: true },
-                                    velocidad: { type: 'number', optional: true }
-                                }
-                            },
-                            precision: { type: 'number', optional: true },
-                            altitud: { type: 'number', optional: true },
-                            rumbo: { type: 'number', optional: true },
-                            velocidad: { type: 'number', optional: true },
-                            timestamp: { type: 'number', optional: true }
-                        }
-                    }
-                });
-                
-                const { coordenadas, precision, altitud, rumbo, velocidad, timestamp } = mensaje.datos;
-                const { lat, lng } = coordenadas;
-                
-                // Actualizar estado de ubicación
-                estado.ubicacion = {
-                    lat,
-                    lng,
-                    precision: precision || 0,
-                    altitud: altitud || null,
-                    velocidad: velocidad || 0,
-                    rumbo: rumbo || null,
-                    ultimaActualizacion: timestamp || Date.now()
-                };
-                
-                // Si hay navegación activa, actualizar la ruta y la orientación
-                if (estado.navegacion.activa && estado.navegacion.destino) {
-                    // Calcular distancia al destino
-                    const distancia = calcularDistancia(
-                        lat,
-                        lng,
-                        estado.navegacion.destino.coordenadas.lat,
-                        estado.navegacion.destino.coordenadas.lng
-                    );
-                    
-                    // Actualizar estado de navegación
-                    estado.navegacion.distanciaAlDestino = distancia;
-                    estado.navegacion.ubicacionActual = { lat, lng };
-                    
-                    // Calcular dirección al destino
-                    const direccion = calcularDireccionHaciaDestino(
-                        { lat, lng },
-                        estado.navegacion.destino.coordenadas
-                    );
-                    
-                    // Actualizar dirección en el estado de navegación
-                    estado.navegacion.direccionAlDestino = direccion;
-                    
-                    // Si estamos en modo brújula, actualizar la orientación
-                    if (estado.modoCompass) {
-                        // Disparar evento de actualización de dirección
-                        const eventoDireccion = new CustomEvent('actualizarDireccion', {
-                            detail: { direccion, precision: precision || 0 }
-                        });
-                        window.dispatchEvent(eventoDireccion);
-                    }
-                    
-                    // Verificar si hemos llegado al destino (10 metros por defecto)
-                    if (distancia < (estado.navegacion.radioLlegada || 10)) {
-                        await manejarLlegadaDestino(estado.navegacion.destino);
-                    }
-                }
-                
-                // Notificar a los suscriptores de actualización de ubicación
-                const evento = new CustomEvent('actualizacionUbicacion', {
-                    detail: { ...estado.ubicacion }
-                });
-                window.dispatchEvent(evento);
-                
-                return {
-                    exito: true,
-                    mensaje: 'Ubicación actualizada correctamente',
-                    ubicacion: estado.ubicacion
-                };
-                
-            } catch (error) {
-                const errorMsg = 'Error al actualizar la ubicación GPS';
-                logger.error(errorMsg, error);
-                
-                // Notificar error al padre
-                enviarMensajeConReintento('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
-                    tipo: 'error_actualizacion_gps',
-                    mensaje: error.message,
-                    timestamp: Date.now()
-                }).catch(console.error);
-                
-                throw new Error(`${errorMsg}: ${error.message}`);
-            }
-        }
-
-        /**
-         * Maneja el cambio de modo (casa/aventura) - Implementación mejorada
-         * @param {Object} mensaje - Mensaje de cambio de modo
-         * @returns {Promise<Object>} - Resultado de la operación
-         */
-        async function manejarCambioModo(mensaje) {
-            try {
-                validarMensaje(mensaje, {
-                    origen: { type: 'string', required: true },
-                    timestamp: { type: 'string', required: true },
-                    datos: {
-                        type: 'object',
-                        required: ['modo'],
-                        properties: {
-                            modo: { type: 'string', enum: ['casa', 'aventura'] },
-                            motivo: { type: 'string', optional: true },
-                            forzar: { type: 'boolean', optional: true }
-                        }
-                    }
-                });
-
-                const { modo, motivo = 'sin motivo especificado', forzar = false } = mensaje.datos;
-                const modoAnterior = estado.modo.actual;
-                
-                // Verificar si ya está en el modo solicitado
-                if (!forzar && modo === modoAnterior) {
-                    logger.info(`[MODO] Ya está en modo ${modo}, ignorando solicitud`);
-                    return {
-                        exito: true,
-                        modo,
-                        estado: 'ya_estaba_en_modo',
-                        timestamp: new Date().toISOString()
-                    };
-                }
-
-                logger.info(`[MODO] Cambiando a modo: ${modo} (${motivo})`);
-
-                // Actualizar la interfaz
-                await actualizarInterfazModo(modo);
-
-                // Actualizar el estado
-                estado.modo.anterior = modoAnterior;
-                estado.modo.actual = modo;
-                estado.modo.ultimoCambio = new Date().toISOString();
-
-                // Preparar confirmación
-                const confirmacion = {
-                    exito: true,
-                    modo,
-                    modoAnterior,
-                    origen: CONFIG.ID_APLICACION,
-                    timestamp: new Date().toISOString(),
-                    detalles: `Modo cambiado a ${modo} correctamente`
-                };
-
-                // Enviar confirmación al padre
-                if (typeof enviarMensaje === 'function') {
-                    await enviarMensajeConReintento('padre', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_CONFIRMACION, confirmacion);
-                    
-                    // Difundir el nuevo estado a todos los componentes
-                    await enviarMensajeConReintento('todos', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_ESTADO, {
-                        modo,
-                        modoAnterior,
-                        origen: CONFIG.ID_APLICACION,
-                        timestamp: new Date().toISOString()
-                    });
-                }
-
-                logger.info(`[MODO] Cambio a modo ${modo} completado`);
-                return confirmacion;
-                
-            } catch (error) {
-                const errorMsg = `Error al cambiar el modo: ${error.message}`;
-                logger.error(errorMsg, error);
-                
-                // Notificar error al padre
-                if (typeof enviarMensaje === 'function') {
-                    await enviarMensajeConReintento('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
-                        tipo: 'cambio_modo_fallido',
-                        mensaje: error.message,
-                        stack: error.stack,
-                        origen: CONFIG.ID_APLICACION,
-                        timestamp: new Date().toISOString(),
-                        datos: {
-                            modo: mensaje.datos?.modo || 'desconocido',
-                            modoAnterior: estado.modo.actual,
-                            error: error.message
-                        }
-                    }).catch(e => logger.error('Error al notificar error de cambio de modo:', e));
-                }
-                
-                throw error;
-            }
-        }
-
-        /**
-         * Actualiza la interfaz según el modo especificado
-         * @param {'casa'|'aventura'} modo - El modo al que cambiar
-         */
-        async function actualizarInterfazModo(modo) {
-            logger.info(`[MODO] Actualizando interfaz a modo: ${modo}`);
-            
-            // Actualizar clases CSS
-            document.body.classList.remove('modo-casa', 'modo-aventura');
-            document.body.classList.add(`modo-${modo}`);
-            
-            // Mostrar/ocultar elementos según el modo
-            const elementosModo = document.querySelectorAll('[data-modo]');
-            elementosModo.forEach(elemento => {
-                const modosElemento = (elemento.getAttribute('data-modo') || '').split(' ');
-                elemento.style.display = modosElemento.includes(modo) ? '' : 'none';
-            });
-
-            // Lógica específica de cada modo
-            if (modo === 'casa') {
-                logger.info('[MODO] Inicializando interfaz de casa');
-                // Lógica específica para modo casa
-            } else if (modo === 'aventura') {
-                logger.info('[MODO] Inicializando interfaz de aventura');
-                // Lógica específica para modo aventura
-            }
-        }
-
-        /**
-         * Maneja la sincronización del estado de modo
-         * @param {Object} mensaje - Mensaje de estado de modo
-         */
-        function manejarEstadoModo(mensaje) {
-            try {
-                validarMensaje(mensaje, {
-                    origen: { type: 'string', required: true },
-                    timestamp: { type: 'string', required: true },
-                    datos: {
-                        type: 'object',
-                        required: ['modo'],
-                        properties: {
-                            modo: { type: 'string', enum: ['casa', 'aventura'] },
-                            modoAnterior: { type: 'string', optional: true }
-                        }
-                    }
-                });
-
-                const { modo, modoAnterior } = mensaje.datos;
-                
-                // Ignorar si el mensaje es de este componente o el modo no ha cambiado
-                if (mensaje.origen === CONFIG.ID_APLICACION || modo === estado.modo.actual) {
-                    return;
-                }
-
-                logger.info(`[MODO] Sincronizando estado de modo a: ${modo}`);
-                return manejarCambioModo({
-                    origen: mensaje.origen,
-                    timestamp: mensaje.timestamp,
-                    datos: { 
-                        modo, 
-                        motivo: 'sincronizacion_estado',
-                        forzar: true // Forzar actualización incluso si el modo es el mismo
-                    }
-                });
-            } catch (error) {
-                logger.error('Error al manejar estado de modo:', error);
-            }
-        }
-
-        /**
-         * Maneja la confirmación de cambio de modo
-         * @param {Object} mensaje - Mensaje de confirmación
-         */
-        function manejarConfirmacionCambioModo(mensaje) {
-            try {
-                validarMensaje(mensaje, {
-                    origen: { type: 'string', required: true },
-                    timestamp: { type: 'string', required: true },
-                    datos: {
-                        type: 'object',
-                        required: ['exito', 'modo'],
-                        properties: {
-                            exito: { type: 'boolean' },
-                            modo: { type: 'string', enum: ['casa', 'aventura'] },
-                            modoAnterior: { type: 'string', enum: ['casa', 'aventura'], optional: true },
-                            timestamp: { type: 'string', format: 'date-time' },
-                            detalles: { type: 'string', optional: true }
-                        }
-                    }
-                });
-
-                const { exito, modo, modoAnterior, detalles } = mensaje.datos;
-                
-                if (exito) {
-                    logger.info(`[MODO] Cambio de modo confirmado: ${modoAnterior || 'ninguno'} → ${modo}` + 
-                               (detalles ? ` (${detalles})` : ''));
-                    
-                    // Actualizar estado si es necesario
-                    if (estado.modo.actual !== modo) {
-                        estado.modo.anterior = estado.modo.actual;
-                        estado.modo.actual = modo;
-                        estado.modo.ultimoCambio = new Date().toISOString();
-                        
-                        // Actualizar la interfaz si el mensaje es de otro componente
-                        if (mensaje.origen !== CONFIG.ID_APLICACION) {
-                            actualizarInterfazModo(modo).catch(error => 
-                                logger.error('Error al actualizar interfaz de modo:', error)
-                            );
-                        }
-                    }
-                } else {
-                    logger.warn(`[MODO] Fallo en el cambio de modo a ${modo}`);
-                }
-            } catch (error) {
-                logger.error('Error al procesar confirmación de cambio de modo:', error);
-                // No relanzar para no interrumpir el flujo
-            }
-        }
-
-        /**
-         * Maneja la notificación de inicialización completada
-         * @param {Object} mensaje - Mensaje de inicialización completada
-         * @returns {Object} - Respuesta de confirmación
-         */
-        async function manejarInicializacionCompletada(mensaje) {
-            try {
-                validarMensaje(mensaje, {
-                    origen: { type: 'string', required: true },
-                    timestamp: { type: 'string', required: true },
-                    datos: {
-                        type: 'object',
-                        required: ['version'],
-                        properties: {
-                            version: { type: 'string' },
-                            estado: { type: 'object', optional: true }
-                        }
-                    }
-                });
-
-                const { version, estado: estadoRemoto } = mensaje.datos;
-                logger.info(`Componente ${mensaje.origen} inicializado (v${version})`);
-
-                // Sincronizar estado si se proporciona
-                if (estadoRemoto) {
-                    Object.assign(estado, estadoRemoto);
-                }
-
-                return {
-                    exito: true,
-                    version: '1.0',
-                    timestamp: new Date().toISOString(),
-                    estado: {
-                        modo: estado.modo.actual,
-                        navegacion: estado.navegacion.activa
-                    }
-                };
-                
-            } catch (error) {
-                logger.error('Error al procesar inicialización completada:', error);
-                return {
-                    exito: false,
-                    error: error.message,
-                    timestamp: new Date().toISOString()
-                };
-            }
-        }
-
-        /**
-         * Maneja la solicitud de inicio de navegación
-         * @param {Object} mensaje - Mensaje de inicio de navegación
-         * @returns {Promise<Object>} - Resultado de la operación
-         */
-        async function manejarIniciarNavegacion(mensaje) {
-            try {
-                validarMensaje(mensaje, {
-                    origen: { type: 'string', required: true },
-                    timestamp: { type: 'string', required: true },
-                    datos: {
-                        type: 'object',
-                        required: ['destino'],
-                        properties: {
-                            destino: { type: 'object' },
-                            opciones: { type: 'object', optional: true }
-                        }
-                    }
-                });
-
-                const { destino, opciones = {} } = mensaje.datos;
-                
-                // Validar destino
-                if (!destino.lat || !destino.lng) {
-                    throw new Error('El destino debe contener coordenadas válidas (lat, lng)');
-                }
-
-                // Actualizar estado de navegación
-                estado.navegacion = {
-                    activa: true,
-                    destino,
-                    estado: 'iniciando',
-                    opciones,
-                    timestamp: new Date().toISOString()
-                };
-
-                // Iniciar navegación
-                await iniciarNavegacionHacia(destino, opciones);
-
-                // Notificar que la navegación ha comenzado
-                await enviarMensajeConReintento('padre', NAV_MSG.INICIADA, {
-                    destino,
-                    timestamp: new Date().toISOString(),
-                    estado: 'en_progreso'
-                });
-
-                return { exito: true, estado: 'navegacion_iniciada' };
-                
-            } catch (error) {
-                const errorMsg = 'Error al iniciar navegación';
-                logger.error(errorMsg, error);
-                
-                // Notificar error
-                if (mensaje?.origen) {
-                    await enviarMensajeConReintento(mensaje.origen, SISTEMA_MSG.ERROR, {
-                        tipo: 'inicio_navegacion',
-                        mensaje: error.message,
-                        timestamp: new Date().toISOString()
-                    });
-                }
-                
-                // Actualizar estado
-                if (estado.navegacion) {
-                    estado.navegacion.estado = 'error';
-                    estado.navegacion.error = error.message;
-                }
-                
-                throw error;
-            }
-        }
-
-        /**
-         * Maneja la confirmación de navegación iniciada
-         * @param {Object} mensaje - Mensaje de navegación iniciada
-         */
-        function manejarNavegacionIniciada(mensaje) {
-            try {
-                validarMensaje(mensaje, {
-                    origen: { type: 'string', required: true },
-                    timestamp: { type: 'string', required: true },
-                    datos: {
-                        type: 'object',
-                        required: ['destino', 'estado'],
-                        properties: {
-                            destino: { type: 'object' },
-                            estado: { type: 'string', enum: ['en_progreso', 'error'] },
-                            mensaje: { type: 'string', optional: true },
-                            timestamp: { type: 'string', format: 'date-time' }
-                        }
-                    }
-                });
-
-                const { destino, estado: estadoNavegacion, mensaje: mensajeEstado } = mensaje.datos;
-                
-                // Actualizar estado local
-                if (estadoNavegacion === 'en_progreso') {
-                    estado.navegacion.activa = true;
-                    estado.navegacion.estado = 'en_progreso';
-                    logger.info(`Navegación iniciada hacia destino: ${JSON.stringify(destino)}`);
-                    
-                    // Actualizar UI
-                    actualizarEstado('Navegación en curso', 'info');
-                } else {
-                    estado.navegacion.estado = 'error';
-                    estado.navegacion.error = mensajeEstado || 'Error desconocido';
-                    logger.warn(`Error al iniciar navegación: ${mensajeEstado}`);
-                }
-                
-            } catch (error) {
-                logger.error('Error al procesar confirmación de navegación:', error);
-            }
-        }
-
-        /**
-         * Maneja la cancelación de navegación
-         * @param {Object} mensaje - Mensaje de cancelación de navegación
-         */
-        async function manejarNavegacionCancelada(mensaje) {
-            try {
-                validarMensaje(mensaje, {
-                    origen: { type: 'string', required: true },
-                    timestamp: { type: 'string', required: true },
-                    datos: {
-                        type: 'object',
-                        properties: {
-                            motivo: { type: 'string', optional: true },
-                            forzar: { type: 'boolean', optional: true }
-                        }
-                    }
-                });
-
-                const { motivo = 'Solicitado por el usuario', forzar = false } = mensaje.datos || {};
-                
-                // Verificar si hay navegación activa
-                if (!estado.navegacion.activa && !forzar) {
-                    logger.info('No hay navegación activa para cancelar');
-                    return { exito: true, mensaje: 'No hay navegación activa' };
-                }
-
-                // Detener navegación
-                await detenerNavegacion();
-
-                // Actualizar estado
-                estado.navegacion = {
-                    activa: false,
-                    estado: 'cancelada',
-                    motivo,
-                    timestamp: new Date().toISOString()
-                };
-
-                // Notificar confirmación
-                await enviarMensajeConReintento('padre', NAV_MSG.ESTADO, {
-                    estado: 'cancelada',
-                    motivo,
-                    timestamp: new Date().toISOString()
-                });
-
-                // Actualizar UI
-                actualizarEstado(`Navegación cancelada: ${motivo}`, 'advertencia');
-                
-                return { exito: true, estado: 'navegacion_cancelada' };
-                
-            } catch (error) {
-                const errorMsg = 'Error al cancelar navegación';
-                logger.error(errorMsg, error);
-                
-                // Notificar error
-                if (mensaje?.origen) {
-                    await enviarMensajeConReintento(mensaje.origen, SISTEMA_MSG.ERROR, {
-                        tipo: 'cancelacion_navegacion',
-                        mensaje: error.message,
-                        timestamp: new Date().toISOString()
-                    });
-                }
-                
-                throw error;
-            }
-        }
-
-        /**
-         * Maneja las actualizaciones de estado de navegación
-         * @param {Object} mensaje - Mensaje de estado de navegación
-         */
-        function manejarEstadoNavegacion(mensaje) {
-            try {
-                validarMensaje(mensaje, {
-                    origen: { type: 'string', required: true },
-                    timestamp: { type: 'string', required: true },
-                    datos: {
-                        type: 'object',
-                        required: ['estado'],
-                        properties: {
-                            estado: { type: 'string' },
-                            progreso: { type: 'number', optional: true, minimum: 0, maximum: 100 },
-                            tiempoRestante: { type: 'number', optional: true },
-                            distanciaRestante: { type: 'number', optional: true },
-                            proximaInstruccion: { type: 'string', optional: true },
-                            timestamp: { type: 'string', format: 'date-time' }
-                        }
-                    }
-                });
-
-                const { estado: estadoNavegacion, ...detalles } = mensaje.datos;
-                
-                // Actualizar estado de navegación
-                estado.navegacion.estado = estadoNavegacion;
-                estado.navegacion.ultimaActualizacion = new Date().toISOString();
-                
-                // Actualizar detalles adicionales
-                Object.assign(estado.navegacion, detalles);
-                
-                // Actualizar UI según el estado
-                switch (estadoNavegacion) {
-                    case 'en_ruta':
-                        actualizarEstado('En ruta al destino', 'info');
-                        break;
-                    case 'cercano_destino':
-                        actualizarEstado('Cerca del destino', 'info');
-                        break;
-                    case 'llegada_inminente':
-                        actualizarEstado('Llegada inminente', 'exito');
-                        break;
-                    case 'llegada':
-                        actualizarEstado('¡Has llegado a tu destino!', 'exito');
-                        break;
-                    case 'desviado':
-                        actualizarEstado('Ruta recalculando...', 'advertencia');
-                        break;
-                    case 'error':
-                        actualizarEstado('Error en la navegación', 'error');
-                        break;
-                }
-                
-                // Log detallado en modo depuración
-                logger.debug('Estado de navegación actualizado:', estado.navegacion);
-                
-            } catch (error) {
-                logger.error('Error al procesar actualización de estado de navegación:', error);
-            }
-        }
-
-        /**
-         * Registra los manejadores de mensajes para la comunicación con el padre
-         * Los manejadores se encargan de procesar los mensajes entrantes según su tipo
-         * Manejo de mensajes
-         */
-        function registrarManejadoresMensajes() {
-            // Controladores de mensajes del sistema
-            registrarControlador(SISTEMA_MSG.CONFIGURACION, manejarConfiguracion);
-            registrarControlador(SISTEMA_MSG.SINCRONIZAR, manejarSincronizacion);
-            registrarControlador(SISTEMA_MSG.CONFIRMACION, manejarConfirmacion);
-            
-            // Manejador para solicitudes de coordenadas de tramos
-            registrarControlador('SOLICITAR_COORDENADAS_TRAMO', async (mensaje) => {
-                try {
-                    const { numTramo } = mensaje.datos || {};
-                    if (typeof numTramo === 'undefined') {
-                        throw new Error('Número de tramo no especificado');
-                    }
-                    
-                    const coordenadas = obtenerCoordenadasTramo(numTramo);
-                    if (!coordenadas) {
-                        throw new Error(`No se encontraron coordenadas para el tramo ${numTramo}`);
-                    }
-                    
-                    return {
-                        exito: true,
-                        tramo: numTramo,
-                        coordenadas,
-                        timestamp: new Date().toISOString()
-                    };
-                } catch (error) {
-                    logger.error('Error al procesar solicitud de coordenadas:', error);
-                    return {
-                        exito: false,
-                        error: error.message,
-                        tramo: mensaje.datos?.numTramo,
-                        timestamp: new Date().toISOString()
-                    };
-                }
-            });
-            
-            // Controladores de modo mejorados
-            registrarControlador(SISTEMA_MSG.CAMBIO_MODO, manejarCambioModo);
-            registrarControlador(SISTEMA_MSG.CAMBIO_MODO_CONFIRMACION, manejarConfirmacionCambioModo);
-            registrarControlador(SISTEMA_MSG.CAMBIO_MODO_ESTADO, manejarEstadoModo);
-            
-            registrarControlador(SISTEMA_MSG.INICIALIZACION_COMPLETADA, manejarInicializacionCompletada);
-            
-            // Controladores de navegación
-            registrarControlador(NAV_MSG.INICIAR, manejarIniciarNavegacion);
-            registrarControlador(NAV_MSG.INICIADA, manejarNavegacionIniciada);
-            registrarControlador(NAV_MSG.CANCELADA, manejarNavegacionCancelada);
-            registrarControlador(NAV_MSG.ESTADO, manejarEstadoNavegacion);
-            registrarControlador(NAV_MSG.CAMBIO_PARADA, manejarCambioParada);
-            registrarControlador(NAV_MSG.ESTABLECER_DESTINO, manejarEstablecerDestino);
-            
-            // Interfaz de usuario
-            registrarControlador('UI.ACTUALIZAR', manejarActualizacionUI);
-            registrarControlador('UI.HABILITAR_CONTROLES', manejarHabilitarControles);
-            registrarControlador('UI.DESHABILITAR_CONTROLES', manejarDeshabilitarControles);
-            
-            // GPS
-            registrarControlador('GPS.ACTUALIZAR', manejarActualizacionGPS);
-            registrarControlador('GPS.COMANDO', manejarComandoGPS);
-            
-            // Control (mantener compatibilidad)
-            registrarControlador(TIPOS_MENSAJE.CONTROL.HABILITAR, manejarHabilitarControles);
-            registrarControlador(TIPOS_MENSAJE.CONTROL.DESHABILITAR, manejarDeshabilitarControles);
-            
-            // Confirmaciones
-            registrarControlador(SISTEMA_MSG.CONFIRMACION, manejarConfirmacion);
-            
-            // Feedback visual cuando los controles están deshabilitados
-            document.body.classList.toggle('controles-deshabilitados', !estado.controlesHabilitados);
-            
-            // Otros manejadores según sea necesario
-        }
-
-        // Actualizar estado de conexión
-        function actualizarEstadoConexion(conectado) {
-            if (elementos.statusIndicator) {
-                elementos.statusIndicator.classList.toggle('active', conectado);
-                elementos.statusIndicator.style.backgroundColor = conectado ? '#2ecc71' : '#e74c3c';
-            }
-        }
-
-        // Inicialización del mapa
-        function inicializarMapa() {
-            try {
-                logger.info('Inicializando mapa...');
-                
-                // Verificar si ya está inicializado
-                if (estadoApp.componentes.mapa) {
-                    logger.warn('El mapa ya está inicializado');
-                    return estadoApp.componentes.mapa;
-                }
-                
-                // Verificar que exista el contenedor del mapa
-                const mapContainer = document.getElementById('map');
-                if (!mapContainer) {
-                    throw new Error('No se encontró el contenedor del mapa');
-                }
-                
-                // Inicializar el mapa de Leaflet
-                const map = L.map('map').setView([39.4699, -0.3763], 13);
-                
-                // Añadir capa de OpenStreetMap
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                }).addTo(map);
-                
-                // Guardar referencia al mapa en el estado
-                estadoApp.componentes.mapa = map;
-                
-                // Configurar eventos del mapa
-                map.on('load', () => {
-                    logger.info('Mapa cargado correctamente');
-                    estadoApp.sensores.gps.disponible = true;
-                });
-                
-                map.on('error', (error) => {
-                    logger.error('Error en el mapa:', error);
-                    estadoApp.sensores.gps.disponible = false;
-                });
-                
-                logger.info('Mapa inicializado correctamente');
-                return map;
-                
-            } catch (error) {
-                const errorMsg = 'Error al inicializar el mapa';
-                logger.error(errorMsg, error);
-                
-                // Notificar al padre sobre el error
-                if (estadoApp.mensajeriaInicializada) {
-                    enviarMensaje('padre', SISTEMA_MSG.ERROR, {
-                        tipo: 'error_mapa',
-                        mensaje: errorMsg,
-                        detalles: error.message,
-                        timestamp: new Date().toISOString()
-                    }).catch(err => {
-                        console.error('Error al notificar error del mapa:', err);
-                    });
-                }
-                
-                throw error; // Relanzar para manejo posterior
-            }
-        }
-
-        // Función para inicializar la aplicación
-        async function inicializar() {
-            const inicioTiempo = performance.now();
-            let pasoActual = 'preparacion';
-            
-            try {
-                // 0. Verificar si ya está inicializado
-                if (estadoApp.inicializado) {
-                    logger.warn('La aplicación ya está inicializada');
-                    return;
-                }
-                
-                logger.info('🚀 Iniciando inicialización de la aplicación...');
-                
-                // 1. Configuración inicial
-                pasoActual = 'configuracion';
-                logger.info('⚙️  Configurando aplicación...');
-                await new Promise(resolve => setTimeout(resolve, 0)); // Permitir que la UI se actualice
-                
-                // 2. Inicializar el sistema de mensajería
-                pasoActual = 'inicializar_mensajeria';
-                logger.info('📡 Inicializando sistema de mensajería...');
-                
-                try {
-                    await inicializarMensajeria({
-                        debug: estadoApp.config.debug,
-                        logLevel: estadoApp.config.logLevel,
-                        iframeId: 'av1-coordenadas',
-                        tiempoEsperaRespuesta: estadoApp.config.tiempoEsperaRespuesta
-                    });
-                    estadoApp.mensajeriaInicializada = true;
-                    logger.info('✅ Sistema de mensajería inicializado correctamente');
-                } catch (error) {
-                    throw new Error(`Error al inicializar mensajería: ${error.message}`);
-                }
-                
-                // 3. Registrar manejadores de mensajes
-                pasoActual = 'registrar_manejadores';
-                logger.info('🔄 Registrando manejadores de mensajes...');
-                registrarManejadoresMensajes();
-                
-                // 4. Inicializar componentes principales
-                pasoActual = 'inicializar_componentes';
-                logger.info('🔧 Inicializando componentes...');
-                
-                // 4.1 Inicializar el mapa
-                try {
-                    await inicializarMapa();
-                    logger.info('✅ Mapa inicializado correctamente');
-                } catch (error) {
-                    logger.warn('⚠️  El mapa no pudo ser inicializado, continuando sin él...', error);
-                    // Continuar sin el mapa si es posible
-                }
-                
-                // 4.2 Configurar eventos de la interfaz
-                pasoActual = 'configurar_eventos';
-                logger.info('🎛️  Configurando eventos de la interfaz...');
-                configurarEventos();
-                
-                // 5. Inicialización completada
-                pasoActual = 'finalizacion';
-                estadoApp.inicializado = true;
-                const tiempoTotal = ((performance.now() - inicioTiempo) / 1000).toFixed(2);
-                
-                logger.info(`✨ Aplicación inicializada correctamente en ${tiempoTotal} segundos`);
-                
-                // 6. Notificar al padre que estamos listos
-                try {
-                    await enviarMensaje('padre', SISTEMA_MSG.INICIO_COMPLETO, {
-                        timestamp: new Date().toISOString(),
-                        version: '1.0.0',
-                        componentes: ['mapa', 'navegacion', 'ui'],
-                        estado: 'listo',
-                        tiempoInicializacion: tiempoTotal
-                    });
-                } catch (error) {
-                    logger.warn('No se pudo notificar al padre sobre la inicialización:', error);
-                }
-                
-                return true;
-                
-            } catch (error) {
-                const errorMsg = `❌ Error durante la inicialización (${pasoActual}): ${error.message}`;
-                logger.error(errorMsg, error);
-                
-                // Notificar al padre sobre el error si es posible
-                if (estadoApp.mensajeriaInicializada) {
-                    try {
-                        await enviarMensaje('padre', SISTEMA_MSG.ERROR, {
-                            tipo: `error_inicializacion_${pasoActual}`,
-                            mensaje: errorMsg,
-                            detalles: error.toString(),
-                            stack: error.stack,
-                            timestamp: new Date().toISOString(),
-                            paso: pasoActual
-                        });
-                    } catch (e) {
-                        console.error('No se pudo notificar el error al padre:', e);
-                    }
-                }
-                
-                // Mostrar error en la interfaz si es posible
-                try {
-                    const errorContainer = document.getElementById('error-container') || document.body;
-                    errorContainer.innerHTML = `
-                        <div style="color: white; background: #e74c3c; padding: 15px; margin: 10px; border-radius: 5px;">
-                            <h3>Error de inicialización</h3>
-                            <p>${errorMsg}</p>
-                            <p>Por favor, recarga la página o contacta con soporte.</p>
-                            <button onclick="window.location.reload()" style="padding: 5px 10px; margin-top: 10px;">
-                                Recargar aplicación
-                            </button>
-                        </div>
-                    `;
-                } catch (e) {
-                    console.error('No se pudo mostrar el mensaje de error:', e);
-                }
-                
-                return false;
-            }
-        }
-
-        function inicializarAplicacion() {
-            // Inicializar cuando el DOM esté listo
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', inicializar);
-            } else {
-                inicializar();
-            }
-            
-            // Manejar eventos de visibilidad
-            document.addEventListener('visibilitychange', () => {
-                if (!document.hidden && estado.modoCompass) {
-                    // Reanudar seguimiento de orientación si está activo
-                    iniciarSeguimientoOrientacion();
-                }
-            });
-
-            // Limpieza al cerrar
-            window.addEventListener('beforeunload', () => {
-                detenerSeguimientoOrientacion();
-            });
-
-        }
-
-        // Inicializar la aplicación cuando el DOM esté listo
-        document.addEventListener('DOMContentLoaded', async () => {
-            try {
-                // Inicializar el sistema de mensajería primero
                 await inicializarMensajeria({
-                    iframeId: 'hijo2-botones',
-                    debug: true,
-                    logLevel: 1
+                    iframeId: CONFIG.IFRAME_ID,
+                    debug: CONFIG.DEBUG
                 });
-                
-                // Registrar manejadores de mensajes
+                estadoApp.mensajeriaInicializada = true;
+                logger.info('✅ Sistema de mensajería inicializado.');
+
                 registrarManejadoresMensajes();
                 
-                // Inicializar la aplicación
-                await inicializarAplicacion();
-                
-                logger.info('Aplicación inicializada correctamente');
+                configurarEventosUI();
+                actualizarInterfazModo(estadoApp.modo);
+                habilitarControles(estadoApp.controlesHabilitados);
+
+                await enviarMensaje('padre', SISTEMA_MSG.INICIALIZACION_COMPLETADA, {
+                    componente: CONFIG.IFRAME_ID,
+                    estado: 'listo'
+                });
+
+                estadoApp.inicializado = true;
+                logger.info('✨ Aplicación inicializada correctamente.');
+
             } catch (error) {
-                console.error('Error al inicializar la aplicación:', error);
-                // Mostrar mensaje de error al usuario
-                alert('Error al inicializar la aplicación. Por favor, recarga la página.');
+                logger.error('❌ Error fatal durante la inicialización:', error);
+                document.body.innerHTML = `<div style="color:red; background:white; padding:20px; border: 2px solid red;">Error Crítico: ${error.message}.</div>`;
             }
-        });
-    </script>
-    
-    <!-- Exportar variables al ámbito global -->
-    <script>
-        // Exportar las variables necesarias al ámbito global
-        window.TIPOS_MENSAJE = window.TIPOS_MENSAJE || TIPOS_MENSAJE;
-        window.NAV_MSG = window.NAV_MSG || NAV_MSG;
-        window.SISTEMA_MSG = window.SISTEMA_MSG || SISTEMA_MSG;
-        window.enviarMensaje = window.enviarMensaje || enviarMensaje;
-        window.registrarControlador = window.registrarControlador || registrarControlador;
+        }
+
+        // Punto de entrada único
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', inicializar);
+        } else {
+            inicializar();
+        }
     </script>
 </body>
 </html>
