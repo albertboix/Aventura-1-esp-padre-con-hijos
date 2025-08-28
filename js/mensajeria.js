@@ -1515,3 +1515,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     // No continúes si falla la inicialización
   }
 });
+
+// Ejemplo de manejador real para cambio de modo
+function tuManejador(mensaje) {
+  // Procesa el cambio de modo recibido
+  const { modo } = mensaje.datos || {};
+  if (!modo) {
+    return { exito: false, error: 'Modo no especificado' };
+  }
+  // Aquí puedes actualizar el estado de la aplicación según el modo
+  console.log('[Mensajeria] Cambio de modo recibido:', modo);
+  return { exito: true, modo };
+}
