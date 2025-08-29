@@ -3,7 +3,7 @@ import {
   configurarUtils, 
   crearObjetoError, 
   TIPOS_MENSAJE 
-} from './utils.js';
+} from '.js/utils.js';
 
 // Configuración inicial del logger
 configurarUtils({ iframeId: 'mensajeria', debug: true });
