@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reproductor de Audio - Aventura 1</title>
+    <title>Audio esp Av1- hijo3</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         :root {
@@ -624,8 +624,26 @@ const audioFiles = [
     </audio>
 
     <script type="module">
-        import { logger, configurarUtils, crearObjetoError } from './js/utils.js';
-        configurarUtils({ iframeId: 'audioPlayerIframe', debug: true });
+        import { 
+            logger, 
+            configurarUtils, 
+            crearObjetoError 
+        } from './js/utils.js';
+        import { 
+            inicializarMensajeria as _inicializarMensajeria,
+            registrarControlador as _registrarControlador,
+            enviarMensaje as _enviarMensaje,
+            TIPOS_MENSAJE as _TIPOS_MENSAJE
+        } from './js/mensajeria.js';
+        
+        // Configuración inicial
+        configurarUtils({ iframeId: 'audioPlayerIframe', debug: true, logLevel: 0 });
+        
+        // Hacer las funciones disponibles globalmente
+        window.inicializarMensajeria = _inicializarMensajeria;
+        window.registrarControlador = _registrarControlador;
+        window.enviarMensaje = _enviarMensaje;
+        window.TIPOS_MENSAJE = _TIPOS_MENSAJE;
         
         // Constantes y variables globales
         let audioPlayer;
@@ -757,6 +775,11 @@ const audioFiles = [
         
         // Función para configurar manejadores de mensajes
         function configurarManejadoresMensajes() {
+            // Verificar que el controlador esté disponible
+            if (typeof registrarControlador !== 'function') {
+                console.error('registrarControlador no está disponible');
+                return;
+            }
             // Manejador para cambio de elemento con confirmación
             registrarControlador('NAVEGACION.CAMBIO_ELEMENTO', async (mensaje) => {
                 try {
@@ -875,6 +898,32 @@ const audioFiles = [
             updateProgress();
         }
 
+        // Inicialización cuando el DOM esté listo
+        async function inicializarAplicacion() {
+            try {
+                // Inicializar la mensajería
+                await inicializarMensajeria({
+                    iframeId: IFRAME_ID,
+                    debug: CONFIG.DEBUG,
+                    logLevel: CONFIG.LOG_LEVEL
+                });
+                
+                // Configurar manejadores de mensajes
+                configurarManejadoresMensajes();
+                
+                // Configurar elementos de la interfaz
+                configurarElementosUI();
+                
+                // Configurar eventos
+                setupEventListeners();
+                
+                logger.info('Aplicación de audio inicializada correctamente');
+            } catch (error) {
+                logger.error('Error al inicializar la aplicación de audio:', error);
+                notificarError('inicializacion', error);
+            }
+        }
+        
         // Inicialización cuando el DOM esté listo
         document.addEventListener('DOMContentLoaded', async () => {
             logger.info(`[${IFRAME_ID}] DOM cargado, inicializando...`);
@@ -1066,6 +1115,10 @@ const audioFiles = [
 
         // Notificar que el componente está listo
         document.addEventListener('DOMContentLoaded', () => {
+            // Inicializar la aplicación
+            inicializarAplicacion().catch(error => {
+                console.error('Error en la inicialización de la aplicación:', error);
+            });
             setTimeout(() => {
                 notificarEstado('componente_listo', {
                     id: IFRAME_ID,
