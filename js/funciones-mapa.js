@@ -25,57 +25,133 @@ let ultimaSincronizacion = null;
 let intentosSincronizacion = 0;
 const MAX_INTENTOS_SINCRONIZACION = 5;
 
+// Estado global del módulo
+const estadoMapa = {
+  inicializado: false,
+  mapa: null,
+  arrayParadas: null,
+  marcadoresParadas: new Map(),
+  manejadoresRegistrados: false,
+  opcionesActuales: null
+};
+
 /**
- * Inicializa el sistema de mapa with las paradas y coordenadas
+ * Inicializa el sistema de mapa con las paradas y coordenadas
  * @param {Object} opciones - Opciones de inicialización
+ * @returns {Promise<boolean>} - True si la inicialización fue exitosa
  */
-function inicializarMapa(opciones = {}) {
+async function inicializarMapa(opciones = {}) {
+  try {
     console.log('[MAPA] Inicializando mapa...');
     
-    // Comprobar si tenemos el array de paradas
-    let arrayParadas;
-    
-    if (opciones.arrayParadas) {
-        // Usar array proporcionado en las opciones
-        arrayParadas = opciones.arrayParadas;
-        procesarArrayParadas(arrayParadas);
-    } else if (window.AVENTURA_PARADAS) {
-        // Usar array global si está disponible
-        arrayParadas = window.AVENTURA_PARADAS;
-        procesarArrayParadas(arrayParadas);
-    } else {
-        // Solicitar el array al padre mediante mensajería
-        console.log('[MAPA] No se encontró array de paradas, solicitando al padre...');
-        
-        // Verificar si la mensajería está disponible
-        if (enviarMensaje) {
-            enviarMensaje('padre', TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS, {
-                timestamp: Date.now()
-            }).then(respuesta => {
-                if (respuesta && respuesta.exito && respuesta.paradas) {
-                    console.log('[MAPA] Array de paradas recibido del padre');
-                    procesarArrayParadas(respuesta.paradas);
-                } else {
-                    console.error('[MAPA] Respuesta inválida del padre al solicitar paradas:', respuesta);
-                    notificarError('solicitud_paradas_fallida', new Error('No se recibieron paradas válidas del padre.'));
-                }
-            }).catch(error => {
-                console.error('[MAPA] Error al solicitar array de paradas:', error);
-                notificarError('solicitud_paradas_error', error);
-            });
-            
-            // Salir de la función - la inicialización continuará cuando recibamos respuesta
-            return;
-        } else {
-            console.error('[MAPA] No hay array de paradas disponible ni sistema de mensajería');
-            return;
-        }
+    // Si ya está inicializado, limpiar recursos primero
+    if (estadoMapa.inicializado) {
+      console.log('[MAPA] El mapa ya está inicializado, limpiando recursos...');
+      await limpiarRecursos();
     }
+    
+    // Guardar opciones
+    estadoMapa.opcionesActuales = { ...opciones };
+    
+    // Comprobar si tenemos el array de paradas
+    let arrayParadas = null;
+    
+    // 1. Intentar obtener de las opciones
+    if (opciones.arrayParadas) {
+      console.log('[MAPA] Usando array de paradas proporcionado en opciones');
+      arrayParadas = opciones.arrayParadas;
+    }
+    // 2. Intentar obtener del objeto global
+    else if (window.AVENTURA_PARADAS) {
+      console.log('[MAPA] Usando array de paradas global (AVENTURA_PARADAS)');
+      arrayParadas = window.AVENTURA_PARADAS;
+    }
+    // 3. Intentar obtener a través de mensajería
+    else if (window.parent !== window) {
+      console.log('[MAPA] Solicitando array de paradas al padre...');
+      try {
+        arrayParadas = await solicitarArrayParadasAlPadre();
+      } catch (error) {
+        console.error('[MAPA] Error al obtener paradas del padre:', error);
+        throw new Error('No se pudo obtener el array de paradas del padre');
+      }
+    }
+    
+    // Si no se pudo obtener el array de paradas
+    if (!arrayParadas || !Array.isArray(arrayParadas) || arrayParadas.length === 0) {
+      console.warn('[MAPA] No se pudo obtener un array de paradas válido, usando datos de emergencia');
+      arrayParadas = generarArrayParadasEmergencia();
+    }
+    
+    // Procesar array de paradas
+    estadoMapa.arrayParadas = arrayParadas;
+    procesarArrayParadas(arrayParadas);
+    
+    // Crear el mapa si se proporciona un contenedor
+    if (opciones.contenedorMapa) {
+      try {
+        estadoMapa.mapa = crearMapaConElementos({
+          contenedor: opciones.contenedorMapa,
+          zoom: opciones.zoomInicial || 14,
+          centro: opciones.centroInicial || [39.4699, -0.3763] // Valencia por defecto
+        });
+        
+        // Registrar manejadores de mensajes si no están registrados
+        if (!estadoMapa.manejadoresRegistrados) {
+          registrarManejadoresMensajes();
+          estadoMapa.manejadoresRegistrados = true;
+        }
+        
+        // Notificar que el mapa está listo
+        if (enviarMensaje) {
+          await enviarMensaje('padre', 'mapa:inicializado', {
+            exito: true,
+            timestamp: new Date().toISOString(),
+            numParadas: arrayParadas.length
+          });
+        }
+        
+        estadoMapa.inicializado = true;
+        console.log('[MAPA] Mapa inicializado correctamente');
+        return true;
+        
+      } catch (error) {
+        console.error('[MAPA] Error al inicializar el mapa:', error);
+        if (enviarMensaje) {
+          await enviarMensaje('padre', 'mapa:error', {
+            tipo: 'inicializacion',
+            mensaje: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString()
+          });
+        }
+        throw error;
+      }
+    }
+    
+    return false;
+    
+  } catch (error) {
+    console.error('[MAPA] Error fatal en inicializarMapa:', error);
+    estadoMapa.inicializado = false;
+    
+    if (enviarMensaje) {
+      await enviarMensaje('padre', 'SISTEMA.ERROR', {
+        tipo: 'inicializacion_mapa',
+        mensaje: error.message,
+        stack: error.stack,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    throw error;
+  }
 }
 
 /**
  * Procesa el array de paradas recibido para inicializar el mapa
  * @param {Array} arrayParadas - Array con las paradas y tramos
+ * @returns {boolean} - True si el procesamiento fue exitoso
  */
 function procesarArrayParadas(arrayParadas) {
     if (!arrayParadas || !Array.isArray(arrayParadas) || arrayParadas.length === 0) {
@@ -796,11 +872,6 @@ async function actualizarModoMapa(modo, opciones = {}) {
     }
 }
 
-/**
- * Actualiza elementos de la interfaz de usuario según el modo
- * @param {'casa'|'aventura'} modo - Modo actual
- * @returns {Promise<void>}
- */
 // Configuración del módulo
 const CONFIG = {
   IFRAME_ID: 'hijo-mapa', // ID único para este iframe
@@ -921,13 +992,60 @@ window.addEventListener('beforeunload', () => {
     limpiarRecursos();
 });
 
-// Exportar funciones individualmente
+// Función para actualizar el punto actual en el mapa
+function actualizarPuntoActual(coordenadas, opciones = {}) {
+    try {
+        if (!mapa) {
+            console.warn('[MAPA] No se puede actualizar el punto: el mapa no está inicializado');
+            return false;
+        }
+
+        // Opciones por defecto
+        const config = {
+            zoom: 18,
+            animate: true,
+            duration: 1,
+            ...opciones
+        };
+
+        // Centrar el mapa en las nuevas coordenadas
+        mapa.flyTo([coordenadas.lat, coordenadas.lng], config.zoom, {
+            animate: config.animate,
+            duration: config.duration
+        });
+
+        // Actualizar marcador de posición actual si existe
+        if (window.marcadorPosicionActual) {
+            window.marcadorPosicionActual.setLatLng([coordenadas.lat, coordenadas.lng]);
+        } else {
+            // Crear marcador si no existe
+            window.marcadorPosicionActual = L.marker([coordenadas.lat, coordenadas.lng], {
+                icon: L.divIcon({
+                    className: 'marcador-posicion-actual',
+                    html: '📍',
+                    iconSize: [30, 30],
+                    iconAnchor: [15, 30]
+                })
+            }).addTo(mapa);
+        }
+
+        return true;
+    } catch (error) {
+        console.error('[MAPA] Error al actualizar el punto actual:', error);
+        return false;
+    }
+}
+
+// Exportar funciones públicas
 export {
     inicializarMapa,
     actualizarModoMapa,
     buscarCoordenadasParada,
     obtenerNombreParada,
     actualizarMarcadorParada,
+    actualizarPuntoActual,
     limpiarRecursos,
     cargarDatosParada
 };
+
+// Módulo listo para usar
