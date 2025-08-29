@@ -1,15 +1,15 @@
+/**
+ * Módulo que maneja la visualización del mapa y la interacción con las paradas
+ * Se comunica con el padre a través del sistema de mensajería
+ */
+
+// Importar la mensajería
 import { 
   inicializarMensajeria,
   enviarMensaje, 
-  registrarControlador
-} from './mensajeria.js';
-import { 
-  logger, 
-  configurarUtils, 
-  crearObjetoError,
+  registrarControlador,
   TIPOS_MENSAJE 
-} from './utils.js';
-configurarUtils({ iframeId: 'hijo-mapa', debug: true });
+} from './mensajeria.js';
 
 // Estado del módulo
 let mapa = null;
@@ -26,101 +26,48 @@ let intentosSincronizacion = 0;
 const MAX_INTENTOS_SINCRONIZACION = 5;
 
 /**
- * Actualiza el marcador de una parada en el mapa
- * @param {string} paradaId - ID de la parada a actualizar
- * @param {Object} datos - Datos de la parada
- * @param {string} [datos.estado] - Estado de la parada (visitada, activa, inactiva)
- * @param {Object} [datos.estilo] - Estilos personalizados para el marcador
- * @returns {boolean} - True si se actualizó correctamente
- */
-function actualizarMarcadorParada(paradaId, datos = {}) {
-    try {
-        logger.info(`[MAPA] Actualizando marcador para parada ${paradaId}`, datos);
-        
-        // Verificar si el marcador existe
-        if (!marcadoresParadas.has(paradaId)) {
-            logger.warn(`[MAPA] No se encontró marcador para la parada ${paradaId}`);
-            return false;
-        }
-        
-        const marcador = marcadoresParadas.get(paradaId);
-        
-        // Actualizar estado si se proporciona
-        if (datos.estado) {
-            // Aquí iría la lógica para actualizar el ícono según el estado
-            // Por ejemplo:
-            // const nuevoIcono = obtenerIconoPorEstado(datos.estado);
-            // marcador.setIcon(nuevoIcono);
-            
-            // Actualizar tooltip o popup si es necesario
-            if (marcador.getTooltip()) {
-                marcador.getTooltip().setContent(`Parada ${paradaId} (${datos.estado})`);
-            }
-        }
-        
-        // Actualizar estilos personalizados si se proporcionan
-        if (datos.estilo) {
-            // Aplicar estilos al marcador
-            // Por ejemplo: marcador.setStyle(datos.estilo);
-        }
-        
-        // Si hay datos de posición, actualizar la posición del marcador
-        if (datos.latitud && datos.longitud) {
-            // Verificar si el marcador tiene el método setLatLng (compatibilidad con Leaflet)
-            if (typeof marcador.setLatLng === 'function') {
-                marcador.setLatLng([datos.latitud, datos.longitud]);
-            }
-        }
-        
-        // Actualizar datos en el mapa
-        if (datos.actualizarMapa && mapa) {
-            // Asegurarse de que el marcador esté en la vista
-            // Opcional: ajustar el zoom o la vista según sea necesario
-            // mapa.fitBounds(marcador.getBounds());
-        }
-        
-        logger.info(`[MAPA] Marcador de parada ${paradaId} actualizado correctamente`);
-        return true;
-        
-    } catch (error) {
-        logger.error(`[MAPA] Error al actualizar marcador de parada ${paradaId}:`, error);
-        return false;
-    }
-}
-
-/**
  * Inicializa el sistema de mapa with las paradas y coordenadas
  * @param {Object} opciones - Opciones de inicialización
  */
 function inicializarMapa(opciones = {}) {
-    logger.info('[MAPA] Inicializando mapa...');
+    console.log('[MAPA] Inicializando mapa...');
+    
+    // Comprobar si tenemos el array de paradas
     let arrayParadas;
+    
     if (opciones.arrayParadas) {
+        // Usar array proporcionado en las opciones
         arrayParadas = opciones.arrayParadas;
         procesarArrayParadas(arrayParadas);
     } else if (window.AVENTURA_PARADAS) {
+        // Usar array global si está disponible
         arrayParadas = window.AVENTURA_PARADAS;
         procesarArrayParadas(arrayParadas);
     } else {
-        logger.info('[MAPA] No se encontró array de paradas, solicitando al padre...');
-        if (typeof enviarMensaje === 'function') {
+        // Solicitar el array al padre mediante mensajería
+        console.log('[MAPA] No se encontró array de paradas, solicitando al padre...');
+        
+        // Verificar si la mensajería está disponible
+        if (enviarMensaje) {
             enviarMensaje('padre', TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS, {
                 timestamp: Date.now()
             }).then(respuesta => {
                 if (respuesta && respuesta.exito && respuesta.paradas) {
-                    logger.info('[MAPA] Array de paradas recibido del padre');
+                    console.log('[MAPA] Array de paradas recibido del padre');
                     procesarArrayParadas(respuesta.paradas);
                 } else {
-                    logger.error('[MAPA] Respuesta inválida del padre al solicitar paradas:', respuesta);
-                    crearObjetoError('solicitud_paradas_fallida', new Error('No se recibieron paradas válidas del padre.'), { respuesta });
+                    console.error('[MAPA] Respuesta inválida del padre al solicitar paradas:', respuesta);
+                    notificarError('solicitud_paradas_fallida', new Error('No se recibieron paradas válidas del padre.'));
                 }
             }).catch(error => {
-                logger.error('[MAPA] Error al solicitar array de paradas:', error);
-                crearObjetoError('solicitud_paradas_error', error);
+                console.error('[MAPA] Error al solicitar array de paradas:', error);
+                notificarError('solicitud_paradas_error', error);
             });
+            
+            // Salir de la función - la inicialización continuará cuando recibamos respuesta
             return;
         } else {
-            logger.error('[MAPA] No hay array de paradas disponible ni sistema de mensajería');
+            console.error('[MAPA] No hay array de paradas disponible ni sistema de mensajería');
             return;
         }
     }
@@ -129,160 +76,49 @@ function inicializarMapa(opciones = {}) {
 /**
  * Procesa el array de paradas recibido para inicializar el mapa
  * @param {Array} arrayParadas - Array con las paradas y tramos
- * @returns {Object} - Resultado del procesamiento
- * @throws {Error} - Si hay un error en el procesamiento
- */
-/**
- * Procesa el array de paradas recibido para inicializar el mapa
- * @param {Array} arrayParadas - Array con las paradas y tramos
- * @returns {Object} - Resultado del procesamiento
- * @throws {Error} - Si hay un error en el procesamiento
  */
 function procesarArrayParadas(arrayParadas) {
-    const logPrefix = '[MAPA] [procesarArrayParadas]';
-    const resultado = {
-        exito: false,
-        paradasProcesadas: 0,
-        errores: [],
-        timestamp: Date.now()
-    };
-
-    try {
-        // 1. Validaciones iniciales
-        if (!arrayParadas) {
-            throw new Error('El array de paradas no puede ser nulo o indefinido');
-        }
-
-        if (!Array.isArray(arrayParadas)) {
-            throw new Error('El parámetro debe ser un array');
-        }
-
-        if (arrayParadas.length === 0) {
-            logger.warn(`${logPrefix} Se recibió un array de paradas vacío`);
-            return { ...resultado, exito: true };
-        }
-
-        logger.info(`${logPrefix} Iniciando procesamiento de ${arrayParadas.length} paradas`);
-
-        // 2. Validar estructura de cada parada
-        const paradasValidas = [];
-        const paradasInvalidas = [];
-
-        arrayParadas.forEach((parada, index) => {
-            try {
-                // Validar estructura mínima de la parada
-                if (!parada || typeof parada !== 'object') {
-                    throw new Error(`La parada en la posición ${index} no es un objeto válido`);
-                }
-
-                const { id, coordenadas } = parada;
-                
-                if (!id) {
-                    throw new Error(`Parada en posición ${index} no tiene ID`);
-                }
-
-                if (!coordenadas || !Array.isArray(coordenadas) || coordenadas.length !== 2) {
-                    throw new Error(`Coordenadas inválidas para la parada ${id}`);
-                }
-
-                const [lat, lng] = coordenadas;
-                if (typeof lat !== 'number' || typeof lng !== 'number' || 
-                    isNaN(lat) || isNaN(lng) || 
-                    lat < -90 || lat > 90 || 
-                    lng < -180 || lng > 180) {
-                    throw new Error(`Coordenadas fuera de rango para la parada ${id}`);
-                }
-
-                paradasValidas.push(parada);
-            } catch (error) {
-                const errorMsg = `Error en parada ${index}: ${error.message}`;
-                logger.error(`${logPrefix} ${errorMsg}`, parada);
-                paradasInvalidas.push({
-                    indice: index,
-                    id: parada?.id || 'desconocido',
-                    error: error.message
-                });
+    if (!arrayParadas || !Array.isArray(arrayParadas) || arrayParadas.length === 0) {
+        console.error('[MAPA] Array de paradas inválido o vacío');
+        return;
+    }
+    
+    console.log(`[MAPA] Procesando array con ${arrayParadas.length} paradas/tramos`);
+    
+    // Guardar referencia local y calcular hash
+    arrayParadasLocal = arrayParadas;
+    hashArrayParadas = calcularHashArray(arrayParadasLocal);
+    ultimaSincronizacion = Date.now();
+    
+    // Preparar marcadores para paradas
+    const marcadores = prepararMarcadoresParadas(arrayParadas);
+    
+    // Preparar rutas para tramos
+    const rutas = prepararRutasTramos(arrayParadas);
+    
+    // Inicializar el mapa con los elementos
+    crearMapaConElementos({
+        marcadores,
+        rutas,
+        arrayParadas: arrayParadas // Pasar el array completo
+    });
+    
+    // Registrar manejadores de mensajes para eventos de navegación
+    registrarManejadoresMensajes();
+    
+    console.log('[MAPA] Inicialización completada con array de paradas');
+    
+    // Notificar que el mapa está listo
+    if (typeof enviarMensaje === 'function') {
+        enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO, {
+            componente: 'mapa',
+            timestamp: Date.now(),
+            elementosCargados: {
+                paradas: marcadores.length,
+                tramos: rutas.length,
+                totalElementos: arrayParadas.length
             }
-        });
-
-        // 3. Verificar si hay paradas válidas
-        if (paradasValidas.length === 0) {
-            throw new Error('No se encontraron paradas válidas para procesar');
-        }
-
-        // 4. Actualizar estado global
-        arrayParadasLocal = paradasValidas;
-        hashArrayParadas = calcularHashArray(paradasValidas);
-        ultimaSincronizacion = Date.now();
-        intentosSincronizacion = 0; // Resetear contador de intentos
-
-        // 5. Actualizar elementos del mapa
-        actualizarElementosMapa(paradasValidas);
-
-        // 6. Notificar al padre que el componente está listo
-        if (typeof enviarMensaje === 'function') {
-            enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO, {
-                componente: 'mapa',
-                timestamp: Date.now(),
-                elementosCargados: {
-                    paradas: paradasValidas.length,
-                    tramos: 0, // Actualizar según implementación
-                    totalElementos: arrayParadas.length
-                },
-                metadata: {
-                    totalParadas: arrayParadas.length,
-                    paradasValidas: paradasValidas.length,
-                    paradasInvalidas: paradasInvalidas.length,
-                    errores: paradasInvalidas
-                }
-            }).catch(error => {
-                logger.error('[MAPA] Error al notificar inicialización:', error);
-            });
-        }
-
-        // 7. Programar próxima verificación de actualizaciones
-        programarVerificacionActualizaciones();
-
-        // 8. Retornar resultado
-        return {
-            exito: true,
-            paradasProcesadas: paradasValidas.length,
-            errores: paradasInvalidas,
-            hash: hashArrayParadas,
-            timestamp: Date.now()
-        };
-
-    } catch (error) {
-        // Manejo de errores global
-        const errorMsg = `Error crítico al procesar array de paradas: ${error.message}`;
-        logger.error(`${logPrefix} ${errorMsg}`, error);
-        
-        // Intentar recuperación si es posible
-        if (arrayParadasLocal) {
-            logger.warn(`${logPrefix} Manteniendo el estado anterior del mapa debido al error`);
-        } else {
-            logger.error(`${logPrefix} No hay un estado anterior del mapa disponible`);
-        }
-
-        // Notificar error al padre
-        if (typeof enviarMensaje === 'function') {
-            enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
-                componente: 'mapa',
-                tipoError: 'procesamiento_paradas',
-                mensaje: error.message,
-                timestamp: Date.now(),
-                stack: error.stack
-            }).catch(e => {
-                logger.error(`${logPrefix} Error al notificar error:`, e);
-            });
-        }
-
-        // Retornar resultado de error
-        return {
-            ...resultado,
-            error: error.message,
-            stack: error.stack
-        };
+        }).catch(error => console.warn('[MAPA] Error al notificar inicialización:', error));
     }
 }
 
@@ -293,7 +129,7 @@ function procesarArrayParadas(arrayParadas) {
 async function solicitarArrayParadasAlPadre() {
     intentosSincronizacion++;
     
-    logger.info(`[MAPA] Solicitando array de paradas (intento ${intentosSincronizacion}/${MAX_INTENTOS_SINCRONIZACION})...`);
+    console.log(`[MAPA] Solicitando array de paradas (intento ${intentosSincronizacion}/${MAX_INTENTOS_SINCRONIZACION})...`);
     
     try {
         // Método 1: Usar la utilidad ArrayParadasHelpers si está disponible
@@ -317,12 +153,12 @@ async function solicitarArrayParadasAlPadre() {
         throw new Error('No se recibió un array de paradas válido');
         
     } catch (error) {
-        logger.error('[MAPA] Error al solicitar array de paradas:', error);
+        console.error('[MAPA] Error al solicitar array de paradas:', error);
         
         // Si no se ha superado el máximo de intentos, intentar de nuevo con retraso exponencial
         if (intentosSincronizacion < MAX_INTENTOS_SINCRONIZACION) {
             const tiempoEspera = Math.pow(2, intentosSincronizacion) * 1000;
-            logger.info(`[MAPA] Reintentando en ${tiempoEspera}ms...`);
+            console.log(`[MAPA] Reintentando en ${tiempoEspera}ms...`);
             await new Promise(resolve => setTimeout(resolve, tiempoEspera));
             return solicitarArrayParadasAlPadre();
         }
@@ -336,8 +172,8 @@ async function solicitarArrayParadasAlPadre() {
  * cuando el sistema de mensajería falla
  */
 function intentarObtenerParadasEmergencia() {
-    logger.error('[MAPA] No se pudo obtener el array de paradas a través de la mensajería. El mapa no puede continuar la inicialización.');
-    crearObjetoError('obtencion_paradas_critico', new Error('Fallo total al obtener el array de paradas.'), {});
+    console.error('[MAPA] No se pudo obtener el array de paradas a través de la mensajería. El mapa no puede continuar la inicialización.');
+    notificarError('obtencion_paradas_critico', new Error('Fallo total al obtener el array de paradas.'));
     // Ya no se intenta acceder a window.parent ni usar postMessage directamente.
 }
 
@@ -346,7 +182,7 @@ function intentarObtenerParadasEmergencia() {
  * @returns {Array} - Array básico con algunas paradas esenciales
  */
 function generarArrayParadasEmergencia() {
-    // Corrige ceros a la izquierda en los IDs numéricos
+    // Implementar un array mínimo con las paradas más importantes
     return [
         { 
             padreid: "padre-P-0", 
@@ -356,6 +192,7 @@ function generarArrayParadasEmergencia() {
             reto_id: "R-2",
             coordenadas: { lat: 39.47876, lng: -0.37626 } 
         },
+        // Añadir algunas paradas más esenciales aquí
         { 
             padreid: "padre-P-36", 
             tipo: "parada", 
@@ -377,7 +214,7 @@ function calcularHashArray(array) {
         // Hash simple basado en la longitud y primeros/últimos elementos
         return `${array.length}_${str.length}_${str.charCodeAt(0)}_${str.charCodeAt(str.length-1)}`;
     } catch (e) {
-        logger.warn("[MAPA] Error al calcular hash de array:", e);
+        console.warn("[MAPA] Error al calcular hash de array:", e);
         return `${array.length}_unknownhash`;
     }
 }
@@ -398,14 +235,14 @@ function programarVerificacionActualizaciones() {
             });
             
             if (respuesta && respuesta.datos && !respuesta.datos.coincide) {
-                logger.info('[MAPA] Detectada actualización en array de paradas. Solicitando nuevos datos...');
+                console.log('[MAPA] Detectada actualización en array de paradas. Solicitando nuevos datos...');
                 const arrayActualizado = await solicitarArrayParadasAlPadre();
                 if (arrayActualizado) {
                     actualizarElementosMapa(arrayActualizado);
                 }
             }
         } catch (error) {
-            logger.error('[MAPA] Error al verificar actualizaciones de array:', error);
+            console.error('[MAPA] Error al verificar actualizaciones de array:', error);
         }
     }, 300000); // 5 minutos
 }
@@ -416,7 +253,7 @@ function programarVerificacionActualizaciones() {
  */
 function actualizarElementosMapa(nuevoArray) {
     if (!nuevoArray || !Array.isArray(nuevoArray) || nuevoArray.length === 0) {
-        logger.error('[MAPA] Array de actualización inválido o vacío');
+        console.error('[MAPA] Array de actualización inválido o vacío');
         return;
     }
     
@@ -425,7 +262,7 @@ function actualizarElementosMapa(nuevoArray) {
     hashArrayParadas = calcularHashArray(arrayParadasLocal);
     ultimaSincronizacion = Date.now();
     
-    logger.info(`[MAPA] Actualizando elementos con nuevo array (${nuevoArray.length} elementos)`);
+    console.log(`[MAPA] Actualizando elementos con nuevo array (${nuevoArray.length} elementos)`);
     
     // Implementar lógica para actualizar marcadores y rutas sin reiniciar todo el mapa
     // Esta es una implementación simplificada - en producción probablemente querrás
@@ -450,7 +287,7 @@ function actualizarElementosMapa(nuevoArray) {
         marcadoresParadas.set(marcadorInfo.id, marcador);
     });
     
-    logger.info('[MAPA] Elementos del mapa actualizados exitosamente');
+    console.log('[MAPA] Elementos del mapa actualizados exitosamente');
     
     // Notificar actualización completada
     if (typeof enviarMensaje === 'function') {
@@ -459,7 +296,7 @@ function actualizarElementosMapa(nuevoArray) {
             tipoActualizacion: 'array_paradas',
             elementosActualizados: nuevoArray.length,
             timestamp: Date.now()
-        }).catch(e => logger.error('[MAPA] Error al notificar actualización:', e));
+        }).catch(e => console.warn('[MAPA] Error al notificar actualización:', e));
     }
 }
 
@@ -496,7 +333,7 @@ function prepararMarcadoresParadas(arrayParadas) {
         }
     });
     
-    logger.info(`[MAPA] Preparados ${marcadores.length} marcadores de paradas`);
+    console.log(`[MAPA] Preparados ${marcadores.length} marcadores de paradas`);
     return marcadores;
 }
 
@@ -508,7 +345,7 @@ function prepararMarcadoresParadas(arrayParadas) {
 function buscarCoordenadasParada(paradaId) {
     // Esta función debería implementarse según la estructura de datos de coordenadas
     // Por ahora, devolvemos null como placeholder
-    logger.debug(`[MAPA] Buscando coordenadas para parada ${paradaId}`);
+    console.log(`[MAPA] Buscando coordenadas para parada ${paradaId}`);
     return null;
 }
 
@@ -551,7 +388,7 @@ function prepararRutasTramos(arrayParadas) {
         }
     });
     
-    logger.info(`[MAPA] Preparadas ${rutas.length} rutas de tramos`);
+    console.log(`[MAPA] Preparadas ${rutas.length} rutas de tramos`);
     return rutas;
 }
 
@@ -563,7 +400,7 @@ function prepararRutasTramos(arrayParadas) {
 function buscarCoordenadasTramo(tramoId) {
     // Esta función debería implementarse según la estructura de datos de coordenadas
     // Por ahora, devolvemos null como placeholder
-    logger.debug(`[MAPA] Buscando coordenadas para tramo ${tramoId}`);
+    console.log(`[MAPA] Buscando coordenadas para tramo ${tramoId}`);
     return null;
 }
 
@@ -573,13 +410,13 @@ function buscarCoordenadasTramo(tramoId) {
  * @returns {L.Map} Instancia del mapa de Leaflet
  */
 function crearMapaConElementos(opciones = {}) {
-    logger.info('[MAPA] Creando mapa con opciones:', opciones);
+    console.log('[MAPA] Creando mapa con opciones:', opciones);
     
     // Obtener el contenedor o crearlo si no existe
     let mapContainer = document.getElementById(opciones.containerId || 'mapa');
     
     if (!mapContainer) {
-        logger.warn(`[MAPA] No se encontró el contenedor con ID '${opciones.containerId}', creando uno nuevo`);
+        console.warn(`[MAPA] No se encontró el contenedor con ID '${opciones.containerId}', creando uno nuevo`);
         mapContainer = document.createElement('div');
         mapContainer.id = opciones.containerId || 'mapa';
         mapContainer.style.width = '100%';
@@ -617,11 +454,11 @@ function crearMapaConElementos(opciones = {}) {
             maxZoom: mapOptions.maxZoom
         }).addTo(map);
         
-        logger.info('[MAPA] Mapa creado exitosamente');
+        console.log('[MAPA] Mapa creado exitosamente');
         return map;
         
     } catch (error) {
-        logger.error('[MAPA] Error al crear el mapa:', error);
+        console.error('[MAPA] Error al crear el mapa:', error);
         throw error;
     }
 }
@@ -667,13 +504,13 @@ function registrarManejadoresMensajes() {
             }
             
             try {
-                logger.info(`[MAPA] Procesando solicitud de cambio a modo: ${modo}` + 
+                console.log(`[MAPA] Procesando solicitud de cambio a modo: ${modo}` + 
                           (motivo ? ` (Motivo: ${motivo})` : ''));
                 
                 // Verificar si ya está en el modo solicitado
                 const modoActual = document.body.classList.contains('modo-casa') ? 'casa' : 'aventura';
                 if (!forzar && modoActual === modo) {
-                    logger.info(`[MAPA] Ya está en modo ${modo}, ignorando solicitud`);
+                    console.log(`[MAPA] Ya está en modo ${modo}, ignorando solicitud`);
                     return { 
                         exito: true, 
                         modo, 
@@ -704,12 +541,12 @@ function registrarManejadoresMensajes() {
                 if (typeof enviarMensaje === 'function') {
                     await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO_CONFIRMACION, confirmacion)
                         .catch(error => {
-                            logger.error('[MAPA] Error al enviar confirmación de cambio de modo:', error);
+                            console.error('[MAPA] Error al enviar confirmación de cambio de modo:', error);
                             throw new Error('No se pudo confirmar el cambio de modo');
                         });
                 }
                 
-                logger.info(`[MAPA] Confirmación de cambio a modo ${modo} enviada`);
+                console.log(`[MAPA] Confirmación de cambio a modo ${modo} enviada`);
                 return { 
                     exito: true, 
                     modo, 
@@ -718,7 +555,7 @@ function registrarManejadoresMensajes() {
                 };
                 
             } catch (error) {
-                logger.error(`[MAPA] Error al procesar cambio a modo ${modo}:`, error);
+                console.error(`[MAPA] Error al procesar cambio a modo ${modo}:`, error);
                 
                 // Notificar error al padre
                 if (typeof enviarMensaje === 'function') {
@@ -737,7 +574,7 @@ function registrarManejadoresMensajes() {
                     };
                     
                     enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, mensajeError)
-                        .catch(e => logger.error('[MAPA] Error al notificar error de cambio de modo:', e));
+                        .catch(e => console.error('[MAPA] Error al notificar error de cambio de modo:', e));
                 }
                 
                 // Relanzar error para manejo superior
@@ -752,7 +589,7 @@ function registrarManejadoresMensajes() {
             
             const { modo, confirmado, timestamp } = datos;
             if (confirmado && (modo === 'casa' || modo === 'aventura')) {
-                logger.info(`[MAPA] Estado de modo actualizado a: ${modo} (${new Date(timestamp).toISOString()})`);
+                console.log(`[MAPA] Estado de modo actualizado a: ${modo} (${new Date(timestamp).toISOString()})`);
                 // Asegurarse de que la interfaz esté sincronizada
                 actualizarElementosDeInterfaz(modo);
             }
@@ -765,7 +602,7 @@ function registrarManejadoresMensajes() {
             
             const { tipo, mensaje: mensajeError, origen, timestamp } = datos;
             if (tipo === 'cambio_modo_fallido') {
-                logger.error(
+                console.error(
                     `[MAPA] Error en cambio de modo: ${mensajeError}`,
                     `\nOrigen: ${origen || 'desconocido'}`,
                     `\nHora: ${new Date(timestamp).toISOString()}`
@@ -774,54 +611,10 @@ function registrarManejadoresMensajes() {
             }
         });
         
-        logger.info('[MAPA] Manejadores de mensajes registrados correctamente');
+        console.log('[MAPA] Manejadores de mensajes registrados correctamente');
     } catch (error) {
-        logger.error('[MAPA] Error al registrar manejadores de mensajes:', error);
+        console.error('[MAPA] Error al registrar manejadores de mensajes:', error);
         throw error;
-    }
-}
-
-/**
- * Manejador para el mensaje de cambio de parada.
- * @param {Object} mensaje - Mensaje recibido con los datos de la parada.
- */
-function manejarCambioParada(mensaje) {
-    try {
-        const { punto } = mensaje.datos || {};
-        if (!punto) {
-            logger.warn('[MAPA] No se recibió punto en el mensaje de cambio de parada');
-            return { exito: false, error: 'No se recibió punto' };
-        }
-        // Aquí puedes actualizar el estado del mapa, centrarlo, resaltar parada, etc.
-        logger.info('[MAPA] Cambio de parada solicitado:', punto);
-        // Ejemplo: centrar el mapa en la parada si tienes la función centrarMapa
-        // centrarMapa(punto.coordenadas);
-        return { exito: true, punto };
-    } catch (error) {
-        logger.error('[MAPA] Error en manejarCambioParada:', error);
-        return { exito: false, error: error.message };
-    }
-}
-
-/**
- * Manejador para el mensaje de llegada a parada.
- * @param {Object} mensaje - Mensaje recibido con los datos de la parada.
- */
-function manejarLlegadaParada(mensaje) {
-    try {
-        const { punto } = mensaje.datos || {};
-        if (!punto) {
-            logger.warn('[MAPA] No se recibió punto en el mensaje de llegada a parada');
-            return { exito: false, error: 'No se recibió punto' };
-        }
-        // Aquí puedes actualizar el estado del mapa, mostrar popup, etc.
-        logger.info('[MAPA] Llegada a parada detectada:', punto);
-        // Ejemplo: mostrar información de la parada
-        // mostrarPopupParada(punto);
-        return { exito: true, punto };
-    } catch (error) {
-        logger.error('[MAPA] Error en manejarLlegadaParada:', error);
-        return { exito: false, error: error.message };
     }
 }
 
@@ -832,7 +625,7 @@ function manejarLlegadaParada(mensaje) {
  */
 async function cargarDatosParada(paradaId) {
     try {
-        logger.info(`[MAPA] Solicitando datos para parada: ${paradaId}`);
+        console.log(`[MAPA] Solicitando datos para parada: ${paradaId}`);
         
         // Usar la mensajería para solicitar los datos al padre
         const respuesta = await enviarMensaje(
@@ -843,15 +636,15 @@ async function cargarDatosParada(paradaId) {
         );
         
         if (respuesta && respuesta.exito) {
-            logger.info(`[MAPA] Datos recibidos para parada ${paradaId}:`, respuesta.datos);
+            console.log(`[MAPA] Datos recibidos para parada ${paradaId}:`, respuesta.datos);
             actualizarMarcadorParada(paradaId, respuesta.datos);
             return true;
         } else {
-            logger.warn(`[MAPA] No se pudieron obtener datos para la parada ${paradaId}`);
+            console.warn(`[MAPA] No se pudieron obtener datos para la parada ${paradaId}`);
             return false;
         }
     } catch (error) {
-        logger.error(`[MAPA] Error solicitando datos de parada ${paradaId}:`, error);
+        console.error(`[MAPA] Error solicitando datos de parada ${paradaId}:`, error);
         return false;
     }
 }
@@ -876,7 +669,7 @@ async function actualizarModoMapa(modo, opciones = {}) {
     // Verificar si ya está en el modo solicitado
     const modoActual = document.body.classList.contains('modo-casa') ? 'casa' : 'aventura';
     if (!forzar && modoActual === modo) {
-        logger.info(`[MAPA] Ya está en modo ${modo}, no se requiere actualización`);
+        console.log(`[MAPA] Ya está en modo ${modo}, no se requiere actualización`);
         return { 
             exito: true, 
             modo, 
@@ -886,7 +679,7 @@ async function actualizarModoMapa(modo, opciones = {}) {
     }
     
     try {
-        logger.info(`[MAPA] Iniciando actualización a modo: ${modo} (${new Date(timestampInicio).toISOString()})`);
+        console.log(`[MAPA] Iniciando actualización a modo: ${modo} (${new Date(timestampInicio).toISOString()})`);
         
         // 1. Actualizar clases CSS del contenedor del mapa
         const contenedorMapa = document.querySelector('.map-container') || document.body;
@@ -940,7 +733,7 @@ async function actualizarModoMapa(modo, opciones = {}) {
                         }
                         resolve();
                     } catch (error) {
-                        logger.error('[MAPA] Error al aplicar estilos del mapa:', error);
+                        console.error('[MAPA] Error al aplicar estilos del mapa:', error);
                         resolve(); // Continuar aunque falle el estilo
                     }
                 });
@@ -951,12 +744,12 @@ async function actualizarModoMapa(modo, opciones = {}) {
         try {
             await actualizarElementosDeInterfaz(modo);
         } catch (error) {
-            logger.error('[MAPA] Error al actualizar elementos de interfaz:', error);
+            console.error('[MAPA] Error al actualizar elementos de interfaz:', error);
             // Continuar aunque falle la actualización de la interfaz
         }
         
         const tiempoTranscurrido = Date.now() - timestampInicio;
-        logger.info(`[MAPA] Actualización a modo ${modo} completada en ${tiempoTranscurrido}ms`);
+        console.log(`[MAPA] Actualización a modo ${modo} completada en ${tiempoTranscurrido}ms`);
         
         return { 
             exito: true, 
@@ -967,7 +760,7 @@ async function actualizarModoMapa(modo, opciones = {}) {
         };
         
     } catch (error) {
-        logger.error(`[MAPA] Error al actualizar al modo ${modo}:`, error);
+        console.error(`[MAPA] Error al actualizar al modo ${modo}:`, error);
         
         // Intentar restaurar un estado consistente
         try {
@@ -982,7 +775,7 @@ async function actualizarModoMapa(modo, opciones = {}) {
                 });
             }
         } catch (recoveryError) {
-            logger.error('[MAPA] Error al restaurar estilo por defecto:', recoveryError);
+            console.error('[MAPA] Error al restaurar estilo por defecto:', recoveryError);
             // No relanzar este error para no sobrescribir el error original
         }
         
@@ -1016,11 +809,90 @@ const CONFIG = {
 };
 
 /**
- * Inicializa el módulo de mapa
+ * Notifica un error al padre a través del sistema de mensajería.
+ * @param {string} tipo - El tipo de error (p.ej., 'inicializacion', 'cambio_modo').
+ * @param {Error} error - El objeto de error.
  */
+async function notificarError(tipo, error) {
+  console.error(`[${CONFIG.IFRAME_ID}] Error (${tipo}):`, error);
+  if (enviarMensaje) {
+    try {
+      await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
+        tipo,
+        mensaje: error.message,
+        stack: error.stack,
+        origen: CONFIG.IFRAME_ID
+      });
+    } catch (msgError) {
+      console.error(`[${CONFIG.IFRAME_ID}] Fallo al notificar el error original:`, msgError);
+    }
+  }
+}
+
+async function actualizarElementosDeInterfaz(modo) {
+    if (modo !== 'casa' && modo !== 'aventura') {
+        console.warn(`[MAPA] Intento de actualizar interfaz con modo no válido: ${modo}`);
+        return;
+    }
+    
+    console.log(`[MAPA] Actualizando interfaz para modo: ${modo}`);
+    
+    try {
+        document.body.classList.remove('modo-casa', 'modo-aventura');
+        document.body.classList.add(`modo-${modo}`);
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        
+        const botonesModo = document.querySelectorAll('[data-accion="cambiar-modo"]');
+        botonesModo.forEach(boton => {
+            const modoBoton = boton.getAttribute('data-modo');
+            const esActivo = modoBoton === modo;
+            boton.disabled = esActivo;
+            boton.classList.toggle('activo', esActivo);
+            boton.setAttribute('aria-pressed', esActivo.toString());
+            const textoAccesible = boton.querySelector('.sr-only');
+            if (textoAccesible) {
+                textoAccesible.textContent = esActivo ? `Modo ${modo} activo` : `Cambiar a modo ${modoBoton}`;
+            }
+        });
+        
+        const titulo = document.querySelector('h1, .titulo-mapa');
+        if (titulo) {
+            titulo.textContent = `Mapa - Modo ${modo.charAt(0).toUpperCase() + modo.slice(1)}`;
+            titulo.setAttribute('aria-live', 'polite');
+        }
+    } catch (error) {
+        console.error(`[MAPA] Error al actualizar la interfaz para el modo ${modo}:`, error);
+    }
+}
+
+function limpiarRecursos() {
+    console.log('[MAPA] Limpiando recursos del mapa...');
+    if (mapa) {
+        mapa.remove();
+        mapa = null;
+    }
+    marcadoresParadas.clear();
+    paradasCargadas.clear();
+    console.log('[MAPA] Recursos limpiados');
+}
+
+function actualizarMarcadorParada(paradaId, datosNuevos) {
+    if (!marcadoresParadas.has(paradaId)) {
+        console.warn(`[MAPA] Se intentó actualizar un marcador inexistente: ${paradaId}`);
+        return;
+    }
+
+    const marcador = marcadoresParadas.get(paradaId);
+    console.log(`[MAPA] Marcador para ${paradaId} actualizado con:`, datosNuevos);
+    if (datosNuevos.visitada) {
+        // Suponiendo que crearIconoParada existe
+        // marcador.setIcon(crearIconoParada({ visitada: true }));
+    }
+}
+
 async function inicializar() {
     try {
-        logger.info(`[${CONFIG.IFRAME_ID}] Inicializando módulo de mapa...`);
+        console.log(`[${CONFIG.IFRAME_ID}] Inicializando módulo de mapa...`);
         
         await inicializarMensajeria({
             iframeId: CONFIG.IFRAME_ID,
@@ -1031,10 +903,10 @@ async function inicializar() {
         registrarManejadoresMensajes();
         inicializarMapa();
         
-        logger.info(`[${CONFIG.IFRAME_ID}] Módulo de mapa inicializado correctamente`);
+        console.log(`[${CONFIG.IFRAME_ID}] Módulo de mapa inicializado correctamente`);
     } catch (error) {
-        logger.error(`[${CONFIG.IFRAME_ID}] Error al inicializar el módulo de mapa:`, error);
-        crearObjetoError('inicializacion_modulo_mapa', error, {});
+        console.error(`[${CONFIG.IFRAME_ID}] Error al inicializar el módulo de mapa:`, error);
+        await notificarError('inicializacion_modulo_mapa', error);
     }
 }
 
