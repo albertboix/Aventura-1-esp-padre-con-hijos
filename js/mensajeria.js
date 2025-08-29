@@ -1,28 +1,28 @@
-// Import only what we need from utils
-import { 
-  logger as _logger, 
-  configurarUtils as _configurarUtils, 
-  crearObjetoError as _crearObjetoError,
-  TIPOS_MENSAJE as _TIPOS_MENSAJE,
-  LOG_LEVELS as _LOG_LEVELS
-} from './utils.js';
+// Import utils
+import * as utils from './utils.js';
 
-// Local copies to avoid circular dependencies
-let logger = _logger;
-const LOG_LEVELS = _LOG_LEVELS;
-const TIPOS_MENSAJE = _TIPOS_MENSAJE;
-const crearObjetoError = _crearObjetoError;
+// Destructure what we need
+const { 
+  configurarUtils, 
+  crearObjetoError,
+  TIPOS_MENSAJE,
+  LOG_LEVELS
+} = utils;
 
-// Re-export utils for backward compatibility
-export { 
-  _TIPOS_MENSAJE as TIPOS_MENSAJE,
-  _LOG_LEVELS as LOG_LEVELS,
-  _configurarUtils as configurarUtils,
-  _crearObjetoError as crearObjetoError 
-};
-
-// Configuración inicial del logger
+// Initialize logger
 configurarUtils({ iframeId: 'mensajeria', debug: true });
+
+// Get logger after initialization
+const logger = utils.logger;
+
+// Export for other modules
+export { 
+  TIPOS_MENSAJE,
+  LOG_LEVELS,
+  configurarUtils,
+  crearObjetoError,
+  logger
+};
 
 // Estado del módulo
 let iframeId = '';
