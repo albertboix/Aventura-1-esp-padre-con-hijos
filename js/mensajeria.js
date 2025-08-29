@@ -5,8 +5,12 @@ import {
   TIPOS_MENSAJE 
 } from './utils.js';
 
-// Re-export TIPOS_MENSAJE for backward compatibility
-export { TIPOS_MENSAJE };
+// Re-export utils for backward compatibility
+export { 
+  TIPOS_MENSAJE,
+  configurarUtils,
+  crearObjetoError 
+};
 
 // Configuración inicial del logger
 configurarUtils({ iframeId: 'mensajeria', debug: true });
@@ -723,10 +727,9 @@ async function enviarATodosLosIframes(mensaje, opciones = {}) {
  * Maneja los mensajes recibidos
  * @param {MessageEvent} event - Evento de mensaje
  */
-console.log('[MENSAJERIA] Evento de mensaje recibido:', event.origin, event.data);
 function manejarMensajeRecibido(event) {
   const logPrefix = '[MENSAJERIA] [manejarMensajeRecibido]';
-  console.log(`${logPrefix} Mensaje recibido de ${event.origin}:`, event.data);
+  console.log(`${logPrefix} Evento de mensaje recibido:`, event.origin, event.data);
   
   // Verificar el origen del mensaje para seguridad
   if (origenPermitido && event.origin !== origenPermitido) {
