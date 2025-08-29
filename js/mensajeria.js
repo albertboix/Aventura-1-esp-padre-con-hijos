@@ -1,17 +1,24 @@
+// Import only what we need from utils
 import { 
-  logger, 
-  configurarUtils, 
-  crearObjetoError,
-  TIPOS_MENSAJE,
-  LOG_LEVELS 
+  logger as _logger, 
+  configurarUtils as _configurarUtils, 
+  crearObjetoError as _crearObjetoError,
+  TIPOS_MENSAJE as _TIPOS_MENSAJE,
+  LOG_LEVELS as _LOG_LEVELS
 } from './utils.js';
+
+// Local copies to avoid circular dependencies
+let logger = _logger;
+const LOG_LEVELS = _LOG_LEVELS;
+const TIPOS_MENSAJE = _TIPOS_MENSAJE;
+const crearObjetoError = _crearObjetoError;
 
 // Re-export utils for backward compatibility
 export { 
-  TIPOS_MENSAJE,
-  LOG_LEVELS,
-  configurarUtils,
-  crearObjetoError 
+  _TIPOS_MENSAJE as TIPOS_MENSAJE,
+  _LOG_LEVELS as LOG_LEVELS,
+  _configurarUtils as configurarUtils,
+  _crearObjetoError as crearObjetoError 
 };
 
 // Configuración inicial del logger
@@ -20,16 +27,20 @@ configurarUtils({ iframeId: 'mensajeria', debug: true });
 // Estado del módulo
 let iframeId = '';
 let sistemaInicializado = false;
-const manejadores = new Map();
-const mensajesPendientes = new Map();
-const iframesRegistrados = new Set();
-let config = {
+let manejadores = new Map();
+let mensajesPendientes = new Map();
+let iframesRegistrados = new Set();
+let configuracion = {
   debug: true,
   logLevel: LOG_LEVELS.DEBUG,
   tiempoEsperaRespuesta: 30000, // 30 segundos
   reintentos: 3,
-  tiempoEntreReintentos: 1000 // 1 segundo
+  tiempoEntreReintentos: 1000, // 1 segundo
+  iframeId: ''
 };
+
+// Alias config to configuracion for backward compatibility
+const config = configuracion;
 
 /**
  * Sistema de Mensajería para Comunicación entre Iframes
@@ -504,7 +515,7 @@ export async function inicializarMensajeria(userConfig = {}) {
   }
   try {
     // Validar configuración
-    if (!config.iframeId) {
+    if (!userConfig.iframeId) {
       const error = new Error('Se requiere un iframeId para inicializar la mensajería');
       error.code = 'ERR_INVALID_CONFIG';
       throw error;
@@ -516,7 +527,7 @@ export async function inicializarMensajeria(userConfig = {}) {
     }
     
     // Aplicar configuración
-    configuracion = { ...CONFIG_DEFAULT, ...config };
+    configuracion = { ...configuracion, ...userConfig };
     iframeId = configuracion.iframeId;
     
     // Configurar nivel de log
