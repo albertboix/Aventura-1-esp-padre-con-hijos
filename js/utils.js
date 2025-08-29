@@ -33,6 +33,64 @@ export const TIPOS_PUNTO = {
   INICIO: 'inicio'
 };
 
+/**
+ * Tipos de mensajes estandarizados para la comunicación entre componentes.
+ */
+export const TIPOS_MENSAJE = {
+  // Mensajes de navegación
+  NAVEGACION: {
+    INICIAR: 'navegacion:iniciar',
+    INICIADA: 'navegacion:iniciada',
+    CANCELADA: 'navegacion:cancelada',
+    DESTINO_ESTABLECIDO: 'navegacion:destino_establecido',
+    LLEGADA_DETECTADA: 'navegacion:llegada_detectada',
+    ERROR: 'navegacion:error',
+    SOLICITAR_DESTINO: 'navegacion:solicitar_destino',
+    ESTADO: 'navegacion:estado'
+  },
+  
+  // Mensajes del sistema
+  SISTEMA: {
+    ERROR: 'sistema:error',
+    ESTADO: 'sistema:estado',
+    CAMBIO_MODO: 'sistema:cambio_modo',
+    CONFIGURACION: 'sistema:configuracion',
+    SINCRONIZAR: 'sistema:sincronizar'
+  },
+  
+  // Mensajes de control
+  CONTROL: {
+    ESTADO: 'control:estado',
+    HABILITAR: 'control:habilitar',
+    DESHABILITAR: 'control:deshabilitar'
+  },
+  
+  // Mensajes de GPS
+  GPS: {
+    ACTUALIZAR: 'gps:actualizar',
+    POSICION_ACTUALIZADA: 'gps:posicion_actualizada',
+    COMANDO: 'gps:comando'
+  },
+  
+  // Mensajes de audio
+  AUDIO: {
+    COMANDO: 'audio:comando',
+    REPRODUCIR: 'audio:reproducir'
+  },
+  
+  // Mensajes de retos
+  RETO: {
+    NUEVO: 'reto:nuevo',
+    MOSTRAR: 'reto:mostrar'
+  },
+  
+  // Mensajes de interfaz de usuario
+  UI: {
+    HABILITAR_CONTROLES: 'ui:habilitar_controles',
+    DESHABILITAR_CONTROLES: 'ui:deshabilitar_controles'
+  }
+};
+
 // ================== CONFIGURACIÓN GLOBAL ==================
 
 const globalConfig = {
