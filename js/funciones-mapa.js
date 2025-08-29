@@ -9,7 +9,7 @@ import {
   enviarMensaje, 
   registrarControlador,
   TIPOS_MENSAJE 
-} from './mensajeria.js';
+} from '.js/mensajeria.js';
 
 // Estado del módulo
 let mapa = null;
