@@ -917,18 +917,7 @@ window.addEventListener('beforeunload', () => {
     limpiarRecursos();
 });
 
-// Exportar funciones principales
-export default {
-    inicializarMapa,
-    actualizarModoMapa,
-    buscarCoordenadasParada,
-    obtenerNombreParada,
-    actualizarMarcadorParada,
-    limpiarRecursos,
-    cargarDatosParada
-};
-
-// Exportar funciones individualmente para pruebas
+// Exportar funciones individualmente
 export {
     inicializarMapa,
     actualizarModoMapa,
