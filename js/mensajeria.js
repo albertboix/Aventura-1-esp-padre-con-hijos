@@ -3,7 +3,7 @@ import {
   configurarUtils, 
   crearObjetoError, 
   TIPOS_MENSAJE 
-} from '../utils.js';
+} from './utils.js';
 
 // Configuración inicial del logger
 configurarUtils({ iframeId: 'mensajeria', debug: true });
@@ -555,6 +555,8 @@ export const registrarManejador = registrarControlador;
  * @returns {Promise<Object>} Respuesta del mensaje
  */
 export async function enviarMensaje(destino, tipo, datos = {}, opciones = {}) {
+  console.log(`[MENSAJERIA] Enviando mensaje a ${destino} (${tipo}):`, datos);
+    console.log(`[MENSAJERIA] Enviando mensaje a ${destino} (${tipo}):`, datos);
   // Antes de enviar un mensaje, verifica que el sistema esté inicializado
   if (!sistemaInicializado) {
     throw new Error('El sistema de mensajería no está inicializado');
@@ -718,8 +720,10 @@ async function enviarATodosLosIframes(mensaje, opciones = {}) {
  * Maneja los mensajes recibidos
  * @param {MessageEvent} event - Evento de mensaje
  */
+console.log('[MENSAJERIA] Evento de mensaje recibido:', event.origin, event.data);
 function manejarMensajeRecibido(event) {
   const logPrefix = '[MENSAJERIA] [manejarMensajeRecibido]';
+  console.log(`${logPrefix} Mensaje recibido de ${event.origin}:`, event.data);
   
   // Verificar el origen del mensaje para seguridad
   if (origenPermitido && event.origin !== origenPermitido) {
