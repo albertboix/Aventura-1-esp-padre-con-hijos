@@ -865,7 +865,7 @@ async function actualizarElementosDeInterfaz(modo) {
     }
 }
 
-function limpiarRecursos() {
+export function limpiarRecursos() {
     console.log('[MAPA] Limpiando recursos del mapa...');
     if (mapa) {
         mapa.remove();
@@ -873,7 +873,8 @@ function limpiarRecursos() {
     }
     marcadoresParadas.clear();
     paradasCargadas.clear();
-    console.log('[MAPA] Recursos limpiados');
+    manejadorActualizacionParada = null;
+    estaInicializado = false;
 }
 
 function actualizarMarcadorParada(paradaId, datosNuevos) {
