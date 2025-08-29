@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -35,12 +36,12 @@
     <div id="info-parada"></div>
 
     <!-- IFrames de los Hijos -->
-    <iframe id="hijo1-hamburguesa" src="botones-y-subfunciones-hamburguesa.html" style="position:fixed; left:1vw; bottom:0vw; height: 265px; width:57px; z-index:1005; pointer-events:auto;"></iframe>
-    <iframe id="hijo1-opciones" src="botones-y-subfunciones-opciones.html" style="position:fixed; right:1vw; bottom:0vw; height: 265px; width:57px; z-index:1005; pointer-events:auto;"></iframe>
-    <iframe id="hijo5-casa" src="Av1-boton-casa.html" style="position:fixed; left:10px; top:10px; height:350px; width:100px; z-index:1005; pointer-events:auto; transition:width 0.3s;"></iframe>
-    <iframe id="hijo3" src="Av1_audio_esp.html" style="position:fixed; bottom:-6px; left:50%; transform:translateX(-50%); height:165px; width:310px; z-index:1000; display:block; pointer-events:auto;"></iframe>
-    <iframe id="hijo2" src="Av1-botones-coordenadas.html" style="position:fixed; bottom:151px; left:50%; transform:translateX(-50%); height:165px; width:310px; z-index:1001; pointer-events:auto;" allow="geolocation"></iframe>
-    <iframe id="hijo4" src="Av1-esp-retos-preguntas.html"></iframe>
+    <iframe id="hijo1-hamburguesa" src="botones-y-subfunciones-hamburguesa.html" style="position:fixed; left:1vw; bottom:0vw; height: 265px; width:57px; z-index:1005; pointer-events:auto;" onerror="console.error('Error loading hijo1-hamburguesa')"></iframe>
+    <iframe id="hijo1-opciones" src="botones-y-subfunciones-opciones.html" style="position:fixed; right:1vw; bottom:0vw; height: 265px; width:57px; z-index:1005; pointer-events:auto;" onerror="console.error('Error loading hijo1-opciones')"></iframe>
+    <iframe id="hijo5-casa" src="Av1-boton-casa.html" style="position:fixed; left:10px; top:10px; height:350px; width:100px; z-index:1005; pointer-events:auto; transition:width 0.3s; display:block;" onload="console.log('hijo5-casa loaded')" onerror="console.error('Error loading hijo5-casa')"></iframe>
+    <iframe id="hijo3" src="Av1_audio_esp.html" style="position:fixed; bottom:-6px; left:50%; transform:translateX(-50%); height:165px; width:310px; z-index:1000; display:block; pointer-events:auto;" onerror="console.error('Error loading hijo3-audio')"></iframe>
+    <iframe id="hijo2" src="Av1-botones-coordenadas.html" style="position:fixed; bottom:151px; left:50%; transform:translateX(-50%); height:165px; width:310px; z-index:1001; pointer-events:auto; display:block;" allow="geolocation" onerror="console.error('Error loading hijo2-coordenadas')"></iframe>
+    <iframe id="hijo4" src="Av1-esp-retos-preguntas.html" style="display:none;" onload="console.log('hijo4-retos loaded')" onerror="console.error('Error loading hijo4-retos')"></iframe>
 
     <!-- Overlay para Media -->
     <div id="media-overlay">
@@ -180,15 +181,53 @@ configurarUtils({ iframeId: 'padre', debug: true });
         }
 
         async function iniciarSistemaMapa() {
-            if (typeof L === 'undefined') throw new Error('Leaflet no está disponible.');
-            if (estadoApp.mapaInicializado) return;
-            const mapaInstance = await inicializarMapa({ arrayParadas: AVENTURA_PARADAS, containerId: 'mapa', ...MAP_CONFIG });
-            if (!mapaInstance) throw new Error('inicializarMapa no devolvió una instancia del mapa.');
-            window.mapa = mapaInstance;
-            estadoApp.mapaInicializado = true;
-            logger.info('Mapa inicializado.');
-            setTimeout(() => window.mapa.invalidateSize(), 100);
-            window.addEventListener('resize', () => setTimeout(() => window.mapa?.invalidateSize(), 100));
+            try {
+                if (typeof L === 'undefined') throw new Error('Leaflet no está disponible.');
+                if (estadoApp.mapaInicializado) return;
+                
+                // Ensure map container is visible and has dimensions
+                const mapaContainer = document.getElementById('mapa');
+                if (mapaContainer) {
+                    mapaContainer.style.display = 'block';
+                    if (mapaContainer.offsetWidth === 0 || mapaContainer.offsetHeight === 0) {
+                        console.warn('Map container has zero dimensions, setting default size');
+                        mapaContainer.style.width = '100vw';
+                        mapaContainer.style.height = '100vh';
+                    }
+                }
+                
+                const mapaInstance = await inicializarMapa({ 
+                    arrayParadas: AVENTURA_PARADAS, 
+                    containerId: 'mapa', 
+                    ...MAP_CONFIG 
+                });
+                
+                if (!mapaInstance) throw new Error('inicializarMapa no devolvió una instancia del mapa.');
+                
+                window.mapa = mapaInstance;
+                estadoApp.mapaInicializado = true;
+                logger.info('Mapa inicializado.');
+                
+                // Force map to update its size after a short delay
+                const updateMapSize = () => {
+                    if (window.mapa) {
+                        window.mapa.invalidateSize();
+                        console.log('Map size updated');
+                    }
+                };
+                
+                setTimeout(updateMapSize, 100);
+                window.addEventListener('resize', () => setTimeout(updateMapSize, 100));
+                
+                // Show the map container
+                if (mapaContainer) {
+                    mapaContainer.style.visibility = 'visible';
+                }
+                
+            } catch (error) {
+                console.error('Error al inicializar el mapa:', error);
+                throw error;
+            }
         }
 
         async function notificarInicializacionAHijos() {
