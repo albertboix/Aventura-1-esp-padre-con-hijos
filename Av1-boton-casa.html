@@ -5,71 +5,388 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>hijo5-casa</title>
     <script type="module">
-// 1. Importar primero las utilidades básicas
-import { logger, configurarUtils, crearObjetoError, LOG_LEVELS } from './js/utils.js';
-
-// 2. Configurar el logger inmediatamente después de importarlo
-const configLogger = {
-  iframeId: 'hijo5-casa',
-  debug: true,
-  logLevel: LOG_LEVELS.DEBUG
-};
-
-// Configurar el logger de forma segura
-let loggerGlobal = {
-  debug: console.debug.bind(console, '[DEBUG]'),
-  info: console.log.bind(console, '[INFO]'),
-  warn: console.warn.bind(console, '[WARN]'),
-  error: console.error.bind(console, '[ERROR]')
-};
-
-try {
-  configurarUtils(configLogger);
-  loggerGlobal = logger;
-  loggerGlobal.info('Logger configurado correctamente');
-} catch (error) {
-  console.error('Error al configurar el logger:', error);
-}
-
-// Hacer el logger disponible globalmente
-window.logger = loggerGlobal;
-
-// 4. Importar el resto de módulos
+// Importar utilidades y configuración
 import { 
-  enviarMensaje as _enviarMensaje,
-  inicializarMensajeria as _inicializarMensajeria,
-  registrarControlador as _registrarControlador,
-  TIPOS_MENSAJE as _TIPOS_MENSAJE
-} from './js/mensajeria.js';
+  configurarUtils, 
+  TIPOS_MENSAJE, 
+  LOG_LEVELS,
+  logger as utilsLogger
+} from './js/utils.js';
 
-import {
-  inicializarMapa as _inicializarMapa,
-  centrarMapa as _centrarMapa,
-  actualizarPuntoActual as _actualizarPuntoActual,
-  actualizarTramoActual as _actualizarTramoActual,
-  actualizarModoMapa as _actualizarModoMapa,
-  limpiarRecursos as _limpiarRecursos
-} from './js/funciones-mapa.js';
-
-// Configuración estándar
+// Configuración global
 const CONFIG = {
   IFRAME_ID: 'hijo5-casa',
-  LOG_LEVEL: 0, // 0: debug, 1: info, 2: warn, 3: error, 4: none
   DEBUG: true,
+  LOG_LEVEL: LOG_LEVELS.DEBUG, // Usar niveles de utils.js
   REINTENTOS: {
     MAXIMOS: 3,
     TIEMPO_ESPERA: 1000,
     FACTOR: 2
   },
-  ESTADO_INICIAL: {
-    modo: 'casa',
-    controlesHabilitados: true,
-    puntoActual: null,
-    gpsActivo: false,
-    tramoActual: null,
-    ultimoError: null
-  }
+  TIPOS_MENSAJE: TIPOS_MENSAJE // Usar tipos de mensaje de utils.js
 };
+
+// Configurar el logger global
+const logger = utilsLogger;
+configurarUtils({
+  iframeId: CONFIG.IFRAME_ID,
+  debug: CONFIG.DEBUG,
+  logLevel: CONFIG.LOG_LEVEL
+});
+
+// Estado de la aplicación
+const estadoApp = {
+  inicializando: false,
+  inicializado: false,
+  modo: { actual: 'casa', anterior: null },
+  gpsActivo: false,
+  controlesHabilitados: true,
+  puntoActual: null,
+  tramoActual: null,
+  mensajeriaInicializada: false,
+  modulosCargados: false,
+  mensajeria: null,
+  mapa: null
+};
+
+// Variables globales
+let mensajeria = null;
+let mapa = null;
+
+/**
+ * Carga un módulo de forma dinámica
+ * @param {string} nombreModulo - Nombre del módulo a cargar
+ * @returns {Promise<Object>} Módulo cargado
+ * @throws {Error} Si el módulo no puede ser cargado
+ */
+async function cargarModulo(nombreModulo) {
+  try {
+    logger.debug(`Cargando módulo: ${nombreModulo}`);
+    
+    switch(nombreModulo) {
+      case 'mensajeria':
+        const mensajeria = await import('./js/mensajeria.js');
+        // Configurar mensajería
+        await mensajeria.inicializarMensajeria({
+          iframeId: CONFIG.IFRAME_ID,
+          debug: CONFIG.DEBUG
+        });
+        
+        // Registrar manejadores de mensajes
+        mensajeria.registrarControlador(
+          CONFIG.TIPOS_MENSAJE.SISTEMA.INICIALIZACION,
+          manejarInicializacion
+        );
+        
+        return mensajeria;
+        
+      case 'mapa':
+        logger.info('Cargando módulo de mapa...');
+        const moduloMapa = await import('./js/funciones-mapa.js');
+        
+        // Inicializar el mapa con opciones básicas
+        if (typeof moduloMapa.inicializarMapa === 'function') {
+          await moduloMapa.inicializarMapa({
+            center: [39.4699, -0.3763], // Coordenadas de Valencia
+            zoom: 13,
+            minZoom: 10,
+            maxZoom: 18,
+            tileLayer: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+            tileLayerOptions: {
+              attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }
+          });
+        }
+        
+        // Devolver solo las funciones necesarias
+        return {
+          inicializarMapa: moduloMapa.inicializarMapa,
+          actualizarPuntoActual: moduloMapa.actualizarPuntoActual,
+          actualizarModoMapa: moduloMapa.actualizarModoMapa
+        };
+        
+      default:
+        throw new Error(`Módulo no soportado: ${nombreModulo}`);
+    }
+  } catch (error) {
+    const errorMsg = `Error al cargar el módulo ${nombreModulo}`;
+    logger.error(errorMsg, error);
+    throw new Error(`${errorMsg}: ${error.message}`);
+  }
+}
+
+/**
+ * Manejador de inicialización del sistema
+ * @param {Object} mensaje - Mensaje de inicialización
+ */
+async function manejarInicializacion(mensaje) {
+  try {
+    logger.info('Manejando inicialización del sistema', mensaje);
+    // Implementar lógica de inicialización aquí
+  } catch (error) {
+    logger.error('Error en manejo de inicialización', error);
+  }
+}
+
+// La inicialización se manejará en la función inicializar()
+/**
+ * Inicializa la aplicación principal cuando el DOM está listo
+ */
+async function inicializar() {
+  try {
+    // Verificar si ya está inicializado o en proceso
+    if (estadoApp.inicializado || estadoApp.inicializando) {
+      logger.info('La aplicación ya está inicializada o en proceso de inicialización');
+      return;
+    }
+    
+    estadoApp.inicializando = true;
+    logger.info('Iniciando inicialización de la aplicación...');
+    
+    // Cargar módulos necesarios
+    try {
+      mensajeria = await cargarModulo('mensajeria');
+      estadoApp.mensajeriaInicializada = true;
+      logger.info('Módulo de mensajería cargado correctamente');
+      
+      // Inicializar mensajería si es necesario
+      if (mensajeria && typeof mensajeria.inicializarMensajeria === 'function') {
+        await mensajeria.inicializarMensajeria({
+          iframeId: CONFIG.IFRAME_ID,
+          debug: CONFIG.DEBUG,
+          logLevel: CONFIG.LOG_LEVEL
+        });
+      }
+      
+      // Cargar módulo de mapa si es necesario
+      try {
+        mapa = await cargarModulo('mapa');
+        estadoApp.mapa = mapa;
+        estadoApp.modulosCargados = true;
+        logger.info('Módulo de mapa cargado correctamente');
+      } catch (error) {
+        logger.warn('No se pudo cargar el módulo de mapa:', error);
+      }
+      
+      // Registrar manejadores de mensajes
+      if (mensajeria && mensajeria.registrarControlador) {
+        registrarManejadoresMensajes();
+      }
+      
+      // Notificar al padre que la inicialización fue exitosa
+      if (mensajeria && mensajeria.enviarMensaje) {
+        await mensajeria.enviarMensaje('padre', CONFIG.TIPOS_MENSAJE.SISTEMA.INICIALIZACION, {
+          estado: 'listo',
+          timestamp: new Date().toISOString(),
+          modulos: {
+            mensajeria: true,
+            mapa: !!mapa
+          }
+        });
+      }
+      
+      estadoApp.inicializado = true;
+      logger.info('Aplicación inicializada correctamente');
+      
+    } catch (error) {
+      const errorMsg = 'Error crítico al inicializar la aplicación';
+      logger.error(errorMsg, error);
+      
+      // Mostrar mensaje de error en la interfaz
+      mostrarErrorEnInterfaz(error);
+      
+      // Notificar al padre del error
+      if (mensajeria && mensajeria.enviarMensaje) {
+        try {
+          await mensajeria.enviarMensaje('padre', CONFIG.TIPOS_MENSAJE.SISTEMA.ERROR, {
+            tipo: 'inicializacion',
+            mensaje: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString()
+          });
+        } catch (e) {
+          logger.error('No se pudo notificar el error al padre:', e);
+        }
+      }
+    }
+    
+  } catch (error) {
+    logger.error('Error inesperado durante la inicialización:', error);
+    mostrarErrorEnInterfaz(error);
+  } finally {
+    estadoApp.inicializando = false;
+  }
+}
+
+/**
+ * Muestra un mensaje de error en la interfaz
+ * @param {Error} error - Error a mostrar
+ */
+function mostrarErrorEnInterfaz(error) {
+  try {
+    const errorElement = document.createElement('div');
+    errorElement.className = 'error-message';
+    errorElement.textContent = 'Error al cargar la aplicación. Por favor, recarga la página.';
+    errorElement.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: #ffebee;
+      color: #c62828;
+      padding: 1rem;
+      text-align: center;
+      z-index: 9999;
+      font-family: Arial, sans-serif;
+    `;
+    document.body.prepend(errorElement);
+  } catch (e) {
+    console.error('No se pudo mostrar el mensaje de error:', e);
+  }
+}
+
+// Iniciar cuando el DOM esté listo
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', inicializar);
+} else {
+  // DOM ya está listo
+  inicializar();
+}
+
+/**
+ * Registra los manejadores de mensajes para la comunicación con el padre
+ * @returns {void}
+ */
+function registrarManejadoresMensajes() {
+  if (!mensajeria) return;
+  
+  mensajeria.registrarControlador(CONFIG.TIPOS_MENSAJE.SISTEMA.INICIALIZACION, manejarInicializacion);
+  mensajeria.registrarControlador(CONFIG.TIPOS_MENSAJE.NAVEGACION.ESTADO, manejarEstadoNavegacion);
+  // Agregar más manejadores según sea necesario
+}
+
+/**
+ * Notifica el estado actual al iframe padre
+ * @param {string} accion - Acción que generó el cambio de estado
+ * @param {Object} [datos={}] - Datos adicionales a incluir
+ * @returns {Promise<boolean>} True si la notificación se envió correctamente
+ */
+async function notificarEstado(accion, datos = {}) {
+  if (!mensajeria) return false;
+  
+  try {
+    await mensajeria.enviarMensaje('padre', CONFIG.TIPOS_MENSAJE.SISTEMA.ESTADO, {
+      accion,
+      origen: CONFIG.IFRAME_ID,
+      timestamp: new Date().toISOString(),
+      ...datos
+    });
+    return true;
+  } catch (error) {
+    logger.error('Error al notificar estado:', error);
+    return false;
+  }
+}
+
+/**
+ * Notifica un error al iframe padre
+ * @param {string} tipo - Tipo de error
+ * @param {Error} error - Objeto de error
+ * @returns {Promise<void>}
+ */
+async function notificarError(tipo, error) {
+  console.error(`[${CONFIG.IFRAME_ID}] Error (${tipo}):`, error);
+  
+  if (mensajeria) {
+    try {
+      await mensajeria.enviarMensaje('padre', CONFIG.TIPOS_MENSAJE.SISTEMA.ERROR, {
+        tipo,
+        mensaje: error.message,
+        stack: error.stack,
+        origen: CONFIG.IFRAME_ID,
+        timestamp: new Date().toISOString()
+      });
+    } catch (e) {
+      console.error('Error al notificar error al padre:', e);
+    }
+  }
+}
+
+// Manejador de inicialización
+async function manejarInicializacion(mensaje) {
+  logger.info('Mensaje de inicialización recibido:', mensaje);
+  // Implementar lógica de inicialización si es necesario
+}
+
+/**
+ * Maneja las actualizaciones de estado de navegación
+ * @param {Object} mensaje - Mensaje de estado de navegación
+ * @returns {Promise<void>}
+ */
+async function manejarEstadoNavegacion(mensaje) {
+  logger.debug('Estado de navegación actualizado:', mensaje);
+  // Implementar lógica de actualización de navegación
+}
+
+/**
+ * Inicializa la aplicación cuando el DOM esté listo
+ */
+function inicializar() {
+  try {
+    App.logger.info('DOM cargado, iniciando aplicación...');
+    document.removeEventListener('DOMContentLoaded', inicializar);
+    
+    // Iniciar la aplicación
+    inicializarAplicacion().catch(error => {
+      App.logger.error('Error fatal durante la inicialización:', error);
+      mostrarError('Error al inicializar la aplicación', error);
+    });
+  } catch (error) {
+    console.error('Error crítico en la inicialización:', error);
+    mostrarError('Error crítico', error);
+  }
+}
+
+// Iniciar cuando el DOM esté listo
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', inicializar);
+} else {
+  // DOM ya está listo
+  inicializar();
+}
+
+// Exportar API pública para depuración
+window.app = Object.freeze({
+  reiniciar: inicializarAplicacion,
+  notificarEstado,
+  notificarError,
+  getEstado: () => ({ ...App.estadoApp }),
+  getConfig: () => ({ ...App.CONFIG })
+});
+
+// Importar módulos de UI de forma dinámica
+let mapaAPI = null;
+
+async function cargarModuloMapa() {
+  if (mapaAPI) return mapaAPI;
+  
+  try {
+    const modulo = await import('./js/funciones-mapa.js');
+    mapaAPI = {
+      inicializarMapa: modulo.inicializarMapa,
+      centrarMapa: modulo.centrarMapa,
+      actualizarPuntoActual: modulo.actualizarPuntoActual,
+      actualizarTramoActual: modulo.actualizarTramoActual,
+      actualizarModoMapa: modulo.actualizarModoMapa,
+      limpiarRecursos: modulo.limpiarRecursos
+    };
+    return mapaAPI;
+  } catch (error) {
+    App.logger.error('Error al cargar el módulo de mapa:', error);
+    throw error;
+  }
+}
+
 window.CONFIG = CONFIG;
 
 // Función para manejar errores de inicialización
@@ -93,32 +410,7 @@ function manejarErrorInicializacion(error, contexto) {
   }
 }
 
-// ================== CONSTANTES ==================
-
-// Inicialización del sistema de mensajería
-document.addEventListener('DOMContentLoaded', async () => {
-  try {
-    // Verifica que la configuración esté disponible antes de inicializar
-    if (!window.CONFIG) {
-      throw new Error('La configuración de la aplicación no está disponible');
-    }
-    // Inicializar mensajería
-    await inicializarMensajeria({
-      iframeId: CONFIG.IFRAME_ID,
-      logLevel: CONFIG.LOG_LEVEL,
-      debug: CONFIG.DEBUG
-    });
-    
-    logger.info('Mensajería inicializada correctamente');
-    
-    // Inicializar la aplicación
-    await inicializarAplicacion();
-    
-  } catch (error) {
-    logger.error('Error al inicializar la aplicación:', error);
-    crearObjetoError('inicializacion', error);
-  }
-});
+// ================== INICIALIZACIÓN ==================
 
 // Modos de operación
 const MODOS = {
@@ -308,45 +600,40 @@ try {
       });
       await this._notificarCambios(estadoAnterior);
       return true;
+    },
+    
+    // Método para verificar si la aplicación está lista
+    get estaLista() {
+      return this.mensajeriaInicializada && this.manejadoresRegistrados;
     }
   };
-
-  // Inicializar la aplicación
-  document.addEventListener('DOMContentLoaded', async () => {
+  
+  // Hacer estadoApp globalmente accesible
+  window.estadoApp = estadoApp;
+  
+  // Inicialización de la aplicación
+  async function inicializarAplicacion() {
     try {
-      // Verifica que la configuración esté disponible antes de inicializar
-      if (!window.CONFIG) {
-        throw new Error('La configuración de la aplicación no está disponible');
-      }
-      // Inicializar mensajería
       await inicializarMensajeriaApp();
+      await registrarManejadores();
       
-      logger.info('Mensajería inicializada correctamente');
+      // Notificar que la aplicación está lista
+      if (enviarMensaje) {
+        await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.INICIALIZACION_COMPLETA, {
+          origen: CONFIG.IFRAME_ID,
+          timestamp: new Date().toISOString(),
+          version: estadoApp.version
+        });
+      }
       
-      // Inicializar la aplicación
-      await inicializarAplicacion();
-      
+      loggerGlobal.info('Aplicación inicializada correctamente');
+      return true;
     } catch (error) {
-      logger.error('Error al inicializar la aplicación:', error);
-      crearObjetoError('inicializacion', error);
+      loggerGlobal.error('Error al inicializar la aplicación:', error);
+      throw error;
     }
-  });
-
-  // Extender tipos de mensajes específicos de este componente
-  if (TIPOS_MENSAJE) {
-    TIPOS_MENSAJE = {
-      ...TIPOS_MENSAJE,
-      // Mensajes específicos del componente
-      CAMBIO_PUNTO: 'hijo5:cambio_punto',
-      ACTUALIZAR_ESTADO: 'hijo5:actualizar_estado',
-      NOTIFICAR_PUNTO: 'hijo5:notificar_punto'
-    };
-    logger.info('Constantes de mensajería cargadas correctamente');
-  } else {
-    logger.error('TIPOS_MENSAJE no está definido');
-    throw new Error('No se pudieron cargar las constantes de mensajería');
   }
-
+  
   /**
    * Inicializa el sistema de mensajería
    * @returns {Promise<boolean>} True si la inicialización fue exitosa
@@ -428,1481 +715,72 @@ try {
       throw error; // Relanzar el error para que lo maneje el llamador
     }
   }
+  
+  /**
+   * Registra los manejadores de mensajes del sistema
+   * @returns {Promise<boolean>} True si los manejadores se registraron correctamente
+   */
+  async function registrarManejadores() {
+    const manejadores = [
+      // Mensajes del sistema
+      { tipo: TIPOS_MENSAJE.SISTEMA.CONFIGURACION, manejador: manejarConfiguracionSistema },
+      { tipo: TIPOS_MENSAJE.SISTEMA.ESTADO, manejador: manejarActualizacionEstado },
+      { tipo: TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejador: manejarCambioModo },
+      
+      // Mensajes de navegación
+      { tipo: TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, manejador: manejarCambioParada },
+      { tipo: TIPOS_MENSAJE.NAVEGACION.ESTADO, manejador: manejarEstadoNavegacion },
+      
+      // Mensajes de control
+      { tipo: TIPOS_MENSAJE.CONTROL.HABILITAR, manejador: manejarHabilitarControles },
+      { tipo: TIPOS_MENSAJE.CONTROL.DESHABILITAR, manejador: manejarDeshabilitarControles },
+      { tipo: TIPOS_MENSAJE.DATOS.ACTUALIZACION, manejador: manejarActualizacionDatos }
+    ];
+    
+    // Notificar al padre que la inicialización fue exitosa
+    try {
+      await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.INICIALIZACION_COMPLETA, {
+        version: '1.0.0',
+        timestamp: new Date().toISOString()
+      });
+      
+      logger.info('Aplicación inicializada correctamente');
+      return true;
+      
+    } catch (error) {
+      logger.error('Error durante la inicialización:', error);
+      mostrarError('No se pudo iniciar el componente.', error);
+      return false;
+    }
+  }
+  
+  // Verificar constantes de mensajería
+  if (typeof window.TIPOS_MENSAJE === 'undefined') {
+    logger.error('TIPOS_MENSAJE no está definido');
+    throw new Error('No se pudieron cargar las constantes de mensajería');
+  }
 
-} catch (error) {
-  const errorMsg = 'Error crítico al cargar módulos';
-  console.error(errorMsg, error);
-  
-  // Mostrar mensaje de error al usuario
-  document.body.innerHTML = `
-    <div style="color: red; padding: 20px; font-family: Arial, sans-serif;">
-      <h2>Error crítico</h2>
-      <p>${errorMsg}: ${error.message}</p>
-      <p>Por favor, recarga la página o contacta al soporte técnico.</p>
-    </div>
-    <p>Detalles: ${error.message}</p>
-  `;
-  
-  document.body.innerHTML = '';
-  document.body.appendChild(errorContainer);
-  
-  throw new Error(`${errorMsg}: ${error.message}`); // Detener la ejecución
-}
-
-// Extender tipos de mensajes específicos de este componente
-if (TIPOS_MENSAJE) {
-  TIPOS_MENSAJE = {
-    ...TIPOS_MENSAJE,
+  // Crear constantes extendidas para este componente
+  const TIPOS_MENSAJE_EXTENDIDOS = {
+    ...window.TIPOS_MENSAJE,
+    // Agregar tipos de mensaje específicos de este componente aquí
+    BOTON_CASA: {
+      ACTUALIZAR_ESTADO: 'BOTON_CASA.ACTUALIZAR_ESTADO',
+      CAMBIAR_MODO: 'BOTON_CASA.CAMBIAR_MODO'
+    },
     // Mensajes específicos del componente
     CAMBIO_PUNTO: 'hijo5:cambio_punto',
     ACTUALIZAR_ESTADO: 'hijo5:actualizar_estado',
     NOTIFICAR_PUNTO: 'hijo5:notificar_punto'
   };
-  logger.info('Constantes de mensajería cargadas correctamente');
-} else {
-  logger.error('TIPOS_MENSAJE no está definido');
-  throw new Error('No se pudieron cargar las constantes de mensajería');
-}
-
-// Estado inicial de la aplicación
-const ESTADO_INICIAL = {
-  modo: {
-    actual: 'casa',        // 'casa' o 'aventura'
-    anterior: null,        // Último modo activo
-    ultimoCambio: null,    // Timestamp del último cambio
-    cambioEnProgreso: false // Si hay un cambio de modo en curso
-  },
-  gpsActivo: false,
-  controlesHabilitados: true,
-  puntoActual: null,
-  tramoActual: null,
-  ultimaActualizacion: null,
-  version: '1.0.0'
-};
-
-// Estado global de la aplicación
-let estadoApp = {
-  ...ESTADO_INICIAL,
-  mensajeriaInicializada: false,
-  manejadoresRegistrados: false,
-  _listeners: new Set(),
   
-  // Método para actualizar el estado de forma controlada
-  async actualizarEstado(nuevoEstado) {
-    const estadoAnterior = { ...this };
-    Object.assign(this, nuevoEstado);
-    this.ultimaActualizacion = new Date().toISOString();
-    
-    // Notificar a los listeners
-    await this._notificarCambios(estadoAnterior);
-    return true;
-  },
+  // Hacer que las constantes extendidas estén disponibles globalmente
+  window.TIPOS_MENSAJE = TIPOS_MENSAJE_EXTENDIDOS;
+  logger.info('Constantes de mensajería extendidas cargadas correctamente');
   
-  // Registrar listeners para cambios de estado
-  onCambio(listener) {
-    if (typeof listener !== 'function') {
-      throw new Error('El listener debe ser una función');
-    }
-    this._listeners.add(listener);
-    return () => this._listeners.delete(listener);
-  },
-  
-  // Notificar cambios a los listeners
-  async _notificarCambios(estadoAnterior) {
-    const cambios = {};
-    
-    // Encontrar propiedades que cambiaron
-    for (const [key, valor] of Object.entries(this)) {
-      if (key.startsWith('_')) continue; // Ignorar propiedades privadas
-      if (valor !== estadoAnterior[key]) {
-        cambios[key] = {
-          anterior: estadoAnterior[key],
-          nuevo: valor
-        };
-      }
-    }
-    
-    // Si no hay cambios, no notificar
-    if (Object.keys(cambios).length === 0) return;
-    
-    // Notificar a los listeners
-    const notificaciones = [];
-    for (const listener of this._listeners) {
-      try {
-        notificaciones.push(listener(cambios, this));
-      } catch (error) {
-        console.error('Error en listener de estado:', error);
-      }
-    }
-    
-    // Esperar a que todos los listeners terminen
-    await Promise.allSettled(notificaciones);
-  },
-  
-  // Reiniciar al estado inicial
-  async reiniciar() {
-    const estadoAnterior = { ...this };
-    Object.assign(this, {
-      ...ESTADO_INICIAL,
-      mensajeriaInicializada: this.mensajeriaInicializada,
-      manejadoresRegistrados: this.manejadoresRegistrados,
-      _listeners: this._listeners,
-      _notificarCambios: this._notificarCambios
-    });
-    await this._notificarCambios(estadoAnterior);
-    return true;
-  }
-};
-
-/**
- * Inicializa el sistema de mensajería
- * @returns {Promise<boolean>} True si la inicialización fue exitosa
- */
-async function inicializarMensajeriaApp() {
-  // Verificar si ya está inicializado
-  if (estadoApp.mensajeriaInicializada) {
-    logger.info('La mensajería ya está inicializada');
-    return true;
-  }
-
-  try {
-    logger.info('Inicializando mensajería...');
-    
-    // Validar dependencias
-    if (typeof inicializarMensajeria !== 'function') {
-      throw new Error('La función inicializarMensajeria no está disponible');
-    }
-    
-    // Validar configuración
-    if (!CONFIG.IFRAME_ID) {
-      throw new Error('Configuración no válida: falta IFRAME_ID');
-    }
-    
-    // Configuración de mensajería
-    const configMensajeria = {
-      iframeId: CONFIG.IFRAME_ID,
-      debug: CONFIG.DEBUG,
-      logLevel: CONFIG.LOG_LEVEL,
-      reintentos: CONFIG.REINTENTOS,
-      // Asegurar que no se registren manejadores automáticamente
-      registrarManejadoresPorDefecto: false
-    };
-    
-    logger.debug('Configuración de mensajería:', configMensajeria);
-    
-    // Inicializar la mensajería
-    try {
-      await inicializarMensajeria(configMensajeria);
-      logger.info('Módulo de mensajería inicializado correctamente');
-    } catch (initError) {
-      logger.error('Error en inicializarMensajeria:', initError);
-      throw new Error(`No se pudo inicializar la mensajería: ${initError.message}`);
-    }
-    
-    // Actualizar el estado
-    estadoApp.mensajeriaInicializada = true;
-    logger.info('Mensajería inicializada correctamente');
-    return true;
-    
-  } catch (error) {
-    const errorInfo = {
-      message: error.message,
-      stack: error.stack,
-      code: error.code,
-      config: {
-        iframeId: CONFIG.IFRAME_ID,
-        debug: CONFIG.DEBUG,
-        logLevel: CONFIG.LOG_LEVEL
-      }
-    };
-    
-    logger.error('Error crítico al inicializar la mensajería:', errorInfo);
-    
-    // Notificar al padre si es posible
-    try {
-      if (typeof enviarMensaje === 'function') {
-        await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
-          tipo: 'inicializacion_mensajeria',
-          mensaje: error.message,
-          origen: CONFIG.IFRAME_ID,
-          timestamp: new Date().toISOString()
-        });
-      }
-    } catch (e) {
-      // Ignorar errores al notificar
-    }
-    
-    throw error; // Relanzar el error para que lo maneje el llamador
-  }
-} // <-- Add this closing brace to properly close the function
-
-/**
- * Registra los manejadores de mensajes del sistema
- * @returns {Promise<boolean>} True si los manejadores se registraron correctamente
- */
-async function registrarManejadores() {
-  const manejadores = [
-    // Mensajes del sistema
-    { tipo: TIPOS_MENSAJE.SISTEMA.CONFIGURACION, manejador: manejarConfiguracionSistema },
-    { tipo: TIPOS_MENSAJE.SISTEMA.ESTADO, manejador: manejarActualizacionEstado },
-    { tipo: TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejador: manejarCambioModo },
-    
-    // Mensajes de navegación
-    { tipo: TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, manejador: manejarCambioParada },
-    { tipo: TIPOS_MENSAJE.NAVEGACION.ESTADO, manejador: manejarEstadoNavegacion },
-    
-    // Mensajes de control
-    { tipo: TIPOS_MENSAJE.CONTROL.HABILITAR, manejador: manejarHabilitarControles },
-    { tipo: TIPOS_MENSAJE.CONTROL.DESHABILITAR, manejador: manejarDeshabilitarControles },
-    
-    // Mensajes de datos
-    { tipo: TIPOS_MENSAJE.DATOS.ACTUALIZACION, manejador: manejarActualizacionDatos }
-  ];
-  
-  try {
-    logger.info('Registrando manejadores de mensajes...');
-    
-    // Verificar que la mensajería esté inicializada
-    if (!estadoApp.mensajeriaInicializada) {
-      throw new Error('La mensajería no está inicializada');
-    }
-    
-    // Registrar cada manejador con manejo de errores individual
-    const resultados = [];
-    for (const { tipo, manejador } of manejadores) {
-      try {
-        if (typeof manejador !== 'function') {
-          throw new Error(`El manejador para ${tipo} no es una función`);
-        }
-        registrarControlador(tipo, manejador);
-        resultados.push({ tipo, resultado: true });
-      } catch (error) {
-        resultados.push({ tipo, resultado: false, error });
-      }
-    }
-    
-    // Verificar si todos los manejadores se registraron correctamente
-    const errores = resultados.filter(resultado => !resultado.resultado);
-    if (errores.length > 0) {
-      throw new Error(`No se pudieron registrar todos los manejadores: ${errores.map(resultado => resultado.tipo).join(', ')}`);
-    }
-    
-    estadoApp.manejadoresRegistrados = true;
-    logger.info('Manejadores de mensajes registrados correctamente');
-    return true;
-    
-  } catch (error) {
-    await notificarError('registro_manejadores', error);
-    throw error; // Relanzar para que el llamador pueda manejarlo
-  }
-}
-
-/**
- * Notifica el estado actual al iframe padre
- * @param {string} accion - Acción que generó el cambio de estado
- * @param {Object} [datosAdicionales={}] - Datos adicionales a incluir en la notificación
- * @returns {Promise<boolean>} True si la notificación se envió correctamente
- */
-// ================== MANEJO DE ERRORES ESTÁNDAR ==================
-/**
- * Notifica un error al padre y lo registra en el logger
- * @param {string} tipo - Tipo de error
- * @param {Error|string|Object} error - Objeto de error, mensaje u objeto con detalles
- * @param {Object} [datosAdicionales={}] - Datos adicionales para incluir en el error
- * @returns {Promise<Object>} Información detallada del error
- */
-async function notificarError(tipo, error, datosAdicionales = {}) {
-  try {
-    // Ensure we have a valid error object
-    const errorObj = typeof error === 'string' 
-      ? new Error(error) 
-      : error instanceof Error 
-        ? error 
-        : new Error('Error desconocido');
-    
-    // Prepare error info
-    const errorInfo = {
-      tipo,
-      mensaje: errorObj.message,
-      stack: errorObj.stack,
-      ...datosAdicionales,
-      origen: CONFIG.IFRAME_ID,
-      timestamp: new Date().toISOString()
-    };
-    
-    // Log the error
-    console.error(`[${CONFIG.IFRAME_ID}] Error (${tipo}):`, errorInfo);
-    
-    // Send error to parent if messaging is available
-    if (typeof enviarMensaje === 'function') {
-      try {
-        await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, errorInfo);
-      } catch (sendError) {
-        console.error('Error al enviar mensaje de error al padre:', sendError);
-      }
-    }
-    
-    return errorInfo;
-    
-  } catch (error) {
-    // If there's an error in the error handler, use console.error directly
-    console.error('Error crítico en notificarError:', error);
-    return {
-      tipo: 'error_critico',
-      mensaje: 'Error en el manejador de errores: ' + (error.message || 'Error desconocido'),
-      stack: error.stack,
-      origen: CONFIG.IFRAME_ID,
-      timestamp: new Date().toISOString()
-    };
-  }
-}
-
-// Función auxiliar para manejo de errores en promesas
-const manejarError = (tipo) => (error) => {
-  notificarError(tipo, error);
-  return Promise.reject(error);
-};
-
-// ================== FUNCIONES DE VALIDACIÓN ==================
-/**
- * Valida un ID de punto
- * @param {string} idPunto - ID del punto a validar
- * @returns {Object} { valido: boolean, mensaje: string }
- */
-function validarIdPunto(idPunto) {
-  if (!idPunto || typeof idPunto !== 'string') {
-    return { 
-      valido: false, 
-      mensaje: `${MENSAJES.ERROR.CAMPO_REQUERIDO}: ID del punto debe ser una cadena no vacía`
-    };
-  }
-  
-  // Verificar formato del ID (ejemplo: 'padre-P-1' o 'padre-TR-1')
-  const regex = /^padre-(P|TR)-\d+$/;
-  if (!regex.test(idPunto)) {
-    return { 
-      valido: false, 
-      mensaje: `${MENSAJES.ERROR.FORMATO_INVALIDO}: ${idPunto}. Debe seguir el formato 'padre-P-<número>' o 'padre-TR-<número>'`
-    };
-  }
-  
-  return { valido: true };
-}
-
-/**
- * Valida un objeto de punto
- * @param {Object} punto - Punto a validar
- * @returns {Object} { valido: boolean, errores: string[] }
- */
-function validarPunto(punto) {
-  const errores = [];
-  
-  if (!punto || typeof punto !== 'object') {
-    return { 
-      valido: false, 
-      errores: [`${MENSAJES.ERROR.TIPO_INVALIDO}: Se esperaba un objeto para el punto`] 
-    };
-  }
-  
-  // Validar campos requeridos
-  const camposRequeridos = ['padreid', 'tipo', 'nombre'];
-  camposRequeridos.forEach(campo => {
-    if (!(campo in punto)) {
-      errores.push(`${MENSAJES.ERROR.CAMPO_REQUERIDO}: '${campo}'`);
-    }
-  });
-  
-  // Validar tipo de punto
-  if (punto.tipo && !Object.values(TIPOS_PUNTO).includes(punto.tipo)) {
-    errores.push(`${MENSAJES.ERROR.TIPO_INVALIDO}: '${punto.tipo}'. Valores permitidos: ${Object.values(TIPOS_PUNTO).join(', ')}`);
-  }
-  
-  // Validar ID del punto
-  if (punto.padreid) {
-    const validacionId = validarIdPunto(punto.padreid);
-    if (!validacionId.valido) {
-      errores.push(validacionId.mensaje);
-    }
-  }
-  
-  // Validar que tenga al menos parada o tramo según el tipo
-  if (punto.tipo === TIPOS_PUNTO.PARADA && punto.parada === undefined) {
-    errores.push(`${MENSAJES.ERROR.CAMPO_REQUERIDO}: 'parada' para puntos de tipo '${TIPOS_PUNTO.PARADA}'`);
-  }
-  
-  if (punto.tipo === TIPOS_PUNTO.TRAMO && punto.tramo === undefined) {
-    errores.push(`${MENSAJES.ERROR.CAMPO_REQUERIDO}: 'tramo' para puntos de tipo '${TIPOS_PUNTO.TRAMO}'`);
-  }
-  
-  return {
-    valido: errores.length === 0,
-    errores
-  };
-}
-
-/**
- * Valida un mensaje recibido
- * @param {Object} mensaje - Mensaje a validar
- * @param {Array<string>} camposRequeridos - Campos requeridos en el mensaje
- * @returns {Object} { valido: boolean, error?: string }
- */
-function validarMensaje(mensaje, camposRequeridos = ['tipo', 'origen']) {
-  if (!mensaje || typeof mensaje !== 'object') {
-    return { 
-      valido: false, 
-      error: `${MENSAJES.ERROR.TIPO_INVALIDO}: Se esperaba un objeto para el mensaje`
-    };
-  }
-  
-  // Verificar campos requeridos
-  const faltantes = camposRequeridos.filter(campo => !(campo in mensaje));
-  if (faltantes.length > 0) {
-    return { 
-      valido: false, 
-      error: `${MENSAJES.ERROR.CAMPO_REQUERIDO}: ${faltantes.join(', ')}`
-    };
-  }
-  
-  // Validar tipo de mensaje
-  if (mensaje.tipo && typeof mensaje.tipo !== 'string') {
-    return { 
-      valido: false, 
-      error: `${MENSAJES.ERROR.TIPO_INVALIDO}: 'tipo' debe ser una cadena`
-    };
-  }
-  
-  // Validar origen
-  if (mensaje.origen && typeof mensaje.origen !== 'string') {
-    return { 
-      valido: false, 
-      error: `${MENSAJES.ERROR.TIPO_INVALIDO}: 'origen' debe ser una cadena`
-    };
-  }
-  
-  return { valido: true };
-}
-
-/**
- * Valida los datos de entrada para el cambio de modo
- * @param {Object} datos - Datos a validar
- * @returns {Object} { valido: boolean, error?: string, modo?: string, motivo?: string }
- */
-function validarCambioModo(datos = {}) {
-  // Extraer modo del objeto datos o del objeto modo si existe
-  const modoSolicitado = datos.modo?.actual || datos.modo || null;
-  const motivo = datos.motivo || 'desconocido';
-  
-  // Validar que el modo sea válido
-  if (!modoSolicitado || !Object.values(MODOS).includes(modoSolicitado)) {
-    return { 
-      valido: false, 
-      error: `${MENSAJES.ERROR.TIPO_INVALIDO}: '${modoSolicitado}'. Debe ser uno de: ${Object.values(MODOS).join(', ')}`
-    };
-  }
-  
-  // Validar que el motivo sea una cadena
-  if (typeof motivo !== 'string') {
-    return { 
-      valido: false, 
-      error: `${MENSAJES.ERROR.TIPO_INVALIDO}: 'motivo' debe ser una cadena`
-    };
-  }
-  
-  // Si todo es válido, devolver los datos normalizados
-  return { 
-    valido: true, 
-    modo: modoSolicitado, // Devolver solo el string del modo
-    motivo: motivo.trim() || 'sin motivo especificado'
-  };
-}
-
-// ================== FUNCIONES DE ESTADO ==================
-async function notificarEstado(accion, datos = {}) {
-  // Validar entrada
-  if (typeof accion !== 'string' || !accion.trim()) {
-    console.error(`[${CONFIG.IFRAME_ID}] Acción no válida para notificar estado`);
-    return false;
-  }
-  
-  if (!enviarMensaje) {
-    console.warn(`[${CONFIG.IFRAME_ID}] Mensajería no disponible para notificar estado`);
-    return false;
-  }
-  
-  // Validar que los datos sean un objeto
-  if (typeof datos !== 'object' || datos === null) {
-    console.error(`[${CONFIG.IFRAME_ID}] Datos de estado no válidos`);
-    return false;
-  }
-  
-  const timestamp = new Date().toISOString();
-  const mensaje = {
-    tipo: TIPOS_MENSAJE.SISTEMA.ACTUALIZAR_ESTADO,
-    origen: CONFIG.IFRAME_ID,
-    accion,
-    datos: {
-      ...datos, // Usar el parámetro datos en lugar de datosAdicionales
-      timestamp,
-      modo: estadoApp.modo,
-      gpsActivo: estadoApp.gpsActivo,
-      controlesHabilitados: estadoApp.controlesHabilitados,
-      puntoActual: estadoApp.puntoActual,
-      tramoActual: estadoApp.tramoActual
-    }
-  };
-  
-  try {
-    // Usar el sistema de mensajería con reintentos
-    await enviarMensaje(
-      'padre',
-      TIPOS_MENSAJE.SISTEMA.ACTUALIZAR_ESTADO,
-      mensaje.datos,
-      { reintentos: CONFIG.REINTENTOS.MAXIMOS }
-    );
-    
-    console.log(`[${CONFIG.IFRAME_ID}] Estado notificado: ${accion}`, mensaje.datos);
-    return true;
-    
-  } catch (error) {
-    const errorMsg = `Error al notificar estado (${accion}): ${error.message}`;
-    console.error(`[${CONFIG.IFRAME_ID}] ${errorMsg}`, error);
-    mostrarError(errorMsg);
-    return false;
-  }
-}
-
-// Manejador de inicialización
-async function manejarInicializacion(mensaje) {
-  console.log(`[${CONFIG.IFRAME_ID}] Inicialización solicitada:`, mensaje);
-  
-  try {
-    // Actualizar el estado con los datos recibidos
-    if (mensaje.datos) {
-      const { modo, controlesHabilitados, puntoActual, gpsActivo, tramoActual } = mensaje.datos;
-      
-      if (modo) estadoApp.modo = modo;
-      if (typeof controlesHabilitados === 'boolean') {
-        estadoApp.controlesHabilitados = controlesHabilitados;
-      }
-      if (puntoActual) estadoApp.puntoActual = puntoActual;
-      if (typeof gpsActivo === 'boolean') estadoApp.gpsActivo = gpsActivo;
-      if (tramoActual !== undefined) estadoApp.tramoActual = tramoActual;
-    }
-    
-    // Actualizar la interfaz de usuario según el estado actual
-    actualizarInterfaz();
-    
-    // Notificar que la inicialización fue exitosa
-    await notificarEstado('inicializado');
-    return true;
-    
-  } catch (error) {
-    const errorMsg = `Error en inicialización: ${error.message}`;
-    console.error(`[${CONFIG.IFRAME_ID}] ${errorMsg}`, error);
-    mostrarError(errorMsg);
-    return false;
-  }
-}
-
-/**
- * Maneja las actualizaciones de estado recibidas
- * @param {Object} mensaje - Mensaje con la actualización de estado
- * @returns {Promise<boolean>} True si la actualización se procesó correctamente
- */
-async function manejarActualizacionEstado(mensaje) {
-  console.log(`[${CONFIG.IFRAME_ID}] Actualización de estado recibida:`, mensaje);
-  
-  try {
-    if (!mensaje.datos) {
-      throw new Error('Datos de actualización no proporcionados');
-    }
-    
-    const { 
-      modo, 
-      gpsActivo, 
-      controlesHabilitados, 
-      puntoActual, 
-      tramoActual,
-      motivo = 'actualizacion_estado'
-    } = mensaje.datos;
-    
-    // Actualizar el estado según los datos recibidos
-    let cambios = [];
-    
-    if (modo && estadoApp.modo !== modo) {
-      estadoApp.modo = modo;
-      cambios.push(`modo: ${modo}`);
-    }
-    
-    if (typeof gpsActivo === 'boolean' && estadoApp.gpsActivo !== gpsActivo) {
-      estadoApp.gpsActivo = gpsActivo;
-      cambios.push(`gpsActivo: ${gpsActivo}`);
-    }
-    
-    if (typeof controlesHabilitados === 'boolean' && 
-        estadoApp.controlesHabilitados !== controlesHabilitados) {
-      estadoApp.controlesHabilitados = controlesHabilitados;
-      cambios.push(`controles: ${controlesHabilitados ? 'habilitados' : 'deshabilitados'}`);
-    }
-    
-    if (puntoActual !== undefined && JSON.stringify(estadoApp.puntoActual) !== JSON.stringify(puntoActual)) {
-      estadoApp.puntoActual = puntoActual;
-      cambios.push('punto actual actualizado');
-    }
-    
-    if (tramoActual !== undefined && estadoApp.tramoActual !== tramoActual) {
-      estadoApp.tramoActual = tramoActual;
-      cambios.push(`tramo actual: ${tramoActual}`);
-    }
-    
-    // Si hubo cambios, actualizar la interfaz
-    if (cambios.length > 0) {
-      console.log(`[${CONFIG.IFRAME_ID}] Estado actualizado: ${cambios.join(', ')}`);
-      actualizarInterfaz();
-    }
-    
-    return true;
-    
-  } catch (error) {
-    const errorMsg = `Error al actualizar estado: ${error.message}`;
-    console.error(`[${CONFIG.IFRAME_ID}] ${errorMsg}`, error);
-    mostrarError(errorMsg);
-    return false;
-  }
-}
-
-// Manejador de cambio de modo
-async function manejarCambioModo(datos = {}) {
-  // Validar datos de entrada
-  const validacion = validarCambioModo(datos);
-  if (!validacion.valido) {
-    logger.error('Datos de cambio de modo inválidos', validacion.error);
-    return { exito: false, error: validacion.error };
-  }
-  
-  const { modo: modoSolicitado } = validacion;
-  const modoAnterior = estadoApp.modo.actual;
-  
-  if (modoSolicitado === modoAnterior) {
-    logger.info(`Ya se encuentra en modo ${modoSolicitado}.`);
-    return { exito: true, mensaje: 'Ya en este modo' };
-  }
-  
-  logger.info(`Cambiando de modo ${modoAnterior} a ${modoSolicitado}`);
-  
-  try {
-    await estadoApp.actualizarEstado({ modo: { actual: modoSolicitado, anterior: modoAnterior } });
-    
-    // Actualizar la interfaz de este componente
-    actualizarInterfazPorModo(modoSolicitado);
-    
-    logger.info(`Modo cambiado a ${modoSolicitado} exitosamente.`);
-    return { exito: true, modo: modoSolicitado };
-    
-  } catch (error) {
-    logger.error(`Error al cambiar a modo ${modoSolicitado}`, error);
-    notificarError('cambio_modo', error);
-    return { exito: false, error: error.message };
-  }
-}
-
-/**
- * Actualiza la UI local (botón y lista de paradas) según el modo.
- * @param {string} modo - 'casa' o 'aventura'.
- */
-function actualizarInterfazPorModo(modo) {
-  const btn = document.getElementById('gps-casa-btn');
-  const paradasWindow = document.getElementById('paradas-window');
-
-  if (modo === 'casa') {
-    btn.classList.remove('on');
-    btn.classList.add('off');
-    btn.title = "Cambiar a modo Aventura (GPS ON)";
-    paradasWindow.classList.add('visible');
-    paradasWindow.classList.remove('hidden');
-  } else { // modo 'aventura'
-    btn.classList.remove('off');
-    btn.classList.add('on');
-    btn.title = "Cambiar a modo Casa (GPS OFF)";
-    paradasWindow.classList.add('hidden');
-    paradasWindow.classList.remove('visible');
-  }
-}
-
-// La función manejarClickGPS ha sido movida más abajo en el código
-
-/**
- * Maneja las solicitudes de estado de la aplicación
- * @param {Object} mensaje - Mensaje de solicitud de estado
- * @param {string} [mensaje.datos.solicitud] - Tipo de información solicitada
- * @param {string} [mensaje.datos.idSolicitud] - ID opcional para seguimiento
- * @returns {Promise<boolean>} True si se manejó la solicitud correctamente
- */
-async function manejarSolicitudEstado(mensaje = {}) {
-  const { solicitud = 'completo', idSolicitud } = mensaje.datos || {};
-  const idMensaje = idSolicitud || `solicitud_${Date.now()}`;
-  
-  console.log(`[${CONFIG.IFRAME_ID}] Solicitud de estado recibida (${solicitud})`, { 
-    idSolicitud: idMensaje,
-    origen: mensaje.origen 
-  });
-  
-  try {
-    // Preparar la respuesta según el tipo de solicitud
-    let datosRespuesta = {
-      idSolicitud: idMensaje,
-      timestamp: new Date().toISOString(),
-      origen: CONFIG.IFRAME_ID,
-      estado: {
-        modo: estadoApp.modo,
-        gpsActivo: estadoApp.gpsActivo,
-        controlesHabilitados: estadoApp.controlesHabilitados,
-        puntoActual: estadoApp.puntoActual,
-        tramoActual: estadoApp.tramoActual,
-        ultimoError: estadoApp.ultimoError,
-        version: '1.0' // Versión del formato de respuesta
-      }
-    };
-
-    // Enviar respuesta
-    await enviarMensaje(
-      mensaje.origen || 'padre',
-      'respuesta_estado',
-      datosRespuesta,
-      { 
-        maxRetries: CONFIG.REINTENTOS.MAXIMOS,
-        retryDelay: CONFIG.REINTENTOS.TIEMPO_ESPERA
-      }
-    );
-
-    console.log(`[${CONFIG.IFRAME_ID}] Estado enviado (${solicitud})`, { 
-      idSolicitud: idMensaje,
-      destino: mensaje.origen || 'padre'
-    });
-    return true;
-  } catch (error) {
-    const errorMsg = `Error al procesar solicitud de estado (${solicitud}): ${error.message}`;
-    console.error(`[${CONFIG.IFRAME_ID}] ${errorMsg}`, error);
-    
-    // Intentar notificar el error
-    try {
-      await enviarMensaje(
-        mensaje.origen || 'padre',
-        'error_solicitud_estado',
-        {
-          idSolicitud: idMensaje,
-          error: error.message,
-          timestamp: new Date().toISOString()
-        },
-        { maxRetries: 1 } // Solo un intento para errores
-      );
-    } catch (notifyError) {
-      console.error(`[${CONFIG.IFRAME_ID}] Error al notificar error de estado:`, notifyError);
-    }
-    
-    return false;
-  }
-}
-
-/**
- * Maneja las confirmaciones de operaciones enviadas previamente
- * @param {Object} mensaje - Mensaje de confirmación
- * @param {string} mensaje.tipo - Tipo de operación confirmada
- * @param {string} mensaje.id - ID único de la operación
- * @param {boolean} mensaje.exito - Indica si la operación fue exitosa
- * @param {Object} [mensaje.datos] - Datos adicionales de la confirmación
- * @param {string} [mensaje.mensaje] - Mensaje descriptivo
- * @returns {Promise<boolean>} True si se manejó la confirmación correctamente
- */
-async function manejarConfirmacion(mensaje = {}) {
-  const { tipo, id, exito, datos = {}, mensaje: mensajeTexto } = mensaje.datos || {};
-  const idOperacion = id || 'desconocido';
-  
-  // Manejar confirmaciones de cambio de modo
-  if (tipo === TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO) {
-    console.log(`[${CONFIG.IFRAME_ID}] Confirmación de cambio de modo recibida:`, mensaje);
-    
-    if (exito) {
-      // Actualizar la interfaz para reflejar el nuevo modo
-      actualizarInterfaz();
-      console.log(`[${CONFIG.IFRAME_ID}] Interfaz actualizada al modo: ${estadoApp.modo.actual}`);
-    } else {
-      console.warn(`[${CONFIG.IFRAME_ID}] Error en cambio de modo:`, mensajeTexto || 'Error desconocido');
-    }
-    return;
-  }
-  
-  // Log detallado de la confirmación
-  console.log(`[${CONFIG.IFRAME_ID}] Confirmación recibida`, {
-    tipo: tipo || 'sin_tipo',
-    id: idOperacion,
-    exito: exito === true,
-    origen: mensaje.origen || 'desconocido',
-    timestamp: new Date().toISOString()
-  });
-  
-  try {
-    // Manejar la confirmación según el tipo de operación
-    if (exito) {
-      // Operación exitosa
-      console.log(`[${CONFIG.IFRAME_ID}] Operación '${tipo}' (${idOperacion}) confirmada con éxito`);
-      
-      // Aquí podrías agregar lógica específica para cada tipo de operación
-      switch (tipo) {
-        case 'cambio_modo':
-          console.log(`[${CONFIG.IFRAME_ID}] Modo cambiado exitosamente a: ${datos.modoNuevo}`);
-          break;
-          
-        case 'actualizacion_estado':
-          // Actualizar el estado local si es necesario
-          if (datos.estado) {
-            console.log(`[${CONFIG.IFRAME_ID}] Estado sincronizado:`, datos.estado);
-          }
-          break;
-          
-        default:
-          // No se requiere acción específica para otros tipos
-          break;
-      }
-      
-      // Notificar a la interfaz de usuario si es necesario
-      actualizarInterfaz();
-      
-    } else {
-      // Operación fallida
-      const errorMsg = datos?.error || mensajeTexto || 'Error desconocido';
-      console.error(`[${CONFIG.IFRAME_ID}] Error en operación '${tipo}' (${idOperacion}):`, errorMsg);
-      
-      // Mostrar notificación de error al usuario
-      mostrarError(`Error en ${tipo || 'operación'}: ${errorMsg}`);
-      
-      // Revertir cambios si es necesario según el tipo de operación
-      switch (tipo) {
-        case 'cambio_modo':
-          // Revertir al modo anterior si el cambio falló
-          if (datos.modoAnterior) {
-            console.warn(`[${CONFIG.IFRAME_ID}] Revertiendo a modo anterior: ${datos.modoAnterior}`);
-            estadoApp.modo = datos.modoAnterior;
-            actualizarInterfaz();
-          }
-          break;
-          
-        // Agregar más casos según sea necesario
-      }
-      
-      // Registrar el error en el estado
-      estadoApp.ultimoError = {
-        tipo,
-        id: idOperacion,
-        mensaje: errorMsg,
-        timestamp: new Date().toISOString(),
-        datos
-      };
-    }
-    
-    return true;
-    
-  } catch (error) {
-    // Manejar errores en el procesamiento de la confirmación
-    console.error(`[${CONFIG.IFRAME_ID}] Error al procesar confirmación:`, error);
-    
-    // Notificar el error sin reintentos para evitar bucles
-    try {
-      await enviarMensaje(
-        mensaje.origen || 'padre',
-        'error_procesamiento_confirmacion',
-        {
-          idConfirmacion: idOperacion,
-          tipo,
-          error: error.message,
-          timestamp: new Date().toISOString()
-        },
-        { maxRetries: 1 } // Solo un intento para errores
-      );
-    } catch (notifyError) {
-      console.error(`[${CONFIG.IFRAME_ID}] Error al notificar error de confirmación:`, notifyError);
-    }
-    
-    return false;
-  }
-}
-
-/**
- * Notifica un error al sistema de registro y opcionalmente al padre
- * @param {string} tipo - Tipo de error
- * @param {Error} error - Objeto de error
- * @returns {Promise<Object>} Información del error notificado
- */
-// La función notificarError ahora se importa del módulo error-handler.js
-
-// Sincronizar estado con el padre
-async function sincronizarEstado(estado) {
-  if (!estado) return;
-  
-  console.log(`[${CONFIG.IFRAME_ID}] Sincronizando estado:`, estado);
-  
-  // Actualizar estado local
-  if (estado.modo) {
-    estadoApp.modo = estado.modo;
-  }
-  
-  if (typeof estado.controlesHabilitados !== 'undefined') {
-    estadoApp.controlesHabilitados = estado.controlesHabilitados;
-  }
-  
-  if (estado.puntoActual) {
-    estadoApp.puntoActual = estado.puntoActual;
-  }
-  
-  // Aplicar cambios en la interfaz
-  actualizarInterfaz();
-}
-
-// La función actualizarInterfaz ha sido movida más abajo para mantener todo el código relacionado junto
-
-// Incluir aquí las funciones existentes como actualizarBotonGPS, etc.
-// ...
-
-/**
- * Muestra un mensaje de error en la interfaz de usuario
- * @param {string} mensaje - Mensaje de error a mostrar
- * @param {Error} [error] - Error opcional para registrar
- */
-function mostrarError(mensaje, error = null) {
-  // Registrar el error
-  if (error) {
-    logger.error(mensaje, error);
-  } else {
-    logger.error(mensaje);
-  }
-  
-  // Mostrar mensaje de error en la interfaz si es posible
-  const errorContainer = document.getElementById('error-container');
-  if (errorContainer) {
-    errorContainer.textContent = mensaje;
-    errorContainer.style.display = 'block';
-    
-    // Ocultar el mensaje después de 5 segundos
-    setTimeout(() => {
-      errorContainer.style.display = 'none';
-    }, 5000);
-  }
-}
-
-/**
- * Habilita o deshabilita los controles de la interfaz según el modo
- * @param {string} modo - Modo para el cual habilitar los controles
- * @returns {Promise<boolean>} True si los controles se habilitaron correctamente
- */
-async function habilitarControles(modo) {
-  logger.debug(`Habilitando controles para modo: ${modo}`);
-  
-  try {
-    // Actualizar estado
-    estadoApp.controlesHabilitados = true;
-    
-    // Habilitar controles específicos
-    const gpsBtn = document.getElementById('gps-casa-btn');
-    const modoBtn = document.getElementById('boton-cambio-modo');
-    
-    if (gpsBtn) gpsBtn.disabled = false;
-    if (modoBtn) modoBtn.disabled = false;
-    
-    logger.info(`Controles habilitados para modo: ${modo}`);
-    return true;
-    
-  } catch (error) {
-    const errorMsg = 'Error al habilitar controles';
-    console.error(errorMsg, error);
-    throw new Error(`${errorMsg}: ${error.message}`);
-  }
-}
-
-/**
- * Deshabilita los controles de la interfaz
- * @param {string} razon - Razón por la que se deshabilitan los controles
- * @returns {Promise<boolean>} True si los controles se deshabilitaron correctamente
- */
-async function deshabilitarControles(razon) {
-  logger.debug(`Deshabilitando controles. Razón: ${razon}`);
-  
-  try {
-    // Actualizar estado
-    estadoApp.controlesHabilitados = false;
-    
-    // Deshabilitar controles específicos
-    const gpsBtn = document.getElementById('gps-casa-btn');
-    const modoBtn = document.getElementById('boton-cambio-modo');
-    
-    if (gpsBtn) gpsBtn.disabled = true;
-    if (modoBtn) modoBtn.disabled = true;
-    
-    logger.info(`Controles deshabilitados. Razón: ${razon}`);
-    return true;
-    
-  } catch (error) {
-    const errorMsg = 'Error al deshabilitar controles';
-    console.error(errorMsg, error);
-    throw new Error(`${errorMsg}: ${error.message}`);
-  }
-}
-
-/**
- * Actualiza la interfaz de usuario según el estado actual de la aplicación
- * @returns {void}
- */
-function actualizarInterfaz() {
-  try {
-    const { modo, gpsActivo, controlesHabilitados, puntoActual, tramoActual } = estadoApp;
-    const modoActual = modo.actual; // Acceder al modo actual desde el objeto modo
-    
-    // 1. Actualizar el botón GPS
-    const gpsBtn = document.getElementById('gps-casa-btn');
-    if (gpsBtn) {
-      // Actualizar clases según el modo
-      gpsBtn.classList.toggle('modo-casa', modoActual === 'casa');
-      gpsBtn.classList.toggle('modo-aventura', modoActual === 'aventura');
-      
-      // Actualizar estado activo/inactivo
-      gpsBtn.classList.toggle('activo', gpsActivo);
-      gpsBtn.title = gpsActivo ? 'GPS Activado' : 'GPS Desactivado';
-      
-      // Actualizar estado habilitado/deshabilitado
-      gpsBtn.disabled = !controlesHabilitados;
-    }
-    
-    // 2. Actualizar indicadores de estado
-    const actualizarIndicador = (id, texto, clase = '') => {
-      const elemento = document.getElementById(id);
-      if (elemento) {
-        if (texto !== undefined) elemento.textContent = texto;
-        if (clase) elemento.className = clase;
-      }
-    };
-    
-    // Indicador de modo
-    actualizarIndicador(
-      'indicador-modo',
-      `Modo: ${modoActual || 'no definido'}`,
-      `modo-indicador modo-${modoActual || 'desconocido'}`
-    );
-    
-    // Actualizar el botón de cambio de modo si existe
-    const botonCambioModo = document.getElementById('boton-cambio-modo');
-    if (botonCambioModo) {
-      botonCambioModo.textContent = modoActual === 'casa' ? 'Modo Aventura' : 'Modo Casa';
-      botonCambioModo.title = `Cambiar a modo ${modoActual === 'casa' ? 'aventura' : 'casa'}`;
-      botonCambioModo.disabled = !controlesHabilitados;
-    }
-    
-    // Indicador de GPS
-    actualizarIndicador(
-      'estado-gps',
-      `GPS: ${gpsActivo ? 'Activo' : 'Inactivo'}`,
-      `estado-gps ${gpsActivo ? 'activo' : 'inactivo'}`
-    );
-    
-    // Indicador de punto/tramo actual
-    if (puntoActual) {
-      const esParada = puntoActual.tipo === 'parada' || puntoActual.parada !== undefined;
-      const textoPunto = esParada 
-        ? `Parada: ${puntoActual.nombre || puntoActual.id || 'Desconocida'}`
-        : `Tramo: ${puntoActual.nombre || puntoActual.id || 'Desconocido'}`;
-      
-      actualizarIndicador('punto-actual', textoPunto, 'punto-actual');
-    } else {
-      actualizarIndicador('punto-actual', 'Ningún punto seleccionado', 'punto-actual');
-    }
-    
-    // 3. Actualizar clases del body para estilos contextuales
-    document.body.classList.toggle('controles-deshabilitados', !controlesHabilitados);
-    document.body.classList.toggle('gps-activo', gpsActivo);
-    
-    // Actualizar clase de modo en el body
-    document.body.classList.remove('modo-casa', 'modo-aventura');
-    if (modoActual) {
-      document.body.classList.add(`modo-${modoActual}`);
-    }
-    
-    // 4. Actualizar controles interactivos
-    const controles = document.querySelectorAll('button, .control-interactivo');
-    controles.forEach(control => {
-      // No modificar controles marcados como siempre habilitados
-      if (control.hasAttribute('data-siempre-habilitado')) return;
-      
-      // Actualizar estado habilitado/deshabilitado
-      control.disabled = !controlesHabilitados;
-      control.classList.toggle('deshabilitado', !controlesHabilitados);
-    });
-    
-    console.log(`[${CONFIG.IFRAME_ID}] Interfaz actualizada`, {
-      modo,
-      gpsActivo,
-      controlesHabilitados,
-      puntoActual: puntoActual ? puntoActual.id || puntoActual.nombre : 'ninguno'
-    });
-    
-  } catch (error) {
-    console.error(`[${CONFIG.IFRAME_ID}] Error al actualizar la interfaz:`, error);
-  }
-}
-
-// ================== MANEJADORES DE EVENTOS ==================
-
-// Sistema de gestión de manejadores de eventos
-const manejadoresEventos = {
-  _almacen: new Map(),
-  
-  /**
-   * Agrega un manejador de eventos a un elemento
-   * @param {HTMLElement} elemento - Elemento al que se agregará el manejador
-   * @param {string} tipoEvento - Tipo de evento a manejar
-   * @param {Function} manejador - Función que manejará el evento
-   * @param {Object} [opciones] - Opciones adicionales para el manejador
-   */
-  agregar(elemento, tipoEvento, manejador, opciones) {
-    if (!elemento || !tipoEvento || typeof manejador !== 'function') {
-      logger.warn('Parámetros inválidos para agregar manejador', { 
-        elemento: !!elemento, 
-        tipoEvento,
-        esFuncion: typeof manejador === 'function'
-      });
-      return;
-    }
-    
-    const clave = this._generarClave(elemento);
-    
-    if (!this._almacen.has(clave)) {
-      this._almacen.set(clave, new Map());
-    }
-    
-    const eventosElemento = this._almacen.get(clave);
-    
-    if (!eventosElemento.has(tipoEvento)) {
-      eventosElemento.set(tipoEvento, []);
-    }
-    
-    eventosElemento.get(tipoEvento).push({ manejador, opciones });
-    elemento.addEventListener(tipoEvento, manejador, opciones);
-    
-    logger.debug(`Manejador agregado: ${clave} - ${tipoEvento}`);
-  },
-  
-  /**
-   * Elimina manejadores de eventos de un elemento
-   * @param {HTMLElement} elemento - Elemento del que se eliminarán los manejadores
-   * @param {string} [tipoEvento] - Tipo de evento a eliminar (opcional)
-   */
-  eliminar(elemento, tipoEvento) {
-    if (!elemento) {
-      logger.warn('No se puede eliminar manejadores: elemento no proporcionado');
-      return;
-    }
-    
-    const clave = this._generarClave(elemento);
-    if (!this._almacen.has(clave)) {
-      logger.debug(`No hay manejadores registrados para el elemento: ${clave}`);
-      return;
-    }
-    
-    const eventosElemento = this._almacen.get(clave);
-    
-    if (tipoEvento) {
-      this._eliminarTipoEvento(elemento, eventosElemento, tipoEvento);
-      
-      if (eventosElemento.size === 0) {
-        this._almacen.delete(clave);
-        logger.debug(`Todos los manejadores eliminados para: ${clave}`);
-      }
-    } else {
-      // Eliminar todos los tipos de eventos para este elemento
-      for (const [tipo] of eventosElemento) {
-        this._eliminarTipoEvento(elemento, eventosElemento, tipo);
-      }
-      this._almacen.delete(clave);
-      logger.debug(`Todos los manejadores eliminados para: ${clave}`);
-    }
-  },
-  
-  /**
-   * Elimina todos los manejadores de eventos registrados
-   */
-  limpiarTodo() {
-    if (this._almacen.size === 0) {
-      logger.debug('No hay manejadores para limpiar');
-      return;
-    }
-    
-    logger.info(`Limpiando ${this._almacen.size} elementos con manejadores...`);
-    
-    for (const [clave, eventosElemento] of this._almacen) {
-      const [tag, id, ...clases] = clave.split('.');
-      let selector = tag;
-      if (id) selector += `#${id}`;
-      if (clases.length) selector += `.${clases.join('.')}`;
-      
-      const elemento = document.querySelector(selector);
-      if (!elemento) {
-        logger.warn(`Elemento no encontrado: ${selector}`);
-        continue;
-      }
-      
-      for (const [tipoEvento] of eventosElemento) {
-        this.eliminar(elemento, tipoEvento);
-      }
-    }
-    
-    this._almacen.clear();
-    logger.info('Todos los manejadores han sido eliminados');
-  },
-  
-  /**
-   * Genera una clave única para identificar un elemento
-   * @private
-   * @param {HTMLElement} elemento - Elemento para generar la clave
-   * @returns {string} Clave única para el elemento
-   */
-  _generarClave(elemento) {
-    const tag = elemento.tagName ? elemento.tagName.toLowerCase() : 'unknown';
-    const id = elemento.id ? elemento.id : '';
-    const clases = elemento.classList ? Array.from(elemento.classList).join('.') : '';
-    return [tag, id, clases].filter(Boolean).join('.');
-  },
-  
-  /**
-   * Elimina todos los manejadores de un tipo de evento específico
-   * @private
-   * @param {HTMLElement} elemento - Elemento del que se eliminarán los manejadores
-   * @param {Map} eventosElemento - Mapa de eventos del elemento
-   * @param {string} tipoEvento - Tipo de evento a eliminar
-   */
-  _eliminarTipoEvento(elemento, eventosElemento, tipoEvento) {
-    if (!eventosElemento.has(tipoEvento)) {
-      logger.debug(`No hay manejadores para el tipo de evento: ${tipoEvento}`);
-      return;
-    }
-    
-    const manejadores = eventosElemento.get(tipoEvento);
-    const clave = this._generarClave(elemento);
-    
-    logger.debug(`Eliminando ${manejadores.length} manejadores para: ${clave} - ${tipoEvento}`);
-    
-    for (const { manejador, opciones } of manejadores) {
-      try {
-        elemento.removeEventListener(tipoEvento, manejador, opciones);
-        logger.debug(`Manejador eliminado: ${clave} - ${tipoEvento}`);
-      } catch (error) {
-        logger.error(`Error al eliminar manejador: ${clave} - ${tipoEvento}`, error);
-      }
-    }
-    
-    eventosElemento.delete(tipoEvento);
-  }
-};
-
-/**
- * Configura los manejadores de eventos de la interfaz de usuario
- */
-function configurarManejadoresUI() {
-  // Manejador para el botón de GPS
-  const gpsBtn = document.getElementById('gps-casa-btn');
-  if (gpsBtn) {
-    manejadoresEventos.agregar(gpsBtn, 'click', manejarClickGPS);
-  }
-  
-  // Manejador para el botón de cambio de modo
-  const botonCambioModo = document.getElementById('boton-cambio-modo');
-  if (botonCambioModo) {
-    manejadoresEventos.agregar(botonCambioModo, 'click', async () => {
-      try {
-        const nuevoModo = estadoApp.modo.actual === 'casa' ? 'aventura' : 'casa';
-        console.log(`[${CONFIG.IFRAME_ID}] Solicitando cambio a modo ${nuevoModo}...`);
-        
-        await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, {
-          modo: nuevoModo,
-          motivo: 'Solicitud de cambio de modo',
-          origen: CONFIG.IFRAME_ID,
-          timestamp: new Date().toISOString(),
-          version: '1.0'
-        });
-        
-        console.log(`[${CONFIG.IFRAME_ID}] Solicitud de cambio a modo ${nuevoModo} enviada`);
-      } catch (error) {
-        console.error(`[${CONFIG.IFRAME_ID}] Error al solicitar cambio de modo:`, error);
-      }
-    });
-  }
-  
-  // Manejador para los botones de paradas/tramos
-  manejadoresEventos.agregar(document, 'click', (event) => {
-    const botonParada = event.target.closest('.parada-tramo-btn');
-    if (botonParada) {
-      const idPunto = botonParada.dataset.idPunto;
-      if (idPunto) {
-        manejarSeleccionPunto(idPunto);
-      }
-    }
-  });
-  
-  // Manejador para cerrar la ventana de paradas al hacer clic fuera
-  manejadoresEventos.agregar(document, 'click', (event) => {
-    const zonaBoton = document.getElementById('zona-boton-casa');
-    const ventanaParadas = document.getElementById('paradas-window');
-    
-    if (ventanaParadas && ventanaParadas.classList.contains('visible') && 
-        zonaBoton && !zonaBoton.contains(event.target)) {
-      ventanaParadas.classList.remove('visible');
-    }
-  });
-  
-  // Manejador para el evento personalizado de cambio de modo
-  manejadoresEventos.agregar(document, 'modoCambiado', (event) => {
-    const { modo } = event.detail || {};
-    actualizarInterfazModo(modo);
-  });
-}
-
-// Escucha mensajes del padre y procesa CAMBIO_MODO
-window.addEventListener('message', (event) => {
-  try {
-    const mensaje = event.data;
-    if (!mensaje || typeof mensaje !== 'object') return;
-    if (mensaje.tipo === 'SISTEMA.CAMBIO_MODO' || mensaje.tipo === 'CAMBIO_MODO') {
-      logger.info(`[hijo5-casa] Mensaje CAMBIO_MODO recibido`, mensaje);
-      actualizarModoMapaDesdeMensaje(mensaje);
-    }
-  } catch (error) {
-    crearObjetoError('procesar_mensaje_cambio_modo', error, { mensaje: event.data });
-  }
-});
-
-// Función para actualizar el modo y la UI
-function actualizarModoMapaDesdeMensaje(mensaje) {
-  try {
-    const modo = mensaje.datos?.modo || mensaje.modo;
-    if (modo !== 'casa' && modo !== 'aventura') {
-      logger.warn(`[hijo5-casa] Modo recibido no válido: ${modo}`);
-      return;
-    }
-    logger.info(`[hijo5-casa] Actualizando modo a: ${modo}`);
-    document.body.classList.remove('modo-casa', 'modo-aventura');
-    document.body.classList.add(`modo-${modo}`);
-    // Actualiza visibilidad de UI según el modo
-    const paradasWindow = document.getElementById('paradas-window');
-    if (paradasWindow) {
-      if (modo === 'casa') {
-        paradasWindow.classList.add('visible');
-        paradasWindow.classList.remove('hidden');
-      } else {
-        paradasWindow.classList.add('hidden');
-        paradasWindow.classList.remove('visible');
-      }
-    }
-    // Actualiza botón GPS
-    const btn = document.getElementById('gps-casa-btn');
-    if (btn) {
-      btn.classList.toggle('on', modo === 'aventura');
-      btn.classList.toggle('off', modo === 'casa');
-      btn.title = modo === 'casa'
-        ? "Cambiar a modo Aventura (GPS ON)"
-        : "Cambiar a modo Casa (GPS OFF)";
-    }
-  } catch (error) {
-    crearObjetoError('actualizar_modo_ui', error, { mensaje });
-  }
-}
-
-/**
- * Maneja el clic en el botón de GPS
- * @param {Event} event - Evento de clic
- */
-async function manejarClickGPS(event) {
-  const modoActual = estadoApp.modo?.actual || 'casa';
-  const nuevoModo = modoActual === 'aventura' ? 'casa' : 'aventura';
-  logger.info(`Solicitando cambio de modo a: ${nuevoModo}`);
-  try {
-    await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, { modo: nuevoModo });
-  } catch (error) {
-    notificarError('cambio_modo_click', error);
-  }
-}
-
-/**
- * Maneja la selección de un punto de la lista en modo casa
- * @param {string} idPunto - ID del punto seleccionado (ej. 'padre-P-5')
- */
-async function manejarSeleccionPunto(idPunto) {
-  try {
-    console.log(`[${CONFIG.IFRAME_ID}] Punto seleccionado:`, idPunto);
-    
-    // Validar ID del punto
-    const validacionId = validarIdPunto(idPunto);
-    if (!validacionId.valido) {
-      throw new Error(validacionId.mensaje);
-    }
-    
-    const punto = estadoApp.puntosRuta.find(p => p.padreid === idPunto);
-    if (!punto) {
-      throw new Error(`No se encontró el punto con ID: ${idPunto}`);
-    }
-    
-    // Notificar al padre sobre la selección para que orqueste a los demás hijos
-    await enviarMensaje('padre', TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, { punto });
-    
-    // Actualizar la interfaz para resaltar el punto seleccionado
-    estadoApp.puntoActual = punto;
-    actualizarInterfaz();
-    
-    return true;
-    
-  } catch (error) {
-    notificarError('seleccion_punto', error);
-    return false;
-  }
-}
-
-// Inicializar la aplicación cuando el DOM esté listo
-// ================== INICIALIZACIÓN ==================
-/**
- * Inicializa la aplicación, la mensajería y solicita los datos de la ruta.
- */
-async function inicializarAplicacion() {
-  logger.info('Inicializando aplicación...');
-  
-  try {
-    // Inicializar estado global
-    window.CONFIG = CONFIG;
-    window.estadoApp = estadoApp;
-    
-    // Configurar manejadores de eventos de la UI
-    configurarManejadoresUI();
-    
-    // 1. Primero inicializar la mensajería
-    logger.debug('Inicializando sistema de mensajería...');
-    await inicializarMensajeriaApp();
-    
-    // 2. Luego registrar manejadores de mensajes
-    logger.debug('Registrando manejadores de mensajes...');
-    await registrarManejadores();
-    
-    // Solicitar los datos de la ruta al padre para construir la UI
-    await solicitarPuntosRuta();
-
-    // Notificar al padre que la aplicación está lista
-    logger.debug('Notificando al padre que la aplicación está lista...');
-    await notificarEstado('aplicacion_inicializada', {
-      version: '1.0.0',
-      timestamp: new Date().toISOString()
-    });
-    
-    logger.info('Aplicación inicializada correctamente');
-    return true;
-    
-  } catch (error) {
-    logger.error('Fallo catastrófico durante la inicialización', error);
-    mostrarError('No se pudo iniciar el componente.', error);
-    return false;
-  }
+} catch (error) {
+  logger.error('Error al inicializar la aplicación:', error);
+  throw error;
 }
 
 /**
@@ -1995,11 +873,16 @@ async function cargarEstado() {
 }
 
 // Inicializar la aplicación cuando el DOM esté listo
+
 document.addEventListener('DOMContentLoaded', async () => {
   try {
     // Verifica que la configuración esté disponible antes de inicializar
     if (!window.CONFIG) {
-      throw new Error('La configuración de la aplicación no está disponible');
+      window.CONFIG = {
+        IFRAME_ID: 'boton-casa',
+        DEBUG: true,
+        LOG_LEVEL: 1
+      };
     }
     // Inicializar mensajería
     await inicializarMensajeria({
@@ -2012,25 +895,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Inicializar la aplicación
     await inicializarAplicacion();
-    
   } catch (error) {
-    logger.error('Error al inicializar la aplicación:', error);
+    console.error('Error al inicializar la aplicación:', error);
     crearObjetoError('inicializacion', error);
   }
 });
-
-// Si el DOM ya está listo, inicializar de inmediato
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    inicializarAplicacion().catch(error => {
-      logger.error('Error crítico durante la inicialización', error);
-    });
-  });
-} else {
-  inicializarAplicacion().catch(error => {
-    logger.error('Error crítico durante la inicialización', error);
-  });
-}
 
 // Limpiar manejadores de eventos cuando se desmonte el iframe
 window.addEventListener('beforeunload', () => {
@@ -2057,12 +926,8 @@ function withErrorHandling(fn, tipo) {
     try {
       return await fn(...args);
     } catch (error) {
-      if (typeof window.notificarError === 'function') {
-        window.notificarError(tipo, error);
-      } else {
-        console.error(`[${tipo}] Error:`, error);
-      }
-      throw error;
+      console.error(`Error en ${tipo || 'función'}:`, error);
+      throw error; // Re-lanzar el error para que pueda ser manejado por el llamador
     }
   };
 }
@@ -2279,81 +1144,51 @@ function withErrorHandling(fn, tipo) {
   </style>
 </head>
 <body>
-  <div id="zona-boton-casa">
-    <button id="gps-casa-btn" class="on" title="Cambiar a modo Casa (GPS OFF)" aria-label="Cambiar Modo">
+  <div id="zona-boton-casa" role="region" aria-label="Control de navegación">
+    <button id="gps-casa-btn" class="on" title="Cambiar a modo Casa (GPS OFF)" aria-label="Cambiar Modo" aria-pressed="false">
+      <span class="sr-only">Modo Casa</span>
     </button>
     <div id="paradas-window" class="hidden">
         <div id="paradas-list"></div>
     </div>
   </div>
   <script type="module">
-    // Código de inicialización de la aplicación
-    document.addEventListener('DOMContentLoaded', async () => {
+    // La inicialización se maneja en el script principal
+    // No se requiere código adicional aquí
+  </script>
+  <script>
+    // Manejador global de errores no capturados
+    window.addEventListener('error', function(event) {
+      const error = event.error || new Error(event.message);
+      const errorMsg = 'Error no manejado';
+      const errorDetails = error instanceof Error ? error.message : String(error);
+      
+      // Usar logger si está disponible, si no usar console
+      const logError = window.logger ? window.logger.error : console.error;
+      logError(errorMsg, error);
+      
+      // Mostrar mensaje de error al usuario
       try {
-
-        // Inicialización principal de la aplicación
-        window.logger.info('Iniciando inicialización de la aplicación');
+        const errorContainer = document.createElement('div');
+        errorContainer.style.cssText = [
+          'position: fixed;',
+          'top: 0;',
+          'left: 0;',
+          'right: 0;',
+          'background: #ff4444;',
+          'color: white;',
+          'padding: 1rem;',
+          'z-index: 10000;',
+          'text-align: center;',
+          'font-family: Arial, sans-serif;'
+        ].join(' ');
         
-        // Inicializar la mensajería si no está ya inicializada
-        if (typeof window.mensajeriaInicializada === 'undefined') {
-          window.logger.info('Inicializando sistema de mensajería');
-          
-          // Verificar que la configuración esté disponible
-          if (!window.CONFIG) {
-            throw new Error('La configuración de la aplicación no está disponible');
-          }
-          
-          // Inicializar la mensajería
-          await inicializarMensajeriaApp();
-          
-          // Registrar manejadores de mensajes
-          await registrarManejadores();
-          
-          window.mensajeriaInicializada = true;
-          window.logger.info('Sistema de mensajería inicializado correctamente');
-        } else {
-          window.logger.info('El sistema de mensajería ya está inicializado');
-        }
-        
-        // 3. Inicializar la interfaz de usuario
-        window.logger.info('Inicializando interfaz de usuario');
-        await actualizarInterfaz();
-        
-        window.logger.info('Aplicación inicializada correctamente');
-      } catch (error) {
-        const errorMsg = 'Error durante la inicialización de la aplicación';
-        const errorDetails = error instanceof Error ? error.message : String(error);
-        
-        // Usar logger si está disponible, si no usar console
-        const logError = window.logger ? window.logger.error : console.error;
-        logError(errorMsg, error);
-        
-        // Mostrar mensaje de error al usuario
-        try {
-          const errorContainer = document.createElement('div');
-          errorContainer.style.cssText = [
-            'position: fixed;',
-            'top: 0;',
-            'left: 0;',
-            'right: 0;',
-            'background: #ff4444;',
-            'color: white;',
-            'padding: 1rem;',
-            'z-index: 10000;',
-            'text-align: center;',
-            'font-family: Arial, sans-serif;'
-          ].join(' ');
-          
-          errorContainer.textContent = `${errorMsg}: ${errorDetails}`;
-          document.body.prepend(errorContainer);
-        } catch (e) {
-          console.error('No se pudo mostrar el mensaje de error:', e);
-        }
-          
-          // Relanzar el error para que pueda ser manejado por el sistema
-          throw error;
-        }
-      });
-    </script>
+        errorContainer.textContent = `${errorMsg}: ${errorDetails}`;
+        document.body.prepend(errorContainer);
+      } catch (e) {
+        console.error('No se pudo mostrar el mensaje de error:', e);
+      }
+    });
+  </script>
 </body>
 </html>
