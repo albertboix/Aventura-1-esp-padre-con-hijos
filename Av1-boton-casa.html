@@ -5,7 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>hijo5-casa</title>
     <script type="module">
+// Importaciones en el nivel superior
 import { logger, configurarUtils, crearObjetoError } from './js/utils.js';
+import { 
+  enviarMensaje as _enviarMensaje,
+  inicializarMensajeria as _inicializarMensajeria,
+  registrarControlador as _registrarControlador,
+  TIPOS_MENSAJE as _TIPOS_MENSAJE
+} from './js/mensajeria.js';
+
+import {
+  inicializarMapa as _inicializarMapa,
+  centrarMapa as _centrarMapa,
+  actualizarPuntoActual as _actualizarPuntoActual,
+  actualizarTramoActual as _actualizarTramoActual,
+  actualizarModo as _actualizarModo,
+  limpiarRecursos as _limpiarRecursos
+} from './js/funciones-mapa.js';
+
+// Configurar utils
 configurarUtils({ iframeId: 'hijo5-casa', debug: true });
 
 // Configuración estándar
@@ -93,104 +111,267 @@ const MENSAJES = {
   }
 };
 
-// Configuración de importaciones dinámicas
+// Configuración de importaciones
 const MODULOS = {
-  mensajeria: './js/mensajeria.js',
-  funcionesMapa: './js/funciones-mapa.js'
+  mensajeria: new URL('./js/mensajeria.js', import.meta.url).toString(),
+  funcionesMapa: new URL('./js/funciones-mapa.js', import.meta.url).toString()
 };
 
 // Objeto para almacenar las importaciones
 const modulosImportados = {};
 
 /**
- * Carga un módulo de forma segura
- * @param {string} nombreModulo - Nombre del módulo a cargar
- * @returns {Promise<Object>} Módulo cargado
- * @throws {Error} Si ocurre un error al cargar el módulo
+ * Carga un módulo de forma segura (compatibilidad)
+ * @deprecated Usar importaciones estáticas en su lugar
  */
 async function cargarModulo(nombreModulo) {
-  try {
-    if (!modulosImportados[nombreModulo]) {
-      logger.info(`Cargando módulo: ${nombreModulo}`);
-      
-      // Validar que el módulo esté en la lista de módulos soportados
-      if (!MODULOS[nombreModulo]) {
-        throw new Error(`Módulo no soportado: ${nombreModulo}`);
-      }
-      
-      // Cargar el módulo dinámicamente
-      modulosImportados[nombreModulo] = await import(MODULOS[nombreModulo]);
-      
-      // Hacer que las funciones estén disponibles globalmente para compatibilidad
-      if (nombreModulo === 'mensajeria') {
-        window.Mensajeria = modulosImportados.mensajeria;
-      }
-      
-      logger.info(`Módulo cargado: ${nombreModulo}`);
-    }
-    
-    return modulosImportados[nombreModulo];
-    
-  } catch (error) {
-    logger.error(`Error al cargar el módulo ${nombreModulo}`, error);
-    throw new Error(`No se pudo cargar el módulo ${nombreModulo}: ${error.message}`);
+  console.warn('cargarModulo está obsoleto. Usa importaciones estáticas en su lugar.');
+  
+  switch(nombreModulo) {
+    case 'mensajeria':
+      return {
+        enviarMensaje: window.enviarMensaje,
+        inicializarMensajeria: window.inicializarMensajeria,
+        registrarControlador: window.registrarControlador,
+        TIPOS_MENSAJE: window.TIPOS_MENSAJE
+      };
+    case 'funcionesMapa':
+      return {
+        inicializarMapa,
+        centrarMapa,
+        actualizarPuntoActual,
+        actualizarTramoActual,
+        actualizarModo,
+        limpiarRecursos
+      };
+    default:
+      throw new Error(`Módulo no soportado: ${nombreModulo}`);
   }
 }
 
-// Cargar módulos requeridos
-let mensajeria, funcionesMapa;
-// TIPOS_MENSAJE is already imported, no need to declare it again
-// Remove duplicate declarations that might conflict with imported modules
-
+// Inicializar referencias a los módulos importados
 try {
-  logger.info('Iniciando carga de módulos...');
+  // Asignar a variables globales para compatibilidad
+  window.enviarMensaje = _enviarMensaje;
+  window.inicializarMensajeria = _inicializarMensajeria;
+  window.registrarControlador = _registrarControlador;
+  window.TIPOS_MENSAJE = _TIPOS_MENSAJE;
   
-  // Cargar módulos en paralelo para mejor rendimiento
-  [mensajeria, funcionesMapa] = await Promise.all([
-    cargarModulo('mensajeria'),
-    cargarModulo('funcionesMapa')
-  ]);
-  
-  // Desestructurar las funciones necesarias del módulo de mensajería
-  if (mensajeria) {
-    // Only assign these if they're not already defined to avoid redeclaration
-    if (typeof enviarMensaje === 'undefined') {
-      ({ 
-        enviarMensaje, 
-        inicializarMensajeria, 
-        registrarControlador, 
-        TIPOS_MENSAJE 
-      } = mensajeria);
-    }
+  // Inicializar el estado de la aplicación
+  const estadoApp = {
+    // Estado inicial de la aplicación
+    modo: {
+      actual: 'casa',        // 'casa' o 'aventura'
+      anterior: null,        // Último modo activo
+      ultimoCambio: null,    // Timestamp del último cambio
+      cambioEnProgreso: false // Si hay un cambio de modo en curso
+    },
+    gpsActivo: false,
+    controlesHabilitados: true,
+    puntoActual: null,
+    tramoActual: null,
+    ultimaActualizacion: null,
+    version: '1.0.0',
+    mensajeriaInicializada: false,
+    manejadoresRegistrados: false,
+    _listeners: new Set(),
     
-    // Hacer que las funciones estén disponibles globalmente para compatibilidad
-    window.inicializarMensajeria = inicializarMensajeria;
-    window.enviarMensaje = enviarMensaje;
-    window.registrarControlador = registrarControlador;
+    // Método para actualizar el estado de forma controlada
+    async actualizarEstado(nuevoEstado) {
+      const estadoAnterior = { ...this };
+      Object.assign(this, nuevoEstado);
+      this.ultimaActualizacion = new Date().toISOString();
+      
+      // Notificar a los listeners
+      await this._notificarCambios(estadoAnterior);
+      return true;
+    },
+    
+    // Registrar listeners para cambios de estado
+    onCambio(listener) {
+      if (typeof listener !== 'function') {
+        throw new Error('El listener debe ser una función');
+      }
+      this._listeners.add(listener);
+      return () => this._listeners.delete(listener);
+    },
+    
+    // Notificar cambios a los listeners
+    async _notificarCambios(estadoAnterior) {
+      const cambios = {};
+      
+      // Encontrar propiedades que cambiaron
+      for (const [key, valor] of Object.entries(this)) {
+        if (key.startsWith('_')) continue; // Ignorar propiedades privadas
+        if (valor !== estadoAnterior[key]) {
+          cambios[key] = {
+            anterior: estadoAnterior[key],
+            nuevo: valor
+          };
+        }
+      }
+      
+      // Si no hay cambios, no notificar
+      if (Object.keys(cambios).length === 0) return;
+      
+      // Notificar a los listeners
+      const notificaciones = [];
+      for (const listener of this._listeners) {
+        try {
+          notificaciones.push(listener(cambios, this));
+        } catch (error) {
+          console.error('Error en listener de estado:', error);
+        }
+      }
+      
+      // Esperar a que todos los listeners terminen
+      await Promise.allSettled(notificaciones);
+    },
+    
+    // Reiniciar al estado inicial
+    async reiniciar() {
+      const estadoAnterior = { ...this };
+      Object.assign(this, {
+        ...estadoApp,
+        mensajeriaInicializada: this.mensajeriaInicializada,
+        manejadoresRegistrados: this.manejadoresRegistrados,
+        _listeners: this._listeners,
+        _notificarCambios: this._notificarCambios
+      });
+      await this._notificarCambios(estadoAnterior);
+      return true;
+    }
+  };
+
+  // Inicializar la aplicación
+  document.addEventListener('DOMContentLoaded', async () => {
+    try {
+      // Verifica que la configuración esté disponible antes de inicializar
+      if (!window.CONFIG) {
+        throw new Error('La configuración de la aplicación no está disponible');
+      }
+      // Inicializar mensajería
+      await inicializarMensajeriaApp();
+      
+      logger.info('Mensajería inicializada correctamente');
+      
+      // Inicializar la aplicación
+      await inicializarAplicacion();
+      
+    } catch (error) {
+      logger.error('Error al inicializar la aplicación:', error);
+      crearObjetoError('inicializacion', error);
+    }
+  });
+
+  // Extender tipos de mensajes específicos de este componente
+  if (TIPOS_MENSAJE) {
+    TIPOS_MENSAJE = {
+      ...TIPOS_MENSAJE,
+      // Mensajes específicos del componente
+      CAMBIO_PUNTO: 'hijo5:cambio_punto',
+      ACTUALIZAR_ESTADO: 'hijo5:actualizar_estado',
+      NOTIFICAR_PUNTO: 'hijo5:notificar_punto'
+    };
+    logger.info('Constantes de mensajería cargadas correctamente');
+  } else {
+    logger.error('TIPOS_MENSAJE no está definido');
+    throw new Error('No se pudieron cargar las constantes de mensajería');
   }
-  
-  if (funcionesMapa) {
-    ({ 
-      inicializarMapa, 
-      centrarMapa, 
-      actualizarPuntoActual,
-      actualizarTramoActual,
-      actualizarModo
-    } = funcionesMapa);
+
+  /**
+   * Inicializa el sistema de mensajería
+   * @returns {Promise<boolean>} True si la inicialización fue exitosa
+   */
+  async function inicializarMensajeriaApp() {
+    // Verificar si ya está inicializado
+    if (estadoApp.mensajeriaInicializada) {
+      logger.info('La mensajería ya está inicializada');
+      return true;
+    }
+
+    try {
+      logger.info('Inicializando mensajería...');
+      
+      // Validar dependencias
+      if (typeof inicializarMensajeria !== 'function') {
+        throw new Error('La función inicializarMensajeria no está disponible');
+      }
+      
+      // Validar configuración
+      if (!CONFIG.IFRAME_ID) {
+        throw new Error('Configuración no válida: falta IFRAME_ID');
+      }
+      
+      // Configuración de mensajería
+      const configMensajeria = {
+        iframeId: CONFIG.IFRAME_ID,
+        debug: CONFIG.DEBUG,
+        logLevel: CONFIG.LOG_LEVEL,
+        reintentos: CONFIG.REINTENTOS,
+        // Asegurar que no se registren manejadores automáticamente
+        registrarManejadoresPorDefecto: false
+      };
+      
+      logger.debug('Configuración de mensajería:', configMensajeria);
+      
+      // Inicializar la mensajería
+      try {
+        await inicializarMensajeria(configMensajeria);
+        logger.info('Módulo de mensajería inicializado correctamente');
+      } catch (initError) {
+        logger.error('Error en inicializarMensajeria:', initError);
+        throw new Error(`No se pudo inicializar la mensajería: ${initError.message}`);
+      }
+      
+      // Actualizar el estado
+      estadoApp.mensajeriaInicializada = true;
+      logger.info('Mensajería inicializada correctamente');
+      return true;
+      
+    } catch (error) {
+      const errorInfo = {
+        message: error.message,
+        stack: error.stack,
+        code: error.code,
+        config: {
+          iframeId: CONFIG.IFRAME_ID,
+          debug: CONFIG.DEBUG,
+          logLevel: CONFIG.LOG_LEVEL
+        }
+      };
+      
+      logger.error('Error crítico al inicializar la mensajería:', errorInfo);
+      
+      // Notificar al padre si es posible
+      try {
+        if (typeof enviarMensaje === 'function') {
+          await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
+            tipo: 'inicializacion_mensajeria',
+            mensaje: error.message,
+            origen: CONFIG.IFRAME_ID,
+            timestamp: new Date().toISOString()
+          });
+        }
+      } catch (e) {
+        // Ignorar errores al notificar
+      }
+      
+      throw error; // Relanzar el error para que lo maneje el llamador
+    }
   }
-  
-  logger.info('Módulos cargados correctamente');
-  
+
 } catch (error) {
   const errorMsg = 'Error crítico al cargar módulos';
   console.error(errorMsg, error);
   
   // Mostrar mensaje de error al usuario
-  const errorContainer = document.createElement('div');
-  errorContainer.style.cssText = 'padding: 20px; color: #721c24; background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; margin: 10px;';
-  errorContainer.innerHTML = `
-    <h2>Error al cargar la aplicación</h2>
-    <p>No se pudieron cargar los módulos necesarios. Por favor, recarga la página o inténtalo más tarde.</p>
+  document.body.innerHTML = `
+    <div style="color: red; padding: 20px; font-family: Arial, sans-serif;">
+      <h2>Error crítico</h2>
+      <p>${errorMsg}: ${error.message}</p>
+      <p>Por favor, recarga la página o contacta al soporte técnico.</p>
+    </div>
     <p>Detalles: ${error.message}</p>
   `;
   
