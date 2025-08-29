@@ -2,7 +2,8 @@ import {
   logger, 
   configurarUtils, 
   crearObjetoError,
-  TIPOS_MENSAJE 
+  TIPOS_MENSAJE,
+  LOG_LEVELS 
 } from './utils.js';
 
 // Re-export utils for backward compatibility
