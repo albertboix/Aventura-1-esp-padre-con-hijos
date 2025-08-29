@@ -9,12 +9,27 @@ import {
 // Re-export utils for backward compatibility
 export { 
   TIPOS_MENSAJE,
+  LOG_LEVELS,
   configurarUtils,
   crearObjetoError 
 };
 
 // Configuración inicial del logger
 configurarUtils({ iframeId: 'mensajeria', debug: true });
+
+// Estado del módulo
+let iframeId = '';
+let sistemaInicializado = false;
+const manejadores = new Map();
+const mensajesPendientes = new Map();
+const iframesRegistrados = new Set();
+let config = {
+  debug: true,
+  logLevel: LOG_LEVELS.DEBUG,
+  tiempoEsperaRespuesta: 30000, // 30 segundos
+  reintentos: 3,
+  tiempoEntreReintentos: 1000 // 1 segundo
+};
 
 /**
  * Sistema de Mensajería para Comunicación entre Iframes
@@ -460,7 +475,33 @@ function validarMensaje(mensaje, tipoEsperado = null) {
  * @param {Object} config - Configuración del sistema
  * @returns {Promise<void>}
  */
-export async function inicializarMensajeria(config = {}) {
+export async function inicializarMensajeria(userConfig = {}) {
+  // Merge user config with defaults
+  config = {
+    debug: true,
+    logLevel: LOG_LEVELS.DEBUG,
+    tiempoEsperaRespuesta: 30000, // 30 segundos
+    reintentos: 3,
+    tiempoEntreReintentos: 1000, // 1 segundo
+    ...userConfig
+  };
+  
+  // Set iframeId if provided
+  if (userConfig.iframeId) {
+    iframeId = userConfig.iframeId;
+  }
+  
+  // Update logger configuration
+  try {
+    configurarUtils({
+      iframeId: iframeId || 'mensajeria',
+      debug: config.debug,
+      logLevel: config.logLevel
+    });
+  } catch (err) {
+    console.error('Error al configurar el logger:', err);
+    throw err;
+  }
   try {
     // Validar configuración
     if (!config.iframeId) {
@@ -516,15 +557,32 @@ export async function inicializarMensajeria(config = {}) {
     return Promise.resolve();
     
   } catch (error) {
-    logger.error('Error al inicializar la mensajería', {
+    // Use a safe way to log the error without relying on configuracion
+    const errorInfo = {
       message: error.message,
       code: error.code,
-      stack: configuracion.debug ? error.stack : undefined
-    });
+      stack: (config && config.debug) ? error.stack : undefined
+    };
+    
+    try {
+      // Try to use logger if available, otherwise fall back to console
+      if (logger && typeof logger.error === 'function') {
+        logger.error('Error al inicializar la mensajería', errorInfo);
+      } else {
+        console.error('Error al inicializar la mensajería', errorInfo);
+      }
+    } catch (loggingError) {
+      console.error('Error al registrar el error:', loggingError);
+      console.error('Error original:', error);
+    }
     
     // Limpiar en caso de error
     if (sistemaInicializado) {
-      await limpiar();
+      try {
+        await limpiar();
+      } catch (cleanupError) {
+        console.error('Error durante la limpieza:', cleanupError);
+      }
     }
     
     throw error;
@@ -916,18 +974,39 @@ function enviarRespuesta(mensajeOriginal, datos = null, error = null) {
  * Limpia los mensajes expirados de la cola de mensajes pendientes
  */
 function limpiarMensajesExpirados() {
-  const ahora = Date.now();
-  let eliminados = 0;
-      
-  for (const [id, mensaje] of mensajesPendientes.entries()) {
-    if (mensaje.tiempoExpiracion && ahora > mensaje.tiempoExpiracion) {
+  try {
+    if (!mensajesPendientes || !(mensajesPendientes instanceof Map)) {
+      console.warn('mensajesPendientes no está inicializado correctamente');
+      return;
+    }
+    
+    const ahora = Date.now();
+    let eliminados = 0;
+    
+    // Crear un array de IDs a eliminar para evitar modificar el Map durante la iteración
+    const idsAEliminar = [];
+    
+    for (const [id, mensaje] of mensajesPendientes.entries()) {
+      if (mensaje && mensaje.tiempoExpiracion && ahora > mensaje.tiempoExpiracion) {
+        idsAEliminar.push(id);
+      }
+    }
+    
+    // Eliminar los mensajes expirados
+    for (const id of idsAEliminar) {
       mensajesPendientes.delete(id);
       eliminados++;
     }
-  }
-      
-  if (eliminados > 0) {
-    logger.debug(`Se eliminaron ${eliminados} mensajes expirados`);
+    
+    if (eliminados > 0) {
+      if (logger && typeof logger.debug === 'function') {
+        logger.debug(`Se eliminaron ${eliminados} mensajes expirados`);
+      } else {
+        console.debug(`[Mensajería] Se eliminaron ${eliminados} mensajes expirados`);
+      }
+    }
+  } catch (error) {
+    console.error('Error al limpiar mensajes expirados:', error);
   }
 }
 
