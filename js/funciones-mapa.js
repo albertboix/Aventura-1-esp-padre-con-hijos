@@ -9,7 +9,7 @@ import {
   enviarMensaje, 
   registrarControlador,
   TIPOS_MENSAJE 
-} from '.js/mensajeria.js';
+} from './mensajeria.js';
 
 // Estado del módulo
 let mapa = null;
@@ -865,16 +865,20 @@ async function actualizarElementosDeInterfaz(modo) {
     }
 }
 
-export function limpiarRecursos() {
+function limpiarRecursos() {
     console.log('[MAPA] Limpiando recursos del mapa...');
     if (mapa) {
         mapa.remove();
         mapa = null;
     }
-    marcadoresParadas.clear();
-    paradasCargadas.clear();
-    manejadorActualizacionParada = null;
-    estaInicializado = false;
+    if (marcadorActual) {
+        marcadorActual.remove();
+        marcadorActual = null;
+    }
+    // Limpiar referencias a marcadores y capas
+    marcadoresParadas = {};
+    rutasTramos = [];
+    console.log('[MAPA] Recursos del mapa limpiados');
 }
 
 function actualizarMarcadorParada(paradaId, datosNuevos) {
