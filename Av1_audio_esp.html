@@ -624,11 +624,17 @@ const audioFiles = [
     </audio>
 
     <script type="module">
+        // Importar utilidades primero
         import { 
             logger, 
             configurarUtils, 
             crearObjetoError 
         } from './js/utils.js';
+        
+        // Configurar el logger inmediatamente
+        configurarUtils({ iframeId: 'audioPlayerIframe', debug: true, logLevel: 0 });
+        
+        // Importar funciones de mensajería
         import { 
             inicializarMensajeria as _inicializarMensajeria,
             registrarControlador as _registrarControlador,
@@ -636,14 +642,20 @@ const audioFiles = [
             TIPOS_MENSAJE as _TIPOS_MENSAJE
         } from './js/mensajeria.js';
         
-        // Configuración inicial
-        configurarUtils({ iframeId: 'audioPlayerIframe', debug: true, logLevel: 0 });
-        
         // Hacer las funciones disponibles globalmente
         window.inicializarMensajeria = _inicializarMensajeria;
         window.registrarControlador = _registrarControlador;
         window.enviarMensaje = _enviarMensaje;
         window.TIPOS_MENSAJE = _TIPOS_MENSAJE;
+        
+        // Función segura para enviar mensajes
+        async function enviarMensajeSeguro(destino, tipo, datos = {}) {
+            if (typeof _enviarMensaje === 'function') {
+                return await _enviarMensaje(destino, tipo, datos);
+            }
+            logger.warn('enviarMensaje no está disponible');
+            return Promise.reject(new Error('enviarMensaje no disponible'));
+        }
         
         // Constantes y variables globales
         let audioPlayer;
@@ -990,40 +1002,44 @@ const audioFiles = [
             }
         });
 
-        // Remove duplicate inicializarMensajeria call and fix the notificarEstado function
-        function notificarEstado(accion, datos = {}) {
-            if (typeof enviarMensaje !== 'function') {
-                logger.error('No se puede notificar estado: enviarMensaje no está disponible');
-                return Promise.reject(new Error('enviarMensaje no disponible'));
+        // Función para notificar el estado del reproductor
+        async function notificarEstado(accion, datos = {}) {
+            try {
+                const estado = {
+                    accion,
+                    ...datos,
+                    timestamp: new Date().toISOString(),
+                    origen: 'audioPlayerIframe',
+                    elementoActual: null,
+                    estadoReproductor: {
+                        estado: estadoApp.ultimoEstado || 'detenido',
+                        volumen: audioPlayer ? audioPlayer.volume : 1,
+                        muteado: audioPlayer ? audioPlayer.muted : false
+                    }
+                };
+
+                if (elementoActual) {
+                    estado.elementoActual = {
+                        id: elementoActual.id,
+                        tipo: elementoActual.tipo || 'audio',
+                        titulo: elementoActual.title || '',
+                        duracion: audioPlayer ? audioPlayer.duration : 0,
+                        tiempoActual: audioPlayer ? audioPlayer.currentTime : 0
+                    };
+                }
+
+                return await enviarMensajeSeguro('padre', TIPOS_MENSAJE.AUDIO.ESTADO, estado);
+            } catch (error) {
+                const errorObj = crearObjetoError('notificar_estado', error);
+                logger.error('Error al notificar estado:', errorObj);
+                return Promise.reject(errorObj);
             }
-            return enviarMensaje('padre', TIPOS_MENSAJE.AUDIO.ESTADO, {
-                accion,
-                timestamp: new Date().toISOString(),
-                origen: IFRAME_ID,
-                elementoActual: elementoActual ? {
-                    id: elementoActual.id,
-                    tipo: elementoActual.tipo || 'audio',
-                    titulo: elementoActual.title || '',
-                    duracion: audioPlayer ? audioPlayer.duration : 0,
-                    tiempoActual: audioPlayer ? audioPlayer.currentTime : 0
-                } : null,
-                estadoReproductor: {
-                    estado: estadoApp.ultimoEstado,
-                    volumen: audioPlayer ? audioPlayer.volume : 1,
-                    muteado: audioPlayer ? audioPlayer.muted : false
-                },
-                ...datos
-            }).catch(error => {
-                logger.error('Error al notificar estado:', error);
-                crearObjetoError('notificar_estado', error);
-                return Promise.reject(error);
-            });
         }
 
-        // Fix notificarError function to be consistent
+        // Función para notificar errores de manera consistente
         function notificarError(tipo, error) {
             const errorObj = error instanceof Error ? error : new Error(String(error));
-            logger.error(`[${IFRAME_ID}] Error (${tipo}):`, errorObj);
+            logger.error(`[audioPlayerIframe] Error (${tipo}):`, errorObj);
             
             const errorInfo = {
                 tipo,
