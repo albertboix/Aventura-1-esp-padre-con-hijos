@@ -115,23 +115,49 @@
 
         // Inicializar el componente
         async function inicializar() {
+            const logPrefix = '[RETOS]';
+            
+            // Estado del componente
+            const estado = {
+                retoActualId: null,
+                // Agrega aquí cualquier otro estado necesario
+            };
             try {
-                console.log('[RETOS] Iniciando inicialización del componente...');
-                logger.info('Inicializando componente de retos...');
+                logger.info(`${logPrefix} Iniciando inicialización del componente...`);
+                
+                // Verificar configuración
+                if (!CONFIG || !CONFIG.IFRAME_ID) {
+                    throw new Error('Configuración no válida: IFRAME_ID es requerido');
+                }
                 
                 // Inicializar mensajería
-                console.log('[RETOS] Inicializando mensajería...');
-                const resultadoInicializacion = await inicializarMensajeria({ 
-                    iframeId: CONFIG.IFRAME_ID, 
-                    debug: CONFIG.DEBUG,
-                    logLevel: CONFIG.LOG_LEVEL
-                });
-                console.log('[RETOS] Mensajería inicializada:', resultadoInicializacion);
+                logger.info(`${logPrefix} Inicializando mensajería...`);
+                try {
+                    await inicializarMensajeria({ 
+                        iframeId: CONFIG.IFRAME_ID, 
+                        debug: CONFIG.DEBUG !== false, // Default to true if not set
+                        logLevel: CONFIG.LOG_LEVEL || 1, // Default to INFO level
+                        reintentos: CONFIG.REINTENTOS || { MAXIMOS: 3, TIEMPO_ESPERA: 1000, FACTOR: 2 }
+                    });
+                    logger.info(`${logPrefix} Mensajería inicializada correctamente`);
+                } catch (error) {
+                    logger.error(`${logPrefix} Error al inicializar mensajería:`, error);
+                    throw new Error('No se pudo inicializar la mensajería');
+                }
 
                 // Registrar manejadores de mensajes
-                console.log('[RETOS] Registrando manejadores de mensajes...');
-                registrarControlador(TIPOS_MENSAJE.RETO.MOSTRAR, manejarMostrarReto);
-                console.log('[RETOS] Manejadores registrados');
+                logger.info(`${logPrefix} Registrando manejadores de mensajes...`);
+                try {
+                    if (typeof registrarControlador === 'function' && TIPOS_MENSAJE?.RETO?.MOSTRAR) {
+                        registrarControlador(TIPOS_MENSAJE.RETO.MOSTRAR, manejarMostrarReto);
+                        logger.info(`${logPrefix} Manejador de RETO.MOSTRAR registrado`);
+                    } else {
+                        throw new Error('Funciones de mensajería no disponibles');
+                    }
+                } catch (error) {
+                    logger.error(`${logPrefix} Error al registrar manejadores:`, error);
+                    throw error;
+                }
 
                 // Configurar manejadores de eventos
                 document.getElementById('btn-completado').addEventListener('click', async () => {
@@ -184,6 +210,25 @@
                 }
                 throw error;
             }
+        }
+
+        // Función para manejar la visualización de un reto
+        function manejarMostrarReto(mensaje) {
+            const { retoId, titulo, descripcion } = mensaje.datos || {};
+            
+            if (!retoId) {
+                logger.warn('Mensaje de mostrar reto sin ID');
+                return { exito: false, error: 'ID de reto no proporcionado' };
+            }
+            
+            estado.retoActualId = retoId;
+            const tituloElement = document.getElementById('reto-titulo');
+            const cuerpoElement = document.getElementById('reto-body');
+            
+            if (tituloElement) tituloElement.textContent = titulo || 'Nuevo Reto';
+            if (cuerpoElement) cuerpoElement.innerHTML = descripcion || '<p>Completa la tarea indicada.</p>';
+            
+            return { exito: true, retoMostrado: retoId };
         }
 
         // Inicializar cuando el DOM esté listo
