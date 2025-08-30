@@ -903,27 +903,80 @@ configurarUtils({ iframeId: 'hijo2', debug: true });
         // 6. MANEJADORES DE MENSAJES DEL PADRE
         // =================================================================================
 
+        /**
+         * Maneja el cambio de modo (casa/aventura)
+         * @param {Object} mensaje - Mensaje con los datos del cambio de modo
+         * @returns {Promise<Object>} Resultado de la operación
+         */
         async function manejarCambioModo(mensaje) {
-            const { modo } = mensaje.datos;
-            if (!modo || (modo !== 'casa' && modo !== 'aventura')) {
-                logger.error(`Modo no válido recibido: ${modo}`);
-                return { exito: false, error: `Modo no válido: ${modo}` };
-            }
-            
-            logger.info(`Recibida orden de cambiar a modo: ${modo}`);
-            estadoApp.modo = modo;
-            actualizarInterfazModo(modo);
+            try {
+                const { modo, origen, razon } = mensaje.datos || {};
+                
+                // Validar el mensaje recibido
+                if (!modo || !origen) {
+                    const errorMsg = 'Mensaje de cambio de modo inválido: falta modo u origen';
+                    logger.error(errorMsg, mensaje);
+                    await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
+                        codigo: 'ERROR_CAMBIO_MODO_INVALIDO',
+                        mensaje: errorMsg,
+                        origen: 'hijo2',
+                        timestamp: Date.now()
+                    });
+                    return { exito: false, error: errorMsg };
+                }
+                
+                logger.info(`Cambiando a modo: ${modo}${razon ? ` (${razon})` : ''}`, { origen });
+                
+                // Actualizar el estado local
+                estadoApp.modo = modo;
+                document.body.classList.toggle('modo-aventura', modo === 'aventura');
+                document.body.classList.toggle('modo-casa', modo === 'casa');
+                
+                // Actualizar la interfaz
+                actualizarInterfazModo(modo);
 
-            if (modo === 'aventura') {
-                estadoApp.navegacion.activa = true;
-                estadoApp.elementosDOM.btnGps.classList.add('active');
-                enviarMensaje('padre', NAV_MSG.INICIAR, {}).catch(error => logger.error(error));
-            } else { // modo === 'casa'
-                estadoApp.navegacion.activa = false;
-                estadoApp.elementosDOM.btnGps.classList.remove('active');
-                enviarMensaje('padre', NAV_MSG.DETENER, { motivo: 'cambio_a_modo_casa' }).catch(error => logger.error(error));
+                if (modo === 'aventura') {
+                    // Lógica específica del modo aventura
+                    estadoApp.navegacion.activa = true;
+                    estadoApp.elementosDOM.btnGps.classList.add('active');
+                    
+                    // Notificar al padre que el cambio de modo se completó
+                    await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.INICIALIZACION_COMPLETADA, {
+                        idIframe: 'hijo2',
+                        estado: 'listo',
+                        timestamp: Date.now()
+                    });
+                    
+                    // Iniciar navegación si es necesario
+                    await enviarMensaje('padre', TIPOS_MENSAJE.NAVEGACION.INICIAR, {
+                        destinoId: 'hijo2',
+                        timestamp: Date.now()
+                    }).catch(error => {
+                        logger.error('Error al iniciar navegación:', error);
+                        throw error;
+                    });
+                } else if (modo === 'casa') {
+                    // Lógica específica del modo casa
+                    estadoApp.navegacion.activa = false;
+                    estadoApp.elementosDOM.btnGps.classList.remove('active');
+                    await enviarMensaje('padre', NAV_MSG.DETENER, { 
+                        motivo: 'cambio_a_modo_casa',
+                        timestamp: Date.now()
+                    }).catch(error => logger.error('Error al detener navegación:', error));
+                }
+                
+                return { exito: true, modoActual: estadoApp.modo };
+            } catch (error) {
+                logger.error('Error en manejarCambioModo:', error);
+                await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
+                    codigo: 'ERROR_MANEJO_CAMBIO_MODO',
+                    mensaje: error.message,
+                    origen: 'hijo2',
+                    timestamp: Date.now(),
+                    stack: error.stack
+                });
+                return { exito: false, error: error.message };
             }
-            return { exito: true, modoActual: estadoApp.modo };
         }
 
         function manejarActualizacionUbicacion(mensaje) {
