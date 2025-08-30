@@ -41,12 +41,17 @@ const estadoMapa = {
  * @returns {Promise<boolean>} - True si la inicialización fue exitosa
  */
 async function inicializarMapa(opciones = {}) {
+  const logPrefix = '[MAPA]';
   try {
-    console.log('[MAPA] Inicializando mapa...');
+    if (config && config.debug) {
+      logger.debug(`${logPrefix} Inicializando mapa...`);
+    }
     
     // Si ya está inicializado, limpiar recursos primero
     if (estadoMapa.inicializado) {
-      console.log('[MAPA] El mapa ya está inicializado, limpiando recursos...');
+      if (config && config.debug) {
+        logger.debug(`${logPrefix} El mapa ya está inicializado, limpiando recursos...`);
+      }
       await limpiarRecursos();
     }
     
@@ -58,28 +63,34 @@ async function inicializarMapa(opciones = {}) {
     
     // 1. Intentar obtener de las opciones
     if (opciones.arrayParadas) {
-      console.log('[MAPA] Usando array de paradas proporcionado en opciones');
+      if (config && config.debug) {
+        logger.debug(`${logPrefix} Usando array de paradas proporcionado en opciones`);
+      }
       arrayParadas = opciones.arrayParadas;
     }
     // 2. Intentar obtener del objeto global
     else if (window.AVENTURA_PARADAS) {
-      console.log('[MAPA] Usando array de paradas global (AVENTURA_PARADAS)');
+      if (config && config.debug) {
+        logger.debug(`${logPrefix} Usando array de paradas global (AVENTURA_PARADAS)`);
+      }
       arrayParadas = window.AVENTURA_PARADAS;
     }
     // 3. Intentar obtener a través de mensajería
     else if (window.parent !== window) {
-      console.log('[MAPA] Solicitando array de paradas al padre...');
+      if (config && config.debug) {
+        logger.debug(`${logPrefix} Solicitando array de paradas al padre...`);
+      }
       try {
         arrayParadas = await solicitarArrayParadasAlPadre();
       } catch (error) {
-        console.error('[MAPA] Error al obtener paradas del padre:', error);
+        logger.error(`${logPrefix} Error al obtener paradas del padre:`, error);
         throw new Error('No se pudo obtener el array de paradas del padre');
       }
     }
     
     // Si no se pudo obtener el array de paradas
     if (!arrayParadas || !Array.isArray(arrayParadas) || arrayParadas.length === 0) {
-      console.warn('[MAPA] No se pudo obtener un array de paradas válido, usando datos de emergencia');
+      logger.warn(`${logPrefix} No se pudo obtener un array de paradas válido, usando datos de emergencia`);
       arrayParadas = generarArrayParadasEmergencia();
     }
     
