@@ -40,7 +40,7 @@ let configuracion = {
 };
 
 // Alias config to configuracion for backward compatibility
-const config = configuracion;
+let config = configuracion;
 
 /**
  * Sistema de Mensajería para Comunicación entre Iframes
