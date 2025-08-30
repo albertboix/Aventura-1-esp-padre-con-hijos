@@ -41,7 +41,6 @@ let configuracion = {
 
 // Alias config to configuracion for backward compatibility
 let config = configuracion;
-
 /**
  * Sistema de Mensajería para Comunicación entre Iframes
  * Maneja la comunicación bidireccional entre iframes padre e hijo
@@ -132,10 +131,252 @@ export function obtenerIframesRegistrados() {
  * Esquemas de validación para los mensajes
  * @type {Object.<string, {propiedadesRequeridas: string[], validar?: function(Object): boolean}>}
  */
+/**
+ * Esquemas de validación para los mensajes
+ * @type {Object.<string, {propiedadesRequeridas: string[], validar?: function(Object): boolean}>}
+ */
 const ESQUEMAS_MENSAJES = {
+  // Navegación
+  'NAVEGACION.INICIAR': {
+    propiedadesRequeridas: ['destinoId', 'ruta'],
+    validar: (datos) => typeof datos.destinoId === 'string' && Array.isArray(datos.ruta)
+  },
+  'NAVEGACION.INICIADA': {
+    propiedadesRequeridas: ['destinoId', 'timestamp', 'origen'],
+    propiedades: {
+      destinoId: { type: 'string' },
+      origen: { type: 'string' },
+      timestamp: { type: 'number' },
+      ruta: { type: 'array', optional: true }
+    },
+    validar: (datos) => {
+      if (!datos.destinoId || typeof datos.destinoId !== 'string') {
+        return { valido: false, error: 'destinoId debe ser un string válido' };
+      }
+      return true;
+    }
+  },
+  'NAVEGACION.CANCELADA': {
+    propiedadesRequeridas: ['razon', 'timestamp', 'origen'],
+    propiedades: {
+      razon: { type: 'string' },
+      origen: { type: 'string' },
+      timestamp: { type: 'number' },
+      codigoError: { type: 'string', optional: true }
+    },
+    validar: (datos) => {
+      if (!datos.razon || typeof datos.razon !== 'string') {
+        return { valido: false, error: 'La razón es requerida y debe ser un texto' };
+      }
+      return true;
+    }
+  },
+  'NAVEGACION.DESTINO_ESTABLECIDO': {
+    propiedadesRequeridas: ['destinoId', 'nombre', 'coordenadas', 'timestamp']
+  },
+  'NAVEGACION.LLEGADA_DETECTADA': {
+    propiedadesRequeridas: ['destinoId', 'timestamp']
+  },
+  'NAVEGACION.ERROR': {
+    propiedadesRequeridas: ['codigo', 'mensaje', 'timestamp']
+  },
+  'NAVEGACION.SOLICITAR_DESTINO': {
+    propiedadesRequeridas: ['timestamp']
+  },
+  'NAVEGACION.ESTADO': {
+    propiedadesRequeridas: ['estado', 'timestamp'],
+    validar: (datos) => ['activo', 'inactivo', 'pausado'].includes(datos.estado)
+  },
+  
+  // Sistema
+  'SISTEMA.ERROR': {
+    propiedadesRequeridas: ['codigo', 'mensaje', 'origen', 'timestamp']
+  },
+  'SISTEMA.ESTADO': {
+    propiedadesRequeridas: ['estado', 'timestamp']
+  },
+  'SISTEMA.INICIALIZACION_COMPLETADA': {
+    propiedadesRequeridas: ['idIframe', 'timestamp', 'estado'],
+    validar: (datos) => typeof datos.idIframe === 'string' && 
+                       ['listo', 'error'].includes(datos.estado)
+  },
   'SISTEMA.CAMBIO_MODO': {
-    propiedadesRequeridas: ['modo', 'timestamp'],
-    validar: (datos) => ['casa', 'aventura'].includes(datos.modo)
+    propiedadesRequeridas: ['modo', 'timestamp', 'origen'],
+    propiedades: {
+      modo: { type: 'string', enum: ['casa', 'aventura'] },
+      origen: { type: 'string' },
+      razon: { type: 'string', optional: true }
+    },
+    validar: (datos) => {
+      if (!['casa', 'aventura'].includes(datos.modo)) {
+        return { valido: false, error: 'Modo no válido. Debe ser "casa" o "aventura"' };
+      }
+      return true;
+    }
+  },
+  
+  // Datos
+  'DATOS.SOLICITAR_PARADAS': {
+    propiedadesRequeridas: ['timestamp'],
+    propiedades: {
+      origen: { type: 'string' },
+      timestamp: { type: 'number' }
+    }
+  },
+  
+  // Navegación
+  'NAVEGACION.CAMBIO_PARADA': {
+    propiedadesRequeridas: ['punto', 'timestamp'],
+    propiedades: {
+      punto: { type: 'object' },
+      origen: { type: 'string' },
+      timestamp: { type: 'number' }
+    },
+    validar: (datos) => {
+      if (!datos.punto || typeof datos.punto !== 'object') {
+        return { valido: false, error: 'El punto es requerido y debe ser un objeto' };
+      }
+      return true;
+    }
+  },
+  
+  // Audio
+  'AUDIO.FINALIZADO': {
+    propiedadesRequeridas: ['audioId', 'origen', 'timestamp', 'exito'],
+    propiedades: {
+      audioId: { type: 'string' },
+      origen: { type: 'string' },
+      timestamp: { type: 'number' },
+      exito: { type: 'boolean' },
+      error: { type: 'string', optional: true },
+      duracion: { type: 'number', optional: true },
+      posicion: { type: 'number', optional: true }
+    },
+    validar: (datos) => {
+      if (datos.exito === false && !datos.error) {
+        return { valido: false, error: 'Se requiere un mensaje de error cuando exito es falso' };
+      }
+      if (datos.duracion !== undefined && typeof datos.duracion !== 'number') {
+        return { valido: false, error: 'La duración debe ser un número' };
+      }
+      if (datos.posicion !== undefined && typeof datos.posicion !== 'number') {
+        return { valido: false, error: 'La posición debe ser un número' };
+      }
+      return true;
+    }
+  },
+  
+  // Retos
+  'RETO.MOSTRAR': {
+    propiedadesRequeridas: ['retoId', 'timestamp', 'origen'],
+    propiedades: {
+      retoId: { type: 'string' },
+      origen: { type: 'string' },
+      timestamp: { type: 'number' },
+      datos: { type: 'object', optional: true },
+      animacion: { type: 'string', optional: true, enum: ['deslizar', 'fade', 'ninguna'], default: 'deslizar' }
+    },
+    validar: (datos) => {
+      if (datos.animacion && !['deslizar', 'fade', 'ninguna'].includes(datos.animacion)) {
+        return { valido: false, error: 'Tipo de animación no válido' };
+      }
+      return true;
+    }
+  },
+  'RETO.OCULTAR': {
+    propiedadesRequeridas: ['retoId', 'timestamp', 'origen'],
+    propiedades: {
+      retoId: { type: 'string' },
+      origen: { type: 'string' },
+      timestamp: { type: 'number' },
+      motivo: { type: 'string', optional: true },
+      animacion: { type: 'string', optional: true, enum: ['deslizar', 'fade', 'ninguna'], default: 'fade' }
+    },
+    validar: (datos) => {
+      if (datos.animacion && !['deslizar', 'fade', 'ninguna'].includes(datos.animacion)) {
+        return { valido: false, error: 'Tipo de animación no válido' };
+      }
+      return true;
+    }
+  },
+  
+  'RETO.COMPLETADO': {
+    propiedadesRequeridas: ['retoId', 'exito', 'timestamp'],
+    propiedades: {
+      retoId: { type: 'string' },
+      exito: { type: 'boolean' },
+      origen: { type: 'string' },
+      timestamp: { type: 'number' },
+      puntuacion: { type: 'number', optional: true },
+      datos: { type: 'object', optional: true }
+    }
+  },
+  
+  // Interfaz de Usuario
+  'UI.HABILITAR_CONTROLES': {
+    propiedadesRequeridas: ['timestamp'],
+    propiedades: {
+      origen: { type: 'string' },
+      timestamp: { type: 'number' },
+      habilitar: { type: 'boolean', optional: true, default: true },
+      motivo: { type: 'string', optional: true }
+    }
+  },
+  
+  'UI.ACTUALIZAR_ESTADO': {
+    propiedadesRequeridas: ['estado', 'timestamp'],
+    propiedades: {
+      estado: { type: 'string' },
+      origen: { type: 'string' },
+      timestamp: { type: 'number' },
+      datos: { type: 'object', optional: true }
+    }
+  },
+  
+  // Configuración del sistema
+  'SISTEMA.CONFIGURACION': {
+    propiedadesRequeridas: ['configuracion', 'timestamp'],
+    propiedades: {
+      configuracion: { type: 'object' },
+      origen: { type: 'string' },
+      timestamp: { type: 'number' }
+    }
+  },
+  
+  'SISTEMA.SINCRONIZAR': {
+    propiedadesRequeridas: ['estado', 'timestamp'],
+    propiedades: {
+      estado: { type: 'string' },
+      origen: { type: 'string' },
+      timestamp: { type: 'number' },
+      datos: { type: 'object', optional: true }
+    }
+  },
+  
+  // Control
+  'CONTROL.ESTADO': {
+    propiedadesRequeridas: ['habilitado', 'timestamp'],
+    propiedades: {
+      habilitado: { type: 'boolean' },
+      origen: { type: 'string' },
+      timestamp: { type: 'number' },
+      motivo: { type: 'string', optional: true }
+    }
+  },
+  'CONTROL.HABILITAR': {
+    propiedadesRequeridas: ['timestamp']
+  },
+  'CONTROL.DESHABILITAR': {
+    propiedadesRequeridas: ['razon', 'timestamp']
+  },
+  
+  // GPS
+  'GPS.ACTUALIZAR': {
+    propiedadesRequeridas: ['lat', 'lng', 'timestamp'],
+    validar: (datos) => 
+      typeof datos.lat === 'number' && 
+      typeof datos.lng === 'number' &&
+      (datos.accuracy === undefined || typeof datos.accuracy === 'number')
   },
   'GPS.POSICION_ACTUALIZADA': {
     propiedadesRequeridas: ['coordenadas', 'timestamp'],
@@ -144,14 +385,92 @@ const ESQUEMAS_MENSAJES = {
       typeof datos.coordenadas?.lng === 'number' &&
       (datos.coordenadas.accuracy === undefined || typeof datos.coordenadas.accuracy === 'number')
   },
+  'GPS.COMANDO': {
+    propiedadesRequeridas: ['accion', 'timestamp'],
+    validar: (datos) => ['iniciar', 'detener', 'pausar', 'reanudar'].includes(datos.accion)
+  },
+  
+  // Audio
+  'AUDIO.COMANDO': {
+    propiedadesRequeridas: ['comando', 'timestamp'],
+    validar: (datos) => ['reproducir', 'pausar', 'detener', 'volumen'].includes(datos.comando)
+  },
   'AUDIO.REPRODUCIR': {
-    propiedadesRequeridas: ['tipo', 'nombre']
+    propiedadesRequeridas: ['tipo', 'nombre', 'timestamp'],
+    validar: (datos) => ['musica', 'efecto', 'voz'].includes(datos.tipo)
+  },
+  
+  // Retos
+  'RETO.NUEVO': {
+    propiedadesRequeridas: ['retoId', 'tipo', 'timestamp', 'origen'],
+    propiedades: {
+      retoId: { type: 'string' },
+      tipo: { type: 'string', enum: ['pregunta', 'seleccion', 'arrastrar', 'completar'] },
+      origen: { type: 'string' },
+      timestamp: { type: 'number' },
+      datos: { type: 'object' },
+      tiempoLimite: { type: 'number', optional: true },
+      intentosPermitidos: { type: 'number', optional: true, default: 3 }
+    },
+    validar: (datos) => {
+      if (datos.tiempoLimite && datos.tiempoLimite < 0) {
+        return { valido: false, error: 'tiempoLimite no puede ser negativo' };
+      }
+      if (datos.intentosPermitidos && datos.intentosPermitidos < 1) {
+        return { valido: false, error: 'intentosPermitidos debe ser al menos 1' };
+      }
+      return true;
+    }
   },
   'RETO.MOSTRAR': {
-    propiedadesRequeridas: ['retoId']
+    propiedadesRequeridas: ['retoId', 'timestamp']
   },
-  'NAVEGACION.ESTABLECER_DESTINO': {
-    propiedadesRequeridas: ['tipo', 'parada_id', 'paradaDestinoNombre']
+  
+  // UI
+  'UI.HABILITAR_CONTROLES': {
+    propiedadesRequeridas: ['modo', 'timestamp', 'origen'],
+    propiedades: {
+      modo: { type: 'string', enum: ['casa', 'aventura'] },
+      origen: { type: 'string' },
+      timestamp: { type: 'number' },
+      controles: { 
+        type: 'array', 
+        optional: true,
+        items: { type: 'string' }
+      }
+    },
+    validar: (datos) => {
+      if (!['casa', 'aventura'].includes(datos.modo)) {
+        return { valido: false, error: 'Modo no válido. Debe ser "casa" o "aventura"' };
+      }
+      if (datos.controles && !Array.isArray(datos.controles)) {
+        return { valido: false, error: 'controles debe ser un array' };
+      }
+      return true;
+    }
+  },
+  'UI.DESHABILITAR_CONTROLES': {
+    propiedadesRequeridas: ['motivo', 'timestamp', 'origen'],
+    propiedades: {
+      motivo: { type: 'string' },
+      origen: { type: 'string' },
+      timestamp: { type: 'number' },
+      codigoError: { type: 'string', optional: true },
+      controles: { 
+        type: 'array', 
+        optional: true,
+        items: { type: 'string' }
+      }
+    },
+    validar: (datos) => {
+      if (!datos.motivo || typeof datos.motivo !== 'string') {
+        return { valido: false, error: 'El motivo es requerido y debe ser un texto' };
+      }
+      if (datos.controles && !Array.isArray(datos.controles)) {
+        return { valido: false, error: 'controles debe ser un array' };
+      }
+      return true;
+    }
   }
 };
 
@@ -184,102 +503,182 @@ function generarIdMensaje() {
  * Valida la estructura de un mensaje
  * @param {Object} mensaje - Mensaje a validar
  * @param {string} [tipoEsperado] - Tipo de mensaje esperado (opcional)
- * @returns {{valido: boolean, error?: string, codigoError?: string}} Resultado de la validación
+ * @returns {{valido: boolean, error?: string, codigoError?: string, detalles?: Object}} Resultado de la validación
  */
-function validarMensaje(mensaje, tipoEsperado = null) {
+export function validarMensaje(mensaje, tipoEsperado = null) {
   const logPrefix = '[MENSAJERIA] [validarMensaje]';
   
   // Validación básica de la estructura del mensaje
   if (!mensaje || typeof mensaje !== 'object' || Array.isArray(mensaje)) {
+    const error = 'El mensaje debe ser un objeto';
+    logger.error(`${logPrefix} ${error}`, { mensaje });
     return { 
       valido: false, 
-      error: 'El mensaje debe ser un objeto',
-      codigoError: ERROR_CODES.INVALID_MESSAGE
+      error,
+      codigoError: ERROR_CODES.INVALID_MESSAGE,
+      detalles: { mensaje }
     };
   }
   
-  // Extraer campos comunes
-  const { tipo, datos, origen, destino, timestamp } = mensaje;
+  // Validar campos obligatorios del mensaje
+  const camposObligatorios = ['tipo', 'origen', 'destino', 'timestamp'];
+  const camposFaltantes = camposObligatorios.filter(campo => mensaje[campo] === undefined);
   
-  // Validar campos obligatorios
-  const camposRequeridos = {
-    tipo: { tipo: 'string', codigo: ERROR_CODES.MISSING_REQUIRED_FIELD },
-    destino: { tipo: 'string', codigo: ERROR_CODES.MISSING_REQUIRED_FIELD },
-    origen: { tipo: 'string', codigo: ERROR_CODES.MISSING_REQUIRED_FIELD },
-    datos: { tipo: 'object', codigo: ERROR_CODES.MISSING_REQUIRED_FIELD, opcional: true }
-  };
-  
-  for (const [nombre, { tipo: tipoEsperado, codigo, opcional }] of Object.entries(camposRequeridos)) {
-    if (!(nombre in mensaje)) {
-      if (opcional) continue;
-      return { 
-        valido: false, 
-        error: `Falta el campo requerido '${nombre}'`,
-        codigoError: codigo
-      };
-    }
-    
-    if (tipoEsperado === 'object') {
-      if (mensaje[nombre] !== null && (typeof mensaje[nombre] !== 'object' || Array.isArray(mensaje[nombre]))) {
-        return { 
-          valido: false, 
-          error: `El campo '${nombre}' debe ser un objeto`,
-          codigoError: ERROR_CODES.INVALID_FIELD_TYPE
-        };
-      }
-    } else if (typeof mensaje[nombre] !== tipoEsperado) {
-      return { 
-        valido: false, 
-        error: `El campo '${nombre}' debe ser de tipo ${tipoEsperado}`,
-        codigoError: ERROR_CODES.INVALID_FIELD_TYPE
-      };
-    }
-  }
-  
-  // Validar timestamp si está presente
-  if (timestamp !== undefined) {
-    if (typeof timestamp !== 'number' || isNaN(timestamp) || timestamp <= 0) {
-      return {
-        valido: false,
-        error: 'El timestamp debe ser un número positivo',
-        codigoError: ERROR_CODES.INVALID_FIELD_TYPE
-      };
-    }
-    
-    // Opcional: Validar que el timestamp no sea del futuro (con margen de 5 minutos para ajustes de reloj)
-    const ahora = Date.now();
-    const margen = 5 * 60 * 1000; // 5 minutos en milisegundos
-    if (timestamp > ahora + margen) {
-      return {
-        valido: false,
-        error: 'El timestamp no puede ser del futuro',
-        codigoError: ERROR_CODES.VALIDATION_ERROR
-      };
-    }
+  if (camposFaltantes.length > 0) {
+    const error = `Campos obligatorios faltantes: ${camposFaltantes.join(', ')}`;
+    logger.error(`${logPrefix} ${error}`, { mensaje, camposFaltantes });
+    return {
+      valido: false,
+      error,
+      codigoError: ERROR_CODES.MISSING_REQUIRED_FIELD,
+      detalles: { camposFaltantes, mensaje }
+    };
   }
   
   // Validar tipo de mensaje
-  const tiposValidos = Object.values(TIPOS_MENSAJE)
-    .flatMap(categoria => Object.values(categoria));
-    
-  if (!tiposValidos.includes(tipo)) {
-    return {
-      valido: false,
-      error: `Tipo de mensaje no reconocido: ${tipo}`,
-      codigoError: ERROR_CODES.UNKNOWN_MESSAGE_TYPE
-    };
-  }
+  const { tipo } = mensaje;
   
-  // Validar tipo esperado si se especificó
+  // Si se especificó un tipo esperado, verificar que coincida
   if (tipoEsperado && tipo !== tipoEsperado) {
+    const error = `Tipo de mensaje inesperado: ${tipo}, se esperaba: ${tipoEsperado}`;
+    logger.error(`${logPrefix} ${error}`, { mensaje, tipoEsperado });
     return {
       valido: false,
-      error: `Tipo de mensaje inesperado. Esperado: ${tipoEsperado}, Recibido: ${tipo}`,
-      codigoError: ERROR_CODES.VALIDATION_ERROR
+      error,
+      codigoError: ERROR_CODES.UNKNOWN_MESSAGE_TYPE,
+      detalles: { tipoRecibido: tipo, tipoEsperado, mensaje }
     };
   }
   
-  // Validar estructura de datos según el tipo de mensaje
+  // Obtener el esquema de validación para el tipo de mensaje
+  const tipoClave = tipo.split('.').slice(0, 2).join('.'); // Obtener la clave principal (ej: 'NAVEGACION.INICIAR')
+  const esquema = ESQUEMAS_MENSAJES[tipoClave];
+  
+  if (!esquema) {
+    logger.warn(`${logPrefix} No se encontró esquema de validación para el tipo: ${tipo}`, { mensaje });
+    return { valido: true }; // Si no hay esquema, se considera válido
+  }
+  
+  // Validar propiedades requeridas
+  const { propiedadesRequeridas = [], validar } = esquema;
+  const propiedadesFaltantes = propiedadesRequeridas.filter(prop => 
+    mensaje.datos?.[prop] === undefined
+  );
+  
+  if (propiedadesFaltantes.length > 0) {
+    const error = `Propiedades requeridas faltantes: ${propiedadesFaltantes.join(', ')}`;
+    logger.error(`${logPrefix} ${error}`, { 
+      mensaje, 
+      propiedadesFaltantes,
+      propiedadesRequeridas 
+    });
+    return {
+      valido: false,
+      error,
+      codigoError: ERROR_CODES.MISSING_REQUIRED_FIELD,
+      detalles: { 
+        propiedadesFaltantes, 
+        propiedadesRequeridas,
+        mensaje 
+      }
+    };
+  }
+  
+  // Validación personalizada si está definida
+  if (validar && !validar(mensaje.datos || {})) {
+    const error = 'Validación personalizada fallida';
+    logger.error(`${logPrefix} ${error}`, { 
+      mensaje,
+      esquema: tipoClave,
+      datos: mensaje.datos 
+    });
+    return {
+      valido: false,
+      error,
+      codigoError: ERROR_CODES.VALIDATION_ERROR,
+      detalles: { 
+        tipoMensaje: tipo,
+        datos: mensaje.datos,
+        mensaje: 'La validación personalizada del mensaje falló'
+      }
+    };
+  }
+  
+  // Validar campos comunes del mensaje
+  const { datos, timestamp } = mensaje;
+  
+  // Validar tipos de campos comunes
+  const camposRequeridos = [
+    { nombre: 'tipo', valor: mensaje.tipo, tipo: 'string', codigo: ERROR_CODES.MISSING_REQUIRED_FIELD },
+    { nombre: 'destino', valor: mensaje.destino, tipo: 'string', codigo: ERROR_CODES.MISSING_REQUIRED_FIELD },
+    { nombre: 'origen', valor: mensaje.origen, tipo: 'string', codigo: ERROR_CODES.MISSING_REQUIRED_FIELD },
+    { nombre: 'timestamp', valor: timestamp, tipo: 'number', codigo: ERROR_CODES.INVALID_FIELD_TYPE },
+    { nombre: 'datos', valor: datos, tipo: 'object', codigo: ERROR_CODES.INVALID_FIELD_TYPE, opcional: true }
+  ];
+  
+  // Validar tipos de campos
+  for (const { nombre, valor, tipo: tipoEsperado, codigo, opcional } of camposRequeridos) {
+    // Si el campo es opcional y no está definido, continuar
+    if (opcional && valor === undefined) {
+      continue;
+    }
+    
+    // Verificar si el campo está definido
+    if (valor === undefined) {
+      return {
+        valido: false,
+        error: `Campo requerido faltante: ${nombre}`,
+        codigoError: ERROR_CODES.MISSING_REQUIRED_FIELD,
+        detalles: { campo: nombre, valor, tipoEsperado }
+      };
+    }
+    
+    // Verificar el tipo del campo
+    if (tipoEsperado === 'array' && !Array.isArray(valor)) {
+      return {
+        valido: false,
+        error: `Tipo de campo inválido: ${nombre} debe ser un array`,
+        codigoError: ERROR_CODES.INVALID_FIELD_TYPE,
+        detalles: { campo: nombre, valor, tipoEsperado, tipoRecibido: typeof valor }
+      };
+    } else if (tipoEsperado !== 'array' && valor !== null && typeof valor !== tipoEsperado) {
+      return {
+        valido: false,
+        error: `Tipo de campo inválido: ${nombre} debe ser de tipo ${tipoEsperado}`,
+        codigoError: ERROR_CODES.INVALID_FIELD_TYPE,
+        detalles: { campo: nombre, valor, tipoEsperado, tipoRecibido: typeof valor }
+      };
+    }
+  }
+  
+  // Validar estructura del campo datos si existe
+  if (datos && typeof datos === 'object' && !Array.isArray(datos)) {
+    // Validar que los datos no tengan referencias circulares
+    try {
+      JSON.stringify(datos);
+    } catch (error) {
+      return {
+        valido: false,
+        error: 'Los datos del mensaje contienen referencias circulares o valores no serializables',
+        codigoError: ERROR_CODES.INVALID_MESSAGE,
+        detalles: { error: error.message }
+      };
+    }
+  }
+  
+  // Si llegamos hasta aquí, el mensaje es válido
+  return { 
+    valido: true,
+    mensaje: 'El mensaje es válido',
+    detalles: { 
+      tipo: mensaje.tipo,
+      origen: mensaje.origen,
+      destino: mensaje.destino,
+      timestamp: mensaje.timestamp,
+      tieneDatos: !!datos
+    }
+  };
+}
   const esquema = ESQUEMAS_MENSAJES[tipo];
   
   if (!esquema) {
@@ -479,7 +878,7 @@ function validarMensaje(mensaje, tipoEsperado = null) {
   }
   
   return { valido: true };
-}
+
 
 /**
  * Inicializa el sistema de mensajería
