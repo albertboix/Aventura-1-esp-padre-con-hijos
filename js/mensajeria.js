@@ -474,6 +474,10 @@ const ESQUEMAS_MENSAJES = {
   }
 };
 
+// ================== CONSTANTES Y CONFIGURACIÓN ==================
+
+// Using LOG_LEVELS from utils.js
+
 // ================== FUNCIONES DE UTILIDAD ==================
 
 // Hacer disponible globalmente para compatibilidad con código antiguo
@@ -526,11 +530,15 @@ export function validarMensaje(mensaje, tipoEsperado = null) {
   
   if (camposFaltantes.length > 0) {
     const error = `Campos obligatorios faltantes: ${camposFaltantes.join(', ')}`;
-    logger.error(`${logPrefix} ${error}`, { mensaje, camposFaltantes });
+    if (logger && typeof logger.error === 'function') {
+      logger.error(`${logPrefix} ${error}`, { mensaje, camposFaltantes });
+    } else {
+      console.error(`${logPrefix} ${error}`, { mensaje, camposFaltantes });
+    }
     return {
       valido: false,
       error,
-      codigoError: ERROR_CODES.MISSING_REQUIRED_FIELD,
+      codigoError: 'MISSING_REQUIRED_FIELD',
       detalles: { camposFaltantes, mensaje }
     };
   }
@@ -882,18 +890,14 @@ export function validarMensaje(mensaje, tipoEsperado = null) {
 
 /**
  * Inicializa el sistema de mensajería
- * @param {Object} config - Configuración del sistema
+ * @param {Object} userConfig - Configuración del sistema
  * @returns {Promise<void>}
  */
 export async function inicializarMensajeria(userConfig = {}) {
   // Merge user config with defaults
   config = {
-    debug: true,
-    logLevel: LOG_LEVELS.DEBUG,
-    tiempoEsperaRespuesta: 30000, // 30 segundos
-    reintentos: 3,
-    tiempoEntreReintentos: 1000, // 1 segundo
-    ...userConfig
+    ...config,  // Apply defaults first
+    ...userConfig  // Then apply user overrides
   };
   
   // Set iframeId if provided
@@ -909,7 +913,7 @@ export async function inicializarMensajeria(userConfig = {}) {
       logLevel: config.logLevel
     });
   } catch (err) {
-    console.error('Error al configurar el logger:', err);
+    logger.error('Error al configurar el logger:', err);
     throw err;
   }
   try {
@@ -930,8 +934,8 @@ export async function inicializarMensajeria(userConfig = {}) {
     iframeId = configuracion.iframeId;
     
     // Configurar nivel de log
-    logLevel = configuracion.debug ? LOG_LEVELS.DEBUG : 
-              configuracion.logLevel || LOG_LEVELS.INFO;
+    const logLevel = config.debug ? LOG_LEVELS.DEBUG : 
+                    (config.logLevel || LOG_LEVELS.INFO);
     
     logger.info('Inicializando sistema de mensajería...', {
       iframeId: '***',
@@ -982,8 +986,8 @@ export async function inicializarMensajeria(userConfig = {}) {
         console.error('Error al inicializar la mensajería', errorInfo);
       }
     } catch (loggingError) {
-      console.error('Error al registrar el error:', loggingError);
-      console.error('Error original:', error);
+      logger.error('Error al registrar el error:', loggingError);
+      logger.error('Error original:', error);
     }
     
     // Limpiar en caso de error
@@ -991,7 +995,7 @@ export async function inicializarMensajeria(userConfig = {}) {
       try {
         await limpiar();
       } catch (cleanupError) {
-        console.error('Error durante la limpieza:', cleanupError);
+        logger.error('Error durante la limpieza:', cleanupError);
       }
     }
     
@@ -1031,8 +1035,9 @@ export const registrarManejador = registrarControlador;
  * @returns {Promise<Object>} Respuesta del mensaje
  */
 export async function enviarMensaje(destino, tipo, datos = {}, opciones = {}) {
-  console.log(`[MENSAJERIA] Enviando mensaje a ${destino} (${tipo}):`, datos);
-    console.log(`[MENSAJERIA] Enviando mensaje a ${destino} (${tipo}):`, datos);
+  if (config.debug) {
+    logger.debug(`[MENSAJERIA] Enviando mensaje a ${destino} (${tipo}):`, datos);
+  }
   // Antes de enviar un mensaje, verifica que el sistema esté inicializado
   if (!sistemaInicializado) {
     throw new Error('El sistema de mensajería no está inicializado');
@@ -1198,7 +1203,9 @@ async function enviarATodosLosIframes(mensaje, opciones = {}) {
  */
 function manejarMensajeRecibido(event) {
   const logPrefix = '[MENSAJERIA] [manejarMensajeRecibido]';
-  console.log(`${logPrefix} Evento de mensaje recibido:`, event.origin, event.data);
+  if (config.debug) {
+    logger.debug(`${logPrefix} Evento de mensaje recibido:`, event.origin);
+  }
   
   // Verificar el origen del mensaje para seguridad
   if (origenPermitido && event.origin !== origenPermitido) {
@@ -1386,7 +1393,7 @@ function enviarRespuesta(mensajeOriginal, datos = null, error = null) {
 function limpiarMensajesExpirados() {
   try {
     if (!mensajesPendientes || !(mensajesPendientes instanceof Map)) {
-      console.warn('mensajesPendientes no está inicializado correctamente');
+      logger.warn('mensajesPendientes no está inicializado correctamente');
       return;
     }
     
@@ -1416,7 +1423,7 @@ function limpiarMensajesExpirados() {
       }
     }
   } catch (error) {
-    console.error('Error al limpiar mensajes expirados:', error);
+    logger.error('Error al limpiar mensajes expirados:', error);
   }
 }
 
@@ -1705,13 +1712,13 @@ async function enviarConfiguracion(config) {
     // Verificar si hubo errores en las respuestas
     const errores = respuestas.filter(r => r.error);
     if (errores.length > 0) {
-      console.warn('Algunos iframes no aplicaron la configuración correctamente:', errores);
+      logger.warn('Algunos iframes no aplicaron la configuración correctamente:', errores);
     }
     
     return respuestas;
     
   } catch (error) {
-    console.error('Error al enviar configuración:', error);
+    logger.error('Error al enviar configuración:', error);
     throw error;
   }
 }
@@ -1759,7 +1766,7 @@ async function manejarConfiguracionSistema(mensaje) {
     });
     
   } catch (error) {
-    console.error('Error al aplicar configuración:', error);
+    logger.error('Error al aplicar configuración:', error);
     await enviarRespuesta(mensaje, null, 'Error al aplicar configuración');
   }
 }
@@ -1803,7 +1810,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, tuManejador);
     // ...existing code...
   } catch (error) {
-    console.error('Error al inicializar la mensajería:', error);
+    logger.error('Error al inicializar la mensajería:', error);
     // No continúes si falla la inicialización
   }
 });
