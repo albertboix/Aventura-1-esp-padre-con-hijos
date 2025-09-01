@@ -196,33 +196,55 @@ configurarUtils({ iframeId: 'padre', debug: true });
 
         // 4. LÓGICA DE ARRANQUE
         document.addEventListener('DOMContentLoaded', async () => {
-            logger.info('DOM cargado. Iniciando aplicación...');
-            updateMapDebug('DOM Cargado. Iniciando...');
-            try {
-                // Verificar dimensiones del contenedor del mapa
-                const mapaContainer = document.getElementById('mapa');
-                if (mapaContainer) {
-                    mapaContainer.style.display = 'block';
-                    mapaContainer.style.visibility = 'visible';
-                    mapaContainer.style.width = '100vw';
-                    mapaContainer.style.height = '100vh';
-                    // Mostrar dimensiones en consola para depuración
-                    console.log('mapa width:', mapaContainer.offsetWidth, 'height:', mapaContainer.offsetHeight);
-                }
-                await inicializarSistemaMensajeria();
-                updateMapDebug('Mensajería OK.');
-                registrarControladoresTotales();
-                await iniciarSistemaMapa();
-                updateMapDebug('Mapa OK.');
-                await notificarInicializacionAHijos();
-                logger.info('===== INICIALIZACIÓN COMPLETADA =====');
-                updateMapDebug('Sistema listo.', 3000);
-            } catch (error) {
-                logger.error('ERROR FATAL DE INICIALIZACIÓN:', error);
-                updateMapDebug(`Error fatal: ${error.message}`);
-                crearObjetoError('inicializacion', error);
+        const mapaContainer = document.getElementById('mapa');
+        if (!mapaContainer) {
+            alert('No se encontró el contenedor del mapa. El mapa no puede mostrarse.');
+            return;
+        }
+        mapaContainer.style.display = 'block';
+        mapaContainer.style.visibility = 'visible';
+        mapaContainer.style.width = '100vw';
+        mapaContainer.style.height = '100vh';
+        if (mapaContainer.offsetWidth === 0 || mapaContainer.offsetHeight === 0) {
+            alert('El contenedor del mapa tiene dimensiones 0. El mapa no puede mostrarse.');
+            return;
+        }
+        // ...existing code...
+        try {
+            await inicializarSistemaMensajeria();
+            registrarControladoresTotales();
+            const mapaInstance = await iniciarSistemaMapa();
+            if (!mapaInstance) {
+                alert('No se pudo inicializar el mapa. Revisa los datos de las paradas.');
+                return;
             }
-        });
+            window.mapa = mapaInstance;
+            estadoApp.mapaInicializado = true;
+            logger.info('Mapa inicializado.');
+            
+            // Force map to update its size after a short delay
+            const updateMapSize = () => {
+                if (window.mapa) {
+                    window.mapa.invalidateSize();
+                    console.log('Map size updated');
+                }
+            };
+            
+            setTimeout(updateMapSize, 100);
+            window.addEventListener('resize', () => setTimeout(updateMapSize, 100));
+            
+            // Show the map container
+            if (mapaContainer) {
+                mapaContainer.style.visibility = 'visible';
+            }
+            
+        } catch (error) {
+            alert('Error crítico al inicializar el sistema: ' + error.message);
+            logger.error('ERROR FATAL DE INICIALIZACIÓN:', error);
+            updateMapDebug(`Error fatal: ${error.message}`);
+            crearObjetoError('inicializacion', error);
+        }
+    });
 
         // 5. FUNCIONES PRINCIPALES
         async function inicializarSistemaMensajeria() {
