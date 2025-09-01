@@ -129,4 +129,3 @@ export const logger = {
 if (typeof window !== 'undefined') {
   window.Logger = logger;
 }
-export default logger;
