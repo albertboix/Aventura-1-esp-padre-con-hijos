@@ -5,969 +5,137 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>hijo5-casa</title>
     <script type="module">
-    // Importar módulos
-    import * as mensajeria from './js/mensajeria.js';
-    import { configurarUtils } from './js/utils.js';
+    // Importar la aplicación principal
+    import { inicializar, notificarError, manejarCambioModo, CONFIG, estado as estadoApp } from './js/app.js';
     
-    // Configuración global
-    const CONFIG = {
-      IFRAME_ID: 'hijo5-casa',
-      DEBUG: true,
-      LOG_LEVEL: 1,
-      VERSION: '1.0.0',
-      REINTENTOS: {
-        MAXIMOS: 3,
-        TIEMPO_ESPERA: 1000,
-        FACTOR: 2
-      }
-    };
-    
-    // Hacer la configuración globalmente accesible
+    // Hacer disponible para depuración
+    window.estadoApp = estadoApp;
     window.CONFIG = CONFIG;
     
-    // Inicializar logger
-    configurarUtils({
-      iframeId: CONFIG.IFRAME_ID,
-      debug: CONFIG.DEBUG,
-      logLevel: CONFIG.LOG_LEVEL
-    });
-    
-    // Alias para facilitar el acceso
-    const { 
-      enviarMensaje, 
-      TIPOS_MENSAJE,
-      logger 
-    } = mensajeria;
-    
-    // Hacer disponible para otros scripts
-    window.enviarMensaje = enviarMensaje;
-    window.TIPOS_MENSAJE = TIPOS_MENSAJE;
-    window.logger = logger;
-    
-    // Estado de la aplicación
-    const estadoApp = {
-      inicializando: false,
-      inicializado: false,
-      modo: { actual: 'casa', anterior: null },
-      gpsActivo: false,
-      controlesHabilitados: true,
-      puntoActual: null,
-      tramoActual: null,
-      mensajeriaInicializada: false,
-      modulosCargados: false,
-      mensajeria: null,
-      mapa: null
-    };
-
-    // Variable global para el mapa
-    let mapa = null;
-    
-    // Inicialización de la aplicación
+    // Inicializar la aplicación cuando el DOM esté listo
     document.addEventListener('DOMContentLoaded', async () => {
       try {
-        logger.info('Aplicación iniciada');
-        
-        // Inicializar mensajería
-        estadoApp.inicializando = true;
-        await inicializarMensajeriaApp();
-        
-        // Marcar como inicializado
-        estadoApp.inicializado = true;
-        estadoApp.inicializando = false;
-        
-        logger.info('Aplicación lista');
-      } catch (error) {
-        logger.error('Error al inicializar la aplicación:', error);
-        estadoApp.inicializando = false;
-      }
-    });
-    
-    // Función para inicializar la mensajería
-    async function inicializarMensajeriaApp() {
-      try {
-        logger.info('Inicializando mensajería...');
-        // Tu código de inicialización de mensajería aquí
-        estadoApp.mensajeriaInicializada = true;
-        logger.info('Mensajería inicializada');
-      } catch (error) {
-        logger.error('Error al inicializar la mensajería:', error);
-        throw error;
-      }
-    }
-    /**
-     * Carga un módulo de forma dinámica
-     * @param {string} nombreModulo - Nombre del módulo a cargar
-     * @returns {Promise<Object>} Módulo cargado
-     * @throws {Error} Si el módulo no puede ser cargado
-     */
-    async function cargarModulo(nombreModulo) {
-      try {
-        logger.debug(`Cargando módulo: ${nombreModulo}`);
-    
-    switch(nombreModulo) {
-      case 'mensajeria':
-        const mensajeria = await import('./js/mensajeria.js');
-        // Configurar mensajería
-        await mensajeria.inicializarMensajeria({
-          iframeId: CONFIG.IFRAME_ID,
-          debug: CONFIG.DEBUG
-        });
-        
-        // Registrar manejadores de mensajes
-        mensajeria.registrarControlador(
-          CONFIG.TIPOS_MENSAJE.SISTEMA.INICIALIZACION,
-          manejarInicializacion
-        );
-        
-        return mensajeria;
-        
-      case 'mapa':
-        logger.info('Cargando módulo de mapa...');
-        const moduloMapa = await import('./js/funciones-mapa.js');
-        
-        // Inicializar el mapa con opciones básicas
-        if (typeof moduloMapa.inicializarMapa === 'function') {
-          await moduloMapa.inicializarMapa({
-            center: [39.4699, -0.3763], // Coordenadas de Valencia
-            zoom: 13,
-            minZoom: 10,
-            maxZoom: 18,
-            tileLayer: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-            tileLayerOptions: {
-              attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        await inicializar();
+        const botonCasa = document.getElementById('gps-casa-btn');
+        const paradasWindow = document.getElementById('paradas-window');
+        if (botonCasa) {
+          botonCasa.addEventListener('click', async () => {
+            try {
+              const nuevoModo = estadoApp.modo.actual === 'casa' ? 'aventura' : 'casa';
+              await manejarCambioModo({ 
+                datos: { 
+                  modo: nuevoModo,
+                  origen: CONFIG.IFRAME_ID,
+                  timestamp: new Date().toISOString()
+                } 
+              });
+              // Notificar al padre el cambio de modo
+              if (typeof notificarEstado === 'function') {
+                await notificarEstado('cambio_modo', { modo: nuevoModo });
+              }
+              // Mostrar/ocultar ventana de paradas según el modo
+              if (nuevoModo === 'casa') {
+                paradasWindow.classList.remove('hidden');
+                paradasWindow.classList.add('visible');
+                await solicitarPuntosRuta();
+                botonCasa.classList.remove('off');
+                botonCasa.classList.add('on');
+                botonCasa.setAttribute('aria-pressed', 'true');
+              } else {
+                paradasWindow.classList.remove('visible');
+                paradasWindow.classList.add('hidden');
+                botonCasa.classList.remove('on');
+                botonCasa.classList.add('off');
+                botonCasa.setAttribute('aria-pressed', 'false');
+              }
+            } catch (error) {
+              await notificarError('cambio_modo', error);
             }
           });
-        }
-        
-        // Devolver solo las funciones necesarias
-        return {
-          inicializarMapa: moduloMapa.inicializarMapa,
-          actualizarPuntoActual: moduloMapa.actualizarPuntoActual,
-          actualizarModoMapa: moduloMapa.actualizarModoMapa
-        };
-        
-      default:
-        throw new Error(`Módulo no soportado: ${nombreModulo}`);
-    }
-  } catch (error) {
-    const errorMsg = `Error al cargar el módulo ${nombreModulo}`;
-    logger.error(errorMsg, error);
-    throw new Error(`${errorMsg}: ${error.message}`);
-  }
-}
-
-/**
- * Manejador de inicialización del sistema
- * @param {Object} mensaje - Mensaje de inicialización
- */
-async function manejarInicializacion(mensaje) {
-  try {
-    logger.info('Manejando inicialización del sistema', mensaje);
-    // Implementar lógica de inicialización aquí
-  } catch (error) {
-    logger.error('Error en manejo de inicialización', error);
-  }
-}
-
-// La inicialización se manejará en la función inicializar()
-/**
- * Inicializa la aplicación principal cuando el DOM está listo
- */
-async function inicializar() {
-  try {
-    // Verificar si ya está inicializado o en proceso
-    if (estadoApp.inicializado || estadoApp.inicializando) {
-      logger.info('La aplicación ya está inicializada o en proceso de inicialización');
-      return;
-    }
-    
-    estadoApp.inicializando = true;
-    logger.info('Iniciando inicialización de la aplicación...');
-    
-    // Cargar módulos necesarios
-    try {
-      mensajeria = await cargarModulo('mensajeria');
-      estadoApp.mensajeriaInicializada = true;
-      logger.info('Módulo de mensajería cargado correctamente');
-      
-      // Inicializar mensajería si es necesario
-      if (mensajeria && typeof mensajeria.inicializarMensajeria === 'function') {
-        await mensajeria.inicializarMensajeria({
-          iframeId: CONFIG.IFRAME_ID,
-          debug: CONFIG.DEBUG,
-          logLevel: CONFIG.LOG_LEVEL
-        });
-      }
-      
-      // Cargar módulo de mapa si es necesario
-      try {
-        mapa = await cargarModulo('mapa');
-        estadoApp.mapa = mapa;
-        estadoApp.modulosCargados = true;
-        logger.info('Módulo de mapa cargado correctamente');
-      } catch (error) {
-        logger.warn('No se pudo cargar el módulo de mapa:', error);
-      }
-      
-      // Registrar manejadores de mensajes
-      if (mensajeria && mensajeria.registrarControlador) {
-        registrarManejadoresMensajes();
-      }
-      
-      // Notificar al padre que la inicialización fue exitosa
-      if (mensajeria && mensajeria.enviarMensaje) {
-        await mensajeria.enviarMensaje('padre', CONFIG.TIPOS_MENSAJE.SISTEMA.INICIALIZACION, {
-          estado: 'listo',
-          timestamp: new Date().toISOString(),
-          modulos: {
-            mensajeria: true,
-            mapa: !!mapa
+          // Inicial: mostrar paradas si modo es casa
+          if (estadoApp.modo.actual === 'casa') {
+            paradasWindow.classList.remove('hidden');
+            paradasWindow.classList.add('visible');
+            await solicitarPuntosRuta();
+            botonCasa.classList.remove('off');
+            botonCasa.classList.add('on');
+            botonCasa.setAttribute('aria-pressed', 'true');
+          } else {
+            paradasWindow.classList.remove('visible');
+            paradasWindow.classList.add('hidden');
+            botonCasa.classList.remove('on');
+            botonCasa.classList.add('off');
+            botonCasa.setAttribute('aria-pressed', 'false');
           }
-        });
-      }
-      
-      estadoApp.inicializado = true;
-      logger.info('Aplicación inicializada correctamente');
-      
-    } catch (error) {
-      const errorMsg = 'Error crítico al inicializar la aplicación';
-      logger.error(errorMsg, error);
-      
-      // Mostrar mensaje de error en la interfaz
-      mostrarErrorEnInterfaz(error);
-      
-      // Notificar al padre del error
-      if (mensajeria && mensajeria.enviarMensaje) {
-        try {
-          await mensajeria.enviarMensaje('padre', CONFIG.TIPOS_MENSAJE.SISTEMA.ERROR, {
-            tipo: 'inicializacion',
-            mensaje: error.message,
-            stack: error.stack,
-            timestamp: new Date().toISOString()
-          });
-        } catch (e) {
-          logger.error('No se pudo notificar el error al padre:', e);
         }
+      } catch (error) {
+        console.error('Error al inicializar la aplicación:', error);
+        await notificarError('inicializacion', error);
       }
-    }
-    
-  } catch (error) {
-    logger.error('Error inesperado durante la inicialización:', error);
-    mostrarErrorEnInterfaz(error);
-  } finally {
-    estadoApp.inicializando = false;
-  }
-}
-
-/**
- * Muestra un mensaje de error en la interfaz
- * @param {Error} error - Error a mostrar
- */
-function mostrarErrorEnInterfaz(error) {
-  try {
-    const errorElement = document.createElement('div');
-    errorElement.className = 'error-message';
-    errorElement.textContent = 'Error al cargar la aplicación. Por favor, recarga la página.';
-    errorElement.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      background: #ffebee;
-      color: #c62828;
-      padding: 1rem;
-      text-align: center;
-      z-index: 9999;
-      font-family: Arial, sans-serif;
-    `;
-    document.body.prepend(errorElement);
-  } catch (e) {
-    console.error('No se pudo mostrar el mensaje de error:', e);
-  }
-}
-
-// Iniciar cuando el DOM esté listo
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', inicializar);
-} else {
-  // DOM ya está listo
-  inicializar();
-}
-
-/**
- * Registra los manejadores de mensajes para la comunicación con el padre
- * @returns {void}
- */
-function registrarManejadoresMensajes() {
-  if (!mensajeria) return;
-  
-  mensajeria.registrarControlador(CONFIG.TIPOS_MENSAJE.SISTEMA.INICIALIZACION, manejarInicializacion);
-  mensajeria.registrarControlador(CONFIG.TIPOS_MENSAJE.NAVEGACION.ESTADO, manejarEstadoNavegacion);
-  // Agregar más manejadores según sea necesario
-}
-
-/**
- * Notifica el estado actual al iframe padre
- * @param {string} accion - Acción que generó el cambio de estado
- * @param {Object} [datos={}] - Datos adicionales a incluir
- * @returns {Promise<boolean>} True si la notificación se envió correctamente
- */
-async function notificarEstado(accion, datos = {}) {
-  if (!mensajeria) return false;
-  
-  try {
-    await mensajeria.enviarMensaje('padre', CONFIG.TIPOS_MENSAJE.SISTEMA.ESTADO, {
-      accion,
-      origen: CONFIG.IFRAME_ID,
-      timestamp: new Date().toISOString(),
-      ...datos
     });
-    return true;
-  } catch (error) {
-    logger.error('Error al notificar estado:', error);
-    return false;
-  }
-}
-
-/**
- * Notifica un error al iframe padre
- * @param {string} tipo - Tipo de error
- * @param {Error} error - Objeto de error
- * @returns {Promise<void>}
- */
-async function notificarError(tipo, error) {
-  console.error(`[${CONFIG.IFRAME_ID}] Error (${tipo}):`, error);
-  
-  if (mensajeria) {
-    try {
-      await mensajeria.enviarMensaje('padre', CONFIG.TIPOS_MENSAJE.SISTEMA.ERROR, {
-        tipo,
-        mensaje: error.message,
-        stack: error.stack,
-        origen: CONFIG.IFRAME_ID,
-        timestamp: new Date().toISOString()
-      });
-    } catch (e) {
-      console.error('Error al notificar error al padre:', e);
-    }
-  }
-}
-
-/**
- * Maneja las actualizaciones de estado de navegación
- * @param {Object} mensaje - Mensaje de estado de navegación
- * @returns {Promise<void>}
- */
-async function manejarEstadoNavegacion(mensaje) {
-  logger.debug('Estado de navegación actualizado:', mensaje);
-  // Implementar lógica de actualización de navegación
-}
-
-/**
- * Inicializa la aplicación cuando el DOM esté listo
- */
-function inicializar() {
-  try {
-    App.logger.info('DOM cargado, iniciando aplicación...');
-    document.removeEventListener('DOMContentLoaded', inicializar);
-    
-    // Iniciar la aplicación
-    inicializarAplicacion().catch(error => {
-      App.logger.error('Error fatal durante la inicialización:', error);
-      mostrarError('Error al inicializar la aplicación', error);
-    });
-  } catch (error) {
-    console.error('Error crítico en la inicialización:', error);
-    mostrarError('Error crítico', error);
-  }
-}
-
-// Iniciar cuando el DOM esté listo
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', inicializar);
-} else {
-  // DOM ya está listo
-  inicializar();
-}
-
-// Exportar API pública para depuración
-window.app = Object.freeze({
-  reiniciar: inicializarAplicacion,
-  notificarEstado,
-  notificarError,
-  getEstado: () => ({ ...App.estadoApp }),
-  getConfig: () => ({ ...App.CONFIG })
-});
-
-// Importar módulos de UI de forma dinámica
-let mapaAPI = null;
-
-async function cargarModuloMapa() {
-  if (mapaAPI) return mapaAPI;
-  
-  try {
-    const modulo = await import('./js/funciones-mapa.js');
-    mapaAPI = {
-      inicializarMapa: modulo.inicializarMapa,
-      centrarMapa: modulo.centrarMapa,
-      actualizarPuntoActual: modulo.actualizarPuntoActual,
-      actualizarTramoActual: modulo.actualizarTramoActual,
-      actualizarModoMapa: modulo.actualizarModoMapa,
-      limpiarRecursos: modulo.limpiarRecursos
-    };
-    return mapaAPI;
-  } catch (error) {
-    App.logger.error('Error al cargar el módulo de mapa:', error);
-    throw error;
-  }
-}
-
-window.CONFIG = CONFIG;
-
-// Función para manejar errores de inicialización
-function manejarErrorInicializacion(error, contexto) {
-  const mensaje = `[${CONFIG.IFRAME_ID}] Error en ${contexto}: ${error.message}`;
-  console.error(mensaje, error);
-  
-  // Intentar usar el logger si está disponible
-  if (window.logger && window.logger.error) {
-    window.logger.error(mensaje, error);
-  }
-  
-  // Mostrar mensaje de error al usuario
-  try {
-    const errorContainer = document.createElement('div');
-    errorContainer.style.cssText = 'position:fixed;top:0;left:0;right:0;background:red;color:white;padding:10px;z-index:9999;';
-    errorContainer.textContent = `Error en ${contexto}: ${error.message}`;
-    document.body.prepend(errorContainer);
-  } catch (e) {
-    console.error('No se pudo mostrar el mensaje de error en la UI', e);
-  }
-}
-
-// ================== INICIALIZACIÓN ==================
-
-// Modos de operación
-const MODOS = {
-  CASA: 'casa',
-  AVENTURA: 'aventura'
-};
-
-// Tipos de puntos
-const TIPOS_PUNTO = {
-  PARADA: 'parada',
-  TRAMO: 'tramo',
-  INICIO: 'inicio'
-};
-
-// Acciones comunes
-const ACCIONES = {
-  ACTIVAR_GPS: 'activar_gps',
-  DESACTIVAR_GPS: 'desactivar_gps',
-  SELECCION_PUNTO: 'seleccion_punto',
-  CAMBIO_MODO: 'cambio_modo',
-  ERROR: 'error'
-};
-
-// Constantes de mensajería
-const MENSAJES = {
-  ERROR: {
-    CAMPO_REQUERIDO: 'Campo requerido',
-    TIPO_INVALIDO: 'Tipo de dato inválido',
-    FORMATO_INVALIDO: 'Formato inválido',
-    MENSAJE_INVALIDO: 'Mensaje inválido'
-  },
-  ESTADOS: {
-    EXITO: 'exito',
-    ERROR: 'error',
-    PENDIENTE: 'pendiente'
-  }
-};
-
-// Configuración de importaciones
-const MODULOS = {
-  mensajeria: new URL('./js/mensajeria.js', import.meta.url).toString(),
-  funcionesMapa: new URL('./js/funciones-mapa.js', import.meta.url).toString()
-};
-
-// Objeto para almacenar las importaciones
-const modulosImportados = {};
-
-/**
- * Carga un módulo de forma segura (compatibilidad)
- * @deprecated Usar importaciones estáticas en su lugar
- */
-async function cargarModulo(nombreModulo) {
-  console.warn('cargarModulo está obsoleto. Usa importaciones estáticas en su lugar.');
-  
-  switch(nombreModulo) {
-    case 'mensajeria':
-      return {
-        enviarMensaje: window.enviarMensaje,
-        inicializarMensajeria: window.inicializarMensajeria,
-        registrarControlador: window.registrarControlador,
-        TIPOS_MENSAJE: window.TIPOS_MENSAJE
-      };
-    case 'funcionesMapa':
-      return {
-        inicializarMapa,
-        centrarMapa,
-        actualizarPuntoActual,
-        actualizarTramoActual,
-        actualizarModoMapa,
-        limpiarRecursos
-      };
-    default:
-      throw new Error(`Módulo no soportado: ${nombreModulo}`);
-  }
-}
-
-// Inicializar referencias a los módulos importados
-// Configurar variables globales para compatibilidad
-window.enviarMensaje = _enviarMensaje;
-window.inicializarMensajeria = _inicializarMensajeria;
-window.registrarControlador = _registrarControlador;
-window.TIPOS_MENSAJE = _TIPOS_MENSAJE;
-// El logger ya está configurado al inicio
-
-// Función segura para registrar mensajes
-function logSeguro(nivel, mensaje, datos) {
-  if (window.logger && window.logger[nivel]) {
-    window.logger[nivel](mensaje, datos);
-  } else {
-    const timestamp = new Date().toISOString();
-    const prefijo = `[${CONFIG.IFRAME_ID}][${nivel.toUpperCase()}]`;
-    console.log(`${timestamp} ${prefijo} ${mensaje}`, datos || '');
-  }
-}
-
-// Hacer disponible la función de log segura
-try {
-  window.logSeguro = logSeguro;
-} catch (e) {
-  console.error('No se pudo configurar logSeguro:', e);
-}
-
-try {
-  // Usar el logger global
-  loggerGlobal.info('Inicializando aplicación...');
-  
-  // Inicializar el estado de la aplicación
-  const estadoApp = {
-    // Estado inicial de la aplicación
-    modo: {
-      actual: 'casa',        // 'casa' o 'aventura'
-      anterior: null,        // Último modo activo
-      ultimoCambio: null,    // Timestamp del último cambio
-      cambioEnProgreso: false // Si hay un cambio de modo en curso
-    },
-    gpsActivo: false,
-    controlesHabilitados: true,
-    puntoActual: null,
-    tramoActual: null,
-    ultimaActualizacion: null,
-    version: '1.0.0',
-    mensajeriaInicializada: false,
-    manejadoresRegistrados: false,
-    _listeners: new Set(),
-    
-    // Método para actualizar el estado de forma controlada
-    async actualizarEstado(nuevoEstado) {
-      const estadoAnterior = { ...this };
-      Object.assign(this, nuevoEstado);
-      this.ultimaActualizacion = new Date().toISOString();
-      
-      // Notificar a los listeners
-      await this._notificarCambios(estadoAnterior);
-      return true;
-    },
-    
-    // Registrar listeners para cambios de estado
-    onCambio(listener) {
-      if (typeof listener !== 'function') {
-        throw new Error('El listener debe ser una función');
+    // Puedes añadir un indicador visual del estado GPS si lo deseas
+    function actualizarEstadoGPS(gpsActivo) {
+      const botonCasa = document.getElementById('gps-casa-btn');
+      if (botonCasa) {
+        botonCasa.title = gpsActivo ? 'GPS ACTIVADO (modo aventura)' : 'GPS DESACTIVADO (modo casa)';
       }
-      this._listeners.add(listener);
-      return () => this._listeners.delete(listener);
-    },
-    
-    // Notificar cambios a los listeners
-    async _notificarCambios(estadoAnterior) {
-      const cambios = {};
-      
-      // Encontrar propiedades que cambiaron
-      for (const [key, valor] of Object.entries(this)) {
-        if (key.startsWith('_')) continue; // Ignorar propiedades privadas
-        if (valor !== estadoAnterior[key]) {
-          cambios[key] = {
-            anterior: estadoAnterior[key],
-            nuevo: valor
-          };
-        }
-      }
-      
-      // Si no hay cambios, no notificar
-      if (Object.keys(cambios).length === 0) return;
-      
-      // Notificar a los listeners
-      const notificaciones = [];
-      for (const listener of this._listeners) {
-        try {
-          notificaciones.push(listener(cambios, this));
-        } catch (error) {
-          console.error('Error en listener de estado:', error);
-        }
-      }
-      
-      // Esperar a que todos los listeners terminen
-      await Promise.allSettled(notificaciones);
-    },
-    
-    // Reiniciar al estado inicial
-    async reiniciar() {
-      const estadoAnterior = { ...this };
-      Object.assign(this, {
-        ...estadoApp,
-        mensajeriaInicializada: this.mensajeriaInicializada,
-        manejadoresRegistrados: this.manejadoresRegistrados,
-        _listeners: this._listeners,
-        _notificarCambios: this._notificarCambios
-      });
-      await this._notificarCambios(estadoAnterior);
-      return true;
-    },
-    
-    // Método para verificar si la aplicación está lista
-    get estaLista() {
-      return this.mensajeriaInicializada && this.manejadoresRegistrados;
     }
-  };
-  
-  // Hacer estadoApp globalmente accesible
-  window.estadoApp = estadoApp;
-  
-  // Inicialización de la aplicación
-  async function inicializarAplicacion() {
-    try {
-      await inicializarMensajeriaApp();
-      await registrarManejadores();
-      
-      // Notificar que la aplicación está lista
-      if (enviarMensaje) {
-        await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.INICIALIZACION_COMPLETA, {
-          origen: CONFIG.IFRAME_ID,
-          timestamp: new Date().toISOString(),
-          version: estadoApp.version
-        });
-      }
-      
-      loggerGlobal.info('Aplicación inicializada correctamente');
-      return true;
-    } catch (error) {
-      loggerGlobal.error('Error al inicializar la aplicación:', error);
-      throw error;
-    }
-  }
-  
-  /**
-   * Inicializa el sistema de mensajería
-   * @returns {Promise<boolean>} True si la inicialización fue exitosa
-   */
-  async function inicializarMensajeriaApp() {
-    // Verificar si ya está inicializado
-    if (estadoApp.mensajeriaInicializada) {
-      logger.info('La mensajería ya está inicializada');
-      return true;
-    }
-
-    try {
-      logger.info('Inicializando mensajería...');
-      
-      // Validar dependencias
-      if (typeof inicializarMensajeria !== 'function') {
-        throw new Error('La función inicializarMensajeria no está disponible');
-      }
-      
-      // Validar configuración
-      if (!CONFIG.IFRAME_ID) {
-        throw new Error('Configuración no válida: falta IFRAME_ID');
-      }
-      
-      // Configuración de mensajería
-      const configMensajeria = {
-        iframeId: CONFIG.IFRAME_ID,
-        debug: CONFIG.DEBUG,
-        logLevel: CONFIG.LOG_LEVEL,
-        reintentos: CONFIG.REINTENTOS,
-        // Asegurar que no se registren manejadores automáticamente
-        registrarManejadoresPorDefecto: false
-      };
-      
-      logger.debug('Configuración de mensajería:', configMensajeria);
-      
-      // Inicializar la mensajería
-      try {
-        await inicializarMensajeria(configMensajeria);
-        logger.info('Módulo de mensajería inicializado correctamente');
-      } catch (initError) {
-        logger.error('Error en inicializarMensajeria:', initError);
-        throw new Error(`No se pudo inicializar la mensajería: ${initError.message}`);
-      }
-      
-      // Actualizar el estado
-      estadoApp.mensajeriaInicializada = true;
-      logger.info('Mensajería inicializada correctamente');
-      return true;
-      
-    } catch (error) {
-      const errorInfo = {
-        message: error.message,
-        stack: error.stack,
-        code: error.code,
-        config: {
-          iframeId: CONFIG.IFRAME_ID,
-          debug: CONFIG.DEBUG,
-          logLevel: CONFIG.LOG_LEVEL
-        }
-      };
-      
-      logger.error('Error crítico al inicializar la mensajería:', errorInfo);
-      
-      // Notificar al padre si es posible
-      try {
-        if (typeof enviarMensaje === 'function') {
-          await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
-            tipo: 'inicializacion_mensajeria',
-            mensaje: error.message,
-            origen: CONFIG.IFRAME_ID,
-            timestamp: new Date().toISOString()
-          });
-        }
-      } catch (e) {
-        // Ignorar errores al notificar
-      }
-      
-      throw error; // Relanzar el error para que lo maneje el llamador
-    }
-  }
-  
-  /**
-   * Registra los manejadores de mensajes del sistema
-   * @returns {Promise<boolean>} True si los manejadores se registraron correctamente
-   */
-  async function registrarManejadores() {
-    const manejadores = [
-      // Mensajes del sistema
-      { tipo: TIPOS_MENSAJE.SISTEMA.CONFIGURACION, manejador: manejarConfiguracionSistema },
-      { tipo: TIPOS_MENSAJE.SISTEMA.ESTADO, manejador: manejarActualizacionEstado },
-      { tipo: TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejador: manejarCambioModo },
-      
-      // Mensajes de navegación
-      { tipo: TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, manejador: manejarCambioParada },
-      { tipo: TIPOS_MENSAJE.NAVEGACION.ESTADO, manejador: manejarEstadoNavegacion },
-      
-      // Mensajes de control
-      { tipo: TIPOS_MENSAJE.CONTROL.HABILITAR, manejador: manejarHabilitarControles },
-      { tipo: TIPOS_MENSAJE.CONTROL.DESHABILITAR, manejador: manejarDeshabilitarControles },
-      { tipo: TIPOS_MENSAJE.DATOS.ACTUALIZACION, manejador: manejarActualizacionDatos }
-    ];
-    
-    // Notificar al padre que la inicialización fue exitosa
-    try {
-      await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.INICIALIZACION_COMPLETA, {
-        version: '1.0.0',
-        timestamp: new Date().toISOString()
-      });
-      
-      logger.info('Aplicación inicializada correctamente');
-      return true;
-      
-    } catch (error) {
-      logger.error('Error durante la inicialización:', error);
-      mostrarError('No se pudo iniciar el componente.', error);
-      return false;
-    }
-  }
-  
-  // Verificar constantes de mensajería
-  if (typeof window.TIPOS_MENSAJE === 'undefined') {
-    logger.error('TIPOS_MENSAJE no está definido');
-    throw new Error('No se pudieron cargar las constantes de mensajería');
-  }
-
-  // Crear constantes extendidas para este componente
-  const TIPOS_MENSAJE_EXTENDIDOS = {
-    ...window.TIPOS_MENSAJE,
-    // Agregar tipos de mensaje específicos de este componente aquí
-    BOTON_CASA: {
-      ACTUALIZAR_ESTADO: 'BOTON_CASA.ACTUALIZAR_ESTADO',
-      CAMBIAR_MODO: 'BOTON_CASA.CAMBIAR_MODO'
-    },
-    // Mensajes específicos del componente
-    CAMBIO_PUNTO: 'hijo5:cambio_punto',
-    ACTUALIZAR_ESTADO: 'hijo5:actualizar_estado',
-    NOTIFICAR_PUNTO: 'hijo5:notificar_punto'
-  };
-  
-  // Hacer que las constantes extendidas estén disponibles globalmente
-  window.TIPOS_MENSAJE = TIPOS_MENSAJE_EXTENDIDOS;
-  logger.info('Constantes de mensajería extendidas cargadas correctamente');
-  
-} catch (error) {
-  logger.error('Error al inicializar la aplicación:', error);
-  throw error;
-}
-
-/**
- * Solicita el array de puntos de la ruta al padre a través de mensajería.
- */
-async function solicitarPuntosRuta() {
-  try {
-    logger.info('Solicitando puntos de la ruta al padre...');
-    const respuesta = await enviarMensaje('padre', TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS, {});
-    
-    if (respuesta && respuesta.exito && Array.isArray(respuesta.paradas)) {
-      logger.info(`Recibidos ${respuesta.paradas.length} puntos de ruta.`);
-      estadoApp.puntosRuta = respuesta.paradas; // Guardar los datos en el estado
-      renderizarPuntosRuta(respuesta.paradas); // Renderizar los botones
-    } else {
-      throw new Error('La respuesta del padre para los puntos de ruta no fue válida.');
-    }
-  } catch (error) {
-    logger.error('Error al solicitar los puntos de la ruta', error);
-    notificarError('solicitud_puntos_ruta', error);
-    // Opcional: Mostrar un error en la UI de este hijo.
-    const container = document.getElementById('paradas-list');
-    if(container) container.innerHTML = '<p style="color: red;">Error al cargar la ruta.</p>';
-  }
-}
-
-/**
- * Genera los botones para las paradas y tramos en la UI a partir de los datos recibidos.
- * @param {Array} puntos - El array de puntos de la ruta.
- */
-function renderizarPuntosRuta(puntos) {
-  const container = document.getElementById('paradas-list');
-  if (!container) {
-    logger.error('No se encontró el contenedor #paradas-list para renderizar los puntos.');
-    return;
-  }
-  
-  container.innerHTML = ''; // Limpiar contenido previo
-  
-  puntos.forEach(punto => {
-    const btn = document.createElement('button');
-    // Asignar clases CSS según el tipo de punto (parada, tramo, inicio)
-    const tipoClase = punto.tipo ? `${punto.tipo}-btn` : 'parada-btn';
-    btn.className = `parada-tramo-btn ${tipoClase}`;
-    btn.dataset.idPunto = punto.padreid; // Usar el padreid único para identificar el botón
-    
-    const iconClass = punto.tipo === 'parada' ? 'fa-map-marker-alt' : (punto.tipo === 'tramo' ? 'fa-route' : 'fa-flag-checkered');
-    const puntoId = punto.parada_id || punto.tramo_id || 'Inicio';
-
-    btn.innerHTML = `
-      <span class="btn-content">
-        <div class="btn-title">
-          <i class="fas ${iconClass} btn-icon"></i>
-          ${punto.tipo.charAt(0).toUpperCase() + punto.tipo.slice(1)} ${puntoId}
-        </div>
-        <div class="btn-desc">${punto.nombre || 'Sin nombre'}</div>
-      </span>
-    `;
-    container.appendChild(btn);
-  });
-  logger.info('Botones de puntos de ruta renderizados dinámicamente.');
-}
-
-/**
- * Carga el estado inicial de la aplicación (si existe)
- * @returns {Promise<void>}
- */
-async function cargarEstado() {
-  try {
-    // 1. Cargar datos de la ruta
-    logger.debug('Cargando datos de la ruta...');
-    // ... (código para cargar datos de la ruta)
-    
-    // 2. Cargar preferencias del usuario
-    logger.debug('Cargando preferencias del usuario...');
-    // ... (código para cargar preferencias)
-    
-    // 3. Actualizar el estado de la aplicación
-    logger.debug('Actualizando estado de la aplicación...');
-    // ... (código para actualizar el estado)
-    
-    logger.info('Estado inicial cargado correctamente');
-    
-  } catch (error) {
-    const errorMsg = 'Error al cargar el estado';
-    console.error(errorMsg, error);
-    await notificarError('carga_estado', error);
-    throw error; // Relanzar para que el llamador pueda manejarlo
-  }
-}
-
-// Inicializar la aplicación cuando el DOM esté listo
-
-document.addEventListener('DOMContentLoaded', async () => {
-  try {
-    // Verifica que la configuración esté disponible antes de inicializar
-    if (!window.CONFIG) {
-      window.CONFIG = {
-        IFRAME_ID: 'boton-casa',
-        DEBUG: true,
-        LOG_LEVEL: 1
-      };
-    }
-    // Inicializar mensajería
-    await inicializarMensajeria({
-      iframeId: CONFIG.IFRAME_ID,
-      logLevel: CONFIG.LOG_LEVEL,
-      debug: CONFIG.DEBUG
-    });
-    
-    logger.info('Mensajería inicializada correctamente');
-    
-    // Inicializar la aplicación
-    await inicializarAplicacion();
-  } catch (error) {
-    console.error('Error al inicializar la aplicación:', error);
-    crearObjetoError('inicializacion', error);
-  }
-});
-
-// Limpiar manejadores de eventos cuando se desmonte el iframe
-window.addEventListener('beforeunload', () => {
-  if (typeof manejadoresEventos !== 'undefined' && typeof manejadoresEventos.limpiarTodo === 'function') {
-    logger.debug('Limpiando manejadores de eventos...');
-    
-    try {
-      manejadoresEventos.limpiarTodo();
-      logger.info('Limpieza de manejadores de eventos completada');
-    } catch (error) {
-      logger.error('Error al limpiar manejadores de eventos', error);
-    }
-  }
-});
-
-/**
- * Envuelve una función con manejo de errores estándar.
- * @param {Function} fn - La función original.
- * @param {string} tipo - Tipo de error para notificar.
- * @returns {Function} Función envuelta.
- */
-function withErrorHandling(fn, tipo) {
-  return async function(...args) {
-    try {
-      return await fn(...args);
-    } catch (error) {
-      console.error(`Error en ${tipo || 'función'}:`, error);
-      throw error; // Re-lanzar el error para que pueda ser manejado por el llamador
-    }
-  };
-}
     </script>
     <style>
+    /* Estilos para el botón de casa */
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+    }
+    
+    #zona-boton-casa {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 1000;
+    }
+    
+    #gps-casa-btn {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background-color: #4CAF50;
+      border: none;
+      color: white;
+      font-size: 24px;
+      cursor: pointer;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+      transition: all 0.3s ease;
+    }
+    
+    #gps-casa-btn:hover {
+      transform: scale(1.1);
+      box-shadow: 0 6px 12px rgba(0,0,0,0.3);
+    }
+    
+    #gps-casa-btn:active {
+      transform: scale(0.95);
+    }
+    
+    #gps-casa-btn.off {
+      background-color: #f44336;
+    }
+    
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      border: 0;
+    }
+    
     /* Asegurar que no haya transiciones que interfieran */
     body, html {
       transition: none !important;
@@ -1224,6 +392,42 @@ function withErrorHandling(fn, tipo) {
         console.error('No se pudo mostrar el mensaje de error:', e);
       }
     });
+    // Registrar manejador de cambio de modo
+    if (typeof registrarControlador === 'function') {
+      registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, (msg) => {
+        const { gpsActivo } = msg.datos || {};
+        actualizarEstadoGPS(gpsActivo);
+      });
+    }
+    // Manejador para recibir el array de paradas
+    registrarControlador(TIPOS_MENSAJE.SISTEMA.INICIALIZACION, (msg) => {
+        estado.paradas = msg.datos.aventuraParadas;
+        renderizarListaParadas();
+    });
+
+    function manejarClickCambioModo() {
+        // Alterna entre modo casa y modo aventura
+        const nuevoModo = estado.modo === 'aventura' ? 'casa' : 'aventura';
+        enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, { modo: nuevoModo, origen: 'hijo5-casa' });
+    }
+
+    // Renderizar la lista solo en modo casa
+    function renderizarListaParadas() {
+        if (estado.modo !== 'casa') {
+            listaParadasContainer.style.display = 'none';
+            return;
+        }
+        listaParadasContainer.innerHTML = '';
+        estado.paradas.forEach((p, idx) => {
+            const btn = document.createElement('button');
+            btn.textContent = p.padreid;
+            btn.onclick = () => {
+                enviarMensaje('padre', TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, { punto: p });
+            };
+            listaParadasContainer.appendChild(btn);
+        });
+        listaParadasContainer.style.display = 'block';
+    }
   </script>
 </body>
 </html>
