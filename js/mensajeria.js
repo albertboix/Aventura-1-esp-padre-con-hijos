@@ -5,7 +5,7 @@
  */
 
 // Importar el logger y utilidades
-import { logger, TIPOS_MENSAJE, configurarUtils, crearObjetoError } from './js/utils.js';
+import { logger, TIPOS_MENSAJE, configurarUtils, crearObjetoError } from './utils.js';
 
 // Estado interno de la mensajería
 const estado = {
