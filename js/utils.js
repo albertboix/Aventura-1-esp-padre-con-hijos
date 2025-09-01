@@ -1,182 +1,143 @@
 /**
  * Módulo de utilidades y constantes compartidas para toda la aplicación.
- * @version 1.0.0
+ * @version 2.1.0
  */
 
-// ================== CONSTANTES COMPARTIDAS ==================
+// Importar el logger centralizado
+import { logger, LOG_LEVELS } from './logger.js';
 
-/**
- * Niveles de severidad para el logging.
- */
-export const LOG_LEVELS = {
-  DEBUG: 0,
-  INFO: 1,
-  WARN: 2,
-  ERROR: 3,
-  NONE: 4
-};
+const Utils = (() => {
 
-/**
- * Modos de operación de la aplicación.
- */
-export const MODOS = {
-  CASA: 'casa',
-  AVENTURA: 'aventura'
-};
+  const MODOS = {
+    CASA: 'casa',
+    AVENTURA: 'aventura'
+  };
 
-/**
- * Tipos de puntos en la ruta.
- */
-export const TIPOS_PUNTO = {
-  PARADA: 'parada',
-  TRAMO: 'tramo',
-  INICIO: 'inicio'
-};
+  // ================== CONSTANTES PÚBLICAS ==================
+  const TIPOS_PUNTO = {
+    PARADA: 'parada',
+    TRAMO: 'tramo',
+    INICIO: 'inicio'
+  };
 
-/**
- * Tipos de mensajes estandarizados para la comunicación entre componentes.
- */
-export const TIPOS_MENSAJE = {
-  // Mensajes de navegación
-  NAVEGACION: {
-    INICIAR: 'navegacion:iniciar',
-    INICIADA: 'navegacion:iniciada',
-    CANCELADA: 'navegacion:cancelada',
-    DESTINO_ESTABLECIDO: 'navegacion:destino_establecido',
-    LLEGADA_DETECTADA: 'navegacion:llegada_detectada',
-    ERROR: 'navegacion:error',
-    SOLICITAR_DESTINO: 'navegacion:solicitar_destino',
-    ESTADO: 'navegacion:estado'
-  },
-  
-  // Mensajes del sistema
-  SISTEMA: {
-    ERROR: 'sistema:error',
-    ESTADO: 'sistema:estado',
-    CAMBIO_MODO: 'sistema:cambio_modo',
-    CONFIGURACION: 'sistema:configuracion',
-    SINCRONIZAR: 'sistema:sincronizar'
-  },
-  
-  // Mensajes de control
-  CONTROL: {
-    ESTADO: 'control:estado',
-    HABILITAR: 'control:habilitar',
-    DESHABILITAR: 'control:deshabilitar'
-  },
-  
-  // Mensajes de GPS
-  GPS: {
-    ACTUALIZAR: 'gps:actualizar',
-    POSICION_ACTUALIZADA: 'gps:posicion_actualizada',
-    COMANDO: 'gps:comando'
-  },
-  
-  // Mensajes de audio
-  AUDIO: {
-    COMANDO: 'audio:comando',
-    REPRODUCIR: 'audio:reproducir'
-  },
-  
-  // Mensajes de retos
-  RETO: {
-    NUEVO: 'reto:nuevo',
-    MOSTRAR: 'reto:mostrar'
-  },
-  
-  // Mensajes de interfaz de usuario
-  UI: {
-    HABILITAR_CONTROLES: 'ui:habilitar_controles',
-    DESHABILITAR_CONTROLES: 'ui:deshabilitar_controles'
-  }
-};
-
-// ================== CONFIGURACIÓN GLOBAL ==================
-
-const globalConfig = {
-  logLevel: LOG_LEVELS.INFO,
-  debug: false,
-  iframeId: 'desconocido'
-};
-
-/**
- * Configura las utilidades compartidas. Debe llamarse al inicio de cada componente.
- * @param {object} config - Objeto de configuración.
- * @param {string} config.iframeId - ID del iframe actual.
- * @param {number} [config.logLevel] - Nivel de log.
- * @param {boolean} [config.debug] - Activar modo debug.
- */
-export function configurarUtils(config = {}) {
-  if (config.iframeId) globalConfig.iframeId = config.iframeId;
-  if (config.logLevel !== undefined) globalConfig.logLevel = config.logLevel;
-  if (config.debug !== undefined) globalConfig.debug = config.debug;
-}
-
-// ================== LOGGER ESTANDARIZADO ==================
-
-/**
- * Logger estandarizado para toda la aplicación.
- */
-export const logger = {
-  log: (level, message, data = null) => {
-    if (level >= globalConfig.logLevel) {
-      const levelStr = Object.keys(LOG_LEVELS).find(key => LOG_LEVELS[key] === level) || 'LOG';
-      const baseMessage = `[${globalConfig.iframeId}] ${message}`;
-      
-      const logData = data ? [baseMessage, data] : [baseMessage];
-
-      switch (level) {
-        case LOG_LEVELS.ERROR:
-          console.error(...logData);
-          break;
-        case LOG_LEVELS.WARN:
-          console.warn(...logData);
-          break;
-        case LOG_LEVELS.INFO:
-          console.info(...logData);
-          break;
-        case LOG_LEVELS.DEBUG:
-          if (globalConfig.debug) {
-            console.debug(...logData);
-          }
-          break;
-        default:
-          console.log(...logData);
-      }
-    }
-  },
-  debug: (message, data) => logger.log(LOG_LEVELS.DEBUG, message, data),
-  info: (message, data) => logger.log(LOG_LEVELS.INFO, message, data),
-  warn: (message, data) => logger.log(LOG_LEVELS.WARN, message, data),
-  error: (message, error) => {
-      const errorData = error instanceof Error ? { message: error.message, stack: error.stack } : { error };
-      logger.log(LOG_LEVELS.ERROR, message, errorData);
-  }
-};
-
-// ================== MANEJO DE ERRORES ESTANDARIZADO ==================
-
-/**
- * Crea un objeto de error estandarizado para ser enviado por mensajería.
- * @param {string} tipo - Tipo de error (ej. 'inicializacion', 'comunicacion').
- * @param {Error|string} error - El objeto de error o un mensaje.
- * @param {object} [datosAdicionales={}] - Datos contextuales.
- * @returns {object} Un objeto de error estandarizado.
- */
-export function crearObjetoError(tipo, error, datosAdicionales = {}) {
-    const errorObj = error instanceof Error ? error : new Error(String(error));
-    const errorInfo = {
-        tipo,
-        mensaje: errorObj.message,
-        stack: globalConfig.debug ? errorObj.stack : 'Stack no disponible.',
-        origen: globalConfig.iframeId,
-        ...datosAdicionales,
-        timestamp: new Date().toISOString()
-    };
+  const TIPOS_MENSAJE = {
+    // Mensajes de sistema
+    SISTEMA: {
+      INICIALIZAR: 'sistema:inicializar',
+      LISTO: 'sistema:listo',
+      ERROR: 'sistema:error',
+      CONFIGURACION: 'sistema:configuracion'
+    },
     
-    logger.error(`Error creado: ${tipo}`, errorInfo);
-    return errorInfo;
-}
+    // Mensajes de navegación
+    NAVEGACION: {
+      INICIAR: 'navegacion:iniciar',
+      DETENER: 'navegacion:detener',
+      ACTUALIZAR: 'navegacion:actualizar',
+      INICIADA: 'navegacion:iniciada',
+      CANCELADA: 'navegacion:cancelada',
+      DESTINO_ESTABLECIDO: 'navegacion:destino_establecido',
+      LLEGADA_DETECTADA: 'navegacion:llegada_detectada',
+      SOLICITAR_DESTINO: 'navegacion:solicitar_destino',
+      ESTADO: 'navegacion:estado'
+    },
+    
+    // Mensajes de control
+    CONTROL: {
+      ESTADO: 'control:estado',
+      HABILITAR: 'control:habilitar',
+      DESHABILITAR: 'control:deshabilitar'
+    },
+    
+    // Mensajes de GPS
+    GPS: {
+      ACTUALIZAR: 'gps:actualizar',
+      POSICION_ACTUALIZADA: 'gps:posicion_actualizada',
+      COMANDO: 'gps:comando'
+    },
+    
+    // Mensajes de audio
+    AUDIO: {
+      COMANDO: 'audio:comando',
+      REPRODUCIR: 'audio:reproducir'
+    },
+    
+    // Mensajes de retos
+    RETO: {
+      NUEVO: 'reto:nuevo',
+      MOSTRAR: 'reto:mostrar'
+    },
+    
+    // Mensajes de interfaz de usuario
+    UI: {
+      ACTUALIZAR: 'ui:actualizar',
+      MOSTRAR: 'ui:mostrar',
+      OCULTAR: 'ui:ocultar',
+      HABILITAR: 'ui:habilitar',
+      DESHABILITAR: 'ui:deshabilitar'
+    }
+  };
 
-// Si este archivo es solo un stub, no es necesario modificarlo.
-// Si se usa como utilitario, importa desde './js/utils.js' y configura el logger si corresponde.
+  // ================== CONFIGURACIÓN PRIVADA ==================
+  let config = {
+    iframeId: 'unknown',
+    logLevel: LOG_LEVELS.INFO,
+    debug: false
+  };
+
+  // ================== API PÚBLICA ==================
+  return {
+    // Constantes
+    LOG_LEVELS,
+    MODOS,
+    TIPOS_PUNTO,
+    TIPOS_MENSAJE,
+
+    // Configuración
+    configurarUtils(newConfig = {}) {
+      config = { ...config, ...newConfig };
+      
+      // Configurar el logger
+      logger.configurarLogger({
+        iframeId: config.iframeId,
+        logLevel: config.logLevel,
+        debug: config.debug
+      });
+      
+      return config;
+    },
+
+    // Logger - Usando el módulo logger.js
+    logger,
+
+    // Utilidades de error
+    crearObjetoError(tipo, error, datosAdicionales = {}) {
+      const timestamp = new Date().toISOString();
+      
+      // Si el error ya es un objeto estandarizado, devolverlo tal cual
+      if (error && typeof error === 'object' && error.tipo && error.timestamp) {
+        return { ...error, ...datosAdicionales };
+      }
+      
+      // Crear un nuevo objeto de error estandarizado
+      return {
+        tipo,
+        timestamp,
+        mensaje: error?.message || String(error),
+        stack: error?.stack,
+        ...datosAdicionales
+      };
+    }
+  };
+})();
+
+// Exportar la API pública
+export const {
+  LOG_LEVELS,
+  MODOS,
+  TIPOS_PUNTO,
+  TIPOS_MENSAJE,
+  configurarUtils,
+  logger,
+  crearObjetoError
+} = Utils;
