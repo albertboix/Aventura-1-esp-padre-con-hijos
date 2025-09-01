@@ -95,14 +95,16 @@ const Utils = (() => {
     // Configuración
     configurarUtils(newConfig = {}) {
       config = { ...config, ...newConfig };
-      
-      // Configurar el logger
-      logger.configurarLogger({
-        iframeId: config.iframeId,
-        logLevel: config.logLevel,
-        debug: config.debug
-      });
-      
+      try {
+        logger.configurarLogger({
+          iframeId: config.iframeId,
+          logLevel: config.logLevel,
+          debug: config.debug
+        });
+      } catch (error) {
+        console.error('[UTILS] Error al configurar el logger:', error);
+        alert('No se pudo configurar el logger. Revisa la consola.');
+      }
       return config;
     },
 
