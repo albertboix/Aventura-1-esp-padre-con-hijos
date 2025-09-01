@@ -9,7 +9,7 @@ import {
   enviarMensaje, 
   registrarControlador,
   TIPOS_MENSAJE 
-} from './js/mensajeria.js';
+} from './mensajeria.js';
 
 // Estado del módulo
 let mapa = null;
@@ -402,7 +402,7 @@ function prepararMarcadoresParadas(arrayParadas) {
             marcadores.push({
                 id: parada.parada_id,
                 lat: coordenadas.lat,
-                lng: coordenadas.lng,
+                lng: coordenidas.lng,
                 titulo: obtenerNombreParada(parada),
                 icono: parada.tipo === "inicio" ? 'inicio' : 'parada',
                 datos: {
