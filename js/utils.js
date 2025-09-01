@@ -88,7 +88,7 @@ const Utils = (() => {
   // ================== API PÚBLICA ==================
   return {
     // Constantes
-    LOG_LEVELS,
+    LOG_LEVELS, // solo referencia la importación, no redeclares
     MODOS,
     TIPOS_PUNTO,
     TIPOS_MENSAJE,
