@@ -106,9 +106,6 @@ const Utils = (() => {
       return config;
     },
 
-    // Logger - Usando el módulo logger.js
-    logger,
-
     // Utilidades de error
     crearObjetoError(tipo, error, datosAdicionales = {}) {
       const timestamp = new Date().toISOString();
