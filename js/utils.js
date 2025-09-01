@@ -132,7 +132,6 @@ const Utils = (() => {
 
 // Exportar la API pública
 export const {
-  LOG_LEVELS,
   MODOS,
   TIPOS_PUNTO,
   TIPOS_MENSAJE,
