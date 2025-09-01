@@ -152,7 +152,7 @@ async function inicializarMapa(opciones = {}) {
     
     estadoMapa.inicializado = true;
     console.log('[MAPA] Mapa inicializado correctamente');
-    return true;
+    return estadoMapa.mapa; // <-- DEVUELVE LA INSTANCIA DEL MAPA
     
   } catch (error) {
     console.error('[MAPA] Error fatal en inicializarMapa:', error);
