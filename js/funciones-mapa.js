@@ -98,52 +98,65 @@ async function inicializarMapa(opciones = {}) {
     estadoMapa.arrayParadas = arrayParadas;
     procesarArrayParadas(arrayParadas);
     
-    // Crear el mapa si se proporciona un contenedor
-    if (opciones.contenedorMapa) {
-      try {
-        estadoMapa.mapa = crearMapaConElementos({
-          contenedor: opciones.contenedorMapa,
-          zoom: opciones.zoomInicial || 14,
-          centro: opciones.centroInicial || [39.4699, -0.3763] // Valencia por defecto
-        });
-        
-        // Registrar manejadores de mensajes si no están registrados
-        if (!estadoMapa.manejadoresRegistrados) {
-          registrarManejadoresMensajes();
-          estadoMapa.manejadoresRegistrados = true;
-        }
-        
-        // Notificar que el mapa está listo
-        if (enviarMensaje) {
-          await enviarMensaje('padre', 'mapa:inicializado', {
-            exito: true,
-            timestamp: new Date().toISOString(),
-            numParadas: arrayParadas.length
-          });
-        }
-        
-        estadoMapa.inicializado = true;
-        console.log('[MAPA] Mapa inicializado correctamente');
-        return true;
-        
-      } catch (error) {
-        console.error('[MAPA] Error al inicializar el mapa:', error);
-        if (enviarMensaje) {
-          await enviarMensaje('padre', 'mapa:error', {
-            tipo: 'inicializacion',
-            mensaje: error.message,
-            stack: error.stack,
-            timestamp: new Date().toISOString()
-          });
-        }
-        throw error;
-      }
+    // Verificar contenedor antes de crear el mapa
+    let contenedorId = opciones.containerId || opciones.contenedorMapa || 'mapa';
+    let mapContainer = document.getElementById(contenedorId);
+    if (!mapContainer) {
+      console.error(`${logPrefix} No se encontró el contenedor del mapa (${contenedorId})`);
+      mapContainer = document.createElement('div');
+      mapContainer.id = contenedorId;
+      mapContainer.style.width = '100vw';
+      mapContainer.style.height = '100vh';
+      document.body.appendChild(mapContainer);
+    }
+    if (mapContainer.offsetWidth === 0 || mapContainer.offsetHeight === 0) {
+      mapContainer.style.width = '100vw';
+      mapContainer.style.height = '100vh';
+      console.warn(`${logPrefix} El contenedor del mapa tenía dimensiones 0, se han corregido`);
     }
     
-    return false;
+    // Validar array de paradas
+    if (!arrayParadas || !Array.isArray(arrayParadas) || arrayParadas.length === 0) {
+      console.error(`${logPrefix} El array de paradas está vacío o no es válido`);
+      alert('No se han podido cargar las paradas. El mapa no puede mostrarse.');
+      return null;
+    }
+    
+    // Crear el mapa y devolver la instancia
+    estadoMapa.mapa = crearMapaConElementos({
+      containerId: contenedorId,
+      marcadores: prepararMarcadoresParadas(arrayParadas),
+      rutas: prepararRutasTramos(arrayParadas),
+      ...opciones
+    });
+    if (!estadoMapa.mapa) {
+      console.error(`${logPrefix} No se pudo crear la instancia de Leaflet`);
+      alert('No se pudo inicializar el mapa.');
+      return null;
+    }
+    
+    // Registrar manejadores de mensajes si no están registrados
+    if (!estadoMapa.manejadoresRegistrados) {
+      registrarManejadoresMensajes();
+      estadoMapa.manejadoresRegistrados = true;
+    }
+    
+    // Notificar que el mapa está listo
+    if (enviarMensaje) {
+      await enviarMensaje('padre', 'mapa:inicializado', {
+        exito: true,
+        timestamp: new Date().toISOString(),
+        numParadas: arrayParadas.length
+      });
+    }
+    
+    estadoMapa.inicializado = true;
+    console.log('[MAPA] Mapa inicializado correctamente');
+    return true;
     
   } catch (error) {
     console.error('[MAPA] Error fatal en inicializarMapa:', error);
+    alert('Error crítico al inicializar el mapa: ' + error.message);
     estadoMapa.inicializado = false;
     
     if (enviarMensaje) {
@@ -167,7 +180,8 @@ async function inicializarMapa(opciones = {}) {
 function procesarArrayParadas(arrayParadas) {
     if (!arrayParadas || !Array.isArray(arrayParadas) || arrayParadas.length === 0) {
         console.error('[MAPA] Array de paradas inválido o vacío');
-        return;
+        alert('No se han podido cargar las paradas. El mapa no puede mostrarse.');
+        return false;
     }
     
     console.log(`[MAPA] Procesando array con ${arrayParadas.length} paradas/tramos`);
