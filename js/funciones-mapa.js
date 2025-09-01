@@ -9,7 +9,7 @@ import {
   enviarMensaje, 
   registrarControlador,
   TIPOS_MENSAJE 
-} from './mensajeria.js';
+} from './js/mensajeria.js';
 
 // Estado del módulo
 let mapa = null;
@@ -36,7 +36,7 @@ const estadoMapa = {
 };
 
 /**
- * Inicializa el sistema de mapa con las paradas y coordenadas
+ * Inicializa el sistema de mapa with las paradas y coordenadas
  * @param {Object} opciones - Opciones de inicialización
  * @returns {Promise<boolean>} - True si la inicialización fue exitosa
  */
@@ -394,16 +394,11 @@ function actualizarElementosMapa(nuevoArray) {
  */
 function prepararMarcadoresParadas(arrayParadas) {
     const marcadores = [];
-    
-    // Filtrar solo paradas (no tramos)
-    const paradas = arrayParadas.filter(item => 
-        item.tipo === "parada" || item.tipo === "inicio");
-    
+    const paradas = arrayParadas.filter(item => item.tipo === "parada" || item.tipo === "inicio");
     paradas.forEach(parada => {
-        // Buscar coordenadas asociadas a esta parada
         const coordenadas = buscarCoordenadasParada(parada.parada_id);
-        
         if (coordenadas && coordenadas.lat && coordenadas.lng) {
+            const { audio, reto } = obtenerAudioRetoParada(parada.parada_id);
             marcadores.push({
                 id: parada.parada_id,
                 lat: coordenadas.lat,
@@ -411,16 +406,16 @@ function prepararMarcadoresParadas(arrayParadas) {
                 titulo: obtenerNombreParada(parada),
                 icono: parada.tipo === "inicio" ? 'inicio' : 'parada',
                 datos: {
-                    audio_id: parada.audio_id,
-                    reto_id: parada.reto_id,
-                    retos: parada.retos,
-                    tipo: parada.tipo
+                  audio_id: audio,
+                  reto_id: reto,
+                  retos: parada.retos,
+                  tipo: parada.tipo,
+                  imagen: coordenadas.imagen,
+                  video: coordenadas.video
                 }
             });
         }
     });
-    
-    console.log(`[MAPA] Preparados ${marcadores.length} marcadores de paradas`);
     return marcadores;
 }
 
@@ -430,9 +425,15 @@ function prepararMarcadoresParadas(arrayParadas) {
  * @returns {Object|null} - Coordenadas {lat, lng} o null
  */
 function buscarCoordenadasParada(paradaId) {
-    // Esta función debería implementarse según la estructura de datos de coordenadas
-    // Por ahora, devolvemos null como placeholder
-    console.log(`[MAPA] Buscando coordenadas para parada ${paradaId}`);
+    const parada = coordenadasParadas.find(p => p.id === paradaId);
+    if (parada && parada.coordenadas) {
+      return parada.coordenadas;
+    }
+    // Fallback: buscar en array del padre
+    const paradaPadre = arrayParadasPadre.find(p => p.parada_id === paradaId);
+    if (paradaPadre && paradaPadre.coordenadas) {
+      return paradaPadre.coordenadas;
+    }
     return null;
 }
 
@@ -442,60 +443,42 @@ function buscarCoordenadasParada(paradaId) {
  * @returns {string} - Nombre de la parada
  */
 function obtenerNombreParada(parada) {
-    // Esta función debería implementarse según la estructura de datos de paradas
-    return parada.nombre || `Parada ${parada.parada_id}`;
+  if (parada && parada.nombre) return parada.nombre;
+  // Buscar en array del padre
+  const paradaPadre = arrayParadasPadre.find(p => p.parada_id === parada.parada_id);
+  if (paradaPadre && paradaPadre.nombre) return paradaPadre.nombre;
+  return parada.parada_id || 'Parada';
 }
 
-/**
- * Prepara las rutas para los tramos
- * @param {Array} arrayParadas - Array de paradas
- * @returns {Array} - Array de rutas
- */
+// Variables para la chincheta de destino y el usuario
+let marcadorDestino = null;
+let marcadorUsuario = null;
+
+// Añade la polyline verde de 6px para los tramos
 function prepararRutasTramos(arrayParadas) {
     const rutas = [];
-    
-    // Filtrar solo tramos
     const tramos = arrayParadas.filter(item => item.tipo === "tramo");
-    
-    tramos.forEach(tramo => {
-        // Buscar coordenadas asociadas a este tramo
+    trmos.forEach(tramo => {
         const coordenadas = buscarCoordenadasTramo(tramo.tramo_id);
-        
         if (coordenadas && coordenadas.puntos && coordenadas.puntos.length > 1) {
             rutas.push({
                 id: tramo.tramo_id,
                 puntos: coordenadas.puntos,
-                color: '#3388ff',
-                grosor: 3,
+                color: '#27ae60', // Verde
+                grosor: 6,        // 6px
                 datos: {
                     audio_id: tramo.audio_id,
-                    tipo: tramo.tipo
+                    tipo: tramo.tipo,
+                    imagen: coordenadas.imagen,
+                    video: coordenadas.video
                 }
             });
         }
     });
-    
-    console.log(`[MAPA] Preparadas ${rutas.length} rutas de tramos`);
     return rutas;
 }
 
-/**
- * Busca las coordenadas de un tramo por su ID
- * @param {string} tramoId - ID del tramo
- * @returns {Object|null} - Objeto con puntos de la ruta o null
- */
-function buscarCoordenadasTramo(tramoId) {
-    // Esta función debería implementarse según la estructura de datos de coordenadas
-    // Por ahora, devolvemos null como placeholder
-    console.log(`[MAPA] Buscando coordenadas para tramo ${tramoId}`);
-    return null;
-}
-
-/**
- * Crea el mapa y añade los elementos
- * @param {Object} opciones - Opciones para crear el mapa
- * @returns {L.Map} Instancia del mapa de Leaflet
- */
+// Dibuja las polylines en el mapa
 function crearMapaConElementos(opciones = {}) {
     console.log('[MAPA] Creando mapa con opciones:', opciones);
     
@@ -541,6 +524,35 @@ function crearMapaConElementos(opciones = {}) {
             maxZoom: mapOptions.maxZoom
         }).addTo(map);
         
+        // Añadir marcadores de paradas
+        if (opciones.marcadores) {
+            opciones.marcadores.forEach(marcadorInfo => {
+                const marker = L.marker([marcadorInfo.lat, marcadorInfo.lng], {
+                    title: marcadorInfo.titulo,
+                    icon: L.icon({
+                        iconUrl: 'img/chincheta-roja.png', // Chincheta roja por defecto
+                        iconSize: [32, 32],
+                        iconAnchor: [16, 32]
+                    })
+                }).addTo(map);
+                marcadoresParadas.set(marcadorInfo.id, marker);
+            });
+        }
+
+        // Añadir polylines de tramos
+        if (opciones.rutas) {
+            opciones.rutas.forEach(rutaInfo => {
+                L.polyline(
+                    rutaInfo.puntos.map(p => [p.lat, p.lng]),
+                    {
+                        color: rutaInfo.color || '#27ae60',
+                        weight: rutaInfo.grosor || 6,
+                        opacity: 0.9
+                    }
+                ).addTo(map);
+            });
+        }
+        
         console.log('[MAPA] Mapa creado exitosamente');
         return map;
         
@@ -549,6 +561,46 @@ function crearMapaConElementos(opciones = {}) {
         throw error;
     }
 }
+
+// Actualiza la chincheta de destino según la distancia del usuario
+function actualizarChinchetaDestino(paradaId, usuarioCoords) {
+    const parada = buscarCoordenadasParada(paradaId);
+    if (!parada) return;
+
+    // Si no existe el marcador, créalo
+    if (!marcadorDestino) {
+        marcadorDestino = L.marker([parada.lat, parada.lng], {
+            icon: L.icon({
+                iconUrl: 'img/chincheta-roja.png',
+                iconSize: [32, 32],
+                iconAnchor: [16, 32]
+            })
+        }).addTo(mapa);
+    } else {
+        marcadorDestino.setLatLng([parada.lat, parada.lng]);
+    }
+
+    // Si hay coordenadas del usuario, calcula la distancia
+    if (usuarioCoords) {
+        const distancia = mapa.distance([parada.lat, parada.lng], [usuarioCoords.lat, usuarioCoords.lng]);
+        if (distancia <= 30) {
+            marcadorDestino.setIcon(L.icon({
+                iconUrl: 'img/chincheta-verde.png',
+                iconSize: [32, 32],
+                iconAnchor: [16, 32]
+            }));
+        } else {
+            marcadorDestino.setIcon(L.icon({
+                iconUrl: 'img/chincheta-roja.png',
+                iconSize: [32, 32],
+                iconAnchor: [16, 32]
+            }));
+        }
+    }
+}
+
+// Ejemplo de uso: llamar a actualizarChinchetaDestino cada vez que cambie la ubicación del usuario
+// actualizarChinchetaDestino(paradaIdActual, { lat: usuarioLat, lng: usuarioLng });
 
 /**
  * Registra manejadores de mensajes para eventos de navegación
@@ -890,6 +942,36 @@ const CONFIG = {
   LOG_LEVEL: 1, // 0: debug, 1: info, 2: warn, 3: error
 };
 
+// Añadir referencia global para acceso a datos de hijo2 (coordenadas)
+let coordenadasParadas = [];
+if (window.hijo2 && window.hijo2.COORDENADAS_PARADAS) {
+  coordenadasParadas = window.hijo2.COORDENADAS_PARADAS;
+} else if (window.COORDENADAS_PARADAS) {
+  coordenadasParadas = window.COORDENADAS_PARADAS;
+}
+
+// Añadir referencia global para acceso a datos de hijo3 (audios)
+let audiosParadas = [];
+if (window.hijo3 && window.hijo3.audioFiles) {
+  audiosParadas = window.hijo3.audioFiles;
+} else if (window.audioFiles) {
+  audiosParadas = window.audioFiles;
+}
+
+// Añadir referencia global para acceso a datos de hijo4 (retos/puzzles)
+let retosParadas = [];
+if (window.hijo4 && window.hijo4.retos) {
+  retosParadas = window.hijo4.retos;
+} else if (window.retos) {
+  retosParadas = window.retos;
+}
+
+// Usar el array completo del padre para tramos y paradas
+let arrayParadasPadre = [];
+if (window.AVENTURA_PARADAS) {
+  arrayParadasPadre = window.AVENTURA_PARADAS;
+}
+
 /**
  * Notifica un error al padre a través del sistema de mensajería.
  * @param {string} tipo - El tipo de error (p.ej., 'inicializacion', 'cambio_modo').
@@ -1046,6 +1128,47 @@ function actualizarPuntoActual(coordenadas, opciones = {}) {
         return false;
     }
 }
+
+// Nueva función para dibujar la polyline desde la ubicación del usuario hasta la última parada/tramo completada
+let polylineUsuarioUltimaParada = null;
+
+function dibujarPolylineUsuarioUltimaParada(ubicacionUsuario, paradaActualIndex = 0) {
+    // Obtener la parada/tramo actual
+    const paradaActual = arrayParadasLocal?.[paradaActualIndex] || arrayParadasLocal?.[0];
+    if (!ubicacionUsuario || !paradaActual) return;
+
+    // Obtener coordenadas de la parada/tramo
+    let destinoCoords = null;
+    if (paradaActual.tipo === "parada" || paradaActual.tipo === "inicio") {
+        destinoCoords = buscarCoordenadasParada(paradaActual.parada_id);
+    } else if (paradaActual.tipo === "tramo") {
+        // Para tramos, puedes usar el inicio o el fin
+        destinoCoords = buscarCoordenadasTramo(paradaActual.tramo_id)?.fin;
+    }
+    if (!destinoCoords) return;
+
+    // Eliminar polyline anterior si existe
+    if (polylineUsuarioUltimaParada) {
+        mapa.removeLayer(polylineUsuarioUltimaParada);
+        polylineUsuarioUltimaParada = null;
+    }
+
+    // Dibujar nueva polyline
+    polylineUsuarioUltimaParada = L.polyline([
+        [ubicacionUsuario.lat, ubicacionUsuario.lng],
+        [destinoCoords.lat, destinoCoords.lng]
+    ], {
+        color: '#0077cc',
+        weight: 5,
+        opacity: 0.8,
+        dashArray: '10,10'
+    }).addTo(mapa);
+}
+
+// Ejemplo de uso: llama a esta función cada vez que cambie la ubicación del usuario
+// dibujarPolylineUsuarioUltimaParada({ lat: usuarioLat, lng: usuarioLng }, estadoApp.paradaActual);
+
+// Si no se ha empezado, estadoApp.paradaActual será 0 y mostrará P-0 por defecto
 
 // Exportar funciones públicas
 export {
