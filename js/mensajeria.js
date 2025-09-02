@@ -1,11 +1,18 @@
 /**
  * Módulo de mensajería para comunicación entre iframes.
  * @module Mensajeria
- * @version 2.1.0
+ * @version 2.1.1
  */
 
-// Importar el logger y utilidades
-import { logger, TIPOS_MENSAJE, configurarUtils, crearObjetoError } from './utils.js';
+/**
+ * Módulo de mensajería para comunicación entre iframes.
+ * @version 2.1.1
+ */
+
+// Importar utilidades y configuración
+import { configurarUtils, crearObjetoError } from './utils.js';
+import { TIPOS_MENSAJE } from './constants.js';
+import logger from './logger.js';
 
 // Estado interno de la mensajería
 const estado = {
@@ -32,7 +39,15 @@ export async function inicializarMensajeria(config = {}) {
   configurarUtils({ iframeId: estado.iframeId, logLevel: estado.logLevel, debug: estado.debug });
   window.addEventListener('message', recibirMensaje, false);
   estado.inicializado = true;
-  logger.info(`[Mensajeria] Inicializada para ${estado.iframeId}`);
+  
+  // Configurar el logger
+  logger.configure({
+    iframeId: estado.iframeId,
+    logLevel: estado.logLevel,
+    debug: estado.debug
+  });
+  
+  logger.info(`Mensajería inicializada para ${estado.iframeId}`);
 }
 
 /**
@@ -136,5 +151,12 @@ function recibirMensaje(event) {
   }
 }
 
-// Exportar tipos de mensaje y logger
-export { TIPOS_MENSAJE, logger, configurarUtils, crearObjetoError };
+// Exportar solo las funciones necesarias
+export { inicializarMensajeria, registrarControlador, enviarMensaje };
+
+export default {
+  inicializarMensajeria,
+  registrarControlador,
+  enviarMensaje,
+  TIPOS_MENSAJE // Re-exportar para compatibilidad
+};
