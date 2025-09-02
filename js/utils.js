@@ -1,82 +1,19 @@
 /**
  * Módulo de utilidades y constantes compartidas para toda la aplicación.
- * @version 2.1.0
+ * @version 2.1.1
  */
 
-// Importar el logger centralizado
-import { logger, LOG_LEVELS } from './logger.js';
+// Importar configuración compartida
+import { LOG_LEVELS, TIPOS_MENSAJE, MODOS } from './constants.js';
+import logger from './logger.js';
 
 const Utils = (() => {
-
-  const MODOS = {
-    CASA: 'casa',
-    AVENTURA: 'aventura'
-  };
-
   // ================== CONSTANTES PÚBLICAS ==================
-  const TIPOS_PUNTO = {
+  const TIPOS_PUNTO = Object.freeze({
     PARADA: 'parada',
     TRAMO: 'tramo',
     INICIO: 'inicio'
-  };
-
-  const TIPOS_MENSAJE = {
-    // Mensajes de sistema
-    SISTEMA: {
-      INICIALIZAR: 'sistema:inicializar',
-      LISTO: 'sistema:listo',
-      ERROR: 'sistema:error',
-      CONFIGURACION: 'sistema:configuracion'
-    },
-    
-    // Mensajes de navegación
-    NAVEGACION: {
-      INICIAR: 'navegacion:iniciar',
-      DETENER: 'navegacion:detener',
-      ACTUALIZAR: 'navegacion:actualizar',
-      INICIADA: 'navegacion:iniciada',
-      CANCELADA: 'navegacion:cancelada',
-      DESTINO_ESTABLECIDO: 'navegacion:destino_establecido',
-      LLEGADA_DETECTADA: 'navegacion:llegada_detectada',
-      SOLICITAR_DESTINO: 'navegacion:solicitar_destino',
-      ESTADO: 'navegacion:estado'
-    },
-    
-    // Mensajes de control
-    CONTROL: {
-      ESTADO: 'control:estado',
-      HABILITAR: 'control:habilitar',
-      DESHABILITAR: 'control:deshabilitar'
-    },
-    
-    // Mensajes de GPS
-    GPS: {
-      ACTUALIZAR: 'gps:actualizar',
-      POSICION_ACTUALIZADA: 'gps:posicion_actualizada',
-      COMANDO: 'gps:comando'
-    },
-    
-    // Mensajes de audio
-    AUDIO: {
-      COMANDO: 'audio:comando',
-      REPRODUCIR: 'audio:reproducir'
-    },
-    
-    // Mensajes de retos
-    RETO: {
-      NUEVO: 'reto:nuevo',
-      MOSTRAR: 'reto:mostrar'
-    },
-    
-    // Mensajes de interfaz de usuario
-    UI: {
-      ACTUALIZAR: 'ui:actualizar',
-      MOSTRAR: 'ui:mostrar',
-      OCULTAR: 'ui:ocultar',
-      HABILITAR: 'ui:habilitar',
-      DESHABILITAR: 'ui:deshabilitar'
-    }
-  };
+  });
 
   // ================== CONFIGURACIÓN PRIVADA ==================
   let config = {
@@ -93,31 +30,35 @@ const Utils = (() => {
     TIPOS_MENSAJE,
 
     // Configuración
-    configurarUtils(newConfig = {}) {
+    configurarUtils: (newConfig = {}) => {
       config = { ...config, ...newConfig };
-      try {
-        logger.configurarLogger({
+      
+      // Configurar el logger con la nueva configuración
+      if (logger && typeof logger.configure === 'function') {
+        logger.configure({
           iframeId: config.iframeId,
           logLevel: config.logLevel,
           debug: config.debug
         });
-      } catch (error) {
-        console.error('[UTILS] Error al configurar el logger:', error);
-        alert('No se pudo configurar el logger. Revisa la consola.');
       }
+      
       return config;
     },
 
     // Utilidades de error
-    crearObjetoError(tipo, error, datosAdicionales = {}) {
+    crearObjetoError: (tipo, error, datosAdicionales = {}) => {
       const timestamp = new Date().toISOString();
       
-      // Si el error ya es un objeto estandarizado, devolverlo tal cual
-      if (error && typeof error === 'object' && error.tipo && error.timestamp) {
+      // Si ya es un objeto de error estándar
+      if (error && error.timestamp) {
         return { ...error, ...datosAdicionales };
       }
       
-      // Crear un nuevo objeto de error estandarizado
+      // Registrar el error en el logger
+      if (logger && typeof logger.error === 'function') {
+        logger.error(`Error (${tipo}):`, error);
+      }
+      
       return {
         tipo,
         timestamp,
