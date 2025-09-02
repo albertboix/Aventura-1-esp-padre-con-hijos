@@ -295,6 +295,9 @@ export async function inicializarAplicacion() {
   }
 }
 
+// Exportar la configuración
+export { CONFIG };
+
 // Inicializar automáticamente si se carga este módulo directamente
 if (typeof window !== 'undefined' && document.readyState !== 'loading') {
   // El DOM ya está listo, inicializar directamente
