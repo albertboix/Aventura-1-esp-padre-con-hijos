@@ -97,7 +97,7 @@
     <!-- SCRIPT PRINCIPAL UNIFICADO DE LA APLICACIÓN -->
     <script type="module">
 import { logger, configurarUtils, crearObjetoError } from './js/utils.js';
-import { TIPOS_MENSAJE, inicializarMensajeria, registrarControlador, enviarMensaje } from './js/mensajeria.js';
+import { TIPOS_MENSAJE, inicializarMensajeria, registrarControlador, enviarMensaje } from './js/mensajeria.js?v=2';
 import { inicializarMapa } from './js/funciones-mapa.js';
 import { CONFIG } from './js/app.js';
 
@@ -356,17 +356,117 @@ const MAP_CONFIG = {
         }
 
         // 6. REGISTRO DE CONTROLADORES DE MENSAJES
+        // Función para manejar actualizaciones del mapa
+        function manejarActualizacionMapa(msg) {
+            const { accion, datos } = msg.datos || {};
+            
+            if (!window.mapa) {
+                console.warn('El mapa no está inicializado');
+                return;
+            }
+            
+            try {
+                switch (accion) {
+                    case 'marcador':
+                        // Añadir o actualizar marcador
+                        if (datos.id && datos.lat && datos.lng) {
+                            if (!window.mapa._marcadores) window.mapa._marcadores = {};
+                            
+                            // Eliminar marcador existente si lo hay
+                            if (window.mapa._marcadores[datos.id]) {
+                                window.mapa.removeLayer(window.mapa._marcadores[datos.id]);
+                            }
+                            
+                            // Crear nuevo marcador
+                            const marcador = L.marker([datos.lat, datos.lng], {
+                                title: datos.titulo || '',
+                                icon: datos.icono || L.divIcon({className: 'marcador-personalizado'})
+                            });
+                            
+                            if (datos.popup) {
+                                marcador.bindPopup(datos.popup);
+                                if (datos.abrirPopup) {
+                                    marcador.openPopup();
+                                }
+                            }
+                            
+                            marcador.addTo(window.mapa);
+                            window.mapa._marcadores[datos.id] = marcador;
+                            
+                            // Centrar en el marcador si se solicita
+                            if (datos.centrar) {
+                                window.mapa.setView([datos.lat, datos.lng], datos.zoom || window.mapa.getZoom());
+                            }
+                        }
+                        break;
+                        
+                    case 'limpiar_marcadores':
+                        // Limpiar todos los marcadores
+                        if (window.mapa._marcadores) {
+                            Object.values(window.mapa._marcadores).forEach(marker => {
+                                window.mapa.removeLayer(marker);
+                            });
+                            window.mapa._marcadores = {};
+                        }
+                        break;
+                        
+                    case 'centrar':
+                        // Centrar el mapa en una ubicación
+                        if (datos.lat && datos.lng) {
+                            window.mapa.setView(
+                                [datos.lat, datos.lng],
+                                datos.zoom || window.mapa.getZoom()
+                            );
+                        }
+                        break;
+                        
+                    case 'polilinea':
+                        // Dibujar una polilínea
+                        if (datos.coordenadas && datos.coordenadas.length > 0) {
+                            const polyline = L.polyline(datos.coordenadas, {
+                                color: datos.color || '#3388ff',
+                                weight: datos.ancho || 3,
+                                opacity: datos.opacidad || 0.7
+                            }).addTo(window.mapa);
+                            
+                            // Guardar referencia si se necesita actualizar después
+                            if (datos.id) {
+                                if (!window.mapa._polilineas) window.mapa._polilineas = {};
+                                if (window.mapa._polilineas[datos.id]) {
+                                    window.mapa.removeLayer(window.mapa._polilineas[datos.id]);
+                                }
+                                window.mapa._polilineas[datos.id] = polyline;
+                            }
+                            
+                            // Ajustar la vista para mostrar toda la polilínea
+                            if (datos.ajustarVista) {
+                                window.mapa.fitBounds(polyline.getBounds(), {
+                                    padding: datos.padding || [50, 50]
+                                });
+                            }
+                        }
+                        break;
+                        
+                    default:
+                        console.warn(`Acción de mapa no soportada: ${accion}`);
+                }
+            } catch (error) {
+                console.error('Error al actualizar el mapa:', error);
+            }
+        }
+        
         function registrarControladoresTotales() {
             const controladores = {
                 [TIPOS_MENSAJE.SISTEMA.ERROR]: manejarErrorSistema,
                 [TIPOS_MENSAJE.SISTEMA.INICIALIZACION_COMPLETADA]: manejarHijoInicializado,
                 [TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO]: manejarCambioModo,
                 [TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS]: manejarSolicitudArrayParadas,
-                [TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA]: manejarSeleccionPuntoCasa, // Renombrado para claridad
+                [TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA]: manejarSeleccionPuntoCasa,
                 [TIPOS_MENSAJE.AUDIO.FINALIZADO]: manejarAudioFinalizado,
                 [TIPOS_MENSAJE.RETO.MOSTRAR]: manejarMostrarReto,
                 [TIPOS_MENSAJE.RETO.OCULTAR]: manejarOcultarReto,
                 [TIPOS_MENSAJE.RETO.COMPLETADO]: manejarRetoCompletado,
+                ['MAPA.ACTUALIZAR']: manejarActualizacionMapa, // Nuevo manejador para actualizaciones del mapa
             };
             for (const tipo in controladores) {
                 registrarControlador(tipo, controladores[tipo]);
@@ -448,6 +548,34 @@ const MAP_CONFIG = {
                 const modoAnterior = estadoApp.modo.actual;
                 estadoApp.modo.anterior = modoAnterior;
                 estadoApp.modo.actual = modo;
+                
+                // Asegurar que el mapa esté visible y actualizado
+                const mapaDiv = document.getElementById('mapa');
+                if (mapaDiv) {
+                    // Asegurar que el mapa esté siempre visible
+                    mapaDiv.style.display = 'block';
+                    
+                    // Si el mapa ya está creado, actualizarlo
+                    if (window.mapa) {
+                        // Forzar actualización del tamaño
+                        setTimeout(() => {
+                            window.mapa.invalidateSize();
+                            
+                            // Centrar en la ubicación actual si está disponible
+                            if (estadoApp.ubicacionActual) {
+                                window.mapa.setView(
+                                    [estadoApp.ubicacionActual.latitud, estadoApp.ubicacionActual.longitud],
+                                    window.mapa.getZoom() || MAP_CONFIG.zoom
+                                );
+                            }
+                        }, 100);
+                    } else {
+                        // Inicializar el mapa si no está creado
+                        iniciarSistemaMapa().catch(error => {
+                            console.error('Error al iniciar el mapa:', error);
+                        });
+                    }
+                }
                 
                 // Notificar a todos los hijos del cambio de modo, incluyendo gpsActivo
                 await enviarMensaje('todos', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, {
