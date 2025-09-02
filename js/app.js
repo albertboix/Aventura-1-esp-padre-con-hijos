@@ -270,6 +270,8 @@ export {
   inicializar,
   notificarError,
   manejarCambioModo,
-  CONFIG,
   estadoApp as estado
 };
+
+// Hacer CONFIG disponible globalmente para compatibilidad
+window.CONFIG = CONFIG;
