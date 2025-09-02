@@ -1,131 +1,399 @@
 /**
  * Módulo de logging centralizado para toda la aplicación.
  * @module Logger
- * @version 1.0.0
+ * @version 3.1.0
  */
 
-// Niveles de log
-const LOG_LEVELS = Object.freeze({
-  DEBUG: 0,
-  INFO: 1,
-  WARN: 2,
-  ERROR: 3,
-  NONE: 4
-});
+// Importar configuración compartida
+import { CONFIG } from './config.js';
+import { LOG_LEVELS } from './constants.js';
+
+// Nombres de niveles para mostrar
+const LEVEL_NAMES = ['DEBUG', 'INFO', 'WARN', 'ERROR', 'NONE'];
+
+// Colores para la consola
+const DEFAULT_COLORS = {
+  DEBUG: '#9E9E9E',  // Gris
+  INFO: '#2196F3',   // Azul
+  WARN: '#FFC107',   // Amarillo
+  ERROR: '#F44336',  // Rojo
+  NONE: '#000000',   // Negro
+  timestamp: '#4CAF50',
+  reset: '%c'
+};
 
 // Configuración por defecto
 let config = {
-  logLevel: LOG_LEVELS.INFO,
-  debug: false,
+  logLevel: LOG_LEVELS.DEBUG,
+  debug: true,
   iframeId: 'unknown',
-  colors: {
-    debug: '#9E9E9E',
-    info: '#2196F3',
-    warn: '#FFC107',
-    error: '#F44336',
-    reset: '%c',
-    timestamp: '#4CAF50'
-  }
+  maxHistory: 200,
+  showTimestamp: true,
+  showLevel: true,
+  showIframeId: true,
+  colors: DEFAULT_COLORS
 };
 
+// Aplicar configuración de CONFIG si existe
+if (typeof CONFIG !== 'undefined') {
+  config = {
+    ...config,
+    logLevel: CONFIG.LOG_LEVEL !== undefined ? CONFIG.LOG_LEVEL : config.logLevel,
+    debug: CONFIG.DEBUG !== undefined ? CONFIG.DEBUG : config.debug,
+    iframeId: CONFIG.IFRAME_ID || config.iframeId
+  };
+}
+
+// Historial de logs en memoria
+let logHistory = [];
+
 /**
- * Configura el logger
- * @param {Object} newConfig - Configuración del logger
- * @param {string} newConfig.iframeId - ID del iframe actual
- * @param {boolean} [newConfig.debug] - Habilita/deshabilita modo debug
- * @param {number} [newConfig.logLevel] - Nivel de log (0-4)
+ * Formatea la marca de tiempo actual
+ * @private
+ * @returns {string} Timestamp formateado (YYYY-MM-DD HH:MM:SS)
  */
-export function configurarLogger(newConfig = {}) {
-  config = { ...config, ...newConfig };
-  
-  // Asegurar que el nivel de log sea válido
-  if (typeof config.logLevel === 'string') {
-    config.logLevel = LOG_LEVELS[config.logLevel.toUpperCase()] ?? LOG_LEVELS.INFO;
+function formatTimestamp() {
+  const now = new Date();
+  return now.toISOString().replace('T', ' ').replace(/\..+/, '');
+}
+
+/**
+ * Obtiene el nombre del nivel de log
+ * @private
+ * @param {number} level - Nivel de log
+ * @returns {string} Nombre del nivel
+ */
+function getLevelName(level) {
+  return LEVEL_NAMES[level] || 'UNKNOWN';
+}
+
+/**
+ * Obtiene información del llamador para depuración
+ * @private
+ * @returns {string} Información del llamador
+ */
+function getCallerInfo() {
+  try {
+    const error = new Error();
+    if (!error.stack) return '';
+    
+    // Obtener la línea del stack que no sea del logger
+    const stackLines = error.stack.split('\n').slice(2);
+    const callerLine = stackLines.find(line => 
+      !line.includes('logger.js') && 
+      !line.includes('node_modules')
+    );
+    
+    return callerLine ? callerLine.trim() : '';
+  } catch (e) {
+    return '';
   }
 }
 
 /**
- * Función de log base
+ * Formatea un mensaje de log con metadatos
  * @private
- * @param {string} level - Nivel de log
+ * @param {number} level - Nivel de log
+ * @param {string} message - Mensaje principal
+ * @param {*} [data] - Datos adicionales
+ * @returns {Object} Objeto de log formateado
+ */
+function formatLogEntry(level, message, data = null) {
+  const timestamp = formatTimestamp();
+  const levelName = getLevelName(level);
+  
+  return {
+    timestamp,
+    level,
+    levelName,
+    message,
+    data,
+    iframeId: config.iframeId,
+    location: getCallerInfo(),
+    ...(data instanceof Error ? {
+      error: {
+        message: data.message,
+        stack: data.stack,
+        name: data.name
+      }
+    } : {})
+  };
+}
+
+/**
+ * Envía el log a la ventana padre si estamos en un iframe
+ * @private
+ * @param {Object} logEntry - Entrada de log
+ */
+function sendToParent(logEntry) {
+  if (typeof window === 'undefined' || window === window.parent) return;
+  
+  try {
+    window.parent.postMessage({
+      type: 'LOG_ENTRY',
+      payload: logEntry
+    }, '*');
+  } catch (error) {
+    // Usar safeConsoleMethod para evitar errores si console no está disponible
+    safeConsoleMethod('Error al enviar log a la ventana padre:', error);
+  }
+}
+
+/**
+ * Muestra el log en la consola con formato
+ * @private
+ * @param {Object} logEntry - Entrada de log
+ */
+function outputToConsole(logEntry) {
+  if (!config.debug) return;
+  
+  try {
+    const { level, message, data, timestamp, levelName } = logEntry;
+    
+    // Obtener el nombre del nivel
+    const levelNameStr = getLevelName(level) || levelName || 'LOG';
+    
+    // Determinar el método de consola a usar
+    const consoleMethod = 
+      level >= LOG_LEVELS.ERROR ? 'error' :
+      level >= LOG_LEVELS.WARN ? 'warn' :
+      level >= LOG_LEVELS.INFO ? 'info' : 'log';
+    
+    // Construir prefijo del mensaje
+    const prefixParts = [];
+    
+    if (config.showTimestamp) {
+      const timeStr = timestamp || formatTimestamp();
+      prefixParts.push(`[${timeStr}]`);
+    }
+    
+    if (config.showLevel) {
+      prefixParts.push(`[${levelNameStr}]`);
+    }
+    
+    if (config.showIframeId && config.iframeId && config.iframeId !== 'unknown') {
+      prefixParts.push(`[${config.iframeId}]`);
+    }
+    
+    const prefix = prefixParts.join(' ');
+    const fullMessage = `${prefix} ${message}`.trim();
+    
+    // Verificar si el método de consola existe
+    const safeConsoleMethod = typeof console[consoleMethod] === 'function' 
+      ? console[consoleMethod] 
+      : console.log;
+    
+    // Aplicar formato con colores si está habilitado
+    if (config.colors) {
+      const color = (config.colors[levelNameStr] || config.colors.INFO);
+      const styles = [
+        `color: ${color}`,
+        'font-weight: bold',
+        'font-family: monospace',
+        'background: #f5f5f5',
+        'padding: 2px 4px',
+        'border-radius: 3px'
+      ].join(';');
+      
+      safeConsoleMethod(`%c${fullMessage}`, styles);
+    } else {
+      safeConsoleMethod(fullMessage);
+    }
+    
+    // Mostrar datos adicionales si existen
+    if (data !== undefined && data !== null) {
+      try {
+        if (data instanceof Error) {
+          safeConsoleMethod(data);
+        } else if (typeof data === 'object') {
+          safeConsoleMethod(JSON.parse(JSON.stringify(data, null, 2)));
+        } else {
+          safeConsoleMethod(data);
+        }
+      } catch (e) {
+        safeConsoleMethod('Error al formatear datos del log:', e);
+        safeConsoleMethod(data);
+      }
+    }
+    
+    // Mostrar ubicación del llamador en desarrollo
+    if (config.debug && logEntry.location) {
+      safeConsoleMethod(`  at ${logEntry.location}`);
+    }
+  } catch (e) {
+    safeConsoleMethod('Error en outputToConsole:', e);
+  }
+}
+
+/**
+ * Función principal de logging
+ * @private
+ * @param {number} level - Nivel de log
  * @param {string} message - Mensaje a registrar
  * @param {*} [data] - Datos adicionales
  */
-function log(level, message, data = null) {
-  const levelValue = typeof level === 'string' ? LOG_LEVELS[level.toUpperCase()] : level;
+function log(level, message, data) {
+  if (level < config.logLevel) return;
   
-  // No hacer nada si el nivel de log es menor al configurado
-  if (levelValue < config.logLevel) return;
+  const logEntry = formatLogEntry(level, message, data);
   
-  const timestamp = new Date().toISOString();
-  const prefix = `[${timestamp}] [${config.iframeId}] [${level.toUpperCase()}]`;
-  
-  // Estilo para la consola
-  const style = `color: ${config.colors[level.toLowerCase()]}; font-weight: bold`;
-  
-  // Imprimir en consola
-  if (data) {
-    console.log(`%c${prefix} ${message}`, style, data);
-  } else {
-    console.log(`%c${prefix} ${message}`, style);
+  // Añadir al historial
+  logHistory.push(logEntry);
+  if (logHistory.length > config.maxHistory) {
+    logHistory.shift();
   }
   
-  // Enviar mensaje al padre si estamos en un iframe
-  if (window.parent !== window && window.enviarMensaje) {
-    try {
-      window.enviarMensaje('padre', 'LOGGER.LOG', {
-        level: level.toUpperCase(),
-        message,
-        data,
-        timestamp,
-        origen: config.iframeId
-      }).catch(error => {
-        console.error('Error al enviar log al padre:', error);
-      });
-    } catch (error) {
-      console.error('Error al enviar log al padre:', error);
-    }
+  // Enviar a la ventana padre si es necesario
+  if (config.iframeId !== 'unknown') {
+    sendToParent(logEntry);
+  }
+  
+  // Mostrar en consola si está habilitado
+  if (config.debug) {
+    outputToConsole(logEntry);
   }
 }
 
-// API Pública
-export const logger = {
+/**
+ * Configura el logger con nuevas opciones
+ * @param {Object} options - Opciones de configuración
+ * @param {string} [options.iframeId] - Identificador del iframe
+ * @param {number} [options.logLevel] - Nivel de log mínimo
+ * @param {boolean} [options.debug] - Habilita la salida por consola
+ * @param {number} [options.maxHistory] - Número máximo de entradas en el historial
+ * @param {boolean} [options.showTimestamp] - Mostrar marca de tiempo
+ * @param {boolean} [options.showLevel] - Mostrar nivel de log
+ * @param {boolean} [options.showIframeId] - Mostrar ID del iframe
+ * @param {boolean|Object} [options.colors] - Usar colores en la consola o configuración personalizada
+ * @returns {Object} Configuración actual
+ */
+function configureLogger(options = {}) {
+  // Actualizar configuración
+  Object.assign(config, options);
+  
+  // Manejar configuración de colores
+  if (options.colors && typeof options.colors === 'object') {
+    config.colors = { ...DEFAULT_COLORS, ...options.colors };
+  } else if (options.colors === false) {
+    config.colors = false;
+  }
+  
+  return { ...config };
+}
+
+/**
+ * Obtiene el historial de logs
+ * @param {number} [limit] - Número máximo de entradas a devolver
+ * @returns {Array} Historial de logs
+ */
+function getLogHistory(limit) {
+  return limit ? logHistory.slice(-limit) : [...logHistory];
+}
+
+/**
+ * Limpia el historial de logs
+ * @returns {number} Número de entradas eliminadas
+ */
+function clearLogHistory() {
+  const count = logHistory.length;
+  logHistory = [];
+  return count;
+}
+
+// API Pública del Logger
+const logger = {
   /**
-   * Mensaje de depuración
+   * Registra un mensaje de depuración
    * @param {string} message - Mensaje a registrar
    * @param {*} [data] - Datos adicionales
    */
-  debug: (message, data) => log('debug', message, data),
+  debug: (message, data) => log(LOG_LEVELS.DEBUG, message, data),
   
   /**
-   * Mensaje informativo
+   * Registra un mensaje informativo
    * @param {string} message - Mensaje a registrar
    * @param {*} [data] - Datos adicionales
    */
-  info: (message, data) => log('info', message, data),
+  info: (message, data) => log(LOG_LEVELS.INFO, message, data),
   
   /**
-   * Mensaje de advertencia
+   * Registra una advertencia
    * @param {string} message - Mensaje a registrar
    * @param {*} [data] - Datos adicionales
    */
-  warn: (message, data) => log('warn', message, data),
+  warn: (message, data) => log(LOG_LEVELS.WARN, message, data),
   
   /**
-   * Mensaje de error
-   * @param {string} message - Mensaje a registrar
+   * Registra un error
+   * @param {string|Error} message - Mensaje o objeto de error
    * @param {Error|*} [error] - Objeto de error o datos adicionales
    */
   error: (message, error) => {
-    if (error instanceof Error) {
-      log('error', `${message}: ${error.message}`, error.stack);
+    if (message instanceof Error) {
+      log(LOG_LEVELS.ERROR, message.message, message);
+    } else if (error instanceof Error) {
+      log(LOG_LEVELS.ERROR, message, error);
     } else {
-      log('error', message, error);
+      log(LOG_LEVELS.ERROR, message, error);
     }
-  }
+  },
+  
+  // Funciones de utilidad
+  configure: configureLogger,
+  getConfig: () => ({ ...config }),
+  getLogHistory,
+  clearLogHistory,
+  LOG_LEVELS
 };
 
 // Hacer disponible globalmente para compatibilidad
 if (typeof window !== 'undefined') {
+  // Guardar consola original
+  const originalConsole = {
+    log: console.log,
+    info: console.info,
+    warn: console.warn,
+    error: console.error,
+    debug: console.debug
+  };
+  
+  // Sobrescribir métodos de consola si está habilitado en la configuración
+  if (config.debug) {
+    console.log = function(...args) {
+      logger.debug(args[0], args.slice(1));
+      originalConsole.log(...args);
+    };
+    
+    console.info = function(...args) {
+      logger.info(args[0], args.slice(1));
+      originalConsole.info(...args);
+    };
+    
+    console.warn = function(...args) {
+      logger.warn(args[0], args.slice(1));
+      originalConsole.warn(...args);
+    };
+    
+    console.error = function(...args) {
+      logger.error(args[0], args.slice(1));
+      originalConsole.error(...args);
+    };
+    
+    console.debug = function(...args) {
+      logger.debug(args[0], args.slice(1));
+      originalConsole.debug(...args);
+    };
+  }
+  
+  // Exportar para uso global
   window.Logger = logger;
+  window.LOG_LEVELS = LOG_LEVELS;
+  
+  // Configuración inicial
+  configureLogger({
+    iframeId: window.name || 'unknown',
+    debug: process.env.NODE_ENV !== 'production'
+  });
 }
+
+export default logger;
