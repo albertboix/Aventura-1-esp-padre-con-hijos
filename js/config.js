@@ -4,9 +4,9 @@
  */
 
 // Importar constantes compartidas
-import { LOG_LEVELS, TIPOS_MENSAJE } from './constants.js';
+import { LOG_LEVELS, TIPOS_MENSAJE, MODOS } from './constants.js';
 
-export { LOG_LEVELS, TIPOS_MENSAJE };
+export { LOG_LEVELS, TIPOS_MENSAJE, MODOS };
 
 // Configuración general de la aplicación
 export const CONFIG = {
