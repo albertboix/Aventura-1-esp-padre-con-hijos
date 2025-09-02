@@ -5,70 +5,134 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>hijo5-casa</title>
     <script type="module">
-    import { inicializar, notificarError, manejarCambioModo, CONFIG, estado as estadoApp } from './js/app.js';
-    import { registrarControlador, TIPOS_MENSAJE } from './js/mensajeria.js';
+    // Importar módulos
+    import { 
+        inicializar, 
+        notificarError, 
+        manejarCambioModo, 
+        CONFIG, 
+        estado as estadoApp 
+    } from './js/app.js';
+    import { 
+        registrarControlador, 
+        enviarMensaje,
+        TIPOS_MENSAJE 
+    } from './js/mensajeria.js';
     
-    // Hacer disponible para depuración y scripts no módulo
-    window.estadoApp = estadoApp;
-    window.CONFIG = CONFIG;
-    window.registrarControlador = registrarControlador;
-    window.TIPOS_MENSAJE = TIPOS_MENSAJE;
+    // Configuración de mensajería
+    const CONFIG_MENSAJERIA = {
+        iframeId: 'hijo5-casa',
+        debug: CONFIG?.DEBUG || true,
+        logLevel: CONFIG?.LOG_LEVEL || 1,
+        reintentos: {
+            maximos: 3,
+            tiempoEspera: 1000,
+            factor: 2
+        }
+    };
+    
+    // Solo exponer lo necesario para depuración
+    if (CONFIG.DEBUG) {
+      window.estadoApp = estadoApp;
+      window.CONFIG = CONFIG;
+    }
+    
+    // Función para actualizar la interfaz según el modo
+    function actualizarInterfaz(modo) {
+      const botonCasa = document.getElementById('gps-casa-btn');
+      const paradasWindow = document.getElementById('paradas-window');
+      
+      if (!botonCasa || !paradasWindow) return;
+      
+      if (modo === 'casa') {
+        paradasWindow.classList.remove('hidden');
+        paradasWindow.classList.add('visible');
+        botonCasa.classList.remove('off');
+        botonCasa.classList.add('on');
+        botonCasa.setAttribute('aria-pressed', 'true');
+      } else {
+        paradasWindow.classList.remove('visible');
+        paradasWindow.classList.add('hidden');
+        botonCasa.classList.remove('on');
+        botonCasa.classList.add('off');
+        botonCasa.setAttribute('aria-pressed', 'false');
+      }
+    }
+    
+    // Función para manejar el cambio de modo
+    async function manejarClickCambioModo() {
+      try {
+        if (!estadoApp?.modo?.actual) {
+          throw new Error('Estado de la aplicación no inicializado correctamente');
+        }
+        
+        const nuevoModo = estadoApp.modo.actual === 'casa' ? 'aventura' : 'casa';
+        
+        await manejarCambioModo({ 
+          tipo: TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO,
+          datos: { 
+            modo: nuevoModo,
+            origen: CONFIG.IFRAME_ID,
+            destino: 'padre',
+            timestamp: new Date().toISOString()
+          },
+          version: '1.0'
+        });
+        
+        // Actualizar la interfaz
+        actualizarInterfaz(nuevoModo);
+        actualizarEstadoGPS(nuevoModo === 'aventura');
+        
+        // Solicitar puntos de ruta si es necesario
+        if (nuevoModo === 'casa' && typeof window.solicitarPuntosRuta === 'function') {
+          await window.solicitarPuntosRuta();
+        }
+        
+        // Notificar el cambio de estado si es necesario
+        if (typeof window.notificarEstado === 'function') {
+          await window.notificarEstado('cambio_modo', { modo: nuevoModo });
+        }
+      } catch (error) {
+        console.error('Error al cambiar el modo:', error);
+        notificarError('cambio_modo', error);
+      }
+    }
+    
+    // Función para actualizar el estado del GPS
+    function actualizarEstadoGPS(gpsActivo) {
+      const botonCasa = document.getElementById('gps-casa-btn');
+      if (botonCasa) {
+        botonCasa.title = gpsActivo ? 'GPS ACTIVADO (modo aventura)' : 'GPS DESACTIVADO (modo casa)';
+      }
+    }
     
     // Inicializar la aplicación cuando el DOM esté listo
     document.addEventListener('DOMContentLoaded', async () => {
       try {
+        // Inicializar mensajería primero
+        await inicializarMensajeria(CONFIG_MENSAJERIA);
+        
+        // Registrar manejadores de mensajes
+        registrarManejadores();
+        
+        // Inicializar la aplicación
         await inicializar();
+        
         const botonCasa = document.getElementById('gps-casa-btn');
-        const paradasWindow = document.getElementById('paradas-window');
+        
         if (botonCasa) {
-          botonCasa.addEventListener('click', async () => {
-            try {
-              const nuevoModo = estadoApp.modo.actual === 'casa' ? 'aventura' : 'casa';
-              await manejarCambioModo({ 
-                datos: { 
-                  modo: nuevoModo,
-                  origen: CONFIG.IFRAME_ID,
-                  timestamp: new Date().toISOString()
-                } 
-              });
-              // Notificar al padre el cambio de modo
-              if (typeof notificarEstado === 'function') {
-                await notificarEstado('cambio_modo', { modo: nuevoModo });
-              }
-              // Mostrar/ocultar ventana de paradas según el modo
-              if (nuevoModo === 'casa') {
-                paradasWindow.classList.remove('hidden');
-                paradasWindow.classList.add('visible');
-                await solicitarPuntosRuta();
-                botonCasa.classList.remove('off');
-                botonCasa.classList.add('on');
-                botonCasa.setAttribute('aria-pressed', 'true');
-              } else {
-                paradasWindow.classList.remove('visible');
-                paradasWindow.classList.add('hidden');
-                botonCasa.classList.remove('on');
-                botonCasa.classList.add('off');
-                botonCasa.setAttribute('aria-pressed', 'false');
-              }
-            } catch (error) {
-              await notificarError('cambio_modo', error);
-            }
-          });
-          // Inicial: mostrar paradas si modo es casa
-          if (estadoApp.modo.actual === 'casa') {
-            paradasWindow.classList.remove('hidden');
-            paradasWindow.classList.add('visible');
-            await solicitarPuntosRuta();
-            botonCasa.classList.remove('off');
-            botonCasa.classList.add('on');
-            botonCasa.setAttribute('aria-pressed', 'true');
-          } else {
-            paradasWindow.classList.remove('visible');
-            paradasWindow.classList.add('hidden');
-            botonCasa.classList.remove('on');
-            botonCasa.classList.add('off');
-            botonCasa.setAttribute('aria-pressed', 'false');
-          }
+          botonCasa.addEventListener('click', manejarClickCambioModo);
+          
+          // Inicializar el estado del botón
+          actualizarEstadoGPS(estadoApp?.modo?.actual === 'aventura');
+        }
+        
+        // Inicializar la interfaz según el estado actual
+        actualizarInterfaz(estadoApp?.modo?.actual);
+        
+        // Cargar puntos de ruta si estamos en modo casa
+        if (estadoApp?.modo?.actual === 'casa' && typeof window.solicitarPuntosRuta === 'function') {
+          await window.solicitarPuntosRuta();
         }
       } catch (error) {
         if (window.logger) {
@@ -79,11 +143,31 @@
         await notificarError('inicializacion', error);
       }
     });
-    // Puedes añadir un indicador visual del estado GPS si lo deseas
-    function actualizarEstadoGPS(gpsActivo) {
-      const botonCasa = document.getElementById('gps-casa-btn');
-      if (botonCasa) {
-        botonCasa.title = gpsActivo ? 'GPS ACTIVADO (modo aventura)' : 'GPS DESACTIVADO (modo casa)';
+    
+    // Registrar manejadores de mensajes
+    function registrarManejadores() {
+      try {
+        // Manejador de cambio de modo
+        registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, (mensaje) => {
+          try {
+            if (mensaje?.datos?.modo) {
+              actualizarInterfaz(mensaje.datos.modo);
+              actualizarEstadoGPS(mensaje.datos.modo === 'aventura');
+            }
+          } catch (error) {
+            console.error('Error al manejar cambio de modo:', error);
+            notificarError('cambio_modo_ui', error);
+          }
+        });
+        
+        // Manejador de errores
+        registrarControlador(TIPOS_MENSAJE.SISTEMA.ERROR, (mensaje) => {
+          console.error('Error recibido:', mensaje);
+        });
+        
+        console.log('Manejadores de mensajes registrados');
+      } catch (error) {
+        console.error('Error al registrar manejadores:', error);
       }
     }
     </script>
@@ -402,26 +486,6 @@
         }
       }
     });
-    // Registrar manejador de cambio de modo
-    if (typeof window.registrarControlador === 'function') {
-      window.registrarControlador(window.TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, function(msg) {
-        const { gpsActivo } = msg.datos || {};
-        actualizarEstadoGPS(gpsActivo);
-      });
-    }
-    // Manejador para recibir el array de paradas
-    if (typeof window.registrarControlador === 'function') {
-      window.registrarControlador(window.TIPOS_MENSAJE.SISTEMA.INICIALIZACION, function(msg) {
-        estado.paradas = msg.datos.aventuraParadas;
-        renderizarListaParadas();
-      });
-    }
-
-    function manejarClickCambioModo() {
-        // Alterna entre modo casa y modo aventura
-        const nuevoModo = estado.modo === 'aventura' ? 'casa' : 'aventura';
-    }
-
     // Renderizar la lista solo en modo casa
     function renderizarListaParadas() {
         const listaParadasContainer = document.getElementById('paradas-list');
@@ -443,19 +507,44 @@
         });
         listaParadasContainer.style.display = 'block';
     }
-    document.addEventListener('DOMContentLoaded', () => {
-      if (window.logger) {
-        logger.debug('DOM cargado en hijo5-casa');
-        // Verifica que el botón y la ventana existen
-        logger.debug('botonCasa:', document.getElementById('gps-casa-btn'));
-        logger.debug('paradasWindow:', document.getElementById('paradas-window'));
-        // Verifica el estado inicial
-        logger.debug('estado.modo:', window.estadoApp?.modo?.actual);
-      } else {
-        console.log('DOM cargado en hijo5-casa');
-        console.log('botonCasa:', document.getElementById('gps-casa-btn'));
-        console.log('paradasWindow:', document.getElementById('paradas-window'));
-        console.log('estado.modo:', window.estadoApp?.modo?.actual);
+    // Registrar manejador de mensajes
+    registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, (mensaje) => {
+      try {
+        if (mensaje?.datos?.modo) {
+          actualizarInterfaz(mensaje.datos.modo);
+        }
+      } catch (error) {
+        console.error('Error procesando mensaje CAMBIO_MODO:', error);
+        notificarError('procesar_mensaje', error);
+      }
+    });
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      try {
+        if (CONFIG.DEBUG) {
+          console.debug('DOM cargado en hijo5-casa');
+          // Verifica que el botón y la ventana existen
+          console.debug('botonCasa:', document.getElementById('gps-casa-btn'));
+          console.debug('paradasWindow:', document.getElementById('paradas-window'));
+          console.debug('estado.modo:', estadoApp?.modo);
+        }
+        
+        // Inicializar la aplicación
+        await inicializar();
+        
+        // Configurar manejadores de eventos
+        const botonCasa = document.getElementById('gps-casa-btn');
+        const paradasWindow = document.getElementById('paradas-window');
+        
+        if (botonCasa) {
+          botonCasa.addEventListener('click', manejarClickCambioModo);
+        }
+      } catch (e) {
+        if (window.logger) {
+          logger.error('Error al inicializar:', e);
+        } else {
+          console.error('Error al inicializar:', e);
+        }
       }
     });
   </script>
