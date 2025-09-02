@@ -265,6 +265,9 @@ if (typeof window !== 'undefined' && document.readyState !== 'loading') {
   });
 }
 
+// Hacer CONFIG disponible globalmente para compatibilidad
+window.CONFIG = CONFIG;
+
 // Exportar solo lo necesario
 export {
   inicializar,
@@ -273,5 +276,4 @@ export {
   estadoApp as estado
 };
 
-// Hacer CONFIG disponible globalmente para compatibilidad
-window.CONFIG = CONFIG;
+// No exportar CONFIG directamente para evitar duplicados
