@@ -5,7 +5,7 @@
 
 // Importar configuración compartida
 import { LOG_LEVELS, TIPOS_MENSAJE } from './constants.js';
-import logger from './logger.js';
+// logger is already available via window.logger
 
 const Utils = (() => {
   // ================== CONSTANTES PÚBLICAS ==================
@@ -32,8 +32,8 @@ const Utils = (() => {
       config = { ...config, ...newConfig };
       
       // Configurar el logger con la nueva configuración
-      if (logger && typeof logger.configure === 'function') {
-        logger.configure({
+      if (window.logger && typeof window.logger.configure === 'function') {
+        window.logger.configure({
           iframeId: config.iframeId,
           logLevel: config.logLevel,
           debug: config.debug
@@ -53,8 +53,8 @@ const Utils = (() => {
       }
       
       // Registrar el error en el logger
-      if (logger && typeof logger.error === 'function') {
-        logger.error(`Error (${tipo}):`, error);
+      if (window.logger && typeof window.logger.error === 'function') {
+        window.logger.error(`Error (${tipo}):`, error);
       }
       
       return {
