@@ -152,11 +152,9 @@ function recibirMensaje(event) {
 }
 
 // Exportar solo las funciones necesarias
-export { inicializarMensajeria, registrarControlador, enviarMensaje };
-
-export default {
-  inicializarMensajeria,
-  registrarControlador,
+export { 
+  inicializarMensajeria, 
+  registrarControlador, 
   enviarMensaje,
   TIPOS_MENSAJE // Re-exportar para compatibilidad
 };
