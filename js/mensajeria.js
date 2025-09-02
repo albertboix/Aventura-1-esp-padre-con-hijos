@@ -151,10 +151,10 @@ function recibirMensaje(event) {
   }
 }
 
-// Exportar solo las funciones necesarias
+// Exportar las funciones necesarias y re-exportar TIPOS_MENSAJE
 export { 
   inicializarMensajeria, 
   registrarControlador, 
   enviarMensaje,
-  TIPOS_MENSAJE // Re-exportar para compatibilidad
+  TIPOS_MENSAJE
 };
