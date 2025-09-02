@@ -1,15 +1,20 @@
+/**
+ * Módulo principal de la aplicación
+ * @version 1.0.0
+ */
+
 // Importar módulos
-import * as mensajeria from './mensajeria.js';
+import { inicializarMensajeria, registrarControlador, enviarMensaje } from './mensajeria.js';
 import { configurarUtils } from './utils.js';
+import { CONFIG as CONFIG_SHARED } from './config.js';
+import { LOG_LEVELS, TIPOS_MENSAJE, MODOS } from './constants.js';
+import logger from './logger.js';
 
 // Configuración global
-const CONFIG = {
-  // Configuración general
-  IFRAME_ID: 'padre',  // Identificador para la ventana principal (codigo-padre.html)
-  ES_PADRE: true,      // Indica que este es el contenedor padre
+export const CONFIG = {
+  ...CONFIG_SHARED, // Heredar configuración compartida
+  // Configuración específica de la aplicación
   ARCHIVO_PADRE: 'codigo-padre.html',  // Nombre del archivo HTML principal
-  DEBUG: true,
-  LOG_LEVEL: 1,
   VERSION: '1.0.0',
   REINTENTOS: {
     MAXIMOS: 3,
@@ -50,16 +55,9 @@ configurarUtils({
   logLevel: CONFIG.LOG_LEVEL
 });
 
-// Alias para facilitar el acceso
-const { 
-  enviarMensaje, 
-  TIPOS_MENSAJE,
-  logger 
-} = mensajeria;
-
-// Hacer disponible para otros scripts
+// Hacer utilidades disponibles globalmente
 window.enviarMensaje = enviarMensaje;
-window.TIPOS_MENSAJE = TIPOS_MENSAJE;
+window.TIPOS_MENSAJE = TIPOS_MENSAJE; // Ya importado de constants.js
 window.logger = logger;
 
 // Función para inicializar la mensajería
@@ -109,10 +107,11 @@ async function inicializarMensajeriaApp() {
 
 // Función para notificar errores
 async function notificarError(tipo, error) {
-  const errorMsg = `[${CONFIG.IFRAME_ID}] Error (${tipo}):`;
-  console.error(errorMsg, error);
+  // Usar el logger para registrar el error
+  logger.error(`Error (${tipo}):`, error);
   
-  if (typeof enviarMensaje === 'function') {
+  // Enviar mensaje de error al padre si es necesario
+  if (enviarMensaje) {
     try {
       await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
         tipo,
@@ -122,7 +121,7 @@ async function notificarError(tipo, error) {
         timestamp: new Date().toISOString()
       });
     } catch (e) {
-      console.error('No se pudo notificar el error al padre:', e);
+      logger.error('Error al notificar error al padre:', e);
     }
   }
 }
@@ -138,7 +137,7 @@ async function notificarInicializacion() {
         timestamp: new Date().toISOString()
       });
     } catch (error) {
-      console.error('Error al notificar inicialización:', error);
+      logger.error('Error al notificar inicialización:', error);
     }
   }
 }
@@ -207,14 +206,64 @@ async function inicializar() {
   }
 }
 
-// Inicializar la aplicación cuando el DOM esté listo
-document.addEventListener('DOMContentLoaded', async () => {
-  try {
-    await inicializar();
-  } catch (error) {
-    console.error('Error crítico al inicializar la aplicación:', error);
+/**
+ * Inicializa la aplicación principal
+ * @returns {Promise<boolean>} True si la inicialización fue exitosa
+ */
+export async function inicializarAplicacion() {
+  if (estadoApp.inicializado || estadoApp.inicializando) {
+    logger.warn('La aplicación ya está inicializada o en proceso de inicialización');
+    return false;
   }
-});
+
+  try {
+    estadoApp.inicializando = true;
+    logger.info('Iniciando inicialización de la aplicación...');
+    
+    // 1. Inicializar mensajería
+    await inicializarMensajeriaApp();
+    
+    // 2. Registrar manejadores de mensajes
+    await registrarManejadores();
+    
+    // 3. Notificar que la aplicación está lista
+    await notificarInicializacion();
+    
+    estadoApp.inicializado = true;
+    estadoApp.inicializando = false;
+    
+    logger.info('Aplicación inicializada correctamente');
+    return true;
+    
+  } catch (error) {
+    const errorMsg = 'Error crítico al inicializar la aplicación: ' + error.message;
+    logger.error(errorMsg, error);
+    
+    // Notificar error al sistema
+    if (typeof enviarMensaje === 'function') {
+      await enviarMensaje('*', TIPOS_MENSAJE.SISTEMA.ERROR, {
+        tipo: 'inicializacion',
+        mensaje: error.message,
+        stack: error.stack,
+        timestamp: new Date().toISOString()
+      }).catch(e => console.error('Error al notificar error:', e));
+    }
+    
+    estadoApp.inicializando = false;
+    throw error; // Re-lanzar para que el llamador sepa que hubo un error
+  }
+}
+
+// Inicializar automáticamente si se carga este módulo directamente
+if (typeof window !== 'undefined' && document.readyState !== 'loading') {
+  // El DOM ya está listo, inicializar directamente
+  inicializarAplicacion().catch(console.error);
+} else if (typeof document !== 'undefined') {
+  // Esperar a que el DOM esté listo
+  document.addEventListener('DOMContentLoaded', () => {
+    inicializarAplicacion().catch(console.error);
+  });
+}
 
 // Exportar solo lo necesario
 export {
