@@ -4,7 +4,7 @@
  */
 
 // Importar configuración compartida
-import { LOG_LEVELS, TIPOS_MENSAJE, MODOS } from './constants.js';
+import { LOG_LEVELS, TIPOS_MENSAJE } from './constants.js';
 import logger from './logger.js';
 
 const Utils = (() => {
