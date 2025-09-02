@@ -32,7 +32,7 @@
         const errorMsg = `Error loading ${iframeId}`;
         if (window.logger && typeof window.logger.error === 'function') {
             window.logger.error(errorMsg, event);
-        } else {
+        } else if (window.console && typeof window.console.error === 'function') {
             console.error(errorMsg, event);
         }
     };
@@ -40,7 +40,7 @@
         const msg = `${iframeId} loaded successfully`;
         if (window.logger && typeof window.logger.debug === 'function') {
             window.logger.debug(msg);
-        } else if (window.config && window.config.debug) {
+        } else if (window.console && typeof window.console.debug === 'function' && window.config && window.config.debug) {
             console.debug(msg);
         }
     };
@@ -99,25 +99,15 @@
 import { logger, configurarUtils, crearObjetoError } from './js/utils.js';
 import { TIPOS_MENSAJE, inicializarMensajeria, registrarControlador, enviarMensaje } from './js/mensajeria.js';
 import { inicializarMapa } from './js/funciones-mapa.js';
+import { CONFIG } from './js/app.js';
 
-        configurarUtils({ iframeId: 'padre', debug: true });
+// Configurar utilidades con la configuración centralizada
+// 1. IMPORTACIONES Y CONFIGURACIÓN
 
-        // 1. IMPORTACIONES Y CONFIGURACIÓN
+// Usar HIJOS de la configuración centralizada
+const { HIJOS } = CONFIG;
 
-        const CONFIG = {
-            ID_PADRE: 'padre',
-            HIJOS: {
-                HAMBURGUESA: { id: 'hijo1-hamburguesa', nombre: 'Hamburguesa' },
-                OPCIONES:    { id: 'hijo1-opciones',    nombre: 'Opciones' },
-                COORDENADAS: { id: 'hijo2',             nombre: 'Coordenadas' },
-                AUDIO:       { id: 'hijo3',             nombre: 'Audio' },
-                RETOS:       { id: 'hijo4',             nombre: 'Retos' },
-                CASA:        { id: 'hijo5-casa',        nombre: 'Casa' }
-            },
-            LOG_LEVEL: 'info'
-        };
-
-        const MAP_CONFIG = {
+const MAP_CONFIG = {
             center: [39.4699, -0.3763], zoom: 13, minZoom: 12, maxZoom: 18, zoomControl: false
         };
 
@@ -197,54 +187,93 @@ import { inicializarMapa } from './js/funciones-mapa.js';
 
         // 4. LÓGICA DE ARRANQUE
         document.addEventListener('DOMContentLoaded', async () => {
-        const mapaContainer = document.getElementById('mapa');
-        if (!mapaContainer) {
-            alert('No se encontró el contenedor del mapa. El mapa no puede mostrarse.');
-            return;
-        }
-        mapaContainer.style.display = 'block';
-        mapaContainer.style.visibility = 'visible';
-        mapaContainer.style.width = '100vw';
-        mapaContainer.style.height = '100vh';
-        if (mapaContainer.offsetWidth === 0 || mapaContainer.offsetHeight === 0) {
-            alert('El contenedor del mapa tiene dimensiones 0. El mapa no puede mostrarse.');
-            return;
-        }
-        try {
-            await inicializarSistemaMensajeria();
-            registrarControladoresTotales();
-            const mapaInstance = await iniciarSistemaMapa();
-            if (!mapaInstance) {
-                alert('No se pudo inicializar el mapa. Revisa los datos de las paradas.');
-                return;
-            }
-            window.mapa = mapaInstance; // <-- GUARDAR LA INSTANCIA DEL MAPA
-            estadoApp.mapaInicializado = true;
-            logger.info('Mapa inicializado.');
-            
-            // Force map to update its size after a short delay
+            const logger = {
+                info: (msg, ...args) => console.log(`[INFO] ${msg}`, ...args),
+                error: (msg, ...args) => console.error(`[ERROR] ${msg}`, ...args),
+                warn: (msg, ...args) => console.warn(`[WARN] ${msg}`, ...args),
+                debug: (msg, ...args) => console.debug(`[DEBUG] ${msg}`, ...args)
+            };
+
+            // Función para actualizar el tamaño del mapa
             const updateMapSize = () => {
                 if (window.mapa) {
                     window.mapa.invalidateSize();
-                    console.log('Map size updated');
+                    logger.debug('Map size updated');
                 }
             };
-            
-            setTimeout(updateMapSize, 100);
-            window.addEventListener('resize', () => setTimeout(updateMapSize, 100));
-            
-            // Show the map container
-            if (mapaContainer) {
-                mapaContainer.style.visibility = 'visible';
+
+            try {
+                logger.info('Iniciando inicialización de la aplicación...');
+                
+                // 1. Inicializar mensajería primero
+                await inicializarSistemaMensajeria();
+                logger.debug('Sistema de mensajería inicializado');
+                
+                // 2. Registrar manejadores de mensajes
+                registrarControladoresTotales();
+                logger.debug('Manejadores de mensajes registrados');
+                
+                // 3. Inicializar el mapa
+                const mapaContainer = document.getElementById('mapa');
+                if (!mapaContainer) {
+                    throw new Error('No se encontró el contenedor del mapa');
+                }
+                
+                const mapaInstance = await iniciarSistemaMapa();
+                if (!mapaInstance) {
+                    throw new Error('No se pudo inicializar el mapa');
+                }
+                
+                logger.info('Sistema de mapa inicializado correctamente');
+                
+                // 4. Configurar actualización de tamaño del mapa
+                setTimeout(updateMapSize, 100);
+                window.addEventListener('resize', () => setTimeout(updateMapSize, 100));
+                
+                // 5. Notificar que la aplicación está lista
+                if (typeof enviarMensaje === 'function') {
+                    await enviarMensaje('*', TIPOS_MENSAJE.SISTEMA.LISTO, {
+                        modulo: 'app',
+                        estado: 'listo',
+                        timestamp: new Date().toISOString()
+                    });
+                }
+                
+                logger.info('Aplicación inicializada correctamente');
+                
+            } catch (error) {
+                const errorMsg = `Error al inicializar la aplicación: ${error.message}`;
+                logger.error(errorMsg, error);
+                
+                // Notificar error al sistema
+                if (typeof enviarMensaje === 'function') {
+                    await enviarMensaje('*', TIPOS_MENSAJE.SISTEMA.ERROR, {
+                        tipo: 'inicializacion',
+                        mensaje: error.message,
+                        stack: error.stack,
+                        timestamp: new Date().toISOString()
+                    }).catch(e => console.error('Error al notificar error:', e));
+                }
+                
+                // Mostrar mensaje de error al usuario
+                alert('Error crítico al inicializar la aplicación. Por favor, recarga la página.');
+                
+                // Mostrar el contenedor del mapa si existe
+                if (mapaContainer) {
+                    mapaContainer.style.visibility = 'visible';
+                }
+                
+                // Actualizar el estado de depuración
+                if (typeof updateMapDebug === 'function') {
+                    updateMapDebug(`Error: ${error.message}`);
+                }
+                
+                // Registrar el error
+                if (typeof crearObjetoError === 'function') {
+                    crearObjetoError('inicializacion', error);
+                }
             }
-            
-        } catch (error) {
-            alert('Error crítico al inicializar el sistema: ' + error.message);
-            logger.error('ERROR FATAL DE INICIALIZACIÓN:', error);
-            updateMapDebug(`Error fatal: ${error.message}`);
-            crearObjetoError('inicializacion', error);
-        }
-    });
+        });
 
         // 5. FUNCIONES PRINCIPALES
         async function inicializarSistemaMensajeria() {
@@ -264,7 +293,11 @@ import { inicializarMapa } from './js/funciones-mapa.js';
                 if (mapaContainer) {
                     mapaContainer.style.display = 'block';
                     if (mapaContainer.offsetWidth === 0 || mapaContainer.offsetHeight === 0) {
-                        console.warn('Map container has zero dimensions, setting default size');
+                        if (window.logger) {
+                            window.logger.warn('Map container has zero dimensions, setting default size');
+                        } else if (window.console && window.console.warn) {
+                            console.warn('Map container has zero dimensions, setting default size');
+                        }
                         mapaContainer.style.width = '100vw';
                         mapaContainer.style.height = '100vh';
                     }
@@ -299,7 +332,11 @@ import { inicializarMapa } from './js/funciones-mapa.js';
                 }
                 
             } catch (error) {
-                console.error('Error al inicializar el mapa:', error);
+                if (window.logger) {
+                    window.logger.error('Error al inicializar el mapa:', error);
+                } else if (window.console && window.console.error) {
+                    console.error('Error al inicializar el mapa:', error);
+                }
                 throw error;
             }
         }
@@ -709,13 +746,9 @@ import { inicializarMapa } from './js/funciones-mapa.js';
                 }
             }
         }
-    </script>
-</body>
-</html>
+        // Make these available globally
         window.TIPOS_MENSAJE = TIPOS_MENSAJE;
         window.enviarMensaje = enviarMensaje;
     </script>
 </body>
-</html>
-</html>
 </html>
