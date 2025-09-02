@@ -72,7 +72,6 @@ const Utils = (() => {
 
 // Exportar la API pública
 export const {
-  MODOS,
   TIPOS_PUNTO,
   TIPOS_MENSAJE,
   configurarUtils,
