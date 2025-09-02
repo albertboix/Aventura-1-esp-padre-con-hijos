@@ -4,10 +4,15 @@
  */
 
 // Importar módulos
-import { inicializarMensajeria, registrarControlador, enviarMensaje } from './mensajeria.js';
+import { 
+  inicializarMensajeria, 
+  registrarControlador, 
+  enviarMensaje,
+  TIPOS_MENSAJE 
+} from './mensajeria.js';
 import { configurarUtils } from './utils.js';
 import { CONFIG as CONFIG_SHARED } from './config.js';
-import { LOG_LEVELS, TIPOS_MENSAJE, MODOS } from './constants.js';
+import { LOG_LEVELS, MODOS } from './constants.js';
 import logger from './logger.js';
 
 // Configuración global
@@ -35,17 +40,36 @@ const CONFIG = {
 
 // Estado de la aplicación
 const estadoApp = {
+  // Estado de inicialización
   inicializando: false,
   inicializado: false,
-  modo: { actual: 'casa', anterior: null },
+  
+  // Estado de la aplicación
+  modo: { 
+    actual: 'casa', 
+    anterior: null,
+    ultimoCambio: null
+  },
+  
+  // Estado de los servicios
   gpsActivo: false,
   controlesHabilitados: true,
-  puntoActual: null,
-  tramoActual: null,
   mensajeriaInicializada: false,
   modulosCargados: false,
+  
+  // Estado de navegación
+  puntoActual: null,
+  tramoActual: null,
+  
+  // Referencias
   mensajeria: null,
-  mapa: null
+  mapa: null,
+  
+  // Último error
+  ultimoError: null,
+  
+  // Versión
+  version: '1.0.0'
 };
 
 // Inicializar el logger
@@ -71,8 +95,8 @@ async function inicializarMensajeriaApp() {
   logger.info('Inicializando mensajería...');
 
   try {
-    // Inicializar el módulo de mensajería
-    await mensajeria.inicializarMensajeria({
+    // Inicializar el módulo de mensajería centralizado
+    await inicializarMensajeria({
       iframeId: CONFIG.IFRAME_ID,
       debug: CONFIG.DEBUG,
       logLevel: CONFIG.LOG_LEVEL,
@@ -211,11 +235,19 @@ async function inicializar() {
  * @returns {Promise<boolean>} True si la inicialización fue exitosa
  */
 export async function inicializarAplicacion() {
-  if (estadoApp.inicializado || estadoApp.inicializando) {
-    logger.warn('La aplicación ya está inicializada o en proceso de inicialización');
+  if (estadoApp.inicializando) {
+    if (CONFIG.DEBUG) console.debug('[App] Inicialización ya en curso');
     return false;
   }
-
+  
+  if (estadoApp.inicializado) {
+    if (CONFIG.DEBUG) console.debug('[App] Ya inicializado');
+    return true;
+  }
+  
+  estadoApp.inicializando = true;
+  estadoApp.ultimoError = null;
+  
   try {
     estadoApp.inicializando = true;
     logger.info('Iniciando inicialización de la aplicación...');
@@ -236,21 +268,30 @@ export async function inicializarAplicacion() {
     return true;
     
   } catch (error) {
-    const errorMsg = 'Error crítico al inicializar la aplicación: ' + error.message;
-    logger.error(errorMsg, error);
+    const errorInfo = {
+      mensaje: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    };
     
-    // Notificar error al sistema
-    if (typeof enviarMensaje === 'function') {
-      await enviarMensaje('*', TIPOS_MENSAJE.SISTEMA.ERROR, {
-        tipo: 'inicializacion',
-        mensaje: error.message,
-        stack: error.stack,
-        timestamp: new Date().toISOString()
-      }).catch(e => console.error('Error al notificar error:', e));
+    estadoApp.ultimoError = errorInfo;
+    console.error('[App] Error en inicialización:', errorInfo);
+    
+    // Notificar el error al padre si es posible
+    if (estadoApp.mensajeriaInicializada) {
+      try {
+        await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
+          tipo: 'inicializacion',
+          error: errorInfo
+        });
+      } catch (e) {
+        console.error('[App] Error al notificar error de inicialización:', e);
+      }
     }
     
+    return false;
+  } finally {
     estadoApp.inicializando = false;
-    throw error; // Re-lanzar para que el llamador sepa que hubo un error
   }
 }
 
