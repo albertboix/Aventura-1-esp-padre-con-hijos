@@ -12,6 +12,17 @@ export const LOG_LEVELS = Object.freeze({
   NONE: 4
 });
 
+// Modos de la aplicación
+export const MODOS = Object.freeze({
+  // Modos principales
+  CASA: 'casa',
+  AVENTURA: 'aventura',
+  CONFIGURACION: 'configuracion',
+  // Modos de operación
+  NORMAL: 'normal',
+  NAVEGACION: 'navegacion'
+});
+
 // Tipos de mensajes estandarizados
 export const TIPOS_MENSAJE = Object.freeze({
   // Mensajes de navegación
@@ -73,13 +84,6 @@ export const TIPOS_MENSAJE = Object.freeze({
     MODAL: 'UI.MODAL',
     TOAST: 'UI.TOAST'
   })
-});
-
-// Modos de operación
-export const MODOS = Object.freeze({
-  NORMAL: 'normal',
-  NAVEGACION: 'navegacion',
-  CONFIGURACION: 'configuracion'
 });
 
 // Exportar todo por defecto
