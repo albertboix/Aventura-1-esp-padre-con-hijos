@@ -129,13 +129,38 @@ function sendToParent(logEntry) {
   if (typeof window === 'undefined' || window === window.parent) return;
   
   try {
-    window.parent.postMessage({
-      type: 'LOG_ENTRY',
-      payload: logEntry
-    }, '*');
+    // Usar el sistema de mensajería centralizado si está disponible
+    if (window.enviarMensaje) {
+      window.enviarMensaje('padre', 'SISTEMA.LOG', logEntry)
+        .catch(error => {
+          safeConsoleMethod('Error al enviar log a través del sistema de mensajería:', error);
+          // Fallback al método directo si falla el sistema de mensajería
+          fallbackToDirectPostMessage(logEntry);
+        });
+    } else {
+      // Fallback al método directo si no hay sistema de mensajería
+      fallbackToDirectPostMessage(logEntry);
+    }
   } catch (error) {
-    // Usar safeConsoleMethod para evitar errores si console no está disponible
-    safeConsoleMethod('Error al enviar log a la ventana padre:', error);
+    safeConsoleMethod('Error en sendToParent:', error);
+  }
+}
+
+/**
+ * Método de respaldo para enviar mensajes directamente (solo para compatibilidad)
+ * @private
+ * @param {Object} logEntry - Entrada de log
+ */
+function fallbackToDirectPostMessage(logEntry) {
+  try {
+    if (window.parent !== window) {
+      window.parent.postMessage({
+        type: 'LOG_ENTRY',
+        payload: logEntry
+      }, '*');
+    }
+  } catch (error) {
+    safeConsoleMethod('Error en fallbackToDirectPostMessage:', error);
   }
 }
 
