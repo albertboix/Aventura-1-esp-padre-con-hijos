@@ -11,7 +11,7 @@ import { LOG_LEVELS, TIPOS_MENSAJE, MODOS } from './constants.js';
 import logger from './logger.js';
 
 // Configuración global
-export const CONFIG = {
+const CONFIG = {
   ...CONFIG_SHARED, // Heredar configuración compartida
   // Configuración específica de la aplicación
   ARCHIVO_PADRE: 'codigo-padre.html',  // Nombre del archivo HTML principal
