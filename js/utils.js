@@ -25,9 +25,7 @@ const Utils = (() => {
   // ================== API PÚBLICA ==================
   return {
     // Constantes
-    MODOS,
     TIPOS_PUNTO,
-    TIPOS_MENSAJE,
 
     // Configuración
     configurarUtils: (newConfig = {}) => {
@@ -73,8 +71,10 @@ const Utils = (() => {
 // Exportar la API pública
 export const {
   TIPOS_PUNTO,
-  TIPOS_MENSAJE,
   configurarUtils,
   logger,
   crearObjetoError
 } = Utils;
+
+// Re-exportar TIPOS_MENSAJE directamente desde constants
+export { TIPOS_MENSAJE } from './constants.js';
