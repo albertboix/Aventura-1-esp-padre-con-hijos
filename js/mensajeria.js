@@ -67,7 +67,7 @@ export function registrarControlador(tipo, manejador) {
  * @param {Object} datos - Datos del mensaje.
  * @returns {Promise<Object>|undefined}
  */
-export async function enviarMensaje(destino, tipo, datos = {}) {
+async function enviarMensaje(destino, tipo, datos = {}) {
   if (!destino || !tipo) {
     logger.error('[Mensajeria] Falta destino o tipo en enviarMensaje', { destino, tipo });
     return;
