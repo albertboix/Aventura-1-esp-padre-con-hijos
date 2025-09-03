@@ -1,21 +1,34 @@
 /**
  * Módulo principal de la aplicación
- * @version 1.1.0
+ * @version 1.2.0
  * 
  * Secuencia de inicialización:
- * 1. Cargar configuración (config.js)
- * 2. Inicializar utilidades (utils.js)
- * 3. Configurar logger (logger.js)
- * 4. Inicializar mensajería (mensajeria.js)
- * 5. Registrar manejadores
- * 6. Inicializar aplicación
+ * 1. Cargar constantes (constants.js)
+ * 2. Configurar logger con valores por defecto
+ * 3. Cargar configuración (config.js)
+ * 4. Inicializar utilidades (utils.js)
+ * 5. Inicializar mensajería (mensajeria.js)
+ * 6. Registrar manejadores
+ * 7. Inicializar aplicación
  */
 
-// 1. Importar módulos base (sin efectos secundarios)
-import { CONFIG as CONFIG_SHARED } from './config.js';
+// 1. Importar solo constantes primero (sin efectos secundarios)
 import { LOG_LEVELS, MODOS, TIPOS_MENSAJE } from './constants.js';
-import { configurarUtils } from './utils.js';
+
+// 2. Importar logger con configuración mínima
 import logger from './logger.js';
+
+// 3. Configurar logger con valores por defecto
+logger.configure({
+  logLevel: LOG_LEVELS.DEBUG,
+  debug: true,
+  iframeId: 'app',
+  showTimestamp: true
+});
+
+// 4. Importar el resto de módulos
+import { CONFIG as CONFIG_SHARED } from './config.js';
+import { configurarUtils } from './utils.js';
 import { 
   inicializarMensajeria, 
   registrarControlador, 
