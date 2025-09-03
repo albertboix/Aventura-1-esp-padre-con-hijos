@@ -28,38 +28,65 @@
 
     <!-- Cargar módulos ES -->
     <script type="module">
-    // Importar la aplicación principal
-    import { inicializar } from './js/app.js';
-    
-    // Configuración global
+    // 1. Configuración global de manejo de errores
     window.handleIframeError = function(iframeId, event) {
         const errorMsg = `Error loading ${iframeId}`;
-        if (window.logger && typeof window.logger.error === 'function') {
+        console.error(errorMsg, event);
+        // Si el logger está disponible, usarlo también
+        if (window.logger?.error) {
             window.logger.error(errorMsg, event);
-        } else {
-            console.error(errorMsg, event);
         }
     };
     
     window.handleIframeLoad = function(iframeId) {
         const msg = `${iframeId} loaded successfully`;
-        if (window.logger && typeof window.logger.debug === 'function') {
+        console.debug(msg);
+        if (window.logger?.debug) {
             window.logger.debug(msg);
-        } else if (window.config?.debug) {
-            console.debug(msg);
         }
     };
-    
-    // Inicializar la aplicación cuando el DOM esté listo
-    document.addEventListener('DOMContentLoaded', async () => {
+
+    // 2. Función de inicialización asíncrona
+    async function initializeApp() {
         try {
-            console.log('Inicializando aplicación...');
+            console.log('Iniciando aplicación...');
+            
+            // Importar dinámicamente la aplicación
+            const { inicializar } = await import('./js/app.js');
+            
+            // Inicializar la aplicación
             await inicializar();
+            
             console.log('Aplicación inicializada correctamente');
+            
         } catch (error) {
-            console.error('Error al inicializar la aplicación:', error);
+            console.error('Error crítico al inicializar la aplicación:', error);
+            // Mostrar mensaje de error en la interfaz
+            const errorDiv = document.createElement('div');
+            errorDiv.style.position = 'fixed';
+            errorDiv.style.top = '0';
+            errorDiv.style.left = '0';
+            errorDiv.style.right = '0';
+            errorDiv.style.background = '#ffebee';
+            errorDiv.style.color = '#c62828';
+            errorDiv.style.padding = '1rem';
+            errorDiv.style.zIndex = '9999';
+            errorDiv.style.fontFamily = 'Arial, sans-serif';
+            errorDiv.style.fontSize = '14px';
+            errorDiv.style.whiteSpace = 'pre';
+            errorDiv.style.overflow = 'auto';
+            errorDiv.style.maxHeight = '50vh';
+            errorDiv.textContent = `Error al inicializar la aplicación:\n\n${error.message}\n\n${error.stack || ''}`;
+            document.body.prepend(errorDiv);
         }
-    });
+    }
+
+    // 3. Inicializar cuando el DOM esté listo
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initializeApp);
+    } else {
+        initializeApp();
+    }
     </script>
 </head>
 <body>
