@@ -80,9 +80,7 @@ configurarUtils({
 });
 
 // Hacer utilidades disponibles globalmente
-window.enviarMensaje = enviarMensaje;
-window.TIPOS_MENSAJE = TIPOS_MENSAJE; // Ya importado de constants.js
-window.logger = logger;
+// Estas se configurarán después de inicializar la mensajería
 
 // Función para inicializar la mensajería
 async function inicializarMensajeriaApp() {
@@ -95,8 +93,11 @@ async function inicializarMensajeriaApp() {
   logger.info('Inicializando mensajería...');
 
   try {
+    // Importar dinámicamente para evitar circular dependencies
+    const mensajeriaModule = await import('./mensajeria.js');
+    
     // Inicializar el módulo de mensajería centralizado
-    await inicializarMensajeria({
+    await mensajeriaModule.inicializarMensajeria({
       iframeId: CONFIG.IFRAME_ID,
       debug: CONFIG.DEBUG,
       logLevel: CONFIG.LOG_LEVEL,
@@ -113,12 +114,26 @@ async function inicializarMensajeriaApp() {
       }))
     });
 
+    // Configurar utilidades globales
+    window.enviarMensaje = mensajeriaModule.enviarMensaje;
+    window.registrarControlador = mensajeriaModule.registrarControlador;
+    window.TIPOS_MENSAJE = TIPOS_MENSAJE;
+    
+    // Configurar estado
     estadoApp.mensajeriaInicializada = true;
+    estadoApp.mensajeria = mensajeriaModule;
+    
     logger.info('Mensajería inicializada correctamente');
     
     // Registrar los iframes hijos en el estado de la aplicación
     estadoApp.hijos = { ...CONFIG.HIJOS };
     logger.info(`Iframes hijos registrados: ${Object.keys(estadoApp.hijos).join(', ')}`);
+    
+    // Notificar que la mensajería está lista
+    await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.INICIALIZACION_COMPLETA, {
+      componente: 'app',
+      estado: 'mensajeria_lista'
+    });
     
   } catch (error) {
     estadoApp.inicializando = false;
@@ -205,28 +220,67 @@ async function registrarManejadores() {
 
 // Inicialización principal de la aplicación
 async function inicializar() {
-  if (estadoApp.inicializado || estadoApp.inicializando) {
-    logger.info('La aplicación ya está inicializada o en proceso');
+  if (estadoApp.inicializando || estadoApp.inicializado) {
+    logger.warn('La aplicación ya está inicializada o en proceso de inicialización');
     return;
   }
 
+  estadoApp.inicializando = true;
+  logger.info('Inicializando aplicación...');
+
   try {
-    estadoApp.inicializando = true;
-    logger.info('Iniciando inicialización de la aplicación...');
-    
+    // 1. Inicializar mensajería primero
     await inicializarMensajeriaApp();
-    await registrarManejadores();
+    
+    // 2. Registrar manejadores de mensajes
+    registrarManejadores();
+    
+    // 3. Notificar que la aplicación está lista
     await notificarInicializacion();
     
+    // 4. Configurar estado
     estadoApp.inicializado = true;
-    estadoApp.inicializando = false;
-    
     logger.info('Aplicación inicializada correctamente');
-    return true;
+    
+    // 5. Notificar al padre que la aplicación está lista
+    if (window.enviarMensaje) {
+      await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.INICIALIZACION_COMPLETA, {
+        componente: 'app',
+        estado: 'aplicacion_lista',
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      logger.warn('No se pudo notificar al padre: enviarMensaje no está disponible');
+    }
+    
   } catch (error) {
+    const errorInfo = {
+      mensaje: error.message,
+      stack: error.stack,
+      tipo: 'inicializacion',
+      timestamp: new Date().toISOString()
+    };
+    
+    logger.error('Error durante la inicialización:', errorInfo);
+    
+    // Intentar notificar el error al padre si es posible
+    if (window.enviarMensaje) {
+      try {
+        await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
+          ...errorInfo,
+          origen: CONFIG.IFRAME_ID || 'app'
+        });
+      } catch (e) {
+        console.error('No se pudo notificar el error al padre:', e);
+      }
+    }
+    
     estadoApp.inicializando = false;
-    await notificarError('inicializacion', error);
     throw error;
+  } finally {
+    if (!estadoApp.inicializado) {
+      estadoApp.inicializando = false;
+    }
   }
 }
 
