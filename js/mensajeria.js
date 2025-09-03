@@ -393,27 +393,49 @@ if (typeof window !== 'undefined' && !window.mensajeriaInicializada && !window._
   loadTiposMensaje().then(() => {
     // Configurar manejador de mensajes global
     const messageHandler = (event) => {
-      // Verificar que el mensaje es para este iframe
-      if (event.data && 
-          event.data.destino && 
-          event.data.destino !== estado.iframeId && 
-          event.data.destino !== 'todos') {
-        return;
-      }
-      
-      if (event.data && event.data.tipo && estado.manejadores.has(event.data.tipo)) {
-        recibirMensaje(event);
+      try {
+        // Verificar que el mensaje es para este iframe
+        if (!event.data || typeof event.data !== 'object') return;
+        
+        const { origen, destino, tipo } = event.data;
+        
+        // Ignorar mensajes sin tipo o sin destino
+        if (!tipo || !destino) return;
+        
+        // Verificar si el mensaje es para este iframe
+        if (destino !== 'todos' && 
+            destino !== estado.iframeId && 
+            destino !== 'padre') {
+          return;
+        }
+        
+        // Evitar bucles de mensajes
+        if (origen === estado.iframeId) return;
+        
+        // Procesar el mensaje si hay un manejador registrado
+        if (estado.manejadores.has(tipo)) {
+          recibirMensaje(event);
+        }
+      } catch (error) {
+        console.error('Error en el manejador de mensajes:', error);
       }
     };
     
-    // Asegurarse de no agregar múltiples manejadores
-    window.removeEventListener('message', messageHandler);
-    window.addEventListener('message', messageHandler);
+    // Limpiar manejadores anteriores
+    const oldHandler = window._mensajeriaHandler;
+    if (oldHandler) {
+      window.removeEventListener('message', oldHandler);
+    }
+    
+    // Guardar referencia al manejador actual
+    window._mensajeriaHandler = messageHandler;
+    window.addEventListener('message', messageHandler, false);
     
     // Limpiar el manejador al desmontar
     const cleanup = () => {
       window.removeEventListener('message', messageHandler);
       window.removeEventListener('beforeunload', cleanup);
+      delete window._mensajeriaHandler;
     };
     
     window.addEventListener('beforeunload', cleanup);
