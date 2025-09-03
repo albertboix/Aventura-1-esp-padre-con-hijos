@@ -1,19 +1,26 @@
 /**
  * Módulo principal de la aplicación
- * @version 1.0.0
+ * @version 1.1.0
+ * 
+ * Secuencia de inicialización:
+ * 1. Cargar configuración (config.js)
+ * 2. Inicializar utilidades (utils.js)
+ * 3. Configurar logger (logger.js)
+ * 4. Inicializar mensajería (mensajeria.js)
+ * 5. Registrar manejadores
+ * 6. Inicializar aplicación
  */
 
-// Importar módulos
+// 1. Importar módulos base (sin efectos secundarios)
+import { CONFIG as CONFIG_SHARED } from './config.js';
+import { LOG_LEVELS, MODOS, TIPOS_MENSAJE } from './constants.js';
+import { configurarUtils } from './utils.js';
+import logger from './logger.js';
 import { 
   inicializarMensajeria, 
   registrarControlador, 
-  enviarMensaje,
-  TIPOS_MENSAJE 
+  enviarMensaje
 } from './mensajeria.js';
-import { configurarUtils } from './utils.js';
-import { CONFIG as CONFIG_SHARED } from './config.js';
-import { LOG_LEVELS, MODOS } from './constants.js';
-import logger from './logger.js';
 
 // Configuración global
 const CONFIG = {
@@ -352,19 +359,46 @@ export async function inicializarAplicacion() {
 // Exportar la configuración
 export { CONFIG };
 
-// Inicializar automáticamente si se carga este módulo directamente
-if (typeof window !== 'undefined' && document.readyState !== 'loading') {
-  // El DOM ya está listo, inicializar directamente
-  inicializarAplicacion().catch(console.error);
-} else if (typeof document !== 'undefined') {
-  // Esperar a que el DOM esté listo
-  document.addEventListener('DOMContentLoaded', () => {
-    inicializarAplicacion().catch(console.error);
-  });
-}
+// Inicialización automática cuando se carga el módulo directamente
+if (typeof window !== 'undefined' && !window.__esModule) {
+  (async () => {
+    try {
+      // 1. Configurar utilidades
+      configurarUtils({
+        debug: CONFIG.DEBUG,
+        logLevel: CONFIG.LOG_LEVEL,
+        reintentos: CONFIG.REINTENTOS
+      });
 
-// Hacer CONFIG disponible globalmente para compatibilidad
-window.CONFIG = CONFIG;
+      // 2. Configurar logger
+      logger.configure({
+        level: CONFIG.LOG_LEVEL,
+        debug: CONFIG.DEBUG
+      });
+
+      // 3. Inicializar mensajería
+      await inicializarMensajeria({
+        iframeId: CONFIG.IFRAME_ID,
+        debug: CONFIG.DEBUG,
+        logLevel: CONFIG.LOG_LEVEL
+      });
+
+      // 4. Registrar manejadores
+      registrarManejadores();
+
+      // 5. Inicializar aplicación
+      await inicializar();
+      
+      // 6. Notificar que la inicialización ha terminado
+      notificarInicializacion();
+      
+    } catch (error) {
+      const errorMsg = 'Error crítico durante la inicialización';
+      console.error(errorMsg, error);
+      notificarError('inicializacion_critica', new Error(`${errorMsg}: ${error.message}`));
+    }
+  })();
+}
 
 // Exportar solo lo necesario
 export {
