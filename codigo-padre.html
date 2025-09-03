@@ -47,6 +47,36 @@
     </script>
 </head>
 <body>
+    <!-- Debug overlay -->
+    <div id="debug-overlay" style="position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.7); color: white; padding: 10px; border-radius: 5px; z-index: 9999; max-width: 300px; max-height: 80vh; overflow: auto; font-family: monospace; font-size: 12px;">
+        <h3 style="margin: 0 0 10px 0;">Debug Info</h3>
+        <div id="debug-content">Initializing...</div>
+    </div>
+    
+    <script>
+    // Debug logging function
+    function debugLog(message, data) {
+        const now = new Date().toISOString().substr(11, 12);
+        const logLine = document.createElement('div');
+        logLine.textContent = `[${now}] ${message}`;
+        if (data) {
+            try {
+                logLine.textContent += ' ' + JSON.stringify(data);
+            } catch (e) {
+                logLine.textContent += ' [Object]';
+            }
+        }
+        const debugContent = document.getElementById('debug-content');
+        debugContent.prepend(logLine);
+        console.log(`[DEBUG] ${message}`, data || '');
+    }
+    
+    // Make it globally available
+    window.debugLog = debugLog;
+    
+    // Log initial load
+    debugLog('Parent page loading...');
+    </script>
     <!-- Contenedores de la UI -->
     <div id="mapa"></div>
     <div id="map-debug"></div>
@@ -96,18 +126,49 @@
 
     <!-- SCRIPT PRINCIPAL UNIFICADO DE LA APLICACIÓN -->
     <script type="module">
-import { logger, configurarUtils, crearObjetoError } from './js/utils.js';
-import { TIPOS_MENSAJE, inicializarMensajeria, registrarControlador, enviarMensaje } from './js/mensajeria.js?v=2';
-import { inicializarMapa } from './js/funciones-mapa.js';
-import { CONFIG } from './js/app.js';
+    // Log module initialization
+    window.debugLog('ES Module initializing...');
+    
+    // Configurar manejador global de errores no capturados
+    window.addEventListener('error', (event) => {
+        console.error('Error no capturado:', event.error || event.message, event);
+    });
 
-// Configurar utilidades con la configuración centralizada
-// 1. IMPORTACIONES Y CONFIGURACIÓN
+    // Configurar manejador para promesas no manejadas
+    window.addEventListener('unhandledrejection', (event) => {
+        console.error('Promesa rechazada no manejada:', event.reason);
+    });
 
-// Usar HIJOS de la configuración centralizada
-const { HIJOS } = CONFIG;
-
-const MAP_CONFIG = {
+    (async () => {
+        try {
+            window.debugLog('Inicializando aplicación...');
+            
+            // Importar módulos
+            window.debugLog('Importando módulos...');
+            const [utilsModule, mensajeriaModule, { CONFIG }, { inicializarMapa }] = await Promise.all([
+                import('./js/utils.js'),
+                import('./js/mensajeria.js'),
+                import('./js/app.js'),
+                import('./js/funciones-mapa.js')
+            ]);
+            
+            // Extraer las exportaciones necesarias
+            const { logger, configurarUtils, crearObjetoError } = utilsModule;
+            const { TIPOS_MENSAJE, inicializarMensajeria, registrarControlador, enviarMensaje } = mensajeriaModule;
+            
+            // Hacer disponibles globalmente para depuración
+            window.utils = utilsModule;
+            window.mensajeria = mensajeriaModule;
+            window.CONFIG = CONFIG;
+            
+            window.debugLog('Módulos importados correctamente');
+            window.debugLog('CONFIG:', CONFIG);
+            window.debugLog('TIPOS_MENSAJE:', TIPOS_MENSAJE);
+            
+            // Usar HIJOS de la configuración centralizada
+            const { HIJOS } = CONFIG;
+            
+            const MAP_CONFIG = {
             center: [39.4699, -0.3763], zoom: 13, minZoom: 12, maxZoom: 18, zoomControl: false
         };
 
@@ -877,6 +938,13 @@ const MAP_CONFIG = {
         // Make these available globally
         window.TIPOS_MENSAJE = TIPOS_MENSAJE;
         window.enviarMensaje = enviarMensaje;
+        
+        // Initialize the app
+        iniciarSistemaMapa();
+    } catch (error) {
+        console.error('Error al inicializar la aplicación:', error);
+    }
+})();
     </script>
 </body>
 </html>
