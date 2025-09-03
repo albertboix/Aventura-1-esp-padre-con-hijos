@@ -5,25 +5,50 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>hijo5-casa</title>
     <script type="module">
+    // Configuración de la aplicación
+    const CONFIG_APP = {
+      DEBUG: true,  // Cambiar a false en producción
+      LOG_LEVEL: 1  // 0: debug, 1: info, 2: warn, 3: error, 4: none
+    };
+
+    // Función para notificar errores
+    async function notificarError(tipo, error) {
+      console.error(`[BOTON-CASA] Error (${tipo}):`, error);
+      
+      // Si el sistema de mensajería está disponible, notificar al padre
+      if (window.enviarMensaje) {
+        try {
+          await window.enviarMensaje('padre', 'SISTEMA.ERROR', {
+            tipo,
+            origen: 'boton-casa',
+            mensaje: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString()
+          });
+        } catch (e) {
+          console.error('Error al notificar error al padre:', e);
+        }
+      }
+    }
     // Importar módulos
     import { 
         inicializar, 
+        notificarError, 
         manejarCambioModo,
-        estado as estadoApp,
-        notificarError
+        estado as estadoApp 
     } from './js/app.js';
     import { 
         registrarControlador, 
         enviarMensaje,
         TIPOS_MENSAJE 
     } from './js/mensajeria.js';
-    import { CONFIG, LOG_LEVELS } from './js/config.js';
+    import { CONFIG as CONFIG_APP, LOG_LEVELS } from './js/config.js';
     
     // Configuración de mensajería
     const CONFIG_MENSAJERIA = {
         iframeId: 'hijo5-casa',
-        debug: CONFIG?.DEBUG || true,
-        logLevel: CONFIG?.LOG_LEVEL || LOG_LEVELS.INFO,
+        debug: CONFIG_APP?.DEBUG || true,
+        logLevel: CONFIG_APP?.LOG_LEVEL || LOG_LEVELS.INFO,
         reintentos: {
             maximos: 3,
             tiempoEspera: 1000,
@@ -32,9 +57,9 @@
     };
     
     // Solo exponer lo necesario para depuración
-    if (CONFIG?.DEBUG) {
+    if (CONFIG_APP.DEBUG) {
       window.estadoApp = estadoApp;
-      window.CONFIG = CONFIG;
+      window.CONFIG = CONFIG_APP;
     }
     
     // Función para actualizar la interfaz según el modo
@@ -510,7 +535,7 @@
     // Inicializar la aplicación cuando el DOM esté listo
     document.addEventListener('DOMContentLoaded', async () => {
       try {
-        if (CONFIG?.DEBUG) {
+        if (CONFIG_APP.DEBUG) {
           console.debug('DOM cargado en hijo5-casa');
           // Verifica que el botón y la ventana existen
           console.debug('botonCasa:', document.getElementById('gps-casa-btn'));
