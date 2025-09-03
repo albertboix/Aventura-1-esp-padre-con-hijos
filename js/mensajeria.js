@@ -6,7 +6,46 @@
 
 // Importar utilidades y configuración
 import { configurarUtils, crearObjetoError } from './utils.js';
-import { TIPOS_MENSAJE } from './constants.js';
+// Importar TIPOS_MENSAJE sin circular dependency
+let TIPOS_MENSAJE = {};
+
+// This will be replaced with the actual import after initialization
+const loadTiposMensaje = async () => {
+  if (Object.keys(TIPOS_MENSAJE).length === 0) {
+    try {
+      const mod = await import('./constants.js');
+      TIPOS_MENSAJE = mod.TIPOS_MENSAJE || {};
+    } catch (error) {
+      console.error('Error loading TIPOS_MENSAJE:', error);
+      // Provide minimal fallback
+      TIPOS_MENSAJE = {
+        SISTEMA: {
+          INICIALIZACION_COMPLETA: 'sistema:inicializacion_completa',
+          ERROR: 'sistema:error',
+          COMPONENTE_LISTO: 'sistema:componente_listo',
+          CAMBIO_MODO: 'sistema:cambio_modo'
+        },
+        NAVEGACION: {
+          INICIAR: 'navegacion:iniciar',
+          INICIADA: 'navegacion:iniciada',
+          CANCELADA: 'navegacion:cancelada',
+          DESTINO_ESTABLECIDO: 'navegacion:destino_establecido',
+          LLEGADA_DETECTADA: 'navegacion:llegada_detectada',
+          ERROR: 'navegacion:error',
+          SOLICITAR_DESTINO: 'navegacion:solicitar_destino',
+          ESTADO: 'navegacion:estado',
+          CAMBIO_PARADA: 'navegacion:cambio_parada'
+        },
+        CONTROL: {
+          ESTADO: 'control:estado',
+          HABILITAR: 'control:habilitar',
+          DESHABILITAR: 'control:deshabilitar'
+        }
+      };
+    }
+  }
+  return TIPOS_MENSAJE;
+};
 
 // Estado interno de la mensajería
 const estado = {
@@ -317,24 +356,50 @@ function limpiarMensajeria() {
 // Limpiar al cerrar la página
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', limpiarMensajeria);
-}
-
-// Inicialización automática si se carga directamente en el navegador
-if (typeof window !== 'undefined' && !window.mensajeriaInicializada) {
-  window.mensajeriaInicializada = true;
   
-  // Configurar manejador de mensajes global
-  window.addEventListener('message', (event) => {
-    if (event.data && event.data.tipo && estado.manejadores.has(event.data.tipo)) {
-      recibirMensaje(event);
-    }
-  });
+  // Inicialización automática solo si no hay un módulo de sistema de módulos
+  if (!window.mensajeriaInicializada && !window.__esModule) {
+    window.mensajeriaInicializada = true;
+    
+    // Cargar TIPOS_MENSAJE para el contexto global
+    loadTiposMensaje().then(() => {
+      // Configurar manejador de mensajes global
+      const messageHandler = (event) => {
+        if (event.data && event.data.tipo && estado.manejadores.has(event.data.tipo)) {
+          recibirMensaje(event);
+        }
+      };
+      
+      window.addEventListener('message', messageHandler);
+      
+      // Limpiar el manejador al desmontar
+      window.addEventListener('beforeunload', () => {
+        window.removeEventListener('message', messageHandler);
+      });
+    });
+  }
 }
 
 // Exportar la API pública
-export default {
-  inicializarMensajeria,
+const api = {
+  async inicializarMensajeria(config) {
+    await loadTiposMensaje();
+    return await inicializarMensajeria(config);
+  },
   registrarControlador,
-  enviarMensaje,
-  TIPOS_MENSAJE
+  enviarMensaje: async (destino, tipo, datos) => {
+    await loadTiposMensaje();
+    return enviarMensaje(destino, tipo, datos);
+  },
+  get TIPOS_MENSAJE() {
+    return TIPOS_MENSAJE;
+  }
 };
+
+export const { 
+  inicializarMensajeria, 
+  registrarControlador, 
+  enviarMensaje 
+} = api;
+
+export default api;
