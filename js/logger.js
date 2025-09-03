@@ -4,9 +4,14 @@
  * @version 3.1.0
  */
 
-// Importar configuración compartida
-import { CONFIG } from './config.js';
-import { LOG_LEVELS } from './constants.js';
+// Importar constantes directamente para evitar dependencias circulares
+const LOG_LEVELS = {
+  DEBUG: 0,
+  INFO: 1,
+  WARN: 2,
+  ERROR: 3,
+  NONE: 4
+};
 
 // Safe console method fallback
 const safeConsoleMethod = (typeof console !== 'undefined' && console.log) 
@@ -39,22 +44,18 @@ let config = {
   colors: DEFAULT_COLORS
 };
 
-// Aplicar configuración de CONFIG si existe
-if (typeof CONFIG !== 'undefined') {
-  const newConfig = {
-    ...config,
-    debug: CONFIG.DEBUG !== undefined ? CONFIG.DEBUG : config.debug,
-    iframeId: CONFIG.IFRAME_ID || config.iframeId
-  };
-  
-  // Only use LOG_LEVEL if it's a valid level
-  if (CONFIG.LOG_LEVEL !== undefined && 
-      Object.values(LOG_LEVELS).includes(CONFIG.LOG_LEVEL)) {
-    newConfig.logLevel = CONFIG.LOG_LEVEL;
-  }
-  
-  config = newConfig;
-}
+// Configuración inicial
+const newConfig = {
+  ...config,
+  // Valores por defecto, serán sobrescritos por configure()
+  debug: true,
+  iframeId: 'unknown',
+  logLevel: CONFIG.LOG_LEVEL && Object.values(LOG_LEVELS).includes(CONFIG.LOG_LEVEL) 
+    ? CONFIG.LOG_LEVEL 
+    : LOG_LEVELS.DEBUG
+};
+
+config = newConfig;
 
 // Historial de logs en memoria
 let logHistory = [];
