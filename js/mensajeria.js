@@ -4,6 +4,41 @@
  * @version 2.3.0
  */
 
+// Cargar tipos de mensaje
+async function loadTiposMensaje() {
+  if (window.TIPOS_MENSAJE) return Promise.resolve();
+  
+  return new Promise((resolve) => {
+    const tipos = {
+      NAVEGACION: {
+        INICIAR: 'navegacion.iniciar',
+        INICIADA: 'navegacion.iniciada',
+        CANCELADA: 'navegacion.cancelada',
+        DESTINO_ESTABLECIDO: 'navegacion.destino_establecido',
+        LLEGADA_DETECTADA: 'navegacion.llegada_detectada',
+        ERROR: 'navegacion.error',
+        SOLICITAR_DESTINO: 'navegacion.solicitar_destino',
+        ESTADO: 'navegacion.estado',
+        CAMBIO_PARADA: 'navegacion.cambio_parada'
+      },
+      SISTEMA: {
+        ERROR: 'sistema.error',
+        ESTADO: 'sistema.estado',
+        CAMBIO_MODO: 'sistema.cambio_modo',
+        COMPONENTE_LISTO: 'sistema.componente_listo'
+      },
+      CONTROL: {
+        ESTADO: 'control.estado',
+        HABILITAR: 'control.habilitar',
+        DESHABILITAR: 'control.deshabilitar'
+      }
+    };
+    
+    window.TIPOS_MENSAJE = tipos;
+    resolve();
+  });
+}
+
 // Importar utilidades
 import { configurarUtils, crearObjetoError } from './utils.js';
 
@@ -390,7 +425,6 @@ export async function enviarMensaje(destino, tipo, datos = {}) {
   return await _enviarMensaje(destino, tipo, datos);
 }
 
-// Exportar el módulo completo
 export default {
   inicializarMensajeria,
   registrarControlador,
