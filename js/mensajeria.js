@@ -385,31 +385,41 @@ function limpiarMensajeria() {
   }
 }
 
-// Limpiar al cerrar la página
-if (typeof window !== 'undefined') {
-  window.addEventListener('beforeunload', limpiarMensajeria);
+// Inicialización automática solo si no hay un módulo de sistema de módulos
+if (typeof window !== 'undefined' && !window.mensajeriaInicializada && !window.__esModule) {
+  window.mensajeriaInicializada = true;
   
-  // Inicialización automática solo si no hay un módulo de sistema de módulos
-  if (!window.mensajeriaInicializada && !window.__esModule) {
-    window.mensajeriaInicializada = true;
+  // Cargar TIPOS_MENSAJE para el contexto global
+  loadTiposMensaje().then(() => {
+    // Configurar manejador de mensajes global
+    const messageHandler = (event) => {
+      // Verificar que el mensaje es para este iframe
+      if (event.data && 
+          event.data.destino && 
+          event.data.destino !== estado.iframeId && 
+          event.data.destino !== 'todos') {
+        return;
+      }
+      
+      if (event.data && event.data.tipo && estado.manejadores.has(event.data.tipo)) {
+        recibirMensaje(event);
+      }
+    };
     
-    // Cargar TIPOS_MENSAJE para el contexto global
-    loadTiposMensaje().then(() => {
-      // Configurar manejador de mensajes global
-      const messageHandler = (event) => {
-        if (event.data && event.data.tipo && estado.manejadores.has(event.data.tipo)) {
-          recibirMensaje(event);
-        }
-      };
-      
-      window.addEventListener('message', messageHandler);
-      
-      // Limpiar el manejador al desmontar
-      window.addEventListener('beforeunload', () => {
-        window.removeEventListener('message', messageHandler);
-      });
-    });
-  }
+    // Asegurarse de no agregar múltiples manejadores
+    window.removeEventListener('message', messageHandler);
+    window.addEventListener('message', messageHandler);
+    
+    // Limpiar el manejador al desmontar
+    const cleanup = () => {
+      window.removeEventListener('message', messageHandler);
+      window.removeEventListener('beforeunload', cleanup);
+    };
+    
+    window.addEventListener('beforeunload', cleanup);
+  }).catch(error => {
+    console.error('Error al cargar TIPOS_MENSAJE:', error);
+  });
 }
 
 // Exportar la API pública
