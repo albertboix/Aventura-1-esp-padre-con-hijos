@@ -1,51 +1,45 @@
 /**
  * Módulo de mensajería para comunicación entre iframes.
  * @module Mensajeria
- * @version 2.2.0
+ * @version 2.3.0
  */
 
-// Importar utilidades y configuración
+// Importar utilidades
 import { configurarUtils, crearObjetoError } from './utils.js';
-// Importar TIPOS_MENSAJE sin circular dependency
-let TIPOS_MENSAJE = {};
 
-// This will be replaced with the actual import after initialization
-const loadTiposMensaje = async () => {
-  if (Object.keys(TIPOS_MENSAJE).length === 0) {
-    try {
-      const mod = await import('./constants.js');
-      TIPOS_MENSAJE = mod.TIPOS_MENSAJE || {};
-    } catch (error) {
-      console.error('Error loading TIPOS_MENSAJE:', error);
-      // Provide minimal fallback
-      TIPOS_MENSAJE = {
-        SISTEMA: {
-          INICIALIZACION_COMPLETA: 'sistema:inicializacion_completa',
-          ERROR: 'sistema:error',
-          COMPONENTE_LISTO: 'sistema:componente_listo',
-          CAMBIO_MODO: 'sistema:cambio_modo'
-        },
-        NAVEGACION: {
-          INICIAR: 'navegacion:iniciar',
-          INICIADA: 'navegacion:iniciada',
-          CANCELADA: 'navegacion:cancelada',
-          DESTINO_ESTABLECIDO: 'navegacion:destino_establecido',
-          LLEGADA_DETECTADA: 'navegacion:llegada_detectada',
-          ERROR: 'navegacion:error',
-          SOLICITAR_DESTINO: 'navegacion:solicitar_destino',
-          ESTADO: 'navegacion:estado',
-          CAMBIO_PARADA: 'navegacion:cambio_parada'
-        },
-        CONTROL: {
-          ESTADO: 'control:estado',
-          HABILITAR: 'control:habilitar',
-          DESHABILITAR: 'control:deshabilitar'
-        }
-      };
-    }
-  }
-  return TIPOS_MENSAJE;
-};
+// Definir constantes internas para evitar dependencia circular
+const INTERNAL_TIPOS_MENSAJE = Object.freeze({
+  SISTEMA: Object.freeze({
+    INICIALIZACION_COMPLETA: 'SISTEMA.INICIALIZACION_COMPLETA',
+    ERROR: 'SISTEMA.ERROR',
+    COMPONENTE_LISTO: 'SISTEMA.COMPONENTE_LISTO',
+    CAMBIO_MODO: 'SISTEMA.CAMBIO_MODO',
+    ESTADO: 'SISTEMA.ESTADO',
+    ACTUALIZACION_COMPLETADA: 'SISTEMA.ACTUALIZACION_COMPLETADA'
+  }),
+  NAVEGACION: Object.freeze({
+    INICIAR: 'NAVEGACION.INICIAR',
+    INICIADA: 'NAVEGACION.INICIADA',
+    CANCELADA: 'NAVEGACION.CANCELADA',
+    DESTINO_ESTABLECIDO: 'NAVEGACION.DESTINO_ESTABLECIDO',
+    LLEGADA_DETECTADA: 'NAVEGACION.LLEGADA_DETECTADA',
+    ERROR: 'NAVEGACION.ERROR',
+    SOLICITAR_DESTINO: 'NAVEGACION.SOLICITAR_DESTINO',
+    ESTADO: 'NAVEGACION.ESTADO',
+    ESTABLECER_DESTINO: 'NAVEGACION.ESTABLECER_DESTINO',
+    DETENER: 'NAVEGACION.DETENER',
+    CAMBIO_PARADA: 'NAVEGACION.CAMBIO_PARADA',
+    ACTUALIZAR_UBICACION: 'NAVEGACION.ACTUALIZAR_UBICACION'
+  }),
+  CONTROL: Object.freeze({
+    ESTADO: 'CONTROL.ESTADO',
+    HABILITAR: 'CONTROL.HABILITAR',
+    DESHABILITAR: 'CONTROL.DESHABILITAR'
+  })
+});
+
+// Exportar una copia de las constantes internas
+export const TIPOS_MENSAJE = JSON.parse(JSON.stringify(INTERNAL_TIPOS_MENSAJE));
 
 // Estado interno de la mensajería
 const estado = {
@@ -119,7 +113,8 @@ function obtenerInstancia(config = {}) {
  * @param {Object} config - Configuración de mensajería
  * @returns {Promise<Object>} Instancia de mensajería inicializada
  */
-async function inicializarMensajeria(config = {}) {
+// Función interna de inicialización
+async function _inicializarMensajeria(config = {}) {
   // Inicializar logger si es necesario
   if (!isLoggerInitialized && typeof window !== 'undefined') {
     try {
@@ -202,7 +197,8 @@ async function inicializarMensajeria(config = {}) {
  * @param {string} tipo - Tipo de mensaje.
  * @param {Function} manejador - Función manejadora.
  */
-function registrarControlador(tipo, manejador) {
+// Función interna para registrar controladores
+function _registrarControlador(tipo, manejador) {
   estado.manejadores.set(tipo, manejador);
   logger.debug(`[Mensajeria] Controlador registrado para tipo: ${tipo}`);
 }
@@ -214,7 +210,8 @@ function registrarControlador(tipo, manejador) {
  * @param {Object} datos - Datos del mensaje.
  * @returns {Promise<Object>|undefined}
  */
-async function enviarMensaje(destino, tipo, datos = {}) {
+// Función interna para enviar mensajes
+async function _enviarMensaje(destino, tipo, datos = {}) {
   if (!destino || !tipo) {
     logger.error('[Mensajeria] Falta destino o tipo en enviarMensaje', { destino, tipo });
     return;
@@ -381,25 +378,24 @@ if (typeof window !== 'undefined') {
 }
 
 // Exportar la API pública
-const api = {
-  async inicializarMensajeria(config) {
-    await loadTiposMensaje();
-    return await inicializarMensajeria(config);
-  },
+export async function inicializarMensajeria(config) {
+  return await _inicializarMensajeria(config);
+}
+
+export function registrarControlador(tipo, manejador) {
+  return _registrarControlador(tipo, manejador);
+}
+
+export async function enviarMensaje(destino, tipo, datos = {}) {
+  return await _enviarMensaje(destino, tipo, datos);
+}
+
+// Exportar las constantes directamente
+export { TIPOS_MENSAJE };
+
+export default {
+  inicializarMensajeria,
   registrarControlador,
-  enviarMensaje: async (destino, tipo, datos) => {
-    await loadTiposMensaje();
-    return enviarMensaje(destino, tipo, datos);
-  },
-  get TIPOS_MENSAJE() {
-    return TIPOS_MENSAJE;
-  }
+  enviarMensaje,
+  TIPOS_MENSAJE
 };
-
-export const { 
-  inicializarMensajeria, 
-  registrarControlador, 
-  enviarMensaje 
-} = api;
-
-export default api;
