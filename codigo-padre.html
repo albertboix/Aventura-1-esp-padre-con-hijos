@@ -389,23 +389,73 @@
 
         async function iniciarSistemaMapa() {
             try {
-                if (typeof L === 'undefined') throw new Error('Leaflet no está disponible.');
-                if (estadoApp.mapaInicializado) return;
+                console.log('Iniciando inicialización del mapa...');
                 
-                // Ensure map container is visible and has dimensions
-                const mapaContainer = document.getElementById('mapa');
-                if (mapaContainer) {
-                    mapaContainer.style.display = 'block';
-                    if (mapaContainer.offsetWidth === 0 || mapaContainer.offsetHeight === 0) {
-                        if (window.logger) {
-                            window.logger.warn('Map container has zero dimensions, setting default size');
-                        } else if (window.console && window.console.warn) {
-                            console.warn('Map container has zero dimensions, setting default size');
-                        }
-                        mapaContainer.style.width = '100vw';
-                        mapaContainer.style.height = '100vh';
-                    }
+                // 1. Verificar que Leaflet está cargado
+                if (typeof L === 'undefined') {
+                    const errorMsg = 'Leaflet no está cargado. Verifica que la biblioteca se haya cargado correctamente.';
+                    console.error(errorMsg);
+                    if (window.logger) window.logger.error(errorMsg);
+                    throw new Error(errorMsg);
                 }
+                
+                if (estadoApp.mapaInicializado) {
+                    console.log('El mapa ya está inicializado');
+                    return;
+                }
+                
+                // 2. Verificar contenedor del mapa
+                const mapaContainer = document.getElementById('mapa');
+                if (!mapaContainer) {
+                    const errorMsg = 'No se encontró el elemento con ID "mapa". Asegúrate de que existe en el HTML.';
+                    console.error(errorMsg);
+                    if (window.logger) window.logger.error(errorMsg);
+                    throw new Error(errorMsg);
+                }
+                
+                console.log('Contenedor del mapa encontrado:', mapaContainer);
+                
+                // 3. Asegurar que el contenedor sea visible y tenga dimensiones
+                mapaContainer.style.display = 'block';
+                mapaContainer.style.visibility = 'visible';
+                mapaContainer.style.position = 'absolute';
+                mapaContainer.style.top = '0';
+                mapaContainer.style.left = '0';
+                
+                // 4. Establecer dimensiones explícitas si es necesario
+                if (mapaContainer.offsetWidth === 0 || mapaContainer.offsetHeight === 0) {
+                    console.warn('El contenedor del mapa tiene dimensiones cero, estableciendo tamaño por defecto');
+                    mapaContainer.style.width = '100%';
+                    mapaContainer.style.height = '100%';
+                    mapaContainer.style.minHeight = '100vh';
+                    
+                    // Forzar reflow
+                    void mapaContainer.offsetWidth;
+                }
+                
+                console.log('Dimensiones del contenedor:', {
+                    width: mapaContainer.offsetWidth,
+                    height: mapaContainer.offsetHeight,
+                    computedStyle: window.getComputedStyle(mapaContainer).display,
+                    position: window.getComputedStyle(mapaContainer).position,
+                    visibility: window.getComputedStyle(mapaContainer).visibility
+                });
+                
+                // 5. Verificar que el contenedor está en el DOM
+                if (!document.body.contains(mapaContainer)) {
+                    console.warn('El contenedor del mapa no está en el DOM, intentando adjuntarlo...');
+                    document.body.appendChild(mapaContainer);
+                }
+                
+                // 6. Pequeña pausa para asegurar que el DOM se actualice
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                // 7. Inicializar el mapa
+                console.log('Inicializando mapa con configuración:', { 
+                    containerId: 'mapa',
+                    paradasCount: AVENTURA_PARADAS.length,
+                    config: MAP_CONFIG 
+                });
                 
                 const mapaInstance = await inicializarMapa({ 
                     arrayParadas: AVENTURA_PARADAS, 
@@ -413,9 +463,12 @@
                     ...MAP_CONFIG 
                 });
                 
-                if (!mapaInstance) throw new Error('inicializarMapa no devolvió una instancia del mapa.');
+                if (!mapaInstance) {
+                    throw new Error('inicializarMapa no devolvió una instancia del mapa.');
+                }
                 
                 window.mapa = mapaInstance;
+                console.log('Mapa inicializado correctamente:', window.mapa);
                 estadoApp.mapaInicializado = true;
                 logger.info('Mapa inicializado.');
                 
