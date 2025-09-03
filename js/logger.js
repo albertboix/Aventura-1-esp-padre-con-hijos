@@ -8,6 +8,11 @@
 import { CONFIG } from './config.js';
 import { LOG_LEVELS } from './constants.js';
 
+// Safe console method fallback
+const safeConsoleMethod = (typeof console !== 'undefined' && console.log) 
+  ? console.log.bind(console) 
+  : () => {};
+
 // Nombres de niveles para mostrar
 const LEVEL_NAMES = ['DEBUG', 'INFO', 'WARN', 'ERROR', 'NONE'];
 
@@ -36,12 +41,19 @@ let config = {
 
 // Aplicar configuración de CONFIG si existe
 if (typeof CONFIG !== 'undefined') {
-  config = {
+  const newConfig = {
     ...config,
-    logLevel: CONFIG.LOG_LEVEL !== undefined ? CONFIG.LOG_LEVEL : config.logLevel,
     debug: CONFIG.DEBUG !== undefined ? CONFIG.DEBUG : config.debug,
     iframeId: CONFIG.IFRAME_ID || config.iframeId
   };
+  
+  // Only use LOG_LEVEL if it's a valid level
+  if (CONFIG.LOG_LEVEL !== undefined && 
+      Object.values(LOG_LEVELS).includes(CONFIG.LOG_LEVEL)) {
+    newConfig.logLevel = CONFIG.LOG_LEVEL;
+  }
+  
+  config = newConfig;
 }
 
 // Historial de logs en memoria
