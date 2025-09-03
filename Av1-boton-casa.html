@@ -114,6 +114,10 @@
     // Función para inicializar la aplicación
     async function inicializarAplicacion() {
       try {
+        // 1. Mostrar indicador de carga
+        const loadingIndicator = document.getElementById('loading-indicator');
+        if (loadingIndicator) loadingIndicator.style.display = 'block';
+        
         if (CONFIG_APP.DEBUG) {
           console.debug('Inicializando aplicación hijo5-casa');
           console.debug('botonCasa:', document.getElementById('gps-casa-btn'));
@@ -121,14 +125,14 @@
           console.debug('estado.modo:', estadoApp?.modo);
         }
         
-        // Inicializar mensajería
+        // 2. Inicializar mensajería (primer paso crítico)
         await inicializarMensajeria(CONFIG_MENSAJERIA);
         
-        // Configurar utilidades globales
+        // 3. Configurar utilidades globales
         window.enviarMensaje = window.enviarMensaje || (() => {});
         window.registrarControlador = window.registrarControlador || (() => {});
         
-        // Registrar manejadores de mensajes
+        // 4. Registrar manejadores de mensajes
         registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, (mensaje) => {
           try {
             if (mensaje?.datos?.modo) {
@@ -141,30 +145,35 @@
           }
         });
         
-        // Manejador de errores
+        // 5. Manejador de errores
         registrarControlador(TIPOS_MENSAJE.SISTEMA.ERROR, (mensaje) => {
           console.error('Error recibido:', mensaje);
         });
         
-        // Inicializar la aplicación
+        // 6. Inicializar la aplicación principal
         await inicializar();
         
-        // Configurar botón de casa
+        // 7. Configurar elementos de la interfaz
         const botonCasa = document.getElementById('gps-casa-btn');
         if (botonCasa) {
           botonCasa.addEventListener('click', manejarClickCambioModo);
           actualizarEstadoGPS(estadoApp?.modo?.actual === 'aventura');
         }
         
-        // Inicializar la interfaz según el estado actual
-        actualizarInterfaz(estadoApp?.modo?.actual);
+        // 8. Cargar recursos adicionales si es necesario
+        const cargasAdicionales = [];
         
-        // Cargar puntos de ruta si estamos en modo casa
         if (estadoApp?.modo?.actual === 'casa' && typeof window.solicitarPuntosRuta === 'function') {
-          await window.solicitarPuntosRuta();
+          cargasAdicionales.push(window.solicitarPuntosRuta());
         }
         
-        // Notificar que el componente está listo
+        // Esperar a que todas las cargas adicionales terminen
+        await Promise.all(cargasAdicionales);
+        
+        // 9. Inicializar la interfaz con el estado actual
+        actualizarInterfaz(estadoApp?.modo?.actual);
+        
+        // 10. Notificar que el componente está listo
         if (window.enviarMensaje) {
           await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO, {
             componente: 'boton-casa',
@@ -210,6 +219,22 @@
     }
     </script>
     <style>
+    /* Spinner animation */
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .spinner {
+      border: 4px solid rgba(0, 0, 0, 0.1);
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border-left-color: #09f;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 10px;
+    }
+    
     /* Estilos para el botón de casa */
     body, html {
       margin: 0;
@@ -475,6 +500,31 @@
   </style>
 </head>
 <body>
+  <!-- Loading indicator -->
+  <div id="loading-indicator" style="
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+      display: none; /* Hidden by default */
+  ">
+      <div style="
+          background: white;
+          padding: 20px;
+          border-radius: 8px;
+          text-align: center;
+      ">
+          <div class="spinner"></div>
+          <p>Cargando aplicación...</p>
+      </div>
+  </div>
+
   <div id="zona-boton-casa" role="region" aria-label="Control de navegación">
     <button id="gps-casa-btn" class="on" title="Cambiar a modo Casa (GPS OFF)" aria-label="Cambiar Modo" aria-pressed="false">
       <span class="sr-only">Modo Casa</span>
