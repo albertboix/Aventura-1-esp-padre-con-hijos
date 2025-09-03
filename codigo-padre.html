@@ -1,950 +1,606 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Aventura 1 - Padre</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🗺️%3C/text%3E%3C/svg%3E">
-
-    <!-- Carga de Leaflet desde CDN -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-    <style>
-        /* Estilos generales, mapa, debug, logo, iframes, etc. */
-        html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; background: transparent; }
-        iframe { background: transparent; border: none; }
-        #mapa { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 3; background-color: #f5f5f5; }
-        #map-debug { position: fixed; top: 10px; left: 10px; background: rgba(255, 255, 255, 0.9); padding: 5px 8px; border-radius: 5px; z-index: 5000; font-size: 12px; font-family: monospace; display: none; transition: opacity 0.5s; }
-        #logo-aventura { position: fixed; top: -13px; left: 50%; transform: translateX(-50%); width: 190px; height: 140px; z-index: 3000; object-fit: contain; }
-        #fondo-blanco { position: fixed; top: -24px; left: 50%; transform: translateX(-50%); width: 210px; height: 150px; z-index: 2999; background: white; border-bottom-left-radius: 24px; border-bottom-right-radius: 24px; }
-        #info-parada { font-weight: bold; margin: 0; padding: 7px 12px; background-color: rgba(255, 255, 255, 0.9); border-radius: 7px; position: fixed; left: 50%; transform: translateX(-50%); z-index: 1201; display: none; color: #333; font-family: sans-serif; text-align: center; bottom: 325px; min-width: 220px; max-width: 90vw; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.10); }
-        #hijo4 { position: fixed; top: 10vh; left: 50%; width: 60vw; height: 40vh; transform: translateX(-50%); z-index: 2000; border: 2px solid red; background: transparent; pointer-events: auto; display: none; }
-        #media-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.8); z-index: 4000; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
-        #media-container { max-width: 90%; max-height: 90%; display: flex; flex-direction: column; align-items: center; position: relative; }
-        #close-media { position: absolute; top: 10px; right: 10px; background: #ff5252; color: white; border: none; border-radius: 50%; width: 35px; height: 35px; font-size: 1.2em; cursor: pointer; z-index: 4001; display: flex; justify-content: center; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-        #parada-video, #parada-imagen { max-width: 100%; max-height: calc(100vh - 80px); display: none; border-radius: 5px; }
-    </style>
-
-    <script>
-    // Definir funciones globales para los iframes
-    window.handleIframeError = function(iframeId, event) {
-        const errorMsg = `Error loading ${iframeId}`;
-        if (window.logger && typeof window.logger.error === 'function') {
-            window.logger.error(errorMsg, event);
-        } else if (window.console && typeof window.console.error === 'function') {
-            console.error(errorMsg, event);
-        }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>hijo5-casa</title>
+    <script type="module">
+    // Importar configuración
+    import { CONFIG as CONFIG_APP, LOG_LEVELS } from './js/config.js';
+    
+    // Configuración de mensajería
+    const CONFIG_MENSAJERIA = {
+      iframeId: 'hijo5-casa',
+      debug: CONFIG_APP?.DEBUG || true,
+      logLevel: CONFIG_APP?.LOG_LEVEL || 1,
+      reintentos: {
+          maximos: 3,
+          tiempoEspera: 1000,
+          factor: 2
+      }
     };
-    window.handleIframeLoad = function(iframeId) {
-        const msg = `${iframeId} loaded successfully`;
-        if (window.logger && typeof window.logger.debug === 'function') {
-            window.logger.debug(msg);
-        } else if (window.console && typeof window.console.debug === 'function' && window.config && window.config.debug) {
-            console.debug(msg);
+
+    // Función para notificar errores
+    async function notificarError(tipo, error) {
+      console.error(`[BOTON-CASA] Error (${tipo}):`, error);
+      
+      // Si el sistema de mensajería está disponible, notificar al padre
+      if (window.enviarMensaje) {
+        try {
+          await window.enviarMensaje('padre', 'SISTEMA.ERROR', {
+            tipo,
+            origen: CONFIG_APP.IFRAME_ID,
+            mensaje: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString()
+          });
+        } catch (e) {
+          console.error('Error al notificar error al padre:', e);
         }
-    };
+      }
+    }
+
+    // Hacer la función global para su uso en manejadores de eventos
+    window.notificarError = notificarError;
+    // Importar módulos
+    import { 
+        inicializar, 
+        notificarError, 
+        manejarCambioModo,
+        estado as estadoApp 
+    } from './js/app.js';
+    import { 
+        registrarControlador, 
+        enviarMensaje,
+        TIPOS_MENSAJE 
+    } from './js/mensajeria.js';
+    // Solo exponer lo necesario para depuración
+    if (CONFIG_APP.DEBUG) {
+      window.estadoApp = estadoApp;
+      window.CONFIG = CONFIG_APP;
+      window.CONFIG_MENSAJERIA = CONFIG_MENSAJERIA;
+    }
+    
+    // Función para actualizar la interfaz según el modo
+    function actualizarInterfaz(modo) {
+      const botonCasa = document.getElementById('gps-casa-btn');
+      const paradasWindow = document.getElementById('paradas-window');
+      
+      if (!botonCasa || !paradasWindow) return;
+      
+      if (modo === 'casa') {
+        paradasWindow.classList.remove('hidden');
+        paradasWindow.classList.add('visible');
+        botonCasa.classList.remove('off');
+        botonCasa.classList.add('on');
+        botonCasa.setAttribute('aria-pressed', 'true');
+      } else {
+        paradasWindow.classList.remove('visible');
+        paradasWindow.classList.add('hidden');
+        botonCasa.classList.remove('on');
+        botonCasa.classList.add('off');
+        botonCasa.setAttribute('aria-pressed', 'false');
+      }
+    }
+    
+    // Función para manejar el cambio de modo
+    async function manejarClickCambioModo() {
+      try {
+        if (!estadoApp?.modo?.actual) {
+          throw new Error('Estado de la aplicación no inicializado correctamente');
+        }
+        
+        const nuevoModo = estadoApp.modo.actual === 'casa' ? 'aventura' : 'casa';
+        
+        await manejarCambioModo({ 
+          tipo: TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO,
+          datos: { 
+            modo: nuevoModo,
+            origen: CONFIG_APP.IFRAME_ID,
+            destino: 'padre',
+            timestamp: new Date().toISOString()
+          },
+          version: '1.0'
+        });
+        
+        // Actualizar la interfaz
+        actualizarInterfaz(nuevoModo);
+        actualizarEstadoGPS(nuevoModo === 'aventura');
+        
+        // Solicitar puntos de ruta si es necesario
+        if (nuevoModo === 'casa' && typeof window.solicitarPuntosRuta === 'function') {
+          await window.solicitarPuntosRuta();
+        }
+        
+        // Notificar el cambio de estado si es necesario
+        if (typeof window.notificarEstado === 'function') {
+          await window.notificarEstado('cambio_modo', { modo: nuevoModo });
+        }
+      } catch (error) {
+        console.error('Error al cambiar el modo:', error);
+        notificarError('cambio_modo', error);
+      }
+    }
+    
+    // Función para actualizar el estado del GPS
+    function actualizarEstadoGPS(gpsActivo) {
+      const botonCasa = document.getElementById('gps-casa-btn');
+      if (botonCasa) {
+        botonCasa.title = gpsActivo ? 'GPS ACTIVADO (modo aventura)' : 'GPS DESACTIVADO (modo casa)';
+      }
+    }
+    
+    // Inicializar la aplicación cuando el DOM esté listo
+    document.addEventListener('DOMContentLoaded', async () => {
+      try {
+        // Inicializar mensajería primero
+        await inicializarMensajeria(CONFIG_MENSAJERIA);
+        
+        // Registrar manejadores de mensajes
+        registrarManejadores();
+        
+        // Inicializar la aplicación
+        await inicializar();
+        
+        const botonCasa = document.getElementById('gps-casa-btn');
+        
+        if (botonCasa) {
+          botonCasa.addEventListener('click', manejarClickCambioModo);
+          
+          // Inicializar el estado del botón
+          actualizarEstadoGPS(estadoApp?.modo?.actual === 'aventura');
+        }
+        
+        // Inicializar la interfaz según el estado actual
+        actualizarInterfaz(estadoApp?.modo?.actual);
+        
+        // Cargar puntos de ruta si estamos en modo casa
+        if (estadoApp?.modo?.actual === 'casa' && typeof window.solicitarPuntosRuta === 'function') {
+          await window.solicitarPuntosRuta();
+        }
+      } catch (error) {
+        if (window.logger) {
+          logger.error('Error al inicializar la aplicación:', error);
+        } else {
+          console.error('Error al inicializar la aplicación:', error);
+        }
+        await notificarError('inicializacion', error);
+      }
+    });
+    
+    // Registrar manejadores de mensajes
+    function registrarManejadores() {
+      try {
+        // Manejador de cambio de modo
+        registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, (mensaje) => {
+          try {
+            if (mensaje?.datos?.modo) {
+              actualizarInterfaz(mensaje.datos.modo);
+              actualizarEstadoGPS(mensaje.datos.modo === 'aventura');
+            }
+          } catch (error) {
+            console.error('Error al manejar cambio de modo:', error);
+            notificarError('cambio_modo_ui', error);
+          }
+        });
+        
+        // Manejador de errores
+        registrarControlador(TIPOS_MENSAJE.SISTEMA.ERROR, (mensaje) => {
+          console.error('Error recibido:', mensaje);
+        });
+        
+        console.log('Manejadores de mensajes registrados');
+      } catch (error) {
+        console.error('Error al registrar manejadores:', error);
+      }
+    }
     </script>
+    <style>
+    /* Estilos para el botón de casa */
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+    }
+    
+    #zona-boton-casa {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 1000;
+    }
+    
+    #gps-casa-btn {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background-color: #4CAF50;
+      border: none;
+      color: white;
+      font-size: 24px;
+      cursor: pointer;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+      transition: all 0.3s ease;
+    }
+    
+    #gps-casa-btn:hover {
+      transform: scale(1.1);
+      box-shadow: 0 6px 12px rgba(0,0,0,0.3);
+    }
+    
+    #gps-casa-btn:active {
+      transform: scale(0.95);
+    }
+    
+    #gps-casa-btn.off {
+      background-color: #f44336;
+    }
+    
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      border: 0;
+    }
+    
+    /* Asegurar que no haya transiciones que interfieran */
+    body, html {
+      transition: none !important;
+      /* Asegurar que no haya estilos en línea que sobrescriban */
+      opacity: 1 !important;
+      visibility: visible !important;
+    }
+    /* Clase para mostrar/ocultar la ventana */
+    #paradas-window.visible {
+      display: flex !important;
+    }
+    #paradas-window.hidden {
+      display: none !important;
+    }
+    #paradas-list {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      padding: 8px 12px;
+      margin:  0;
+      overflow-x: auto;
+      overflow-y: hidden;
+      height: 100%;
+      box-sizing: border-box;
+      align-items: center;
+      white-space: nowrap;
+      -webkit-overflow-scrolling: touch;
+      gap: 8px;
+      scrollbar-width: thin;
+      scrollbar-color: #888 #f1f1f1;
+      align-content: center;
+    }
+    
+    /* Estilo para la barra de desplazamiento en WebKit (Chrome, Safari) */
+    #paradas-list::-webkit-scrollbar {
+      height: 5px;
+    }
+    
+    #paradas-list::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 3px;
+    }
+    
+    #paradas-list::-webkit-scrollbar-thumb {
+      background: #888;
+      border-radius: 3px;
+    }
+    
+    #paradas-list::-webkit-scrollbar-thumb:hover {
+      background: #555;
+    }
+    
+    /* Hide scrollbar for Webkit browsers */
+    #paradas-list::-webkit-scrollbar {
+      display: none;
+    }
+    .parada-tramo-btn {
+      background: white;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 4px 8px;
+      margin: 0 2px;
+      cursor: pointer;
+      font-size: 14px;
+      display: inline-block;
+      height: 50px;
+      white-space: nowrap;
+      width: auto;
+      min-width: max-content;
+    }
+    
+    .btn-content {
+      display: inline-block;
+      white-space: nowrap;
+    }
+    
+    .btn-icon {
+      margin-right: 4px;
+    }
+    .parada-btn {
+      background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+      color: white;
+      min-width: max-content;
+      padding: 4px 8px;
+      border: none !important;
+    }
+    .tramo-btn {
+      background: linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%);
+      color: white;
+      border: none !important;
+    }
+    .inicio-btn {
+      background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%);
+      color: white;
+      border: none !important;
+    }
+    .parada-tramo-btn.actual {
+      border: 2px solid #ffd700 !important;
+      box-shadow: 0 0 0 2px #ffd700, 0 0 15px rgba(255, 215,  0, 0.7) !important;
+      transform: scale(1.05);
+      font-weight: bold;
+      z-index: 2;
+      position: relative;
+    }
+    .btn-icon {
+      font-size: 1.5em;
+      flex-shrink: 0;
+    }
+    .btn-title {
+      font-weight: 600;
+      white-space: nowrap;
+      font-size: 0.95em;
+      margin-bottom: 2px;
+    }
+    .btn-desc {
+      font-size: 0.85em;
+      opacity: 0.9;
+      white-space: normal;
+      overflow: visible;
+      text-overflow: clip;
+      max-width: 130px;
+      font-weight: 500;
+      line-height: 1.2;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      line-clamp: 2; /* Standard property */
+      -webkit-box-orient: vertical;
+      text-align: left;
+      position: relative;
+    }
+    
+    /* Fallback for Firefox */
+    @supports (-moz-appearance: none) {
+      .btn-desc {
+        display: -moz-box;
+        -moz-box-orient: vertical;
+      }
+    }
+    
+    /* Estilos para la ventana de paradas */
+    #paradas-window {
+      position: absolute;
+      top: 0;
+      left: 60px; /* Alinear con el borde derecho del botón */
+      width: 300px; /* Ancho fijo para la ventana */
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 0 4px 4px 0;
+      box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+      z-index: 1000;
+      max-height: 400px;
+      overflow-y: auto;
+      display: none; /* Inicialmente oculto */
+    }
+    
+    #paradas-list {
+      padding: 10px;
+    }
+    
+    /* Asegurar que el contenedor principal tenga posición relativa */
+    #zona-boton-casa {
+      position: relative;
+      display: inline-block;
+    }
+    
+    .parada-tramo-btn {
+      display: block;
+      width: 100%;
+      padding: 10px;
+      margin: 5px 0;
+      text-align: left;
+      border: 1px solid #eee;
+      border-radius: 4px;
+      background-color: white;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    
+    .parada-tramo-btn:hover {
+      background-color: #f5f5f5;
+    }
+    
+    .parada-btn {
+      border-left: 4px solid #4CAF50;
+    }
+    
+    .tramo-btn {
+      border-left: 4px solid #2196F3;
+    }
+    
+    .inicio-btn {
+      border-left: 4px solid #FF9800;
+    }
+    
+    .actual {
+      font-weight: bold;
+      background-color: #e3f2fd;
+    }
+
+    
+    .badge {
+      float: right;
+      background-color: #4CAF50;
+      color: white;
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-size: 0.8em;
+    }
+  </style>
 </head>
 <body>
-    <!-- Debug overlay -->
-    <div id="debug-overlay" style="position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.7); color: white; padding: 10px; border-radius: 5px; z-index: 9999; max-width: 300px; max-height: 80vh; overflow: auto; font-family: monospace; font-size: 12px;">
-        <h3 style="margin: 0 0 10px 0;">Debug Info</h3>
-        <div id="debug-content">Initializing...</div>
+  <div id="zona-boton-casa" role="region" aria-label="Control de navegación">
+    <button id="gps-casa-btn" class="on" title="Cambiar a modo Casa (GPS OFF)" aria-label="Cambiar Modo" aria-pressed="false">
+      <span class="sr-only">Modo Casa</span>
+    </button>
+    <div id="paradas-window" class="hidden">
+        <div id="paradas-list"></div>
     </div>
-    
-    <script>
-    // Debug logging function
-    function debugLog(message, data) {
-        const now = new Date().toISOString().substr(11, 12);
-        const logLine = document.createElement('div');
-        logLine.textContent = `[${now}] ${message}`;
-        if (data) {
-            try {
-                logLine.textContent += ' ' + JSON.stringify(data);
-            } catch (e) {
-                logLine.textContent += ' [Object]';
-            }
+  </div>
+  <script type="module">
+    // La inicialización se maneja en el script principal
+    // No se requiere código adicional aquí
+  </script>
+  <script>
+    // Manejador global de errores no capturados
+    window.addEventListener('error', function(event) {
+      const error = event.error || new Error(event.message);
+      const errorMsg = 'Error no manejado';
+      const errorDetails = error instanceof Error ? error.message : String(error);
+      
+      // Usar logger si está disponible, si no usar console
+      const logError = window.logger ? window.logger.error : console.error;
+      logError(errorMsg, error);
+      
+      // Mostrar mensaje de error al usuario
+      try {
+        const errorContainer = document.createElement('div');
+        errorContainer.style.cssText = [
+          'position: fixed;',
+          'top: 0;',
+          'left: 0;',
+          'right: 0;',
+          'background: #ff4444;',
+          'color: white;',
+          'padding: 1rem;',
+          'z-index: 10000;',
+          'text-align: center;',
+          'font-family: Arial, sans-serif;'
+        ].join(' ');
+        
+        errorContainer.textContent = `${errorMsg}: ${errorDetails}`;
+        document.body.prepend(errorContainer);
+      } catch (e) {
+        if (window.logger) {
+          logger.error('No se pudo mostrar el mensaje de error:', e);
+        } else {
+          console.error('No se pudo mostrar el mensaje de error:', e);
         }
-        const debugContent = document.getElementById('debug-content');
-        debugContent.prepend(logLine);
-        console.log(`[DEBUG] ${message}`, data || '');
-    }
-    
-    // Make it globally available
-    window.debugLog = debugLog;
-    
-    // Log initial load
-    debugLog('Parent page loading...');
-    </script>
-    <!-- Contenedores de la UI -->
-    <div id="mapa"></div>
-    <div id="map-debug"></div>
-    <iframe id="fondo-blanco" tabindex="-1" aria-hidden="true"></iframe>
-    <img id="logo-aventura" src="fotos_Av1/LOGO LETRAS FINAL transparente recorte.png" alt="Logo" />
-    <div id="info-parada"></div>
-
-    <!-- IFrames de los Hijos -->
-    <iframe id="hijo1-hamburguesa" src="botones-y-subfunciones-hamburguesa.html"
-        title="Menú Hamburguesa"
-        aria-label="Menú de navegación hamburguesa"
-        style="position:fixed; left:1vw; bottom:0vw; height: 265px; width:57px; z-index:1005; pointer-events:auto;"
-        onerror="handleIframeError('hijo1-hamburguesa', event)"></iframe>
-    <iframe id="hijo1-opciones" src="botones-y-subfunciones-opciones.html"
-        title="Opciones de usuario"
-        aria-label="Opciones y configuración"
-        style="position:fixed; right:1vw; bottom:0vw; height: 265px; width:57px; z-index:1005; pointer-events:auto;"
-        onerror="handleIframeError('hijo1-opciones', event)"></iframe>
-    <iframe id="hijo5-casa" src="Av1-boton-casa.html"
-        title="Botón Casa"
-        aria-label="Botón para cambiar entre modo Casa y Aventura"
-        style="position:fixed; left:10px; top:10px; height:350px; width:100px; z-index:1005; pointer-events:auto; transition:width 0.3s; display:block;"
-        onload="handleIframeLoad('hijo5-casa')" onerror="handleIframeError('hijo5-casa', event)"></iframe>
-    <iframe id="hijo3" src="Av1_audio_esp.html"
-        title="Audio de la aventura"
-        aria-label="Reproductor de audio de la aventura"
-        style="position:fixed; bottom:-6px; left:50%; transform:translateX(-50%); height:165px; width:310px; z-index:1000; display:block; pointer-events:auto;"
-        onerror="handleIframeError('hijo3-audio', event)"></iframe>
-    <iframe id="hijo2" src="Av1-botones-coordenadas.html"
-        title="Botones de coordenadas"
-        aria-label="Botones de navegación y coordenadas"
-        style="position:fixed; bottom:151px; left:50%; transform:translateX(-50%); height:165px; width:310px; z-index:1001; pointer-events:auto; display:block;"
-        allow="geolocation" onerror="handleIframeError('hijo2-coordenadas', event)"></iframe>
-    <iframe id="hijo4" src="Av1-esp-retos-preguntas.html"
-        title="Retos y preguntas"
-        aria-label="Ventana de retos y preguntas"
-        style="display:none;" onload="handleIframeLoad('hijo4-retos')" onerror="handleIframeError('hijo4-retos', event)"></iframe>
-
-    <!-- Overlay para Media -->
-    <div id="media-overlay">
-        <div id="media-container">
-            <button id="close-media">X</button>
-            <video id="parada-video" controls></video>
-            <img id="parada-imagen">
-        </div>
-    </div>
-
-    <!-- SCRIPT PRINCIPAL UNIFICADO DE LA APLICACIÓN -->
-    <script type="module">
-    // Log module initialization
-    window.debugLog('ES Module initializing...');
-    
-    // Configurar manejador global de errores no capturados
-    window.addEventListener('error', (event) => {
-        console.error('Error no capturado:', event.error || event.message, event);
+      }
     });
-
-    // Configurar manejador para promesas no manejadas
-    window.addEventListener('unhandledrejection', (event) => {
-        console.error('Promesa rechazada no manejada:', event.reason);
-    });
-
-    (async () => {
-        try {
-            window.debugLog('Inicializando aplicación...');
-            
-            // Importar módulos
-            window.debugLog('Importando módulos...');
-            const [utilsModule, mensajeriaModule, { CONFIG }, { inicializarMapa }] = await Promise.all([
-                import('./js/utils.js'),
-                import('./js/mensajeria.js'),
-                import('./js/app.js'),
-                import('./js/funciones-mapa.js')
-            ]);
-            
-            // Extraer las exportaciones necesarias
-            const { logger, configurarUtils, crearObjetoError } = utilsModule;
-            const { TIPOS_MENSAJE, inicializarMensajeria, registrarControlador, enviarMensaje } = mensajeriaModule;
-            
-            // Hacer disponibles globalmente para depuración
-            window.utils = utilsModule;
-            window.mensajeria = mensajeriaModule;
-            window.CONFIG = CONFIG;
-            
-            window.debugLog('Módulos importados correctamente');
-            window.debugLog('CONFIG:', CONFIG);
-            window.debugLog('TIPOS_MENSAJE:', TIPOS_MENSAJE);
-            
-            // Usar HIJOS de la configuración centralizada
-            const { HIJOS } = CONFIG;
-            
-            const MAP_CONFIG = {
-            center: [39.4699, -0.3763], zoom: 13, minZoom: 12, maxZoom: 18, zoomControl: false
-        };
-
-        // 2. ESTADO CENTRAL DE LA APLICACIÓN
-        const estadoApp = {
-            modo: { actual: 'casa', anterior: null },
-            paradaActual: 0, // ← aquí se guarda la última parada completada
-            mensajeriaInicializada: false,
-            mapaInicializado: false,
-            hijosInicializados: new Set(),
-        };
-        window.estadoApp = estadoApp;
-
-        // 3. DATOS DE LA AVENTURA
-        const AVENTURA_PARADAS = [
-            { padreid: "padre-P-0", tipo: "inicio", parada_id: 'P-0', audio_id: "audio-P-0", reto_id: "R-2" },
-            { padreid: "padre-TR-1", tipo: "tramo", tramo_id: 'TR-1', audio_id: "audio-TR-1" },
-            { padreid: "padre-P-1", tipo: "parada", parada_id: 'P-1', audio_id: "audio-P-1", reto_id: "R-3" },
-            { padreid: "padre-TR-2", tipo: "tramo", tramo_id: 'TR-2', audio_id: "audio-TR-2" },
-            { padreid: "padre-P-2", tipo: "parada", parada_id: 'P-2', audio_id: "audio-P-2", reto_id: "R-4" },
-            { padreid: "padre-TR-3", tipo: "tramo", tramo_id: 'TR-3', audio_id: "audio-TR-3" },
-            { padreid: "padre-P-3", tipo: "parada", parada_id: 'P-3', audio_id: "audio-P-3", reto_id: "R-5" },
-            { padreid: "padre-TR-4", tipo: "tramo", tramo_id: 'TR-4', audio_id: "audio-TR-4" },
-            { padreid: "padre-P-4", tipo: "parada", parada_id: 'P-4', audio_id: "audio-P-4", reto_id: "R-6" },
-            { padreid: "padre-P-5", tipo: "parada", parada_id: 'P-5', audio_id: "audio-P-5", retos: [{ tipo: "reto", id: "R-7" },{ tipo: "puzzle", id: "PZ-8" }] },
-            { padreid: "padre-TR-5", tipo: "tramo", tramo_id: 'TR-5', audio_id: "audio-TR-5" },
-            { padreid: "padre-P-6", tipo: "parada", parada_id: 'P-6', audio_id: "audio-P-6", reto_id: "R-9" },
-            { padreid: "padre-P-7", tipo: "parada", parada_id: 'P-7', audio_id: "audio-P-7", reto_id: "R-10" },
-            { padreid: "padre-P-8", tipo: "parada", parada_id: 'P-8', audio_id: "audio-P-8", reto_id: "R-11" },
-            { padreid: "padre-P-9", tipo: "parada", parada_id: 'P-9', audio_id: "audio-P-9" },
-            { padreid: "padre-P-10", tipo: "parada", parada_id: 'P-10', audio_id: "audio-P-10", reto_id: "R-12"  },
-            { padreid: "padre-TR-6", tipo: "tramo", tramo_id: 'TR-6', audio_id: "audio-TR-6" },
-            { padreid: "padre-P-11", tipo: "parada", parada_id: 'P-11', audio_id: "audio-P-11", reto_id: "R-13" },
-            { padreid: "padre-P-12", tipo: "parada", parada_id: 'P-12', audio_id: "audio-P-12" },
-            { padreid: "padre-P-13", tipo: "parada", parada_id: 'P-13', audio_id: "audio-P-13", reto_id: "R-14" },
-            { padreid: "padre-TR-7", tipo: "tramo", tramo_id: 'TR-7', audio_id: "audio-TR-7" },
-            { padreid: "padre-P-14", tipo: "parada", parada_id: 'P-14', audio_id: "audio-P-14", reto_id: "R-15" },
-            { padreid: "padre-P-15", tipo: "parada", parada_id: 'P-15', audio_id: "audio-P-15" },
-            { padreid: "padre-TR-8", tipo: "tramo", tramo_id: 'TR-8', audio_id: "audio-TR-8" },
-            { padreid: "padre-P-16", tipo: "parada", parada_id: 'P-16', audio_id: "audio-P-16" },
-            { padreid: "padre-TR-9", tipo: "tramo", tramo_id: 'TR-9', audio_id: "audio-TR-9" },
-            { padreid: "padre-P-17", tipo: "parada", parada_id: 'P-17', audio_id: "audio-P-17", reto_id: "R-16" },
-            { padreid: "padre-P-18", tipo: "parada", parada_id: 'P-18', audio_id: "audio-P-18" },
-            { padreid: "padre-TR-10", tipo: "tramo", tramo_id: 'TR-10', audio_id: "audio-TR-10" },
-            { padreid: "padre-P-19", tipo: "parada", parada_id: 'P-19', audio_id: "audio-P-19", retos: [{ tipo: "reto", id: "R-17" },{ tipo: "puzzle", id: "PZ-18" }] },
-            { padreid: "padre-TR-11", tipo: "tramo", tramo_id: 'TR-11', audio_id: "audio-TR-11" },
-            { padreid: "padre-TR-12", tipo: "tramo", tramo_id: 'TR-12', audio_id: "audio-TR-12" },
-            { padreid: "padre-P-20", tipo: "parada", parada_id: 'P-20', audio_id: "audio-P-20", reto_id: "R-19" },
-            { padreid: "padre-P-21", tipo: "parada", parada_id: 'P-21', audio_id: "audio-P-21" },
-            { padreid: "padre-TR-13", tipo: "tramo", tramo_id: 'TR-13', audio_id: "audio-TR-13" },
-            { padreid: "padre-P-22", tipo: "parada", parada_id: 'P-22', audio_id: "audio-P-22", retos: ["R-20", "R-21"] },
-            { padreid: "padre-P-23", tipo: "parada", parada_id: 'P-23', audio_id: "audio-P-23", reto_id: "R-21" },
-            { padreid: "padre-TR-14", tipo: "tramo", tramo_id: 'TR-14', audio_id: "audio-TR-14" },
-            { padreid: "padre-P-24", tipo: "parada", parada_id: 'P-24', audio_id: "audio-P-24", reto_id: "R-22" },
-            { padreid: "padre-TR-15", tipo: "tramo", tramo_id: 'TR-15', audio_id: "audio-TR-15" },
-            { padreid: "padre-P-25", tipo: "parada", parada_id: 'P-25', audio_id: "audio-P-25" },
-            { padreid: "padre-TR-16", tipo: "tramo", tramo_id: 'TR-16', audio_id: "audio-TR-16" },
-            { padreid: "padre-P-26", tipo: "parada", parada_id: 'P-26', audio_id: "audio-P-26", reto_id: "R-23" },
-            { padreid: "padre-TR-17", tipo: "tramo", tramo_id: 'TR-17', audio_id: "audio-TR-17" },
-            { padreid: "padre-P-27", tipo: "parada", parada_id: 'P-27', audio_id: "audio-P-27", reto_id: "R-24" },
-            { padreid: "padre-P-28", tipo: "parada", parada_id: 'P-28', audio_id: "audio-P-28", reto_id: "R-25" },
-            { padreid: "padre-TR-18", tipo: "tramo", tramo_id: 'TR-18', audio_id: "audio-TR-18" },
-            { padreid: "padre-P-29", tipo: "parada", parada_id: 'P-29', audio_id: "audio-P-29", reto_id: "R-27" },
-            { padreid: "padre-P-30", tipo: "parada", parada_id: 'P-30', audio_id: "audio-P-30", reto_id: "R-28" },
-            { padreid: "padre-TR-19", tipo: "tramo", tramo_id: 'TR-19', audio_id: "audio-TR-19" },
-            { padreid: "padre-P-31", tipo: "parada", parada_id: 'P-31', audio_id: "audio-P-31", reto_id: "R-29" },
-            { padreid: "padre-P-32", tipo: "parada", parada_id: 'P-32', audio_id: "audio-P-32", reto_id: "R-30" },
-            { padreid: "padre-P-33", tipo: "parada", parada_id: 'P-33', audio_id: "audio-P-33", retos: [ { tipo: "reto", id: "R-31" }, { tipo: "puzzle", id: "PZ-26" } ] },
-            { padreid: "padre-TR-20", tipo: "tramo", tramo_id: 'TR-20', audio_id: "audio-TR-20" },
-            { padreid: "padre-TR-21", tipo: "tramo", tramo_id: 'TR-21', audio_id: "audio-TR-21" },
-            { padreid: "padre-P-34", tipo: "parada", parada_id: 'P-34', audio_id: "audio-P-34", reto_id: "R-32" },
-            { padreid: "padre-TR-22", tipo: "tramo", tramo_id: 'TR-22', audio_id: "audio-TR-22" },
-            { padreid: "padre-P-35", tipo: "parada", parada_id: 'P-35', audio_id: "audio-P-35" },
-            { padreid: "padre-TR-23", tipo: "tramo", tramo_id: 'TR-23', audio_id: "audio-TR-23" },
-            { padreid: "padre-P-36", tipo: "parada", parada_id: 'P-36', audio_id: "audio-P-36" }
-        ];
-
-        // 4. LÓGICA DE ARRANQUE
-        document.addEventListener('DOMContentLoaded', async () => {
-            const logger = {
-                info: (msg, ...args) => console.log(`[INFO] ${msg}`, ...args),
-                error: (msg, ...args) => console.error(`[ERROR] ${msg}`, ...args),
-                warn: (msg, ...args) => console.warn(`[WARN] ${msg}`, ...args),
-                debug: (msg, ...args) => console.debug(`[DEBUG] ${msg}`, ...args)
+    // Renderizar la lista solo en modo casa
+    function renderizarListaParadas() {
+        const listaParadasContainer = document.getElementById('paradas-list');
+        if (!listaParadasContainer) return;
+        
+        if (!window.estadoApp || !window.estadoApp.paradas || window.estadoApp.paradas.length === 0) {
+            listaParadasContainer.innerHTML = 'No hay paradas disponibles';
+            listaParadasContainer.style.display = 'none';
+            return;
+        }
+        listaParadasContainer.innerHTML = '';
+        window.estadoApp.paradas.forEach((p, idx) => {
+            const btn = document.createElement('button');
+            btn.textContent = p.padreid;
+            btn.onclick = () => {
+                window.enviarMensaje('padre', window.TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, { punto: p });
             };
-
-            // Función para actualizar el tamaño del mapa
-            const updateMapSize = () => {
-                if (window.mapa) {
-                    window.mapa.invalidateSize();
-                    logger.debug('Map size updated');
-                }
-            };
-
-            try {
-                logger.info('Iniciando inicialización de la aplicación...');
-                
-                // 1. Inicializar mensajería primero
-                await inicializarSistemaMensajeria();
-                logger.debug('Sistema de mensajería inicializado');
-                
-                // 2. Registrar manejadores de mensajes
-                registrarControladoresTotales();
-                logger.debug('Manejadores de mensajes registrados');
-                
-                // 3. Inicializar el mapa
-                const mapaContainer = document.getElementById('mapa');
-                if (!mapaContainer) {
-                    throw new Error('No se encontró el contenedor del mapa');
-                }
-                
-                const mapaInstance = await iniciarSistemaMapa();
-                if (!mapaInstance) {
-                    throw new Error('No se pudo inicializar el mapa');
-                }
-                
-                logger.info('Sistema de mapa inicializado correctamente');
-                
-                // 4. Configurar actualización de tamaño del mapa
-                setTimeout(updateMapSize, 100);
-                window.addEventListener('resize', () => setTimeout(updateMapSize, 100));
-                
-                // 5. Notificar que la aplicación está lista
-                if (typeof enviarMensaje === 'function') {
-                    await enviarMensaje('*', TIPOS_MENSAJE.SISTEMA.LISTO, {
-                        modulo: 'app',
-                        estado: 'listo',
-                        timestamp: new Date().toISOString()
-                    });
-                }
-                
-                logger.info('Aplicación inicializada correctamente');
-                
-            } catch (error) {
-                const errorMsg = `Error al inicializar la aplicación: ${error.message}`;
-                logger.error(errorMsg, error);
-                
-                // Notificar error al sistema
-                if (typeof enviarMensaje === 'function') {
-                    await enviarMensaje('*', TIPOS_MENSAJE.SISTEMA.ERROR, {
-                        tipo: 'inicializacion',
-                        mensaje: error.message,
-                        stack: error.stack,
-                        timestamp: new Date().toISOString()
-                    }).catch(e => console.error('Error al notificar error:', e));
-                }
-                
-                // Mostrar mensaje de error al usuario
-                alert('Error crítico al inicializar la aplicación. Por favor, recarga la página.');
-                
-                // Mostrar el contenedor del mapa si existe
-                if (mapaContainer) {
-                    mapaContainer.style.visibility = 'visible';
-                }
-                
-                // Actualizar el estado de depuración
-                if (typeof updateMapDebug === 'function') {
-                    updateMapDebug(`Error: ${error.message}`);
-                }
-                
-                // Registrar el error
-                if (typeof crearObjetoError === 'function') {
-                    crearObjetoError('inicializacion', error);
-                }
-            }
+            listaParadasContainer.appendChild(btn);
         });
-
-        // 5. FUNCIONES PRINCIPALES
-        async function inicializarSistemaMensajeria() {
-            if (estadoApp.mensajeriaInicializada) return;
-            await inicializarMensajeria({ iframeId: CONFIG.ID_PADRE, logLevel: CONFIG.LOG_LEVEL });
-            estadoApp.mensajeriaInicializada = true;
-            logger.info('Sistema de mensajería inicializado.');
-        }
-
-        async function iniciarSistemaMapa() {
-            try {
-                if (typeof L === 'undefined') throw new Error('Leaflet no está disponible.');
-                if (estadoApp.mapaInicializado) return;
-                
-                // Ensure map container is visible and has dimensions
-                const mapaContainer = document.getElementById('mapa');
-                if (mapaContainer) {
-                    mapaContainer.style.display = 'block';
-                    if (mapaContainer.offsetWidth === 0 || mapaContainer.offsetHeight === 0) {
-                        if (window.logger) {
-                            window.logger.warn('Map container has zero dimensions, setting default size');
-                        } else if (window.console && window.console.warn) {
-                            console.warn('Map container has zero dimensions, setting default size');
-                        }
-                        mapaContainer.style.width = '100vw';
-                        mapaContainer.style.height = '100vh';
-                    }
-                }
-                
-                const mapaInstance = await inicializarMapa({ 
-                    arrayParadas: AVENTURA_PARADAS, 
-                    containerId: 'mapa', 
-                    ...MAP_CONFIG 
-                });
-                
-                if (!mapaInstance) throw new Error('inicializarMapa no devolvió una instancia del mapa.');
-                
-                window.mapa = mapaInstance;
-                estadoApp.mapaInicializado = true;
-                logger.info('Mapa inicializado.');
-                
-                // Force map to update its size after a short delay
-                const updateMapSize = () => {
-                    if (window.mapa) {
-                        window.mapa.invalidateSize();
-                        console.log('Map size updated');
-                    }
-                };
-                
-                setTimeout(updateMapSize, 100);
-                window.addEventListener('resize', () => setTimeout(updateMapSize, 100));
-                
-                // Show the map container
-                if (mapaContainer) {
-                    mapaContainer.style.visibility = 'visible';
-                }
-                
-            } catch (error) {
-                if (window.logger) {
-                    window.logger.error('Error al inicializar el mapa:', error);
-                } else if (window.console && window.console.error) {
-                    console.error('Error al inicializar el mapa:', error);
-                }
-                throw error;
-            }
-        }
-
-        async function notificarInicializacionAHijos() {
-            logger.info('Notificando inicialización a los hijos...');
-            const promesas = Object.values(CONFIG.HIJOS).map(hijo =>
-                enviarMensaje(hijo.id, TIPOS_MENSAJE.SISTEMA.INICIALIZACION, {
-                    padre: CONFIG.ID_PADRE,
-                    modo: estadoApp.modo.actual,
-                    paradaActual: estadoApp.paradaActual,
-                    aventuraParadas: AVENTURA_PARADAS
-                }).catch(err => logger.warn(`No se pudo notificar a ${hijo.nombre}:`, err.message))
-            );
-            await Promise.allSettled(promesas);
-            logger.info('Notificación a hijos completada.');
-        }
-
-        // 6. REGISTRO DE CONTROLADORES DE MENSAJES
-        // Función para manejar actualizaciones del mapa
-        function manejarActualizacionMapa(msg) {
-            const { accion, datos } = msg.datos || {};
-            
-            if (!window.mapa) {
-                console.warn('El mapa no está inicializado');
-                return;
-            }
-            
-            try {
-                switch (accion) {
-                    case 'marcador':
-                        // Añadir o actualizar marcador
-                        if (datos.id && datos.lat && datos.lng) {
-                            if (!window.mapa._marcadores) window.mapa._marcadores = {};
-                            
-                            // Eliminar marcador existente si lo hay
-                            if (window.mapa._marcadores[datos.id]) {
-                                window.mapa.removeLayer(window.mapa._marcadores[datos.id]);
-                            }
-                            
-                            // Crear nuevo marcador
-                            const marcador = L.marker([datos.lat, datos.lng], {
-                                title: datos.titulo || '',
-                                icon: datos.icono || L.divIcon({className: 'marcador-personalizado'})
-                            });
-                            
-                            if (datos.popup) {
-                                marcador.bindPopup(datos.popup);
-                                if (datos.abrirPopup) {
-                                    marcador.openPopup();
-                                }
-                            }
-                            
-                            marcador.addTo(window.mapa);
-                            window.mapa._marcadores[datos.id] = marcador;
-                            
-                            // Centrar en el marcador si se solicita
-                            if (datos.centrar) {
-                                window.mapa.setView([datos.lat, datos.lng], datos.zoom || window.mapa.getZoom());
-                            }
-                        }
-                        break;
-                        
-                    case 'limpiar_marcadores':
-                        // Limpiar todos los marcadores
-                        if (window.mapa._marcadores) {
-                            Object.values(window.mapa._marcadores).forEach(marker => {
-                                window.mapa.removeLayer(marker);
-                            });
-                            window.mapa._marcadores = {};
-                        }
-                        break;
-                        
-                    case 'centrar':
-                        // Centrar el mapa en una ubicación
-                        if (datos.lat && datos.lng) {
-                            window.mapa.setView(
-                                [datos.lat, datos.lng],
-                                datos.zoom || window.mapa.getZoom()
-                            );
-                        }
-                        break;
-                        
-                    case 'polilinea':
-                        // Dibujar una polilínea
-                        if (datos.coordenadas && datos.coordenadas.length > 0) {
-                            const polyline = L.polyline(datos.coordenadas, {
-                                color: datos.color || '#3388ff',
-                                weight: datos.ancho || 3,
-                                opacity: datos.opacidad || 0.7
-                            }).addTo(window.mapa);
-                            
-                            // Guardar referencia si se necesita actualizar después
-                            if (datos.id) {
-                                if (!window.mapa._polilineas) window.mapa._polilineas = {};
-                                if (window.mapa._polilineas[datos.id]) {
-                                    window.mapa.removeLayer(window.mapa._polilineas[datos.id]);
-                                }
-                                window.mapa._polilineas[datos.id] = polyline;
-                            }
-                            
-                            // Ajustar la vista para mostrar toda la polilínea
-                            if (datos.ajustarVista) {
-                                window.mapa.fitBounds(polyline.getBounds(), {
-                                    padding: datos.padding || [50, 50]
-                                });
-                            }
-                        }
-                        break;
-                        
-                    default:
-                        console.warn(`Acción de mapa no soportada: ${accion}`);
-                }
-            } catch (error) {
-                console.error('Error al actualizar el mapa:', error);
-            }
-        }
-        
-        function registrarControladoresTotales() {
-            const controladores = {
-                [TIPOS_MENSAJE.SISTEMA.ERROR]: manejarErrorSistema,
-                [TIPOS_MENSAJE.SISTEMA.INICIALIZACION_COMPLETADA]: manejarHijoInicializado,
-                [TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO]: manejarCambioModo,
-                [TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS]: manejarSolicitudArrayParadas,
-                [TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA]: manejarSeleccionPuntoCasa,
-                [TIPOS_MENSAJE.AUDIO.FINALIZADO]: manejarAudioFinalizado,
-                [TIPOS_MENSAJE.RETO.MOSTRAR]: manejarMostrarReto,
-                [TIPOS_MENSAJE.RETO.OCULTAR]: manejarOcultarReto,
-                [TIPOS_MENSAJE.RETO.COMPLETADO]: manejarRetoCompletado,
-                ['MAPA.ACTUALIZAR']: manejarActualizacionMapa, // Nuevo manejador para actualizaciones del mapa
-            };
-            for (const tipo in controladores) {
-                registrarControlador(tipo, controladores[tipo]);
-            }
-            logger.info('Controladores de mensajes registrados.');
-        }
-
-        // 7. IMPLEMENTACIÓN DE MANEJADORES
-        function manejarErrorSistema(msg) { 
-            const { codigo, mensaje, stack } = msg.datos || {};
-            const errorMsg = `[${codigo || 'SIN_CODIGO'}] ${mensaje || 'Error desconocido'}`;
-            logger.error(`Error de ${msg.origen || 'origen_desconocido'}:`, errorMsg);
-            if (stack) logger.debug('Stack trace:', stack);
-            updateMapDebug(`Error de ${msg.origen || 'sistema'}: ${errorMsg}`);
-        }
-        
-        function manejarHijoInicializado(msg) { 
-            const { idIframe, estado } = msg.datos || {};
-            if (idIframe && estado === 'listo') {
-                logger.info(`Hijo ${idIframe} inicializado correctamente.`);
-                estadoApp.hijosInicializados.add(idIframe);
-            } else {
-                logger.warn(`Inicialización incompleta de ${idIframe || 'hijo_desconocido'}:`, msg.datos);
-            }
-        }
-        
-        function manejarSolicitudArrayParadas(msg) { 
-            const { origen, timestamp } = msg.datos || {};
-            logger.info(`Solicitud de paradas desde ${origen}`, { timestamp });
-            return { 
-                exito: true, 
-                paradas: AVENTURA_PARADAS,
-                timestamp: Date.now(),
-                totalParadas: AVENTURA_PARADAS.length
-            }; 
-        }
-        /**
-         * Maneja el cambio de modo (casa/aventura) solicitado por un hijo
-         * @param {Object} msg - Mensaje de cambio de modo
-         * @returns {Promise<Object>} Resultado de la operación
-         */
-        async function manejarCambioModo(msg) {
-            const { modo, origen, razon } = msg.datos || {};
-            
-            // Validar el mensaje recibido
-            if (!modo || !origen) {
-                const errorMsg = 'Mensaje de cambio de modo inválido: falta modo u origen';
-                logger.error(errorMsg, msg);
-                await enviarMensaje(msg.origen || 'todos', TIPOS_MENSAJE.SISTEMA.ERROR, {
-                    codigo: 'ERROR_CAMBIO_MODO_INVALIDO',
-                    mensaje: errorMsg,
-                    origen: 'padre',
-                    timestamp: Date.now()
-                });
-                return { exito: false, error: errorMsg };
-            }
-            
-            // Verificar si ya estamos en el modo solicitado
-            if (modo === estadoApp.modo.actual) {
-                logger.info(`Solicitud de cambio a modo ${modo} ignorada (ya en este modo)`, { origen, razon });
-                return { 
-                    exito: true, 
-                    mensaje: 'Ya en este modo',
-                    modoActual: estadoApp.modo.actual
-                };
-            }
-            
-            logger.info(`Iniciando cambio a modo: ${modo}${razon ? ` (${razon})` : ''}`, { origen });
-            
-            // Notificar a todos los hijos del cambio de modo
-            try {
-                // Primero deshabilitar controles temporalmente
-                await enviarMensaje('todos', TIPOS_MENSAJE.CONTROL.DESHABILITAR, {
-                    motivo: `Cambiando a modo ${modo}`,
-                    timestamp: Date.now()
-                });
-                
-                // Actualizar el estado local
-                const modoAnterior = estadoApp.modo.actual;
-                estadoApp.modo.anterior = modoAnterior;
-                estadoApp.modo.actual = modo;
-                
-                // Asegurar que el mapa esté visible y actualizado
-                const mapaDiv = document.getElementById('mapa');
-                if (mapaDiv) {
-                    // Asegurar que el mapa esté siempre visible
-                    mapaDiv.style.display = 'block';
-                    
-                    // Si el mapa ya está creado, actualizarlo
-                    if (window.mapa) {
-                        // Forzar actualización del tamaño
-                        setTimeout(() => {
-                            window.mapa.invalidateSize();
-                            
-                            // Centrar en la ubicación actual si está disponible
-                            if (estadoApp.ubicacionActual) {
-                                window.mapa.setView(
-                                    [estadoApp.ubicacionActual.latitud, estadoApp.ubicacionActual.longitud],
-                                    window.mapa.getZoom() || MAP_CONFIG.zoom
-                                );
-                            }
-                        }, 100);
-                    } else {
-                        // Inicializar el mapa si no está creado
-                        iniciarSistemaMapa().catch(error => {
-                            console.error('Error al iniciar el mapa:', error);
-                        });
-                    }
-                }
-                
-                // Notificar a todos los hijos del cambio de modo, incluyendo gpsActivo
-                await enviarMensaje('todos', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, {
-                    modo,
-                    gpsActivo: modo === 'aventura',
-                    origen: 'padre',
-                    razon: `Cambio solicitado por ${origen}${razon ? `: ${razon}` : ''}`,
-                    timestamp: Date.now()
-                });
-                
-                // Actualizar la interfaz
-                document.body.classList.toggle('modo-aventura', modo === 'aventura');
-                document.body.classList.toggle('modo-casa', modo === 'casa');
-                
-                logger.info(`Cambio a modo ${modo} completado`, { 
-                    modoAnterior,
-                    origenSolicitud: origen,
-                    timestamp: Date.now()
-                });
-                
-                // Re-habilitar controles
-                await enviarMensaje('todos', TIPOS_MENSAJE.CONTROL.HABILITAR, {
-                    modo,
-                    timestamp: Date.now()
-                });
-                
-                return { 
-                    exito: true, 
-                    modoAnterior,
-                    modoActual: modo,
-                    timestamp: Date.now()
-                };
-            } catch (error) {
-                const errorMsg = `Error al cambiar a modo ${modo}: ${error.message}`;
-                logger.error(errorMsg, error);
-                
-                // Notificar del error
-                await enviarMensaje('todos', TIPOS_MENSAJE.SISTEMA.ERROR, {
-                    codigo: 'ERROR_CAMBIO_MODO',
-                    mensaje: errorMsg,
-                    origen: 'padre',
-                    stack: error.stack,
-                    timestamp: Date.now()
-                });
-                
-                // Revertir cambios si es necesario
-                if (estadoApp.modo.actual !== modo) {
-                    document.body.classList.toggle('modo-aventura', estadoApp.modo.actual === 'aventura');
-                    document.body.classList.toggle('modo-casa', estadoApp.modo.actual === 'casa');
-                }
-                
-                return { 
-                    exito: false, 
-                    error: errorMsg,
-                    modoActual: estadoApp.modo.actual,
-                    timestamp: Date.now()
-                };
-            }
-        }
-
-        /**
-         * Maneja la selección de un punto en el mapa
-         * @param {Object} msg - Mensaje con los datos del punto seleccionado
-         * @returns {Promise<Object>} Resultado de la operación
-         */
-        async function manejarSeleccionPuntoCasa(msg) {
-            const { punto, origen, timestamp } = msg.datos || {};
-            
-            if (!punto || !punto.padreid) {
-                const errorMsg = 'Datos de punto inválidos o faltantes';
-                logger.error(errorMsg, { punto, origen, timestamp });
-                
-                await enviarMensaje(origen || 'todos', TIPOS_MENSAJE.SISTEMA.ERROR, {
-                    codigo: 'PUNTO_INVALIDO',
-                    mensaje: errorMsg,
-                    origen: 'padre',
-                    timestamp: Date.now(),
-                    datos: { puntoId: punto?.padreid }
-                });
-                
-                return { 
-                    exito: false, 
-                    error: errorMsg,
-                    timestamp: Date.now()
-                };
-            }
-            logger.info(`Recibida selección de punto en modo casa: ${punto.padreid}`);
-
-            // 1. Orquestar al mapa para que se centre en el punto
-            await enviarMensaje('mapa', TIPOS_MENSAJE.NAVEGACION.ESTABLECER_DESTINO, { punto });
-
-            // 2. Orquestar al hijo de audio para que cargue el audio correspondiente
-            if (punto.audio_id) {
-                await enviarMensaje(CONFIG.HIJOS.AUDIO.id, TIPOS_MENSAJE.AUDIO.REPRODUCIR, { id: punto.audio_id });
-            }
-
-            // 3. Orquestar al hijo de retos si hay un reto
-            if (punto.reto_id) {
-                await manejarMostrarReto({ datos: { retoId: punto.reto_id } });
-            } else {
-                await manejarOcultarReto(); // Ocultar si no hay reto
-            }
-
-            // 4. Obtener y mostrar medios (imagen/video) desde hijo2
-            const puntoId = punto.parada_id || punto.tramo_id;
-            const respuestaMedios = await enviarMensaje(CONFIG.HIJOS.COORDENADAS.id, TIPOS_MENSAJE.DATOS.SOLICITAR_PARADA, { puntoId });
-            if (respuestaMedios.exito && respuestaMedios.datosPunto) {
-                const datosPunto = respuestaMedios.datosPunto;
-                // Aquí se podría mostrar la imagen/video en un overlay del padre si se desea
-                logger.info(`Medios para ${puntoId}:`, { img: datosPunto.imagen, video: datosPunto.video });
-            }
-
-            return { exito: true, mensaje: `Orquestación para ${punto.padreid} iniciada.` };
-        }
-
-        /**
-         * Maneja la finalización de la reproducción de audio
-         * @param {Object} msg - Mensaje con los datos del audio
-         * @returns {Promise<Object>} Resultado de la operación
-         */
-        async function manejarAudioFinalizado(msg) {
-            const { audioId, exito, error, origen, timestamp } = msg.datos || {};
-            const logContext = { audioId, exito, origen, timestamp };
-            
-            if (!audioId) {
-                const errorMsg = 'ID de audio no proporcionado';
-                logger.error(errorMsg, logContext);
-                return { 
-                    exito: false, 
-                    error: errorMsg,
-                    timestamp: Date.now()
-                };
-            }
-            
-            if (exito) {
-                logger.info(`Audio finalizado correctamente: ${audioId}`, logContext);
-            } else {
-                logger.error(`Error al reproducir audio ${audioId}: ${error || 'Error desconocido'}`, logContext);
-            }
-            
-            return { 
-                exito: true, 
-                audioId,
-                timestamp: Date.now()
-            };
-        }
-
-        /**
-         * Maneja la finalización de un reto
-         * @param {Object} msg - Mensaje con los datos del reto
-         * @returns {Promise<Object>} Resultado de la operación
-         */
-        async function manejarRetoCompletado(msg) {
-            const { retoId, exito, puntuacion, datos, origen, timestamp } = msg.datos || {};
-            const logContext = { retoId, exito, puntuacion, origen, timestamp };
-            
-            if (!retoId) {
-                const errorMsg = 'ID de reto no proporcionado';
-                logger.error(errorMsg, logContext);
-                return { 
-                    exito: false, 
-                    error: errorMsg,
-                    timestamp: Date.now()
-                };
-            }
-            
-            if (exito) {
-                logger.info(`Reto ${retoId} completado exitosamente`, logContext);
-                // Actualizar estado de la parada como completada
-                const parada = AVENTURA_PARADAS.find(p => p.reto_id === retoId);
-                if (parada) {
-                    logger.info(`Parada ${parada.parada_id} marcada como completada`);
-                    // Aquí podrías actualizar el estado de la parada en la interfaz
-                }
-            } else {
-                logger.warn(`Reto ${retoId} no completado`, logContext);
-            }
-            
-            // Ocultar el reto después de completarse
-            await manejarOcultarReto();
-            
-            return { 
-                exito: true, 
-                retoId,
-                timestamp: Date.now()
-            };
-        }
-
-        /**
-         * Muestra un reto en la interfaz
-         * @param {Object} msg - Mensaje con los datos del reto a mostrar
-         * @returns {Promise<Object>} Resultado de la operación
-         */
-        async function manejarMostrarReto(msg) {
-            const { retoId, datos, origen, timestamp } = msg?.datos || {};
-            const logContext = { retoId, origen, timestamp };
-            
-            if (!retoId) {
-                const errorMsg = 'ID de reto no proporcionado';
-                logger.error(errorMsg, logContext);
-                return { 
-                    exito: false, 
-                    error: errorMsg,
-                    timestamp: Date.now()
-                };
-            }
-            
-            try {
-                const retoElement = document.getElementById('hijo4');
-                if (retoElement) {
-                    retoElement.style.display = 'block';
-                    logger.info(`Mostrando reto: ${retoId}`, logContext);
-                    return { exito: true, retoId, timestamp: Date.now() };
-                } else {
-                    throw new Error('Elemento de reto no encontrado');
-                }
-            } catch (error) {
-                const errorMsg = `Error al mostrar reto ${retoId}: ${error.message}`;
-                logger.error(errorMsg, { ...logContext, error });
-                return { 
-                    exito: false, 
-                    error: errorMsg,
-                    timestamp: Date.now()
-                };
-            }
-        }
-
-        /**
-         * Oculta el reto actual
-         * @returns {Promise<Object>} Resultado de la operación
-         */
-        async function manejarOcultarReto() {
-            try {
-                const retoElement = document.getElementById('hijo4');
-                if (retoElement) {
-                    retoElement.style.display = 'none';
-                    logger.info('Reto ocultado');
-                }
-                return { 
-                    exito: true, 
-                    timestamp: Date.now() 
-                };
-            } catch (error) {
-                const errorMsg = `Error al ocultar reto: ${error.message}`;
-                logger.error(errorMsg, { error });
-                return { 
-                    exito: false, 
-                    error: errorMsg,
-                    timestamp: Date.now()
-                };
-            }
-        }
-
-        // En el manejador de llegada a parada (ejemplo)
-        function manejarLlegadaParada(msg) {
-            const { paradaId, origen } = msg.datos || {};
-            const paradaIndex = AVENTURA_PARADAS.findIndex(p => p.parada_id === paradaId);
-            if (paradaIndex === -1) return;
-
-            // Solo permitir avanzar si la parada anterior fue visitada
-            if (paradaIndex > estadoApp.paradaActual + 1) {
-                logger.warn(`Intento de saltar parada. Actual: ${estadoApp.paradaActual}, solicitada: ${paradaIndex}`);
-                // Opcional: notificar al usuario/hijo que debe visitar la anterior primero
-                enviarMensaje(origen, TIPOS_MENSAJE.SISTEMA.ERROR, {
-                    tipo: 'orden_paradas',
-                    mensaje: 'Debes visitar la parada anterior antes de avanzar.',
-                    paradaActual: estadoApp.paradaActual,
-                    paradaSolicitada: paradaIndex
-                });
-                return;
-            }
-
-            // Si es la siguiente parada, actualizar el estado
-            if (paradaIndex === estadoApp.paradaActual + 1) {
-                estadoApp.paradaActual = paradaIndex; // ← se actualiza la última parada completada
-                // Notificar a todos los hijos la nueva parada activa
-                enviarMensaje('todos', TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, {
-                    paradaId: AVENTURA_PARADAS[paradaIndex].parada_id,
-                    index: paradaIndex
-                });
-            }
-        }
-
-        // 8. FUNCIONES AUXILIARES
-        function updateMapDebug(status, hideAfter = 0) {
-            const el = document.getElementById('map-debug');
-            if (el) {
-                el.style.display = 'block';
-                el.style.opacity = '1';
-                el.textContent = `Estado: ${status}`;
-                if (hideAfter > 0) {
-                    setTimeout(() => {
-                        el.style.opacity = '0';
-                        setTimeout(() => el.style.display = 'none', 500);
-                    }, hideAfter);
-                }
-            }
-        }
-        // Make these available globally
-        window.TIPOS_MENSAJE = TIPOS_MENSAJE;
-        window.enviarMensaje = enviarMensaje;
-        
-        // Initialize the app
-        iniciarSistemaMapa();
-    } catch (error) {
-        console.error('Error al inicializar la aplicación:', error);
+        listaParadasContainer.style.display = 'block';
     }
-})();
-    </script>
+    // Inicializar la aplicación cuando el DOM esté listo
+    document.addEventListener('DOMContentLoaded', async () => {
+      try {
+        if (CONFIG_APP.DEBUG) {
+          console.debug('DOM cargado en hijo5-casa');
+          // Verifica que el botón y la ventana existen
+          console.debug('botonCasa:', document.getElementById('gps-casa-btn'));
+          console.debug('paradasWindow:', document.getElementById('paradas-window'));
+          console.debug('estado.modo:', estadoApp?.modo);
+        }
+        
+        // Inicializar la aplicación
+        await inicializar();
+        
+        // Configurar manejadores de eventos
+        const botonCasa = document.getElementById('gps-casa-btn');
+        const paradasWindow = document.getElementById('paradas-window');
+        
+        if (botonCasa) {
+          botonCasa.addEventListener('click', manejarClickCambioModo);
+        }
+        
+        // Inicializar mensajería
+        try {
+          // Importar e inicializar mensajería
+          const mensajeria = await import('./js/mensajeria.js');
+          
+          // Configurar utilidades globales
+          window.enviarMensaje = mensajeria.enviarMensaje;
+          window.registrarControlador = mensajeria.registrarControlador;
+          
+          // Registrar manejador de mensajes
+          registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, (mensaje) => {
+            try {
+              if (mensaje?.datos?.modo) {
+                actualizarInterfaz(mensaje.datos.modo);
+              }
+            } catch (error) {
+              console.error('Error procesando mensaje CAMBIO_MODO:', error);
+              notificarError('procesar_mensaje', error);
+            }
+          });
+          
+          // Notificar que el componente está listo
+          await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO, {
+            componente: 'boton-casa',
+            estado: 'listo',
+            timestamp: new Date().toISOString()
+          });
+          
+          if (CONFIG_APP.DEBUG) {
+            console.debug('Mensajería inicializada en hijo5-casa');
+          }
+          
+        } catch (error) {
+          console.error('Error al inicializar mensajería en hijo5-casa:', error);
+          throw error;
+        }
+        
+      } catch (error) {
+        console.error('Error al inicializar el componente botón casa:', error);
+        notificarError('inicializacion', error);
+        
+        if (window.logger) {
+          logger.error('Error al inicializar:', error);
+        } else {
+          console.error('Error al inicializar:', error);
+        }
+      }
+    });
+  </script>
 </body>
 </html>
