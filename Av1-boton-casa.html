@@ -510,7 +510,7 @@
     // Inicializar la aplicación cuando el DOM esté listo
     document.addEventListener('DOMContentLoaded', async () => {
       try {
-        if (CONFIG.DEBUG) {
+        if (CONFIG_APP.DEBUG) {
           console.debug('DOM cargado en hijo5-casa');
           // Verifica que el botón y la ventana existen
           console.debug('botonCasa:', document.getElementById('gps-casa-btn'));
@@ -529,23 +529,42 @@
           botonCasa.addEventListener('click', manejarClickCambioModo);
         }
         
-        // Registrar manejador de mensajes
-        registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, (mensaje) => {
-          try {
-            if (mensaje?.datos?.modo) {
-              actualizarInterfaz(mensaje.datos.modo);
+        // Inicializar mensajería
+        try {
+          // Importar e inicializar mensajería
+          const mensajeria = await import('./js/mensajeria.js');
+          
+          // Configurar utilidades globales
+          window.enviarMensaje = mensajeria.enviarMensaje;
+          window.registrarControlador = mensajeria.registrarControlador;
+          
+          // Registrar manejador de mensajes
+          registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, (mensaje) => {
+            try {
+              if (mensaje?.datos?.modo) {
+                actualizarInterfaz(mensaje.datos.modo);
+              }
+            } catch (error) {
+              console.error('Error procesando mensaje CAMBIO_MODO:', error);
+              notificarError('procesar_mensaje', error);
             }
-          } catch (error) {
-            console.error('Error procesando mensaje CAMBIO_MODO:', error);
-            notificarError('procesar_mensaje', error);
+          });
+          
+          // Notificar que el componente está listo
+          await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO, {
+            componente: 'boton-casa',
+            estado: 'listo',
+            timestamp: new Date().toISOString()
+          });
+          
+          if (CONFIG_APP.DEBUG) {
+            console.debug('Mensajería inicializada en hijo5-casa');
           }
-        });
-        
-        // Notificar que el componente está listo
-        await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO, {
-          componente: 'boton-casa',
-          estado: 'listo'
-        });
+          
+        } catch (error) {
+          console.error('Error al inicializar mensajería en hijo5-casa:', error);
+          throw error;
+        }
         
       } catch (error) {
         console.error('Error al inicializar el componente botón casa:', error);
