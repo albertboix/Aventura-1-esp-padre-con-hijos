@@ -50,11 +50,12 @@ const newConfig = {
   // Valores por defecto, serán sobrescritos por configure()
   debug: true,
   iframeId: 'unknown',
-  logLevel: CONFIG.LOG_LEVEL && Object.values(LOG_LEVELS).includes(CONFIG.LOG_LEVEL) 
+  logLevel: (typeof CONFIG !== 'undefined' && CONFIG?.LOG_LEVEL && Object.values(LOG_LEVELS).includes(CONFIG.LOG_LEVEL))
     ? CONFIG.LOG_LEVEL 
     : LOG_LEVELS.DEBUG
 };
 
+// Asignar la nueva configuración
 config = newConfig;
 
 // Historial de logs en memoria
