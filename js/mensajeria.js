@@ -1,18 +1,12 @@
 /**
  * Módulo de mensajería para comunicación entre iframes.
  * @module Mensajeria
- * @version 2.1.1
- */
-
-/**
- * Módulo de mensajería para comunicación entre iframes.
- * @version 2.1.1
+ * @version 2.2.0
  */
 
 // Importar utilidades y configuración
 import { configurarUtils, crearObjetoError } from './utils.js';
 import { TIPOS_MENSAJE } from './constants.js';
-import logger from './logger.js';
 
 // Estado interno de la mensajería
 const estado = {
@@ -44,12 +38,17 @@ const CONFIG_DEFAULT = {
   }
 };
 
-// Export all functions at the bottom to avoid duplicate exports
+// Logger por defecto (se actualizará después de la inicialización)
+let logger = {
+  debug: console.debug.bind(console),
+  info: console.log.bind(console),
+  warn: console.warn.bind(console),
+  error: console.error.bind(console)
+};
 
-/**
- * Inicializa el sistema de mensajería.
- * @param {Object} config - Configuración de mensajería.
- */
+// Estado de inicialización
+let isLoggerInitialized = false;
+
 /**
  * Obtiene o crea una instancia de mensajería
  * @param {Object} config - Configuración de la instancia
@@ -72,17 +71,28 @@ function obtenerInstancia(config = {}) {
     inicializando: false
   };
   
-  // Guardar instancia
   estado.instancias.set(id, instancia);
   return instancia;
 }
 
 /**
- * Inicializa el sistema de mensajería
+ * Inicializa el sistema de mensajería.
  * @param {Object} config - Configuración de mensajería
  * @returns {Promise<Object>} Instancia de mensajería inicializada
  */
 async function inicializarMensajeria(config = {}) {
+  // Inicializar logger si es necesario
+  if (!isLoggerInitialized && typeof window !== 'undefined') {
+    try {
+      const loggerModule = await import('./logger.js');
+      logger = loggerModule.default || loggerModule;
+      isLoggerInitialized = true;
+      logger.debug('[Mensajeria] Logger inicializado');
+    } catch (error) {
+      console.warn('No se pudo inicializar el logger:', error);
+    }
+  }
+  
   const instancia = obtenerInstancia(config);
   
   // Si ya está inicializado o en proceso de inicialización
@@ -122,11 +132,13 @@ async function inicializarMensajeria(config = {}) {
     });
     
     // Configurar logger
-    logger.configure({
-      iframeId: instancia.id,
-      logLevel: instancia.config.logLevel,
-      debug: instancia.config.debug
-    });
+    if (logger.configure) {
+      logger.configure({
+        iframeId: instancia.id,
+        logLevel: instancia.config.logLevel,
+        debug: instancia.config.debug
+      });
+    }
     
     // Registrar manejador de mensajes una sola vez
     if (!estado.inicializado) {
@@ -144,8 +156,6 @@ async function inicializarMensajeria(config = {}) {
     logger.error(`[Mensajeria] Error al inicializar:`, error);
     throw error;
   }
-  
-  logger.info(`Mensajería inicializada para ${estado.iframeId}`);
 }
 
 /**
@@ -170,74 +180,56 @@ async function enviarMensaje(destino, tipo, datos = {}) {
     logger.error('[Mensajeria] Falta destino o tipo en enviarMensaje', { destino, tipo });
     return;
   }
-
+  
+  // Validar si estamos inicializados
+  if (!estado.inicializado) {
+    logger.warn('[Mensajeria] Intentando enviar mensaje sin inicializar');
+    await inicializarMensajeria();
+  }
+  
   const mensaje = {
     origen: estado.iframeId,
     destino,
     tipo,
     datos,
-    timestamp: Date.now()
+    timestamp: new Date().toISOString(),
+    version: '1.0'
   };
-
-  // Si el mensaje es de cambio de modo, añade el estado del GPS
-  if (tipo === TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO && datos.modo) {
-    mensaje.datos.gpsActivo = datos.modo === 'aventura';
-  }
-
-  // Envío a todos los iframes
-  if (destino === 'todos') {
-    const promesas = [];
-    
-    // Enviar al padre si es necesario
-    if (window.parent !== window) {
-      promesas.push(
-        new Promise(resolve => {
-          window.parent.postMessage(mensaje, '*');
-          resolve();
-        })
-      );
+  
+  try {
+    // Validar mensaje
+    if (!validarMensaje(mensaje)) {
+      throw new Error('Mensaje no válido');
     }
     
-    // Enviar a todos los iframes hijos
-    estado.iframes.forEach(iframe => {
-      const el = document.getElementById(iframe.id);
-      if (el && el.contentWindow) {
-        promesas.push(
-          new Promise(resolve => {
-            el.contentWindow.postMessage(mensaje, '*');
-            resolve();
-          })
-        );
-      }
-    });
-    
-    return Promise.all(promesas)
-      .then(() => ({ exito: true }))
-      .catch(error => ({
-        exito: false,
-        error: 'Error al enviar mensajes a todos los destinos',
-        detalles: error
-      }));
-  }
-
-  // Envío al padre
-  if (destino === 'padre') {
-    if (window.parent !== window) {
+    // Enviar mensaje
+    if (destino === 'padre') {
+      // Enviar al padre
       window.parent.postMessage(mensaje, '*');
+    } else if (destino === 'todos') {
+      // Enviar a todos los iframes
+      estado.iframes.forEach(iframe => {
+        const frame = document.getElementById(iframe.id);
+        if (frame && frame.contentWindow) {
+          frame.contentWindow.postMessage(mensaje, '*');
+        }
+      });
     } else {
-      logger.warn('[Mensajeria] No hay window.parent para enviar mensaje al padre');
+      // Enviar a un iframe específico
+      const frame = document.getElementById(destino);
+      if (frame && frame.contentWindow) {
+        frame.contentWindow.postMessage(mensaje, '*');
+      } else {
+        throw new Error(`Destino no encontrado: ${destino}`);
+      }
     }
-    return { exito: true };
+    
+    logger.debug(`[Mensajeria] Mensaje enviado:`, mensaje);
+    return mensaje;
+  } catch (error) {
+    logger.error(`[Mensajeria] Error al enviar mensaje:`, error);
+    throw error;
   }
-
-  // Envío a un iframe hijo específico
-  const iframe = document.getElementById(destino);
-  if (iframe && iframe.contentWindow) {
-    iframe.contentWindow.postMessage(mensaje, '*');
-    return;
-  }
-
-  logger.warn(`[Mensajeria] No se encontró destino: ${destino}`);
 }
 
 /**
@@ -246,16 +238,23 @@ async function enviarMensaje(destino, tipo, datos = {}) {
  * @returns {Boolean} True si el mensaje es válido, false de lo contrario.
  */
 function validarMensaje(mensaje) {
-  if (!mensaje) {
-    if (estado.debug) console.debug('[Mensajeria] Mensaje vacío recibido');
+  if (!mensaje) return false;
+  
+  const { origen, destino, tipo, timestamp, version } = mensaje;
+  
+  // Validar campos requeridos
+  if (!origen || !destino || !tipo || !timestamp || !version) {
+    logger.warn('[Mensajeria] Mensaje inválido: faltan campos requeridos', mensaje);
     return false;
   }
   
-  const requeridos = ['tipo', 'datos', 'origen', 'destino'];
-  const faltantes = requeridos.filter(campo => mensaje[campo] === undefined);
-  
-  if (faltantes.length > 0) {
-    if (estado.debug) console.warn(`[Mensajeria] Mensaje inválido, campos faltantes: ${faltantes.join(', ')}`);
+  // Validar tipos
+  if (typeof origen !== 'string' || 
+      typeof destino !== 'string' || 
+      typeof tipo !== 'string' || 
+      typeof timestamp !== 'string' || 
+      typeof version !== 'string') {
+    logger.warn('[Mensajeria] Mensaje inválido: tipos incorrectos', mensaje);
     return false;
   }
   
@@ -267,57 +266,51 @@ function validarMensaje(mensaje) {
  * @param {MessageEvent} event - Evento de mensaje.
  */
 function recibirMensaje(event) {
+  const mensaje = event.data;
+  
   try {
-    const mensaje = event.data;
-    
-    // Validar el mensaje
+    // Validar mensaje
     if (!validarMensaje(mensaje)) {
-      if (estado.debug) console.debug('[Mensajeria] Mensaje ignorado - validación fallida:', mensaje);
       return;
     }
     
     // Verificar si el mensaje es para este iframe
-    if (mensaje.destino !== estado.iframeId && mensaje.destino !== 'todos') {
-      if (estado.debug) console.debug(`[Mensajeria] Mensaje ignorado - destino incorrecto (${mensaje.destino})`);
+    if (mensaje.destino !== 'todos' && 
+        mensaje.destino !== estado.iframeId && 
+        mensaje.destino !== 'padre') {
       return;
     }
     
-    if (!mensaje || !mensaje.tipo) {
-      logger.warn('[Mensajeria] Mensaje recibido sin tipo', mensaje);
-      return;
-    }
-    if (estado.debug) logger.debug(`[Mensajeria] Recibido: ${mensaje.tipo}`, mensaje);
-
+    logger.debug(`[Mensajeria] Mensaje recibido:`, mensaje);
+    
+    // Buscar manejador para este tipo de mensaje
     const manejador = estado.manejadores.get(mensaje.tipo);
-    if (!manejador) {
-      logger.warn(`[Mensajeria] No hay manejador para tipo: ${mensaje.tipo}`);
-      return;
-    }
-
-    try {
-      const resultado = manejador(mensaje);
-      // Si el manejador retorna una promesa, manejar errores
-      if (resultado && typeof resultado.then === 'function') {
-        resultado.catch(error => {
-          logger.error(`[Mensajeria] Error en manejador de ${mensaje.tipo}:`, error);
-        });
+    if (manejador) {
+      // Ejecutar manejador
+      try {
+        manejador(mensaje);
+      } catch (error) {
+        logger.error(`[Mensajeria] Error en manejador para ${mensaje.tipo}:`, error);
       }
-    } catch (error) {
-      logger.error(`[Mensajeria] Error en manejador de ${mensaje.tipo}:`, error);
+    } else {
+      logger.warn(`[Mensajeria] No hay manejador para el tipo: ${mensaje.tipo}`);
     }
   } catch (error) {
-    logger.error(`[Mensajeria] Error en recibirMensaje:`, error);
+    logger.error('[Mensajeria] Error al procesar mensaje:', error);
   }
 }
 
-// Limpiar recursos de mensajería
+/**
+ * Limpia los recursos de mensajería.
+ */
 function limpiarMensajeria() {
   if (estado.inicializado) {
     window.removeEventListener('message', recibirMensaje);
     estado.manejadores.clear();
     estado.iframes = [];
     estado.inicializado = false;
-    if (estado.debug) console.debug(`[Mensajeria] Recursos liberados para ${estado.iframeId}`);
+    estado.instancias.clear();
+    logger.debug(`[Mensajeria] Recursos liberados para ${estado.iframeId}`);
   }
 }
 
@@ -326,12 +319,22 @@ if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', limpiarMensajeria);
 }
 
-// Export all functions in a single statement
-export {
+// Inicialización automática si se carga directamente en el navegador
+if (typeof window !== 'undefined' && !window.mensajeriaInicializada) {
+  window.mensajeriaInicializada = true;
+  
+  // Configurar manejador de mensajes global
+  window.addEventListener('message', (event) => {
+    if (event.data && event.data.tipo && estado.manejadores.has(event.data.tipo)) {
+      recibirMensaje(event);
+    }
+  });
+}
+
+// Exportar la API pública
+export default {
   inicializarMensajeria,
   registrarControlador,
   enviarMensaje,
-  recibirMensaje,
-  limpiarMensajeria,
   TIPOS_MENSAJE
 };
