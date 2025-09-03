@@ -390,9 +390,7 @@ export async function enviarMensaje(destino, tipo, datos = {}) {
   return await _enviarMensaje(destino, tipo, datos);
 }
 
-// Exportar las constantes directamente
-export { TIPOS_MENSAJE };
-
+// Exportar el módulo completo
 export default {
   inicializarMensajeria,
   registrarControlador,
