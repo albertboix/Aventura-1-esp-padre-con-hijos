@@ -130,48 +130,24 @@
       }
     }
     
-    // Inicializar la aplicación cuando el DOM esté listo
-    document.addEventListener('DOMContentLoaded', async () => {
+    // Función para inicializar la aplicación
+    async function inicializarAplicacion() {
       try {
-        // Inicializar mensajería primero
+        if (CONFIG_APP.DEBUG) {
+          console.debug('Inicializando aplicación hijo5-casa');
+          console.debug('botonCasa:', document.getElementById('gps-casa-btn'));
+          console.debug('paradasWindow:', document.getElementById('paradas-window'));
+          console.debug('estado.modo:', estadoApp?.modo);
+        }
+        
+        // Inicializar mensajería
         await inicializarMensajeria(CONFIG_MENSAJERIA);
         
+        // Configurar utilidades globales
+        window.enviarMensaje = window.enviarMensaje || (() => {});
+        window.registrarControlador = window.registrarControlador || (() => {});
+        
         // Registrar manejadores de mensajes
-        registrarManejadores();
-        
-        // Inicializar la aplicación
-        await inicializar();
-        
-        const botonCasa = document.getElementById('gps-casa-btn');
-        
-        if (botonCasa) {
-          botonCasa.addEventListener('click', manejarClickCambioModo);
-          
-          // Inicializar el estado del botón
-          actualizarEstadoGPS(estadoApp?.modo?.actual === 'aventura');
-        }
-        
-        // Inicializar la interfaz según el estado actual
-        actualizarInterfaz(estadoApp?.modo?.actual);
-        
-        // Cargar puntos de ruta si estamos en modo casa
-        if (estadoApp?.modo?.actual === 'casa' && typeof window.solicitarPuntosRuta === 'function') {
-          await window.solicitarPuntosRuta();
-        }
-      } catch (error) {
-        if (window.logger) {
-          logger.error('Error al inicializar la aplicación:', error);
-        } else {
-          console.error('Error al inicializar la aplicación:', error);
-        }
-        await notificarError('inicializacion', error);
-      }
-    });
-    
-    // Registrar manejadores de mensajes
-    function registrarManejadores() {
-      try {
-        // Manejador de cambio de modo
         registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, (mensaje) => {
           try {
             if (mensaje?.datos?.modo) {
@@ -189,11 +165,51 @@
           console.error('Error recibido:', mensaje);
         });
         
-        console.log('Manejadores de mensajes registrados');
+        // Inicializar la aplicación
+        await inicializar();
+        
+        // Configurar botón de casa
+        const botonCasa = document.getElementById('gps-casa-btn');
+        if (botonCasa) {
+          botonCasa.addEventListener('click', manejarClickCambioModo);
+          actualizarEstadoGPS(estadoApp?.modo?.actual === 'aventura');
+        }
+        
+        // Inicializar la interfaz según el estado actual
+        actualizarInterfaz(estadoApp?.modo?.actual);
+        
+        // Cargar puntos de ruta si estamos en modo casa
+        if (estadoApp?.modo?.actual === 'casa' && typeof window.solicitarPuntosRuta === 'function') {
+          await window.solicitarPuntosRuta();
+        }
+        
+        // Notificar que el componente está listo
+        if (window.enviarMensaje) {
+          await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO, {
+            componente: 'boton-casa',
+            estado: 'listo',
+            timestamp: new Date().toISOString()
+          });
+        }
+        
+        if (CONFIG_APP.DEBUG) {
+          console.debug('Aplicación inicializada correctamente');
+        }
+        
       } catch (error) {
-        console.error('Error al registrar manejadores:', error);
+        console.error('Error al inicializar la aplicación:', error);
+        notificarError('inicializacion', error);
+        
+        if (window.logger) {
+          logger.error('Error al inicializar:', error);
+        } else {
+          console.error('Error al inicializar:', error);
+        }
       }
     }
+    
+    // Inicializar la aplicación cuando el DOM esté listo
+    document.addEventListener('DOMContentLoaded', inicializarAplicacion);
     </script>
     <style>
     /* Estilos para el botón de casa */
@@ -531,76 +547,6 @@
         });
         listaParadasContainer.style.display = 'block';
     }
-    // Inicializar la aplicación cuando el DOM esté listo
-    document.addEventListener('DOMContentLoaded', async () => {
-      try {
-        if (CONFIG_APP.DEBUG) {
-          console.debug('DOM cargado en hijo5-casa');
-          // Verifica que el botón y la ventana existen
-          console.debug('botonCasa:', document.getElementById('gps-casa-btn'));
-          console.debug('paradasWindow:', document.getElementById('paradas-window'));
-          console.debug('estado.modo:', estadoApp?.modo);
-        }
-        
-        // Inicializar la aplicación
-        await inicializar();
-        
-        // Configurar manejadores de eventos
-        const botonCasa = document.getElementById('gps-casa-btn');
-        const paradasWindow = document.getElementById('paradas-window');
-        
-        if (botonCasa) {
-          botonCasa.addEventListener('click', manejarClickCambioModo);
-        }
-        
-        // Inicializar mensajería
-        try {
-          // Importar e inicializar mensajería
-          const mensajeria = await import('./js/mensajeria.js');
-          
-          // Configurar utilidades globales
-          window.enviarMensaje = mensajeria.enviarMensaje;
-          window.registrarControlador = mensajeria.registrarControlador;
-          
-          // Registrar manejador de mensajes
-          registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, (mensaje) => {
-            try {
-              if (mensaje?.datos?.modo) {
-                actualizarInterfaz(mensaje.datos.modo);
-              }
-            } catch (error) {
-              console.error('Error procesando mensaje CAMBIO_MODO:', error);
-              notificarError('procesar_mensaje', error);
-            }
-          });
-          
-          // Notificar que el componente está listo
-          await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO, {
-            componente: 'boton-casa',
-            estado: 'listo',
-            timestamp: new Date().toISOString()
-          });
-          
-          if (CONFIG_APP.DEBUG) {
-            console.debug('Mensajería inicializada en hijo5-casa');
-          }
-          
-        } catch (error) {
-          console.error('Error al inicializar mensajería en hijo5-casa:', error);
-          throw error;
-        }
-        
-      } catch (error) {
-        console.error('Error al inicializar el componente botón casa:', error);
-        notificarError('inicializacion', error);
-        
-        if (window.logger) {
-          logger.error('Error al inicializar:', error);
-        } else {
-          console.error('Error al inicializar:', error);
-        }
-      }
-    });
   </script>
 </body>
 </html>
