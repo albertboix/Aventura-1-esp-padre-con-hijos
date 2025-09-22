@@ -1,94 +1,82 @@
 /**
- * Constantes compartidas en la aplicación
+ * Constantes utilizadas en toda la aplicación
  * @module Constants
  */
 
-// Niveles de log estandarizados
-export const LOG_LEVELS = Object.freeze({
-  DEBUG: 0,
-  INFO: 1,
-  WARN: 2,
-  ERROR: 3,
-  NONE: 4
-});
+/**
+ * Tipos de mensajes para la comunicación entre iframes
+ */
+export const TIPOS_MENSAJE = {
+    SISTEMA: {
+        INICIALIZACION: 'SISTEMA.INICIALIZACION',
+        INICIALIZACION_COMPLETADA: 'SISTEMA.INICIALIZACION_COMPLETADA',
+        ERROR: 'SISTEMA.ERROR',
+        CAMBIO_MODO: 'SISTEMA.CAMBIO_MODO',
+        CONFIRMACION: 'SISTEMA.CONFIRMACION',
+        COMPONENTE_LISTO: 'SISTEMA.COMPONENTE_LISTO'
+    },
+    CONTROL: {
+        HABILITAR: 'CONTROL.HABILITAR',
+        DESHABILITAR: 'CONTROL.DESHABILITAR'
+    },
+    NAVEGACION: {
+        CAMBIO_PARADA: 'NAVEGACION.CAMBIO_PARADA',
+        SOLICITAR_DESTINO: 'NAVEGACION.SOLICITAR_DESTINO',
+        ESTABLECER_DESTINO: 'NAVEGACION.ESTABLECER_DESTINO',
+        ACTUALIZAR_POSICION: 'NAVEGACION.ACTUALIZAR_POSICION'
+    },
+    AUDIO: {
+        REPRODUCIR: 'AUDIO.REPRODUCIR',
+        PAUSAR: 'AUDIO.PAUSAR',
+        FIN_REPRODUCCION: 'AUDIO.FIN_REPRODUCCION',
+        FINALIZADO: 'AUDIO.FINALIZADO'
+    },
+    RETO: {
+        MOSTRAR: 'RETO.MOSTRAR',
+        OCULTAR: 'RETO.OCULTAR',
+        COMPLETADO: 'RETO.COMPLETADO'
+    },
+    DATOS: {
+        SOLICITAR_PARADAS: 'DATOS.SOLICITAR_PARADAS',
+        SOLICITAR_PARADA: 'DATOS.SOLICITAR_PARADA'
+    },
+    UI: {
+        MODAL: 'UI.MODAL'
+    }
+};
 
-// Modos de la aplicación
-export const MODOS = Object.freeze({
-  // Modos principales
-  CASA: 'casa',
-  AVENTURA: 'aventura',
-  CONFIGURACION: 'configuracion',
-  // Modos de operación
-  NORMAL: 'normal',
-  NAVEGACION: 'navegacion'
-});
+/**
+ * Modos de la aplicación
+ */
+export const MODOS = {
+    CASA: 'casa',
+    AVENTURA: 'aventura'
+};
 
-// Tipos de mensajes estandarizados
-export const TIPOS_MENSAJE = Object.freeze({
-  // Mensajes de navegación
-  NAVEGACION: Object.freeze({
-    INICIAR: 'NAVEGACION.INICIAR',
-    INICIADA: 'NAVEGACION.INICIADA',
-    CANCELADA: 'NAVEGACION.CANCELADA',
-    DESTINO_ESTABLECIDO: 'NAVEGACION.DESTINO_ESTABLECIDO',
-    LLEGADA_DETECTADA: 'NAVEGACION.LLEGADA_DETECTADA',
-    ERROR: 'NAVEGACION.ERROR',
-    SOLICITAR_DESTINO: 'NAVEGACION.SOLICITAR_DESTINO',
-    ESTADO: 'NAVEGACION.ESTADO',
-    ESTABLECER_DESTINO: 'NAVEGACION.ESTABLECER_DESTINO',
-    DETENER: 'NAVEGACION.DETENER',
-    CAMBIO_PARADA: 'NAVEGACION.CAMBIO_PARADA',
-    ACTUALIZAR_UBICACION: 'NAVEGACION.ACTUALIZAR_UBICACION'
-  }),
-  
-  // Mensajes del sistema
-  SISTEMA: Object.freeze({
-    ERROR: 'SISTEMA.ERROR',
-    ESTADO: 'SISTEMA.ESTADO',
-    CAMBIO_MODO: 'SISTEMA.CAMBIO_MODO',
-    COMPONENTE_LISTO: 'SISTEMA.COMPONENTE_LISTO',
-    ACTUALIZACION_COMPLETADA: 'SISTEMA.ACTUALIZACION_COMPLETADA',
-    INICIALIZAR: 'SISTEMA.INICIALIZAR',
-    LISTO: 'SISTEMA.LISTO',
-    INICIALIZACION_COMPLETADA: 'SISTEMA.INICIALIZACION_COMPLETADA',
-    ESTADO_ACTUAL: 'SISTEMA.ESTADO_ACTUAL',
-    ACTUALIZAR_ESTADO: 'SISTEMA.ACTUALIZAR_ESTADO',
-    NOTIFICACION: 'SISTEMA.NOTIFICACION'
-  }),
-  
-  // Mensajes de control
-  CONTROL: Object.freeze({
-    ESTADO: 'CONTROL.ESTADO',
-    HABILITAR: 'CONTROL.HABILITAR',
-    DESHABILITAR: 'CONTROL.DESHABILITAR',
-    ACTUALIZAR: 'CONTROL.ACTUALIZAR',
-    RESET: 'CONTROL.RESET'
-  }),
-  
-  // Mensajes de audio
-  AUDIO: Object.freeze({
-    REPRODUCIR: 'AUDIO.REPRODUCIR',
-    PAUSAR: 'AUDIO.PAUSAR',
-    DETENER: 'AUDIO.DETENER',
-    VOLUMEN: 'AUDIO.VOLUMEN',
-    TIEMPO: 'AUDIO.TIEMPO',
-    ESTADO: 'AUDIO.ESTADO',
-    ERROR: 'AUDIO.ERROR',
-    FIN_REPRODUCCION: 'AUDIO.FIN_REPRODUCCION'
-  }),
-  
-  // Mensajes de interfaz de usuario
-  UI: Object.freeze({
-    ACTUALIZAR: 'UI.ACTUALIZAR',
-    NOTIFICACION: 'UI.NOTIFICACION',
-    MODAL: 'UI.MODAL',
-    TOAST: 'UI.TOAST'
-  })
-});
+/**
+ * Estados de la aplicación
+ */
+export const ESTADOS = {
+    INICIALIZANDO: 'inicializando',
+    LISTO: 'listo',
+    ERROR: 'error'
+};
 
-// Exportar todo por defecto
+/**
+ * Códigos de error
+ */
+export const CODIGOS_ERROR = {
+    INICIALIZACION: 'ERROR_INICIALIZACION',
+    MENSAJERIA: 'ERROR_MENSAJERIA',
+    MAPA: 'ERROR_MAPA',
+    AUDIO: 'ERROR_AUDIO',
+    RETO: 'ERROR_RETO',
+    NAVEGACION: 'ERROR_NAVEGACION'
+};
+
 export default {
-  LOG_LEVELS,
-  TIPOS_MENSAJE,
-  MODOS
+    TIPOS_MENSAJE,
+    MODOS,
+    ESTADOS,
+    CODIGOS_ERROR
 };
