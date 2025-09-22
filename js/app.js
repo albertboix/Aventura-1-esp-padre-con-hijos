@@ -1,72 +1,32 @@
 /**
- * Módulo principal de la aplicación
- * @version 1.2.0
- * 
- * Secuencia de inicialización:
- * 1. Cargar constantes (constants.js)
- * 2. Configurar logger con valores por defecto
- * 3. Cargar configuración (config.js)
- * 4. Inicializar utilidades (utils.js)
- * 5. Inicializar mensajería (mensajeria.js)
- * 6. Registrar manejadores
- * 7. Inicializar aplicación
+ * Módulo principal de la aplicación que gestiona el estado global y la lógica de negocio.
+ * @version 2.1.0
  */
 
-// 1. Importar solo constantes primero (sin efectos secundarios)
-import { LOG_LEVELS, MODOS, TIPOS_MENSAJE } from './constants.js';
-
-// 2. Importar logger con configuración mínima
+// 1. Importar dependencias
+import { MODOS, TIPOS_MENSAJE } from './constants.js';
 import logger from './logger.js';
+import { registrarControlador, enviarMensaje, inicializarMensajeria } from './mensajeria.js';
+import { CONFIG } from './config.js';
 
-// 3. Configurar logger con valores por defecto
-logger.configure({
-  logLevel: LOG_LEVELS.DEBUG,
-  debug: true,
-  iframeId: 'app',
-  showTimestamp: true
-});
+// 2. Datos de la Aventura (ahora centralizados aquí)
+export const AVENTURA_PARADAS = [
+    { id: 'P-0', tipo: "inicio", parada: 0, nombre: "Torres de Serranos (start)", coordenadas: { lat: 39.47876, lng: -0.37626 }, imagen: 'fotos_Av1/00_torres_de_serranos_back.jpg', video: 'videos/parada_0.mp4', audioId: 'audio_P-0' },
+    { id: 'TR-1', tipo: "tramo", tramo: 1, nombre: "Torres de Serranos → Plaza de la crida", inicio: { lat: 39.47876, lng: -0.37626 }, fin: { lat: 39.47959, lng: -0.37583 }, video: 'videos/tramo_1.mp4', audioId: 'audio_TR-1' },
+    { id: 'P-1', tipo: "parada", parada: 1, nombre: "Plaza de la crida", coordenadas: { lat: 39.47959, lng: -0.37583 }, imagen: 'fotos_Av1/01_torres-de_serranos_front.jpg', audioId: 'audio_P-1', retoId: 'R-1' },
+    // ... resto de paradas y tramos
+];
 
-// 4. Importar el resto de módulos
-import { CONFIG as CONFIG_SHARED } from './config.js';
-import { configurarUtils } from './utils.js';
-import { 
-  inicializarMensajeria, 
-  registrarControlador, 
-  enviarMensaje
-} from './mensajeria.js';
-
-// Configuración global
-const CONFIG = {
-  ...CONFIG_SHARED, // Heredar configuración compartida
-  // Configuración específica de la aplicación
-  ARCHIVO_PADRE: 'codigo-padre.html',  // Nombre del archivo HTML principal
-  VERSION: '1.0.0',
-  REINTENTOS: {
-    MAXIMOS: 3,
-    TIEMPO_ESPERA: 1000,
-    FACTOR: 2
-  },
-  
-  // Configuración de todos los iframes hijos
-  HIJOS: {
-    HAMBURGUESA: { id: 'hijo1-hamburguesa', nombre: 'Menú Hamburguesa', src: 'botones-y-subfunciones-hamburguesa.html' },
-    OPCIONES:    { id: 'hijo1-opciones',    nombre: 'Opciones',         src: 'botones-y-subfunciones-opciones.html' },
-    COORDENADAS: { id: 'hijo2',             nombre: 'Mapa',             src: 'Av1-botones-coordenadas.html' },
-    AUDIO:       { id: 'hijo3',             nombre: 'Reproductor Audio', src: 'Av1_audio_esp.html' },
-    RETOS:       { id: 'hijo4',             nombre: 'Retos',            src: 'Av1-esp-retos-preguntas.html' },
-    CASA:        { id: 'hijo5-casa',        nombre: 'Casa',             src: 'Av1-boton-casa.html' }
-  }
-};
-
-// Estado de la aplicación
-const estadoApp = {
+// 3. Estado unificado de la aplicación
+export const estado = {
   // Estado de inicialización
-  inicializando: false,
   inicializado: false,
+  inicializando: false,
+  ultimoError: null,
   
   // Estado de la aplicación
-  modo: { 
-    actual: 'casa', 
+  modo: {
+    actual: MODOS.CASA,
     anterior: null,
     ultimoCambio: null
   },
@@ -75,94 +35,131 @@ const estadoApp = {
   gpsActivo: false,
   controlesHabilitados: true,
   mensajeriaInicializada: false,
-  modulosCargados: false,
   
   // Estado de navegación
-  puntoActual: null,
+  puntoActual: AVENTURA_PARADAS[0],
   tramoActual: null,
   
   // Referencias
   mensajeria: null,
-  mapa: null,
-  
-  // Último error
-  ultimoError: null,
   
   // Versión
-  version: '1.0.0'
+  version: '2.1.0'
 };
 
-// Inicializar el logger
-configurarUtils({
-  iframeId: CONFIG.IFRAME_ID,
-  debug: CONFIG.DEBUG,
-  logLevel: CONFIG.LOG_LEVEL
-});
+// 4. Manejadores de Lógica de Negocio
+async function manejarCambioModo(mensaje) {
+  const { modo } = mensaje.datos;
+  if (modo && estado.modo !== modo) {
+    logger.info(`🔄 Cambiando modo de '${estado.modo}' a '${modo}'`);
+    estado.modo = modo;
+    estado.gpsActivo = (modo === MODOS.AVENTURA);
+    
+    // Notificar a todos los iframes sobre el cambio de modo
+    await enviarMensaje('todos', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, { 
+        modo: estado.modo,
+        gpsActivo: estado.gpsActivo 
+    });
+  }
+}
 
-// Hacer utilidades disponibles globalmente
-// Estas se configurarán después de inicializar la mensajería
+async function manejarSolicitudDestino(mensaje) {
+    // Lógica para avanzar al siguiente punto en la aventura
+    const indiceActual = AVENTURA_PARADAS.findIndex(p => p.id === estado.puntoActual.id);
+    const siguienteIndice = (indiceActual + 1) % AVENTURA_PARADAS.length;
+    estado.puntoActual = AVENTURA_PARADAS[siguienteIndice];
 
-// Función para inicializar la mensajería
+    logger.info(`📍 Nuevo destino: ${estado.puntoActual.nombre}`);
+
+    // Notificar a todos los hijos del nuevo punto
+    await enviarMensaje('todos', TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, { punto: estado.puntoActual });
+}
+
+// 5. Inicialización del módulo
+export async function inicializar() {
+  if (estado.inicializado || estado.inicializando) {
+    logger.warn('La aplicación ya está inicializada o en proceso de inicialización');
+    return;
+  }
+
+  estado.inicializando = true;
+  logger.info('🧠 Inicializando aplicación...');
+
+  try {
+    // Inicializar mensajería
+    await inicializarMensajeria({
+      iframeId: CONFIG.IFRAME_ID,
+      debug: CONFIG.DEBUG,
+      logLevel: CONFIG.LOG_LEVEL
+    });
+
+    // Registrar manejadores
+    registrarControlador(TIPOS_MENSAJE.SISTEMA.PING, manejarPing);
+    registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejarCambioModo);
+    registrarControlador(TIPOS_MENSAJE.NAVEGACION.SOLICITAR_DESTINO, manejarSolicitudDestino);
+
+    // Actualizar estado
+    estado.inicializado = true;
+    estado.mensajeriaInicializada = true;
+    
+    logger.info('✅ Aplicación inicializada correctamente');
+    
+    // Notificar inicialización exitosa
+    await notificarInicializacion();
+    
+    return true;
+  } catch (error) {
+    await notificarError('inicializacion', error);
+    throw error;
+  } finally {
+    estado.inicializando = false;
+  }
+}
+
+// 6. Manejadores de mensajes
+
+/**
+ * Maneja el mensaje PING para verificar la conectividad
+ */
+function manejarPing(mensaje) {
+  logger.debug('PING recibido:', mensaje);
+  return { 
+    estado: 'activo', 
+    timestamp: new Date().toISOString(),
+    version: estado.version
+  };
+}
+
+// 7. Funciones de utilidad
+
+/**
+ * Inicializa la mensajería de la aplicación
+ */
 async function inicializarMensajeriaApp() {
-  if (estadoApp.inicializando || estadoApp.inicializado) {
+  if (estado.inicializando || estado.inicializado) {
     logger.warn('La mensajería ya está inicializada o en proceso de inicialización');
     return;
   }
 
-  estadoApp.inicializando = true;
   logger.info('Inicializando mensajería...');
 
   try {
-    // Importar dinámicamente para evitar circular dependencies
-    const mensajeriaModule = await import('./mensajeria.js');
-    
-    // Inicializar el módulo de mensajería centralizado
-    await mensajeriaModule.inicializarMensajeria({
+    // Inicializar el módulo de mensajería
+    await inicializarMensajeria({
       iframeId: CONFIG.IFRAME_ID,
       debug: CONFIG.DEBUG,
       logLevel: CONFIG.LOG_LEVEL,
-      reintentos: {
-        maximos: CONFIG.REINTENTOS.MAXIMOS,
-        tiempoEspera: CONFIG.REINTENTOS.TIEMPO_ESPERA,
-        factor: CONFIG.REINTENTOS.FACTOR
-      },
-      // Pasar información de los iframes hijos
-      iframes: Object.values(CONFIG.HIJOS).map(hijo => ({
-        id: hijo.id,
-        nombre: hijo.nombre,
-        src: hijo.src
-      }))
+      reintentos: CONFIG.REINTENTOS
     });
 
-    // Configurar utilidades globales
-    window.enviarMensaje = mensajeriaModule.enviarMensaje;
-    window.registrarControlador = mensajeriaModule.registrarControlador;
-    window.TIPOS_MENSAJE = TIPOS_MENSAJE;
-    
-    // Configurar estado
-    estadoApp.mensajeriaInicializada = true;
-    estadoApp.mensajeria = mensajeriaModule;
-    
     logger.info('Mensajería inicializada correctamente');
-    
-    // Registrar los iframes hijos en el estado de la aplicación
-    estadoApp.hijos = { ...CONFIG.HIJOS };
-    logger.info(`Iframes hijos registrados: ${Object.keys(estadoApp.hijos).join(', ')}`);
-    
-    // Notificar que la mensajería está lista
-    await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.INICIALIZACION_COMPLETA, {
-      componente: 'app',
-      estado: 'mensajeria_lista'
-    });
-    
+    return true;
   } catch (error) {
-    estadoApp.inicializando = false;
-    notificarError('inicializacion_mensajeria', error);
+    await notificarError('inicializacion_mensajeria', error);
     throw error;
-  } finally {
-    estadoApp.inicializando = false;
   }
 }
+
 
 // Función para notificar errores
 async function notificarError(tipo, error) {
