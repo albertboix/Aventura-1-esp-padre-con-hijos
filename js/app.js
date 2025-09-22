@@ -85,10 +85,24 @@ export async function inicializar() {
       logLevel: CONFIG.LOG_LEVEL
     });
 
-    // Registrar manejadores
-    registrarControlador(TIPOS_MENSAJE.SISTEMA.PING, manejarPing);
-    registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejarCambioModo);
-    registrarControlador(TIPOS_MENSAJE.NAVEGACION.SOLICITAR_DESTINO, manejarSolicitudDestino);
+    // Registrar manejadores con duplicate prevention
+    if (!estado.manejadoresRegistrados) {
+      logger.debug('Registrando manejadores de mensajes...');
+      
+      // Registrar manejador PING
+      logger.debug('Registrando manejador PING');
+      registrarControlador(TIPOS_MENSAJE.SISTEMA.PING, manejarPing);
+      
+      // Registrar otros manejadores
+      registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejarCambioModo);
+      registrarControlador(TIPOS_MENSAJE.NAVEGACION.SOLICITAR_DESTINO, manejarSolicitudDestino);
+      
+      // Marcar como registrados
+      estado.manejadoresRegistrados = true;
+      logger.debug('Manejadores registrados correctamente');
+    } else {
+      logger.debug('Los manejadores ya estaban registrados');
+    }
 
     // Actualizar estado
     estado.inicializado = true;
@@ -190,12 +204,6 @@ async function notificarInicializacion() {
   }
 }
 
-// Manejador de mensaje PING
-function manejarPing(mensaje) {
-  logger.debug('PING recibido:', mensaje);
-  return { estado: 'activo', timestamp: new Date().toISOString() };
-}
-
 // Manejador de cambio de modo
 async function manejarCambioModo(mensaje) {
   try {
@@ -212,11 +220,12 @@ async function manejarCambioModo(mensaje) {
 // Función para registrar manejadores de mensajes
 async function registrarManejadores() {
   try {
-    logger.info('Registrando manejadores de mensajes...');
-    
-    if (typeof mensajeria.registrarControlador === 'function') {
-      mensajeria.registrarControlador(TIPOS_MENSAJE.SISTEMA.PING, manejarPing);
-      mensajeria.registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejarCambioModo);
+    // Los manejadores ya están registrados en la inicialización
+    logger.debug('Verificando estado de los manejadores...');
+    if (!estado.manejadoresRegistrados) {
+      logger.warn('Los manejadores no se registraron durante la inicialización');
+      // Intentar registrar nuevamente si es necesario
+      registrarManejadores();
     }
     
     logger.info('Manejadores de mensajes registrados correctamente');
