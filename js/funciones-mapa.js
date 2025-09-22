@@ -320,16 +320,102 @@ function actualizarModoMapa(modo) {
  * Muestra todas las paradas en el mapa (modo casa)
  */
 function mostrarTodasLasParadas() {
-    // Implementación según necesidades
     logger.info('Mostrando todas las paradas (modo casa)');
+    
+    // Limpiar marcadores anteriores
+    limpiarMarcadoresParadas();
+    
+    // Validar que tenemos datos
+    if (!arrayParadasLocal || arrayParadasLocal.length === 0) {
+        logger.warn('No hay paradas cargadas para mostrar');
+        return;
+    }
+    
+    // Añadir marcadores para cada parada
+    arrayParadasLocal.forEach((parada, index) => {
+        if (parada.tipo !== 'tramo' && parada.coordenadas) {
+            // Crear marcador para esta parada
+            const icon = L.divIcon({
+                className: 'marcador-parada',
+                html: `<div class="numero-parada">${index + 1}</div>`,
+                iconSize: [24, 24],
+                iconAnchor: [12, 12]
+            });
+            
+            const marker = L.marker([parada.coordenadas.lat, parada.coordenadas.lng], {
+                icon: icon
+            }).addTo(mapa);
+            
+            // Añadir popup con información
+            marker.bindPopup(`
+                <strong>${parada.nombre || `Parada ${index + 1}`}</strong>
+                <p>${parada.descripcion || ''}</p>
+                <button class="btn-ir" data-parada-id="${parada.id || parada.parada_id}">Ir aquí</button>
+            `);
+            
+            // Guardar referencia
+            marcadoresParadas.set(parada.id || parada.parada_id, marker);
+        }
+    });
+    
+    // Dibujar líneas para los tramos
+    arrayParadasLocal.forEach(tramo => {
+        if (tramo.tipo === 'tramo' && tramo.inicio && tramo.fin) {
+            const puntos = [
+                [tramo.inicio.lat, tramo.inicio.lng]
+            ];
+            
+            // Añadir waypoints si existen
+            if (tramo.waypoints && tramo.waypoints.length) {
+                tramo.waypoints.forEach(wp => {
+                    puntos.push([wp.lat, wp.lng]);
+                });
+            }
+            
+            // Añadir punto final
+            puntos.push([tramo.fin.lat, tramo.fin.lng]);
+            
+            // Crear línea
+            const ruta = L.polyline(puntos, {
+                color: '#3388ff',
+                weight: 5,
+                opacity: 0.7
+            }).addTo(mapa);
+            
+            // Guardar referencia
+            rutasTramos.push(ruta);
+        }
+    });
+    
+    // Ajustar mapa para mostrar todas las paradas
+    if (marcadoresParadas.size > 0) {
+        const bounds = [];
+        marcadoresParadas.forEach(marker => {
+            bounds.push(marker.getLatLng());
+        });
+        
+        mapa.fitBounds(L.latLngBounds(bounds), {
+            padding: [50, 50],
+            maxZoom: 16
+        });
+    }
 }
 
 /**
- * Oculta las paradas futuras (modo aventura)
+ * Limpia los marcadores de paradas
  */
-function ocultarParadasFuturas() {
-    // Implementación según necesidades
-    logger.info('Ocultando paradas futuras (modo aventura)');
+function limpiarMarcadoresParadas() {
+    // Eliminar todos los marcadores
+    marcadoresParadas.forEach(marker => {
+        mapa.removeLayer(marker);
+    });
+    marcadoresParadas.clear();
+    
+    // Eliminar rutas
+    rutasTramos.forEach(ruta => {
+        mapa.removeLayer(ruta);
+    });
+    rutasTramos = [];
 }
 
 /**
