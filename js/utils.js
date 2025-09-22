@@ -1,11 +1,12 @@
 /**
  * Módulo de utilidades y constantes compartidas para toda la aplicación.
- * @version 2.1.1
+ * @version 2.2.0
  */
 
 // Importar configuración compartida
-import { LOG_LEVELS, TIPOS_MENSAJE } from './constants.js';
-// logger is already available via window.logger
+import { LOG_LEVELS } from './constants.js';
+// Importar logger explícitamente
+import logger from './logger.js';
 
 const Utils = (() => {
   // ================== CONSTANTES PÚBLICAS ==================
@@ -27,18 +28,19 @@ const Utils = (() => {
     // Constantes
     TIPOS_PUNTO,
 
+    // Logger
+    logger,
+
     // Configuración
     configurarUtils: (newConfig = {}) => {
       config = { ...config, ...newConfig };
       
-      // Configurar el logger con la nueva configuración
-      if (window.logger && typeof window.logger.configure === 'function') {
-        window.logger.configure({
+      // Configurar el logger con la nueva configuración usando la referencia importada
+      logger.configure({
           iframeId: config.iframeId,
           logLevel: config.logLevel,
           debug: config.debug
-        });
-      }
+      });
       
       return config;
     },
@@ -52,10 +54,8 @@ const Utils = (() => {
         return { ...error, ...datosAdicionales };
       }
       
-      // Registrar el error en el logger
-      if (window.logger && typeof window.logger.error === 'function') {
-        window.logger.error(`Error (${tipo}):`, error);
-      }
+      // Registrar el error en el logger usando la referencia importada
+      logger.error(`Error (${tipo}):`, error);
       
       return {
         tipo,
