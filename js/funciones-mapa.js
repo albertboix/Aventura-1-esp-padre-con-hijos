@@ -430,7 +430,6 @@ window.addEventListener('beforeunload', () => {
 // Exportar funciones públicas
 export {
     estadoMapa,
-    inicializarModuloMapa,
     actualizarModoMapa,
     buscarCoordenadasParada,
     buscarCoordenadasTramo,
