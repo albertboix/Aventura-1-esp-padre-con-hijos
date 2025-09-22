@@ -1,80 +1,13 @@
 /**
  * Módulo de mensajería para comunicación entre iframes.
  * @module Mensajeria
- * @version 2.3.0
+ * @version 2.4.0
  */
 
-// Cargar tipos de mensaje
-async function loadTiposMensaje() {
-  if (window.TIPOS_MENSAJE) return Promise.resolve();
-  
-  return new Promise((resolve) => {
-    const tipos = {
-      NAVEGACION: {
-        INICIAR: 'navegacion.iniciar',
-        INICIADA: 'navegacion.iniciada',
-        CANCELADA: 'navegacion.cancelada',
-        DESTINO_ESTABLECIDO: 'navegacion.destino_establecido',
-        LLEGADA_DETECTADA: 'navegacion.llegada_detectada',
-        ERROR: 'navegacion.error',
-        SOLICITAR_DESTINO: 'navegacion.solicitar_destino',
-        ESTADO: 'navegacion.estado',
-        CAMBIO_PARADA: 'navegacion.cambio_parada'
-      },
-      SISTEMA: {
-        ERROR: 'sistema.error',
-        ESTADO: 'sistema.estado',
-        CAMBIO_MODO: 'sistema.cambio_modo',
-        COMPONENTE_LISTO: 'sistema.componente_listo'
-      },
-      CONTROL: {
-        ESTADO: 'control.estado',
-        HABILITAR: 'control.habilitar',
-        DESHABILITAR: 'control.deshabilitar'
-      }
-    };
-    
-    window.TIPOS_MENSAJE = tipos;
-    resolve();
-  });
-}
-
-// Importar utilidades
+// Importar dependencias
+import { TIPOS_MENSAJE } from './constants.js';
 import { configurarUtils, crearObjetoError } from './utils.js';
-
-// Definir constantes internas para evitar dependencia circular
-const INTERNAL_TIPOS_MENSAJE = Object.freeze({
-  SISTEMA: Object.freeze({
-    INICIALIZACION_COMPLETA: 'SISTEMA.INICIALIZACION_COMPLETA',
-    ERROR: 'SISTEMA.ERROR',
-    COMPONENTE_LISTO: 'SISTEMA.COMPONENTE_LISTO',
-    CAMBIO_MODO: 'SISTEMA.CAMBIO_MODO',
-    ESTADO: 'SISTEMA.ESTADO',
-    ACTUALIZACION_COMPLETADA: 'SISTEMA.ACTUALIZACION_COMPLETADA'
-  }),
-  NAVEGACION: Object.freeze({
-    INICIAR: 'NAVEGACION.INICIAR',
-    INICIADA: 'NAVEGACION.INICIADA',
-    CANCELADA: 'NAVEGACION.CANCELADA',
-    DESTINO_ESTABLECIDO: 'NAVEGACION.DESTINO_ESTABLECIDO',
-    LLEGADA_DETECTADA: 'NAVEGACION.LLEGADA_DETECTADA',
-    ERROR: 'NAVEGACION.ERROR',
-    SOLICITAR_DESTINO: 'NAVEGACION.SOLICITAR_DESTINO',
-    ESTADO: 'NAVEGACION.ESTADO',
-    ESTABLECER_DESTINO: 'NAVEGACION.ESTABLECER_DESTINO',
-    DETENER: 'NAVEGACION.DETENER',
-    CAMBIO_PARADA: 'NAVEGACION.CAMBIO_PARADA',
-    ACTUALIZAR_UBICACION: 'NAVEGACION.ACTUALIZAR_UBICACION'
-  }),
-  CONTROL: Object.freeze({
-    ESTADO: 'CONTROL.ESTADO',
-    HABILITAR: 'CONTROL.HABILITAR',
-    DESHABILITAR: 'CONTROL.DESHABILITAR'
-  })
-});
-
-// Exportar una copia de las constantes internas
-export const TIPOS_MENSAJE = JSON.parse(JSON.stringify(INTERNAL_TIPOS_MENSAJE));
+import logger from './logger.js';
 
 // Estado interno de la mensajería
 const estado = {
@@ -385,63 +318,131 @@ function limpiarMensajeria() {
   }
 }
 
-// Inicialización automática solo si no hay un módulo de sistema de módulos
-if (typeof window !== 'undefined' && !window.mensajeriaInicializada && !window.__esModule) {
-  window.mensajeriaInicializada = true;
+/**
+ * Envía un mensaje y espera confirmación de recepción
+ * @param {string} destino - ID del iframe destino o 'padre'/'todos'
+ * @param {string} tipo - Tipo de mensaje
+ * @param {Object} datos - Datos del mensaje
+ * @param {Object} opciones - Opciones adicionales
+ * @param {number} opciones.timeout - Timeout en ms para la confirmación (default: 5000)
+ * @param {boolean} opciones.silencioso - No lanzar error si no hay confirmación (default: false)
+ * @returns {Promise<Object>} - Confirmación recibida
+ */
+async function enviarMensajeConConfirmacion(destino, tipo, datos = {}, opciones = {}) {
+  const timeout = opciones.timeout || 5000;
+  const silencioso = opciones.silencioso || false;
   
-  // Cargar TIPOS_MENSAJE para el contexto global
-  loadTiposMensaje().then(() => {
-    // Configurar manejador de mensajes global
-    const messageHandler = (event) => {
-      try {
-        // Verificar que el mensaje es para este iframe
-        if (!event.data || typeof event.data !== 'object') return;
-        
-        const { origen, destino, tipo } = event.data;
-        
-        // Ignorar mensajes sin tipo o sin destino
-        if (!tipo || !destino) return;
-        
-        // Verificar si el mensaje es para este iframe
-        if (destino !== 'todos' && 
-            destino !== estado.iframeId && 
-            destino !== 'padre') {
-          return;
-        }
-        
-        // Evitar bucles de mensajes
-        if (origen === estado.iframeId) return;
-        
-        // Procesar el mensaje si hay un manejador registrado
-        if (estado.manejadores.has(tipo)) {
-          recibirMensaje(event);
-        }
-      } catch (error) {
-        console.error('Error en el manejador de mensajes:', error);
-      }
-    };
+  try {
+    // Generar un ID único para este mensaje
+    const mensajeId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
-    // Limpiar manejadores anteriores
-    const oldHandler = window._mensajeriaHandler;
-    if (oldHandler) {
-      window.removeEventListener('message', oldHandler);
+    // Crear una promesa para esperar la confirmación
+    const confirmacionPromise = new Promise((resolve, reject) => {
+      // Manejador temporal para la confirmación
+      const manejadorConfirmacion = (mensaje) => {
+        if (mensaje.datos && mensaje.datos.mensajeOriginalId === mensajeId) {
+          // Quitar el manejador temporal
+          estado.manejadores.delete(`${TIPOS_MENSAJE.SISTEMA.CONFIRMACION}_${mensajeId}`);
+          resolve(mensaje);
+        }
+      };
+      
+      // Registrar el manejador temporal
+      estado.manejadores.set(`${TIPOS_MENSAJE.SISTEMA.CONFIRMACION}_${mensajeId}`, manejadorConfirmacion);
+      
+      // Configurar timeout
+      setTimeout(() => {
+        // Quitar el manejador temporal
+        estado.manejadores.delete(`${TIPOS_MENSAJE.SISTEMA.CONFIRMACION}_${mensajeId}`);
+        
+        if (silencioso) {
+          resolve(null); // Resolver con null si es silencioso
+        } else {
+          reject(new Error(`Timeout esperando confirmación para mensaje ${tipo} a ${destino}`));
+        }
+      }, timeout);
+    });
+    
+    // Enviar el mensaje con el ID único
+    await _enviarMensaje(destino, tipo, {
+      ...datos,
+      mensajeId
+    });
+    
+    // Esperar confirmación
+    return await confirmacionPromise;
+  } catch (error) {
+    logger.error(`Error en enviarMensajeConConfirmacion (${tipo} a ${destino}):`, error);
+    
+    if (silencioso) {
+      return null;
     }
     
-    // Guardar referencia al manejador actual
-    window._mensajeriaHandler = messageHandler;
-    window.addEventListener('message', messageHandler, false);
+    throw error;
+  }
+}
+
+/**
+ * Envía una confirmación de recepción de mensaje
+ * @param {Object} mensajeOriginal - Mensaje original recibido
+ * @param {Object} datos - Datos adicionales para la confirmación
+ * @returns {Promise<Object>} - Resultado del envío
+ */
+async function enviarConfirmacion(mensajeOriginal, datos = {}) {
+  try {
+    if (!mensajeOriginal || !mensajeOriginal.origen) {
+      throw new Error('Mensaje original inválido');
+    }
     
-    // Limpiar el manejador al desmontar
-    const cleanup = () => {
-      window.removeEventListener('message', messageHandler);
-      window.removeEventListener('beforeunload', cleanup);
-      delete window._mensajeriaHandler;
-    };
+    // Usar TIPOS_MENSAJE importado
+    return await _enviarMensaje(
+      mensajeOriginal.origen,
+      TIPOS_MENSAJE.SISTEMA.CONFIRMACION, // Corregido para usar la constante importada
+      {
+        ...datos,
+        mensajeOriginalId: mensajeOriginal.datos?.mensajeId,
+        tipoOriginal: mensajeOriginal.tipo,
+        timestampOriginal: mensajeOriginal.timestamp,
+        timestampConfirmacion: Date.now()
+      }
+    );
+  } catch (error) {
+    logger.error('Error al enviar confirmación:', error);
+    throw error;
+  }
+}
+
+/**
+ * Envía una notificación de error como respuesta a un mensaje
+ * @param {Object} mensajeOriginal - Mensaje original recibido
+ * @param {Object} error - Información del error
+ * @returns {Promise<Object>} - Resultado del envío
+ */
+async function enviarError(mensajeOriginal, error = {}) {
+  try {
+    if (!mensajeOriginal || !mensajeOriginal.origen) {
+      throw new Error('Mensaje original inválido');
+    }
     
-    window.addEventListener('beforeunload', cleanup);
-  }).catch(error => {
-    console.error('Error al cargar TIPOS_MENSAJE:', error);
-  });
+    return await _enviarMensaje(
+      mensajeOriginal.origen,
+      TIPOS_MENSAJE.SISTEMA.ERROR,
+      {
+        mensajeOriginalId: mensajeOriginal.datos?.mensajeId,
+        tipoOriginal: mensajeOriginal.tipo,
+        timestampOriginal: mensajeOriginal.timestamp,
+        timestampError: Date.now(),
+        error: {
+          mensaje: error.mensaje || error.message || 'Error desconocido',
+          codigo: error.codigo || 'ERROR_DESCONOCIDO',
+          detalles: error.detalles || error.stack || null
+        }
+      }
+    );
+  } catch (err) {
+    logger.error('Error al enviar notificación de error:', err);
+    throw err;
+  }
 }
 
 // Exportar la API pública
@@ -457,9 +458,19 @@ export async function enviarMensaje(destino, tipo, datos = {}) {
   return await _enviarMensaje(destino, tipo, datos);
 }
 
+// Exportar las nuevas funciones
+export {
+  enviarMensajeConConfirmacion,
+  enviarConfirmacion,
+  enviarError
+};
+
 export default {
   inicializarMensajeria,
   registrarControlador,
   enviarMensaje,
+  enviarMensajeConConfirmacion,
+  enviarConfirmacion,
+  enviarError,
   TIPOS_MENSAJE
 };
