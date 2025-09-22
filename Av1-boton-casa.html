@@ -5,213 +5,242 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>hijo5-casa</title>
     <script type="module">
-    // Importar configuración
-    import { CONFIG as CONFIG_APP, LOG_LEVELS } from './js/config.js';
+    // Importar módulos primero (before everything else)
+    import { TIPOS_MENSAJE, MODOS } from './js/constants.js';
+    import { CONFIG } from './js/config.js';
+    import logger from './js/logger.js';
+    import { 
+        inicializarMensajeria,
+        registrarControlador, 
+        enviarMensaje 
+    } from './js/mensajeria.js';
     
     // Configuración de mensajería
     const CONFIG_MENSAJERIA = {
-      iframeId: 'hijo5-casa',
-      debug: CONFIG_APP?.DEBUG || true,
-      logLevel: CONFIG_APP?.LOG_LEVEL || 1,
-      reintentos: {
-          maximos: 3,
-          tiempoEspera: 1000,
-          factor: 2
-      }
+        iframeId: 'hijo5-casa',
+        debug: true,
+        logLevel: 0, // DEBUG level for troubleshooting
+        reintentos: {
+            maximos: 3,
+            tiempoEspera: 1000,
+            factor: 2
+        }
     };
-
-    // Importar módulos primero
-    import { 
-        inicializar, 
-        notificarError as notificarErrorApp, 
-        enviarCambioModo,
-        estado as estadoApp 
-    } from './js/app.js';
-    import { 
-        registrarControlador, 
-        enviarMensaje,
-        inicializarMensajeria, // FIX: Import inicializarMensajeria
-        TIPOS_MENSAJE 
-    } from './js/mensajeria.js';
-    import logger from './js/logger.js'; // FIX: Import logger
     
-    // Configurar notificador de errores global
-    window.notificarError = notificarErrorApp;
-    // Solo exponer lo necesario para depuración
-    if (CONFIG_APP.DEBUG) {
-      window.estadoApp = estadoApp;
-      window.CONFIG = CONFIG_APP;
-      window.CONFIG_MENSAJERIA = CONFIG_MENSAJERIA;
-    }
+    // Estado del componente
+    const estado = {
+        inicializado: false,
+        inicializando: false,
+        modo: 'casa', // Default mode
+        gpsActivo: false,
+        error: null
+    };
     
-    // Función para actualizar la interfaz según el modo
+    // Make available globally for debugging
+    window.estadoComponente = estado;
+    window.TIPOS_MENSAJE = TIPOS_MENSAJE;
+    
+    // Actualizar la interfaz según el modo
     function actualizarInterfaz(modo) {
-      const botonCasa = document.getElementById('gps-casa-btn');
-      const paradasWindow = document.getElementById('paradas-window');
-      
-      if (!botonCasa || !paradasWindow) return;
-      
-      if (modo === 'casa') {
-        paradasWindow.classList.remove('hidden');
-        paradasWindow.classList.add('visible');
-        botonCasa.classList.remove('off');
-        botonCasa.classList.add('on');
-        botonCasa.setAttribute('aria-pressed', 'true');
-      } else {
-        paradasWindow.classList.remove('visible');
-        paradasWindow.classList.add('hidden');
-        botonCasa.classList.remove('on');
-        botonCasa.classList.add('off');
-        botonCasa.setAttribute('aria-pressed', 'false');
-      }
-    }
-    
-    // Función para manejar el cambio de modo - usando la función importada
-    async function manejarClickCambioModo() {
-      try {
-        if (!estadoApp?.modo?.actual) {
-          throw new Error('Estado de la aplicación no inicializado correctamente');
-        }
-        
-        const nuevoModo = estadoApp.modo.actual === 'casa' ? 'aventura' : 'casa';
-        
-        // Use the imported function instead of the duplicate handler
-        await enviarCambioModo(nuevoModo, 'hijo5-casa');
-        
-        // Actualizar la interfaz
-        actualizarInterfaz(nuevoModo);
-        actualizarEstadoGPS(nuevoModo === 'aventura');
-        
-        // Solicitar puntos de ruta si es necesario
-        if (nuevoModo === 'casa' && typeof window.solicitarPuntosRuta === 'function') {
-          await window.solicitarPuntosRuta();
-        }
-        
-        // Notificar el cambio de estado si es necesario
-        if (typeof window.notificarEstado === 'function') {
-          await window.notificarEstado('cambio_modo', { modo: nuevoModo });
-        }
-      } catch (error) {
-        console.error('Error al cambiar el modo:', error);
-        notificarErrorApp('cambio_modo', error);
-      }
-    }
-    
-    // Función para actualizar el estado del GPS
-    function actualizarEstadoGPS(gpsActivo) {
-      const botonCasa = document.getElementById('gps-casa-btn');
-      if (botonCasa) {
-        botonCasa.title = gpsActivo ? 'GPS ACTIVADO (modo aventura)' : 'GPS DESACTIVADO (modo casa)';
-      }
-    }
-    
-    // Función para inicializar la aplicación
-    async function inicializarAplicacion() {
-      try {
-        // 1. Mostrar indicador de carga
-        const loadingIndicator = document.getElementById('loading-indicator');
-        if (loadingIndicator) loadingIndicator.style.display = 'block';
-        
-        if (CONFIG_APP.DEBUG) {
-          console.debug('Inicializando aplicación hijo5-casa');
-          console.debug('botonCasa:', document.getElementById('gps-casa-btn'));
-          console.debug('paradasWindow:', document.getElementById('paradas-window'));
-          console.debug('estado.modo:', estadoApp?.modo);
-        }
-        
-        // 2. Inicializar mensajería (primer paso crítico)
-        await inicializarMensajeria(CONFIG_MENSAJERIA);
-        
-        // 3. Configurar utilidades globales
-        window.enviarMensaje = window.enviarMensaje || (() => {});
-        window.registrarControlador = window.registrarControlador || (() => {});
-        
-        // 4. Registrar manejadores de mensajes
-        registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, (mensaje) => {
-          try {
-            if (mensaje?.datos?.modo) {
-              actualizarInterfaz(mensaje.datos.modo);
-              actualizarEstadoGPS(mensaje.datos.modo === 'aventura');
-            }
-          } catch (error) {
-            console.error('Error al manejar cambio de modo:', error);
-            notificarError('cambio_modo_ui', error);
-          }
-        });
-        
-        // 5. Manejador de errores
-        registrarControlador(TIPOS_MENSAJE.SISTEMA.ERROR, (mensaje) => {
-          console.error('Error recibido:', mensaje);
-        });
-        
-        // 6. Inicializar la aplicación principal
-        await inicializar();
-        
-        // 7. Configurar elementos de la interfaz
+        console.log(`Actualizando interfaz a modo: ${modo}`);
         const botonCasa = document.getElementById('gps-casa-btn');
-        if (botonCasa) {
-          botonCasa.addEventListener('click', manejarClickCambioModo);
-          actualizarEstadoGPS(estadoApp?.modo?.actual === 'aventura');
+        const paradasWindow = document.getElementById('paradas-window');
+        
+        if (!botonCasa) {
+            console.warn('No se encontró el botón de casa');
+            return;
         }
         
-        // 8. Cargar recursos adicionales si es necesario
-        const cargasAdicionales = [];
-        
-        if (estadoApp?.modo?.actual === 'casa' && typeof window.solicitarPuntosRuta === 'function') {
-          cargasAdicionales.push(window.solicitarPuntosRuta());
-        }
-        
-        // Esperar a que todas las cargas adicionales terminen
-        await Promise.all(cargasAdicionales);
-        
-        // 9. Inicializar la interfaz con el estado actual
-        actualizarInterfaz(estadoApp?.modo?.actual);
-        
-        // 10. Notificar que el componente está listo
-        if (window.enviarMensaje) {
-          await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO, {
-            componente: 'boton-casa',
-            estado: 'listo',
-            timestamp: new Date().toISOString()
-          });
-        }
-        
-        if (CONFIG_APP.DEBUG) {
-          console.debug('Aplicación inicializada correctamente');
-        }
-        
-      } catch (error) {
-        console.error('Error al inicializar la aplicación:', error);
-        notificarErrorApp('inicializacion', error);
-        
-        if (window.logger) {
-          logger.error('Error al inicializar:', error);
+        if (modo === 'casa') {
+            if (paradasWindow) paradasWindow.classList.remove('hidden');
+            if (paradasWindow) paradasWindow.classList.add('visible');
+            botonCasa.classList.remove('off');
+            botonCasa.classList.add('on');
+            botonCasa.setAttribute('aria-pressed', 'true');
+            botonCasa.title = 'GPS DESACTIVADO (modo casa)';
         } else {
-          console.error('Error al inicializar:', error);
+            if (paradasWindow) paradasWindow.classList.remove('visible');
+            if (paradasWindow) paradasWindow.classList.add('hidden');
+            botonCasa.classList.remove('on');
+            botonCasa.classList.add('off');
+            botonCasa.setAttribute('aria-pressed', 'false');
+            botonCasa.title = 'GPS ACTIVADO (modo aventura)';
         }
-      }
+        
+        estado.modo = modo;
+        estado.gpsActivo = (modo === 'aventura');
+        console.log(`Interfaz actualizada. Modo: ${modo}, GPS: ${estado.gpsActivo ? 'ACTIVADO' : 'DESACTIVADO'}`);
     }
     
-    // Función para inicializar de forma segura
-    async function inicializarSeguro() {
-      try {
-        await inicializarAplicacion();
-      } catch (error) {
-        console.error('Error crítico en inicialización:', error);
-        if (window.notificarError) {
-          window.notificarError('inicializacion_critica', error);
+    // Función para manejar el cambio de modo
+    async function manejarClickCambioModo() {
+        try {
+            // Toggle mode
+            const nuevoModo = estado.modo === 'casa' ? 'aventura' : 'casa';
+            console.log(`Cambiando de modo ${estado.modo} a ${nuevoModo}`);
+            
+            // Actualizar la interfaz primero para feedback inmediato
+            actualizarInterfaz(nuevoModo);
+            
+            // Si cambiamos a modo aventura, activar el GPS
+            if (nuevoModo === 'aventura') {
+                activarGPS();
+            }
+            
+            // Enviar el mensaje al padre
+            await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, { 
+                modo: nuevoModo, 
+                origen: 'hijo5-casa',
+                timestamp: new Date().toISOString()
+            });
+            
+            console.log(`Mensaje de cambio a modo ${nuevoModo} enviado correctamente`);
+        } catch (error) {
+            console.error('Error al cambiar el modo:', error);
+            // Revertir cambios en la interfaz en caso de error
+            actualizarInterfaz(estado.modo);
         }
-      }
     }
-
-    // Inicializar la aplicación cuando el DOM esté listo
+    
+    // Función para activar GPS
+    function activarGPS() {
+        console.log('Intentando activar GPS...');
+        
+        if (!navigator.geolocation) {
+            console.error('Geolocation no está soportada en este navegador');
+            return;
+        }
+        
+        // Opciones para la geolocalización
+        const options = {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+        };
+        
+        // Success callback
+        function success(position) {
+            const coords = {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude,
+                accuracy: position.coords.accuracy
+            };
+            
+            console.log('Posición GPS obtenida:', coords);
+            
+            // Notificar al padre la posición actual
+            enviarMensaje('padre', TIPOS_MENSAJE.NAVEGACION.ACTUALIZAR_POSICION, {
+                coordenadas: coords,
+                timestamp: new Date().toISOString()
+            }).catch(err => console.error('Error al enviar posición:', err));
+        }
+        
+        // Error callback
+        function error(err) {
+            console.warn(`ERROR(${err.code}): ${err.message}`);
+        }
+        
+        // Iniciar el seguimiento de posición
+        const watchId = navigator.geolocation.watchPosition(success, error, options);
+        estado.watchId = watchId;
+        estado.gpsActivo = true;
+        
+        console.log('GPS activado correctamente');
+    }
+    
+    // Manejador para recibir cambios de modo desde el padre
+    function manejarCambioModo(mensaje) {
+        const { modo } = mensaje.datos || {};
+        if (!modo) return;
+        
+        console.log(`Recibido cambio de modo desde ${mensaje.origen || 'origen desconocido'}: ${modo}`);
+        
+        // Solo actualizar si el modo es diferente
+        if (modo !== estado.modo) {
+            actualizarInterfaz(modo);
+        }
+    }
+    
+    // Inicializa el componente
+    async function inicializar() {
+        if (estado.inicializado || estado.inicializando) {
+            console.log('El componente ya está inicializado o inicializándose');
+            return;
+        }
+        
+        estado.inicializando = true;
+        console.log('Inicializando componente boton-casa...');
+        
+        try {
+            // Mostrar indicador de carga
+            const loadingIndicator = document.getElementById('loading-indicator');
+            if (loadingIndicator) loadingIndicator.style.display = 'block';
+            
+            // Inicializar mensajería
+            console.log('Inicializando mensajería...');
+            await inicializarMensajeria(CONFIG_MENSAJERIA);
+            console.log('Mensajería inicializada correctamente');
+            
+            // Registrar manejadores
+            registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejarCambioModo);
+            console.log('Manejadores registrados');
+            
+            // Configurar elementos de UI
+            const botonCasa = document.getElementById('gps-casa-btn');
+            if (botonCasa) {
+                botonCasa.addEventListener('click', manejarClickCambioModo);
+                console.log('Event listener para botón configurado');
+            } else {
+                console.warn('No se encontró el botón con id "gps-casa-btn"');
+            }
+            
+            // Notificar al padre que estamos listos
+            await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO, {
+                componente: 'hijo5-casa',
+                estado: 'listo',
+                timestamp: new Date().toISOString()
+            });
+            
+            // Actualizar estado
+            estado.inicializado = true;
+            estado.inicializando = false;
+            
+            // Ocultar indicador de carga
+            if (loadingIndicator) loadingIndicator.style.display = 'none';
+            
+            console.log('Componente boton-casa inicializado correctamente');
+            
+        } catch (error) {
+            estado.inicializando = false;
+            estado.error = error;
+            console.error('Error al inicializar componente:', error);
+            
+            // Notificar al padre el error
+            try {
+                await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
+                    tipo: 'inicializacion',
+                    mensaje: error.message,
+                    stack: error.stack,
+                    origen: 'hijo5-casa',
+                    timestamp: new Date().toISOString()
+                });
+            } catch (e) {
+                console.error('Error al notificar error al padre:', e);
+            }
+            
+            // Ocultar indicador de carga
+            const loadingIndicator = document.getElementById('loading-indicator');
+            if (loadingIndicator) loadingIndicator.style.display = 'none';
+        }
+    }
+    
+    // Inicializar cuando el DOM esté listo
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', inicializarSeguro);
+        document.addEventListener('DOMContentLoaded', inicializar);
     } else {
-      // Si el DOM ya está listo, inicializar inmediatamente
-      inicializarSeguro().catch(console.error);
+        inicializar().catch(console.error);
     }
-    </script>
+</script>
     <style>
     /* Spinner animation */
     @keyframes spin {
