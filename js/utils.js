@@ -1,80 +1,125 @@
 /**
- * Módulo de utilidades y constantes compartidas para toda la aplicación.
- * @version 2.2.0
+ * Utilidades generales para la aplicación
+ * @module Utils
  */
 
-// Importar configuración compartida
-import { LOG_LEVELS } from './constants.js';
-// Importar logger explícitamente
 import logger from './logger.js';
 
-const Utils = (() => {
-  // ================== CONSTANTES PÚBLICAS ==================
-  const TIPOS_PUNTO = Object.freeze({
-    PARADA: 'parada',
-    TRAMO: 'tramo',
-    INICIO: 'inicio'
-  });
-
-  // ================== CONFIGURACIÓN PRIVADA ==================
-  let config = {
+// Configuración por defecto
+let config = {
     iframeId: 'unknown',
-    logLevel: LOG_LEVELS.INFO,
-    debug: false
-  };
+    debug: false,
+    logLevel: 1
+};
 
-  // ================== API PÚBLICA ==================
-  return {
-    // Constantes
-    TIPOS_PUNTO,
-
-    // Logger
-    logger,
-
-    // Configuración
-    configurarUtils: (newConfig = {}) => {
-      config = { ...config, ...newConfig };
-      
-      // Configurar el logger con la nueva configuración usando la referencia importada
-      logger.configure({
-          iframeId: config.iframeId,
-          logLevel: config.logLevel,
-          debug: config.debug
-      });
-      
-      return config;
-    },
-
-    // Utilidades de error
-    crearObjetoError: (tipo, error, datosAdicionales = {}) => {
-      const timestamp = new Date().toISOString();
-      
-      // Si ya es un objeto de error estándar
-      if (error && error.timestamp) {
-        return { ...error, ...datosAdicionales };
-      }
-      
-      // Registrar el error en el logger usando la referencia importada
-      logger.error(`Error (${tipo}):`, error);
-      
-      return {
-        tipo,
-        timestamp,
-        mensaje: error?.message || String(error),
-        stack: error?.stack,
-        ...datosAdicionales
-      };
+/**
+ * Configura las utilidades
+ * @param {Object} options - Opciones de configuración
+ */
+export function configurarUtils(options = {}) {
+    // Actualizar configuración
+    config = { ...config, ...options };
+    
+    // Configurar logger si está disponible
+    if (logger && typeof logger.configure === 'function') {
+        logger.configure({
+            iframeId: config.iframeId,
+            logLevel: config.logLevel,
+            debug: config.debug
+        });
     }
-  };
-})();
+    
+    return config;
+}
 
-// Exportar la API pública
-export const {
-  TIPOS_PUNTO,
-  configurarUtils,
-  logger,
-  crearObjetoError
-} = Utils;
+/**
+ * Crea un objeto de error para reportar al sistema
+ * @param {string} codigo - Código de error
+ * @param {string|Error} error - Mensaje o objeto de error
+ * @param {Object} [datos] - Datos adicionales
+ * @returns {Object} Objeto de error formateado
+ */
+export function crearObjetoError(codigo, error, datos = {}) {
+    // Si es un string, convertir a objeto Error
+    const errorObj = typeof error === 'string' ? new Error(error) : error;
+    
+    return {
+        codigo,
+        mensaje: errorObj.message,
+        stack: errorObj.stack,
+        timestamp: new Date().toISOString(),
+        origen: config.iframeId,
+        datos,
+        nombre: errorObj.name || 'Error'
+    };
+}
 
-// Re-exportar TIPOS_MENSAJE directamente desde constants
-export { TIPOS_MENSAJE } from './constants.js';
+/**
+ * Valida un objeto para asegurar que tiene las propiedades requeridas
+ * @param {Object} objeto - Objeto a validar
+ * @param {string[]} propiedadesRequeridas - Lista de propiedades requeridas
+ * @returns {boolean} True si el objeto es válido
+ */
+export function validarObjeto(objeto, propiedadesRequeridas) {
+    if (!objeto || typeof objeto !== 'object') {
+        return false;
+    }
+    
+    return propiedadesRequeridas.every(prop => 
+        Object.prototype.hasOwnProperty.call(objeto, prop) && 
+        objeto[prop] !== undefined && 
+        objeto[prop] !== null
+    );
+}
+
+/**
+ * Genera un ID único
+ * @returns {string} ID único
+ */
+export function generarId() {
+    return `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+/**
+ * Debounce function
+ * @param {Function} func - Función a ejecutar
+ * @param {number} wait - Tiempo de espera en ms
+ * @returns {Function} Función con debounce
+ */
+export function debounce(func, wait = 300) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+/**
+ * Throttle function
+ * @param {Function} func - Función a ejecutar
+ * @param {number} limit - Límite de tiempo en ms
+ * @returns {Function} Función con throttle
+ */
+export function throttle(func, limit = 300) {
+    let inThrottle;
+    return function executedFunction(...args) {
+        if (!inThrottle) {
+            func(...args);
+            inThrottle = true;
+            setTimeout(() => inThrottle = false, limit);
+        }
+    };
+}
+
+export default {
+    configurarUtils,
+    crearObjetoError,
+    validarObjeto,
+    generarId,
+    debounce,
+    throttle
+};
