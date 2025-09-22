@@ -40,8 +40,10 @@ export const CONFIG = {
     }
 };
 
+// Export LOG_LEVELS to fix dependency issues
+export { LOG_LEVELS };
+
 export default {
     CONFIG,
     LOG_LEVELS
 };
-    LOG_LEVELS
