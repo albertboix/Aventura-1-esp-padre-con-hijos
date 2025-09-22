@@ -28,36 +28,42 @@ export const CONFIG = {
   HIJOS: {
     HAMBURGUESA: { 
       id: 'hijo1-hamburguesa', 
+      containerId: 'hijo1-container',
       nombre: 'Menú Hamburguesa', 
       src: 'botones-y-subfunciones-hamburguesa.html',
       cargarInmediato: true
     },
     OPCIONES: { 
       id: 'hijo1-opciones', 
+      containerId: 'hijo1-container',
       nombre: 'Opciones', 
       src: 'botones-y-subfunciones-opciones.html',
       cargarInmediato: false
     },
     COORDENADAS: {
       id: 'hijo2',
+      containerId: 'hijo2-container',
       nombre: 'Mapa y Coordenadas',
       src: 'Av1-botones-coordenadas.html',
       cargarInmediato: true
     },
     AUDIO: {
       id: 'hijo3',
+      containerId: 'hijo3-container',
       nombre: 'Reproductor de Audio',
       src: 'Av1_audio_esp.html',
       cargarInmediato: true
     },
     RETOS: {
       id: 'hijo4',
+      containerId: 'hijo4-container',
       nombre: 'Retos y Preguntas',
       src: 'Av1-esp-retos-preguntas.html',
       cargarInmediato: false
     },
     CASA: {
       id: 'hijo5',
+      containerId: 'hijo5-container',
       nombre: 'Botón de Casa',
       src: 'Av1-boton-casa.html',
       cargarInmediato: true
