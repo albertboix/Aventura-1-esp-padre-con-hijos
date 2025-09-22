@@ -1,7 +1,7 @@
 /**
  * Módulo de logging centralizado para toda la aplicación.
  * @module Logger
- * @version 3.1.0
+ * @version 3.2.0
  */
 
 // Importar constantes directamente para evitar dependencias circulares
@@ -34,8 +34,8 @@ const DEFAULT_COLORS = {
 
 // Configuración por defecto
 let config = {
-  logLevel: LOG_LEVELS.DEBUG,
-  debug: true,
+  logLevel: LOG_LEVELS.INFO, // FIX 2: Default más seguro para producción
+  debug: false, // FIX 2: Default más seguro para producción
   iframeId: 'unknown',
   maxHistory: 200,
   showTimestamp: true,
@@ -43,20 +43,6 @@ let config = {
   showIframeId: true,
   colors: DEFAULT_COLORS
 };
-
-// Configuración inicial
-const newConfig = {
-  ...config,
-  // Valores por defecto, serán sobrescritos por configure()
-  debug: true,
-  iframeId: 'unknown',
-  logLevel: (typeof CONFIG !== 'undefined' && CONFIG?.LOG_LEVEL && Object.values(LOG_LEVELS).includes(CONFIG.LOG_LEVEL))
-    ? CONFIG.LOG_LEVEL 
-    : LOG_LEVELS.DEBUG
-};
-
-// Asignar la nueva configuración
-config = newConfig;
 
 // Historial de logs en memoria
 let logHistory = [];
@@ -123,7 +109,8 @@ function formatLogEntry(level, message, data = null) {
     message,
     data,
     iframeId: config.iframeId,
-    location: getCallerInfo(),
+    // FIX 5: Obtener información del llamador solo para errores para mejorar el rendimiento.
+    location: level >= LOG_LEVELS.ERROR ? getCallerInfo() : undefined,
     ...(data instanceof Error ? {
       error: {
         message: data.message,
@@ -143,38 +130,13 @@ function sendToParent(logEntry) {
   if (typeof window === 'undefined' || window === window.parent) return;
   
   try {
-    // Usar el sistema de mensajería centralizado si está disponible
-    if (window.enviarMensaje) {
-      window.enviarMensaje('padre', 'SISTEMA.LOG', logEntry)
-        .catch(error => {
-          safeConsoleMethod('Error al enviar log a través del sistema de mensajería:', error);
-          // Fallback al método directo si falla el sistema de mensajería
-          fallbackToDirectPostMessage(logEntry);
-        });
-    } else {
-      // Fallback al método directo si no hay sistema de mensajería
-      fallbackToDirectPostMessage(logEntry);
-    }
+    window.parent.postMessage({
+      type: 'VGLOGGER_LOG_ENTRY', // Tipo único para evitar conflictos
+      payload: logEntry
+    }, '*');
   } catch (error) {
-    safeConsoleMethod('Error en sendToParent:', error);
-  }
-}
-
-/**
- * Método de respaldo para enviar mensajes directamente (solo para compatibilidad)
- * @private
- * @param {Object} logEntry - Entrada de log
- */
-function fallbackToDirectPostMessage(logEntry) {
-  try {
-    if (window.parent !== window) {
-      window.parent.postMessage({
-        type: 'LOG_ENTRY',
-        payload: logEntry
-      }, '*');
-    }
-  } catch (error) {
-    safeConsoleMethod('Error en fallbackToDirectPostMessage:', error);
+    const safeLog = (typeof console !== 'undefined' && console.log) ? console.log.bind(console) : () => {};
+    safeLog('Logger Error: No se pudo enviar el log al padre.', error);
   }
 }
 
@@ -244,9 +206,9 @@ function outputToConsole(logEntry) {
       try {
         if (data instanceof Error) {
           safeConsoleMethod(data);
-        } else if (typeof data === 'object') {
-          safeConsoleMethod(JSON.parse(JSON.stringify(data, null, 2)));
         } else {
+          // FIX 4: Hacer el log de objetos más seguro. Dejar que el navegador lo maneje.
+          // Evita errores con referencias circulares que rompen JSON.stringify.
           safeConsoleMethod(data);
         }
       } catch (e) {
@@ -385,54 +347,18 @@ const logger = {
   LOG_LEVELS
 };
 
-// Hacer disponible globalmente para compatibilidad
-if (typeof window !== 'undefined') {
-  // Guardar consola original
-  const originalConsole = {
-    log: console.log,
-    info: console.info,
-    warn: console.warn,
-    error: console.error,
-    debug: console.debug
-  };
-  
-  // Sobrescribir métodos de consola si está habilitado en la configuración
-  if (config.debug) {
-    console.log = function(...args) {
-      logger.debug(args[0], args.slice(1));
-      originalConsole.log(...args);
-    };
-    
-    console.info = function(...args) {
-      logger.info(args[0], args.slice(1));
-      originalConsole.info(...args);
-    };
-    
-    console.warn = function(...args) {
-      logger.warn(args[0], args.slice(1));
-      originalConsole.warn(...args);
-    };
-    
-    console.error = function(...args) {
-      logger.error(args[0], args.slice(1));
-      originalConsole.error(...args);
-    };
-    
-    console.debug = function(...args) {
-      logger.debug(args[0], args.slice(1));
-      originalConsole.debug(...args);
-    };
-  }
-  
-  // Exportar para uso global
+// Hacer disponible globalmente para compatibilidad, pero sin sobrescribir la consola
+if (typeof window !== 'undefined' && !window.Logger) {
   window.Logger = logger;
   window.LOG_LEVELS = LOG_LEVELS;
   
-  // Configuración inicial
-  configureLogger({
-    iframeId: window.name || 'unknown',
-    debug: process.env.NODE_ENV !== 'production'
-  });
+  // Configuración inicial si se ejecuta en un navegador
+  if (window.name) {
+    configureLogger({
+      iframeId: window.name,
+      debug: process.env.NODE_ENV !== 'production'
+    });
+  }
 }
 
 export default logger;
