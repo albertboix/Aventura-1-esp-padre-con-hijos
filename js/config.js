@@ -3,16 +3,7 @@
  * @module Config
  */
 
-/**
- * Niveles de log disponibles
- */
-export const LOG_LEVELS = {
-    DEBUG: 0,
-    INFO: 1,
-    WARN: 2,
-    ERROR: 3,
-    NONE: 4
-};
+import { LOG_LEVELS } from './constants.js';
 
 /**
  * Configuración de la aplicación
@@ -32,6 +23,13 @@ export const CONFIG = {
         RETOS: { id: 'hijo4-retos', nombre: 'Retos' }
     },
     
+    // Configuración de reintentos
+    REINTENTOS: {
+        maximos: 3,
+        tiempoEspera: 1000,
+        factor: 2
+    },
+    
     // Configuración del mapa
     MAPA: {
         CENTER: [39.4699, -0.3763], // Valencia
@@ -46,3 +44,4 @@ export default {
     CONFIG,
     LOG_LEVELS
 };
+    LOG_LEVELS
