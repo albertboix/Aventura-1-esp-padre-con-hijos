@@ -270,7 +270,9 @@
         error: null,
         watchId: null,
         paradaActual: -1,
-        tramoActual: -1
+        tramoActual: -1,
+        paradas: [], // Agregamos un array para almacenar las paradas
+        cargandoParadas: false // Flag para indicar que estamos cargando paradas
     };
     
     // Make available globally for debugging
@@ -415,32 +417,51 @@
         
         console.log('Renderizando lista de paradas...');
         
-        // Solicitar datos de paradas al padre si no están disponibles
-        if (!window.estadoApp || !window.estadoApp.paradas || window.estadoApp.paradas.length === 0) {
-            console.log('Solicitando paradas al padre...');
-            // Primero mostrar mensaje de carga
-            listaParadasContainer.innerHTML = '<div class="cargando">Cargando paradas...</div>';
-            listaParadasContainer.style.display = 'flex';
-            
-            // Solicitar paradas
-            enviarMensaje('padre', TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS, {})
-                .then(response => {
-                    console.log('Paradas recibidas:', response);
-                    // Si se recibió respuesta con paradas, renderizarlas
-                    if (response && response.paradas) {
-                        renderizarBotonesParadas(listaParadasContainer, response.paradas);
-                    } else {
-                        listaParadasContainer.innerHTML = 'No hay paradas disponibles';
-                    }
-                })
-                .catch(err => {
-                    console.error('Error al solicitar paradas:', err);
-                    listaParadasContainer.innerHTML = 'Error al cargar paradas';
-                });
-        } else {
-            // Renderizar directamente si ya tenemos paradas
-            renderizarBotonesParadas(listaParadasContainer, window.estadoApp.paradas);
+        // Si ya estamos cargando paradas, no hacemos nada
+        if (estado.cargandoParadas) {
+            console.log('Ya hay una solicitud de paradas en curso');
+            return;
         }
+        
+        // Usar paradas del estado si ya las tenemos
+        if (estado.paradas && estado.paradas.length > 0) {
+            console.log('Usando paradas del estado interno', estado.paradas);
+            renderizarBotonesParadas(listaParadasContainer, estado.paradas);
+            return;
+        }
+        
+        // Solicitar datos de paradas al padre si no están disponibles
+        console.log('Solicitando paradas al padre...');
+        // Primero mostrar mensaje de carga
+        listaParadasContainer.innerHTML = '<div class="cargando">Cargando paradas...</div>';
+        listaParadasContainer.style.display = 'flex';
+        
+        // Indicar que estamos cargando paradas
+        estado.cargandoParadas = true;
+        
+        // Solicitar paradas
+        enviarMensaje('padre', TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS, {
+            origen: 'hijo5-casa',
+            timestamp: new Date().toISOString()
+        })
+        .then(response => {
+            estado.cargandoParadas = false;
+            console.log('Paradas recibidas:', response);
+            
+            // Si se recibió respuesta con paradas, guardarlas y renderizarlas
+            if (response && response.paradas) {
+                estado.paradas = response.paradas; // Guardar en el estado
+                renderizarBotonesParadas(listaParadasContainer, estado.paradas);
+            } else {
+                console.error('No se recibieron paradas válidas:', response);
+                listaParadasContainer.innerHTML = 'No hay paradas disponibles';
+            }
+        })
+        .catch(err => {
+            estado.cargandoParadas = false;
+            console.error('Error al solicitar paradas:', err);
+            listaParadasContainer.innerHTML = 'Error al cargar paradas';
+        });
     }
     
     // Nueva función para renderizar botones con mejor formato
@@ -512,6 +533,23 @@
         container.style.display = 'flex';
     }
     
+    // Manejador para recibir paradas del padre
+    function manejarRecepcionParadas(mensaje) {
+        console.log('Recibidas paradas desde el padre:', mensaje);
+        
+        if (mensaje && mensaje.datos && mensaje.datos.paradas) {
+            estado.paradas = mensaje.datos.paradas;
+            
+            // Si estamos en modo casa, renderizar las paradas
+            if (estado.modo === 'casa') {
+                const listaParadasContainer = document.getElementById('paradas-list');
+                if (listaParadasContainer) {
+                    renderizarBotonesParadas(listaParadasContainer, estado.paradas);
+                }
+            }
+        }
+    }
+    
     // Inicializa el componente
     async function inicializar() {
         if (estado.inicializado || estado.inicializando) {
@@ -545,6 +583,7 @@
             
             // Registrar manejadores
             registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejarCambioModo);
+            registrarControlador(TIPOS_MENSAJE.DATOS.PARADAS, manejarRecepcionParadas);
             console.log('Manejadores registrados');
             
             // IMPORTANTE: Exponer la función manejarClickCambioModo al objeto window después de inicializar mensajería
@@ -569,6 +608,17 @@
             
             // Inicializar interfaz
             actualizarInterfaz(estado.modo);
+            
+            // Solicitar paradas al padre después de inicializar
+            if (estado.modo === 'casa') {
+                console.log('Solicitando paradas iniciales al padre...');
+                setTimeout(() => {
+                    enviarMensaje('padre', TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS, {
+                        origen: 'hijo5-casa',
+                        timestamp: new Date().toISOString()
+                    }).catch(err => console.error('Error al solicitar paradas iniciales:', err));
+                }, 500);
+            }
             
             console.log('Componente boton-casa inicializado correctamente');
             
