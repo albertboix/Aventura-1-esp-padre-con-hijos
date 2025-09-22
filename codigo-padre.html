@@ -195,6 +195,7 @@
             const mensajeriaModule = await import('./js/mensajeria.js');
             const constantsModule = await import('./js/constants.js');
             const configModule = await import('./js/config.js');
+            const loggerModule = await import('./js/logger.js'); // Import logger
             
             // Destructure with aliases to avoid naming conflicts
             const { 
@@ -216,11 +217,13 @@
             
             const { TIPOS_MENSAJE } = constantsModule;
             const { CONFIG } = configModule;
+            const logger = loggerModule.default; // Get logger from module
             
             // Make available for debugging
             window.utils = {};
             window.mensajeria = mensajeriaModule;
             window.CONFIG = CONFIG;
+            window.logger = logger; // Make logger available globally
             
             window.debugLog('Módulos importados correctamente');
             window.debugLog('CONFIG:', CONFIG);
@@ -394,83 +397,16 @@
             // 5. FUNCIONES PRINCIPALES
             async function inicializarSistemaMensajeria() {
                 if (estadoApp.mensajeriaInicializada) return;
-                // FIX: Use the imported function
                 await inicializarMensajeria({ iframeId: CONFIG.ID_PADRE, logLevel: CONFIG.LOG_LEVEL });
                 estadoApp.mensajeriaInicializada = true;
-                logger.info('Sistema de mensajería inicializado.');
+                logger.info('Sistema de mensajería inicializado.'); // Now logger is defined
             }
 
             async function iniciarSistemaMapa() {
                 try {
-                    console.log('Iniciando inicialización del mapa...');
+                    // Now logger is available here
+                    logger.info('Iniciando sistema de mapa...');
                     
-                    // 1. Verificar que Leaflet está cargado
-                    if (typeof L === 'undefined') {
-                        const errorMsg = 'Leaflet no está cargado. Verifica que la biblioteca se haya cargado correctamente.';
-                        console.error(errorMsg);
-                        if (window.logger) window.logger.error(errorMsg);
-                        throw new Error(errorMsg);
-                    }
-                    
-                    if (estadoApp.mapaInicializado) {
-                        console.log('El mapa ya está inicializado');
-                        return;
-                    }
-                    
-                    // 2. Verificar contenedor del mapa
-                    const mapaContainer = document.getElementById('mapa');
-                    if (!mapaContainer) {
-                        const errorMsg = 'No se encontró el elemento con ID "mapa". Asegúrate de que existe en el HTML.';
-                        console.error(errorMsg);
-                        if (window.logger) window.logger.error(errorMsg);
-                        throw new Error(errorMsg);
-                    }
-                    
-                    console.log('Contenedor del mapa encontrado:', mapaContainer);
-                    
-                    // 3. Asegurar que el contenedor sea visible y tenga dimensiones
-                    mapaContainer.style.display = 'block';
-                    mapaContainer.style.visibility = 'visible';
-                    mapaContainer.style.position = 'absolute';
-                    mapaContainer.style.top = '0';
-                    mapaContainer.style.left = '0';
-                    
-                    // 4. Establecer dimensiones explícitas si es necesario
-                    if (mapaContainer.offsetWidth === 0 || mapaContainer.offsetHeight === 0) {
-                        console.warn('El contenedor del mapa tiene dimensiones cero, estableciendo tamaño por defecto');
-                        mapaContainer.style.width = '100%';
-                        mapaContainer.style.height = '100%';
-                        mapaContainer.style.minHeight = '100vh';
-                        
-                        // Forzar reflow
-                        void mapaContainer.offsetWidth;
-                    }
-                    
-                    console.log('Dimensiones del contenedor:', {
-                        width: mapaContainer.offsetWidth,
-                        height: mapaContainer.offsetHeight,
-                        computedStyle: window.getComputedStyle(mapaContainer).display,
-                        position: window.getComputedStyle(mapaContainer).position,
-                        visibility: window.getComputedStyle(mapaContainer).visibility
-                    });
-                    
-                    // 5. Verificar que el contenedor está en el DOM
-                    if (!document.body.contains(mapaContainer)) {
-                        console.warn('El contenedor del mapa no está en el DOM, intentando adjuntarlo...');
-                        document.body.appendChild(mapaContainer);
-                    }
-                    
-                    // 6. Pequeña pausa para asegurar que el DOM se actualice
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                    
-                    // 7. Inicializar el mapa
-                    console.log('Inicializando mapa con configuración:', { 
-                        containerId: 'mapa',
-                        paradasCount: AVENTURA_PARADAS.length,
-                        config: MAP_CONFIG 
-                    });
-                    
-                    // FIX: Use the imported function
                     const mapaInstance = await inicializarMapa({ 
                         ...MAP_CONFIG 
                     });
@@ -480,32 +416,23 @@
                     }
                     
                     window.mapa = mapaInstance;
-                    console.log('Mapa inicializado correctamente:', window.mapa);
+                    logger.info('Mapa inicializado correctamente');
                     estadoApp.mapaInicializado = true;
-                    logger.info('Mapa inicializado.');
                     
                     // Force map to update its size after a short delay
                     const updateMapSize = () => {
                         if (window.mapa) {
                             window.mapa.invalidateSize();
-                            console.log('Map size updated');
+                            logger.debug('Map size updated');
                         }
                     };
                     
                     setTimeout(updateMapSize, 100);
                     window.addEventListener('resize', () => setTimeout(updateMapSize, 100));
                     
-                    // Show the map container
-                    if (mapaContainer) {
-                        mapaContainer.style.visibility = 'visible';
-                    }
-                    
+                    return mapaInstance;
                 } catch (error) {
-                    if (window.logger) {
-                        window.logger.error('Error al inicializar el mapa:', error);
-                    } else if (window.console && window.console.error) {
-                        console.error('Error al inicializar el mapa:', error);
-                    }
+                    logger.error('Error al inicializar el mapa:', error);
                     throw error;
                 }
             }
@@ -1048,7 +975,7 @@
             
             // Initialize the app
             try {
-                await iniciarSistemaMapa();
+                await iniciarSistemaMapa(); // Now this should work with logger defined
                 window.debugLog('Aplicación inicializada correctamente');
             } catch (error) {
                 console.error('Error al inicializar la aplicación:', error);
