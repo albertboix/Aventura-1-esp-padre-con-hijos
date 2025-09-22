@@ -439,30 +439,33 @@ async function enviarError(mensajeOriginal, error = {}) {
 
 // Exportar la API pública
 export async function inicializarMensajeria(config) {
-  return await _inicializarMensajeria(config);
+    return await _inicializarMensajeria(config);
 }
 
 export function registrarControlador(tipo, manejador) {
-  return _registrarControlador(tipo, manejador);
+    return _registrarControlador(tipo, manejador);
 }
 
 export async function enviarMensaje(destino, tipo, datos = {}) {
-  return await _enviarMensaje(destino, tipo, datos);
+    return await _enviarMensaje(destino, tipo, datos);
 }
+
+// Re-export TIPOS_MENSAJE from constants.js
+export { TIPOS_MENSAJE };
 
 // Exportar las nuevas funciones
 export {
-  enviarMensajeConConfirmacion,
-  enviarConfirmacion,
-  enviarError
+    enviarMensajeConConfirmacion,
+    enviarConfirmacion,
+    enviarError
 };
 
 export default {
-  inicializarMensajeria,
-  registrarControlador,
-  enviarMensaje,
-  enviarMensajeConConfirmacion,
-  enviarConfirmacion,
-  enviarError,
-  TIPOS_MENSAJE
+    inicializarMensajeria,
+    registrarControlador,
+    enviarMensaje,
+    enviarMensajeConConfirmacion,
+    enviarConfirmacion,
+    enviarError,
+    TIPOS_MENSAJE
 };
