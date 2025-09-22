@@ -39,16 +39,8 @@ const CONFIG_DEFAULT = {
   }
 };
 
-// Logger por defecto (se actualizará después de la inicialización)
-let logger = {
-  debug: console.debug.bind(console),
-  info: console.log.bind(console),
-  warn: console.warn.bind(console),
-  error: console.error.bind(console)
-};
-
 // Estado de inicialización
-let isLoggerInitialized = false;
+let isLoggerInitialized = true; // Set to true since we're importing logger directly
 
 /**
  * Obtiene o crea una instancia de mensajería
