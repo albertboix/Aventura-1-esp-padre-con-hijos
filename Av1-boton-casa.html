@@ -40,7 +40,7 @@
     window.estadoComponente = estado;
     window.TIPOS_MENSAJE = TIPOS_MENSAJE;
     
-    // Actualizar la interfaz según el modo
+    // Función para actualizar la interfaz según el modo
     function actualizarInterfaz(modo) {
         console.log(`Actualizando interfaz a modo: ${modo}`);
         const botonCasa = document.getElementById('gps-casa-btn');
@@ -52,13 +52,18 @@
         }
         
         if (modo === 'casa') {
+            // Cambios visuales para modo casa (botón verde, mostrar paradas)
             if (paradasWindow) paradasWindow.classList.remove('hidden');
             if (paradasWindow) paradasWindow.classList.add('visible');
             botonCasa.classList.remove('off');
             botonCasa.classList.add('on');
             botonCasa.setAttribute('aria-pressed', 'true');
             botonCasa.title = 'GPS DESACTIVADO (modo casa)';
+            
+            // NUEVO: Renderizar la lista de paradas en modo casa
+            renderizarListaParadas();
         } else {
+            // Cambios visuales para modo aventura (botón rojo, ocultar paradas)
             if (paradasWindow) paradasWindow.classList.remove('visible');
             if (paradasWindow) paradasWindow.classList.add('hidden');
             botonCasa.classList.remove('on');
@@ -234,6 +239,101 @@
         }
     }
     
+    // Renderizar la lista solo en modo casa
+    function renderizarListaParadas() {
+        const listaParadasContainer = document.getElementById('paradas-list');
+        if (!listaParadasContainer) return;
+        
+        console.log('Renderizando lista de paradas...');
+        
+        // Solicitar datos de paradas al padre si no están disponibles
+        if (!window.estadoApp || !window.estadoApp.paradas || window.estadoApp.paradas.length === 0) {
+            console.log('Solicitando paradas al padre...');
+            // Primero mostrar mensaje de carga
+            listaParadasContainer.innerHTML = '<div class="cargando">Cargando paradas...</div>';
+            listaParadasContainer.style.display = 'block';
+            
+            // Solicitar paradas
+            enviarMensaje('padre', TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS, {})
+                .then(response => {
+                    console.log('Paradas recibidas:', response);
+                    // Si se recibió respuesta con paradas, renderizarlas
+                    if (response && response.paradas) {
+                        renderizarBotonesParadas(listaParadasContainer, response.paradas);
+                    } else {
+                        listaParadasContainer.innerHTML = 'No hay paradas disponibles';
+                    }
+                })
+                .catch(err => {
+                    console.error('Error al solicitar paradas:', err);
+                    listaParadasContainer.innerHTML = 'Error al cargar paradas';
+                });
+        } else {
+            // Renderizar directamente si ya tenemos paradas
+            renderizarBotonesParadas(listaParadasContainer, window.estadoApp.paradas);
+        }
+    }
+    
+    // Nueva función para renderizar botones con mejor formato
+    function renderizarBotonesParadas(container, paradas) {
+        container.innerHTML = '';
+        
+        if (!paradas || paradas.length === 0) {
+            container.innerHTML = '<div class="sin-paradas">No hay paradas disponibles</div>';
+            return;
+        }
+        
+        paradas.forEach((p, idx) => {
+            // Crear botón con más información
+            const btn = document.createElement('button');
+            btn.className = `parada-tramo-btn ${p.tipo === 'parada' ? 'parada-btn' : p.tipo === 'tramo' ? 'tramo-btn' : 'inicio-btn'}`;
+            
+            // Si es la parada actual, añadir clase 'actual'
+            if (window.estadoApp && window.estadoApp.puntoActual && 
+                (window.estadoApp.puntoActual.id === p.id || 
+                 window.estadoApp.puntoActual.parada_id === p.parada_id ||
+                 window.estadoApp.puntoActual.tramo_id === p.tramo_id)) {
+                btn.classList.add('actual');
+            }
+            
+            // Crear contenido del botón con icono y texto
+            const contenido = document.createElement('div');
+            contenido.className = 'btn-content';
+            
+            // Icono según tipo
+            const icono = document.createElement('span');
+            icono.className = 'btn-icon';
+            icono.innerHTML = p.tipo === 'parada' ? '🚩' : p.tipo === 'tramo' ? '🚶' : '🏁';
+            
+            // Título y descripción
+            const titulo = document.createElement('div');
+            titulo.className = 'btn-title';
+            titulo.textContent = p.nombre || `${p.tipo === 'parada' ? 'Parada' : 'Tramo'} ${p.parada || p.tramo || idx + 1}`;
+            
+            const desc = document.createElement('div');
+            desc.className = 'btn-desc';
+            desc.textContent = p.descripcion || (p.tipo === 'parada' ? 
+                              `Parada ${p.parada || idx + 1}` : 
+                              `Tramo ${p.tramo || idx + 1}`);
+            
+            // Añadir todo al botón
+            contenido.appendChild(icono);
+            contenido.appendChild(titulo);
+            contenido.appendChild(desc);
+            btn.appendChild(contenido);
+            
+            // Añadir evento de clic
+            btn.onclick = () => {
+                console.log(`Seleccionada parada/tramo: ${p.id || p.parada_id || p.tramo_id}`);
+                window.enviarMensaje('padre', TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, { punto: p });
+            };
+            
+            container.appendChild(btn);
+        });
+        
+        container.style.display = 'flex';
+    }
+
     // Inicializar cuando el DOM esté listo
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', inicializar);
@@ -597,27 +697,6 @@
         }
       }
     });
-    // Renderizar la lista solo en modo casa
-    function renderizarListaParadas() {
-        const listaParadasContainer = document.getElementById('paradas-list');
-        if (!listaParadasContainer) return;
-        
-        if (!window.estadoApp || !window.estadoApp.paradas || window.estadoApp.paradas.length === 0) {
-            listaParadasContainer.innerHTML = 'No hay paradas disponibles';
-            listaParadasContainer.style.display = 'none';
-            return;
-        }
-        listaParadasContainer.innerHTML = '';
-        window.estadoApp.paradas.forEach((p, idx) => {
-            const btn = document.createElement('button');
-            btn.textContent = p.padreid;
-            btn.onclick = () => {
-                window.enviarMensaje('padre', window.TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, { punto: p });
-            };
-            listaParadasContainer.appendChild(btn);
-        });
-        listaParadasContainer.style.display = 'block';
-    }
   </script>
 </body>
 </html>
