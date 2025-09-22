@@ -4,16 +4,37 @@
  */
 
 /**
+ * Niveles de log disponibles
+ */
+export const LOG_LEVELS = {
+    DEBUG: 0,
+    INFO: 1,
+    WARN: 2,
+    ERROR: 3,
+    NONE: 4
+};
+
+/**
+ * Modos de la aplicación
+ */
+export const MODOS = {
+    CASA: 'casa',
+    AVENTURA: 'aventura'
+};
+
+/**
  * Tipos de mensajes para la comunicación entre iframes
  */
 export const TIPOS_MENSAJE = {
     SISTEMA: {
         INICIALIZACION: 'SISTEMA.INICIALIZACION',
         INICIALIZACION_COMPLETADA: 'SISTEMA.INICIALIZACION_COMPLETADA',
+        ESTADO: 'SISTEMA.ESTADO',
         ERROR: 'SISTEMA.ERROR',
         CAMBIO_MODO: 'SISTEMA.CAMBIO_MODO',
         CONFIRMACION: 'SISTEMA.CONFIRMACION',
-        COMPONENTE_LISTO: 'SISTEMA.COMPONENTE_LISTO'
+        COMPONENTE_LISTO: 'SISTEMA.COMPONENTE_LISTO',
+        PING: 'SISTEMA.PING'
     },
     CONTROL: {
         HABILITAR: 'CONTROL.HABILITAR',
@@ -46,14 +67,6 @@ export const TIPOS_MENSAJE = {
 };
 
 /**
- * Modos de la aplicación
- */
-export const MODOS = {
-    CASA: 'casa',
-    AVENTURA: 'aventura'
-};
-
-/**
  * Estados de la aplicación
  */
 export const ESTADOS = {
@@ -75,8 +88,9 @@ export const CODIGOS_ERROR = {
 };
 
 export default {
-    TIPOS_MENSAJE,
+    LOG_LEVELS,
     MODOS,
+    TIPOS_MENSAJE,
     ESTADOS,
     CODIGOS_ERROR
 };
