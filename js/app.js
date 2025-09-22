@@ -9,14 +9,6 @@ import logger from './logger.js';
 import { registrarControlador, enviarMensaje, inicializarMensajeria } from './mensajeria.js';
 import { CONFIG } from './config.js';
 
-// 2. Datos de la Aventura (ahora centralizados aquí)
-export const AVENTURA_PARADAS = [
-    { id: 'P-0', tipo: "inicio", parada: 0, nombre: "Torres de Serranos (start)", coordenadas: { lat: 39.47876, lng: -0.37626 }, imagen: 'fotos_Av1/00_torres_de_serranos_back.jpg', video: 'videos/parada_0.mp4', audioId: 'audio_P-0' },
-    { id: 'TR-1', tipo: "tramo", tramo: 1, nombre: "Torres de Serranos → Plaza de la crida", inicio: { lat: 39.47876, lng: -0.37626 }, fin: { lat: 39.47959, lng: -0.37583 }, video: 'videos/tramo_1.mp4', audioId: 'audio_TR-1' },
-    { id: 'P-1', tipo: "parada", parada: 1, nombre: "Plaza de la crida", coordenadas: { lat: 39.47959, lng: -0.37583 }, imagen: 'fotos_Av1/01_torres-de_serranos_front.jpg', audioId: 'audio_P-1', retoId: 'R-1' },
-    // ... resto de paradas y tramos
-];
-
 // 3. Estado unificado de la aplicación
 export const estado = {
   // Estado de inicialización
