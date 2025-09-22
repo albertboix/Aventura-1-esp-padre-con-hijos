@@ -1,481 +1,144 @@
 /**
- * Módulo principal de la aplicación que gestiona el estado global y la lógica de negocio.
- * @version 2.1.0
+ * Módulo principal de la aplicación
+ * @module App
+ * @version 1.0.0
  */
 
-// 1. Importar dependencias
-import { MODOS, TIPOS_MENSAJE } from './constants.js';
+import { TIPOS_MENSAJE, MODOS } from './constants.js';
+import { enviarMensaje } from './mensajeria.js';
 import logger from './logger.js';
-import { registrarControlador, enviarMensaje, inicializarMensajeria } from './mensajeria.js';
-import { CONFIG } from './config.js';
+import { inicializarMapa } from './funciones-mapa.js';
 
-// 3. Estado unificado de la aplicación
-export const estado = {
-  // Estado de inicialización
-  inicializado: false,
-  inicializando: false,
-  ultimoError: null,
-  
-  // Estado de la aplicación
-  modo: {
-    actual: MODOS.CASA,
-    anterior: null,
-    ultimoCambio: null
-  },
-  
-  // Estado de los servicios
-  gpsActivo: false,
-  controlesHabilitados: true,
-  mensajeriaInicializada: false,
-  
-  // Estado de navegación
-  puntoActual: AVENTURA_PARADAS[0],
-  tramoActual: null,
-  
-  // Referencias
-  mensajeria: null,
-  
-  // Versión
-  version: '2.1.0'
+// Configuración global
+export const CONFIG = {
+    DEBUG: true,
+    LOG_LEVEL: 1, // INFO
+    ID_PADRE: 'codigo-padre',
+    IFRAME_ID: 'padre',
+    HIJOS: {
+        CASA: { id: 'hijo5-casa', nombre: 'Botón Casa' },
+        COORDENADAS: { id: 'hijo2', nombre: 'Coordenadas' },
+        AUDIO: { id: 'hijo3', nombre: 'Audio' },
+        RETOS: { id: 'hijo4-retos', nombre: 'Retos' }
+    }
 };
 
-// 4. Manejadores de Lógica de Negocio
-async function manejarCambioModo(mensaje) {
-  const { modo } = mensaje.datos;
-  if (modo && estado.modo !== modo) {
-    logger.info(`🔄 Cambiando modo de '${estado.modo}' a '${modo}'`);
-    estado.modo = modo;
-    estado.gpsActivo = (modo === MODOS.AVENTURA);
-    
-    // Notificar a todos los iframes sobre el cambio de modo
-    await enviarMensaje('todos', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, { 
-        modo: estado.modo,
-        gpsActivo: estado.gpsActivo 
-    });
-  }
-}
-
-async function manejarSolicitudDestino(mensaje) {
-    // Lógica para avanzar al siguiente punto en la aventura
-    const indiceActual = AVENTURA_PARADAS.findIndex(p => p.id === estado.puntoActual.id);
-    const siguienteIndice = (indiceActual + 1) % AVENTURA_PARADAS.length;
-    estado.puntoActual = AVENTURA_PARADAS[siguienteIndice];
-
-    logger.info(`📍 Nuevo destino: ${estado.puntoActual.nombre}`);
-
-    // Notificar a todos los hijos del nuevo punto
-    await enviarMensaje('todos', TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, { punto: estado.puntoActual });
-}
-
-// 5. Inicialización del módulo
-export async function inicializar() {
-  if (estado.inicializado || estado.inicializando) {
-    logger.warn('La aplicación ya está inicializada o en proceso de inicialización');
-    return;
-  }
-
-  estado.inicializando = true;
-  logger.info('🧠 Inicializando aplicación...');
-
-  try {
-    // Inicializar mensajería
-    await inicializarMensajeria({
-      iframeId: CONFIG.IFRAME_ID,
-      debug: CONFIG.DEBUG,
-      logLevel: CONFIG.LOG_LEVEL
-    });
-
-    // Registrar manejadores con duplicate prevention
-    if (!estado.manejadoresRegistrados) {
-      logger.debug('Registrando manejadores de mensajes...');
-      
-      // Registrar manejador PING
-      logger.debug('Registrando manejador PING');
-      registrarControlador(TIPOS_MENSAJE.SISTEMA.PING, manejarPing);
-      
-      // Registrar otros manejadores
-      registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejarCambioModo);
-      registrarControlador(TIPOS_MENSAJE.NAVEGACION.SOLICITAR_DESTINO, manejarSolicitudDestino);
-      
-      // Marcar como registrados
-      estado.manejadoresRegistrados = true;
-      logger.debug('Manejadores registrados correctamente');
-    } else {
-      logger.debug('Los manejadores ya estaban registrados');
-    }
-
-    // Actualizar estado
-    estado.inicializado = true;
-    estado.mensajeriaInicializada = true;
-    
-    logger.info('✅ Aplicación inicializada correctamente');
-    
-    // Notificar inicialización exitosa
-    await notificarInicializacion();
-    
-    return true;
-  } catch (error) {
-    await notificarError('inicializacion', error);
-    throw error;
-  } finally {
-    estado.inicializando = false;
-  }
-}
-
-// 6. Manejadores de mensajes
+// Estado global de la aplicación
+export const estado = {
+    modo: { actual: 'casa', anterior: null },
+    paradaActual: 0,
+    mensajeriaInicializada: false,
+    mapaInicializado: false,
+    hijosInicializados: new Set(),
+    paradas: []
+};
 
 /**
- * Maneja el mensaje PING para verificar la conectividad
- */
-function manejarPing(mensaje) {
-  logger.debug('PING recibido:', mensaje);
-  return { 
-    estado: 'activo', 
-    timestamp: new Date().toISOString(),
-    version: estado.version
-  };
-}
-
-// 7. Funciones de utilidad
-
-/**
- * Inicializa la mensajería de la aplicación
- */
-async function inicializarMensajeriaApp() {
-  if (estado.inicializando || estado.inicializado) {
-    logger.warn('La mensajería ya está inicializada o en proceso de inicialización');
-    return;
-  }
-
-  logger.info('Inicializando mensajería...');
-
-  try {
-    // Inicializar el módulo de mensajería
-    await inicializarMensajeria({
-      iframeId: CONFIG.IFRAME_ID,
-      debug: CONFIG.DEBUG,
-      logLevel: CONFIG.LOG_LEVEL,
-      reintentos: CONFIG.REINTENTOS
-    });
-
-    logger.info('Mensajería inicializada correctamente');
-    return true;
-  } catch (error) {
-    await notificarError('inicializacion_mensajeria', error);
-    throw error;
-  }
-}
-
-
-// Función para notificar errores
-async function notificarError(tipo, error) {
-  // Usar el logger para registrar el error
-  logger.error(`Error (${tipo}):`, error);
-  
-  // Enviar mensaje de error al padre si es necesario
-  if (enviarMensaje) {
-    try {
-      await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
-        tipo,
-        mensaje: error.message,
-        stack: error.stack,
-        origen: CONFIG.IFRAME_ID,
-        timestamp: new Date().toISOString()
-      });
-    } catch (e) {
-      logger.error('Error al notificar error al padre:', e);
-    }
-  }
-}
-
-// Función para notificar inicialización exitosa
-async function notificarInicializacion() {
-  if (typeof enviarMensaje === 'function') {
-    try {
-      await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ESTADO, {
-        tipo: 'inicializacion_completada',
-        estado: 'listo',
-        origen: CONFIG.IFRAME_ID,
-        timestamp: new Date().toISOString()
-      });
-    } catch (error) {
-      logger.error('Error al notificar inicialización:', error);
-    }
-  }
-}
-
-// Manejador de cambio de modo
-async function manejarCambioModo(mensaje) {
-  try {
-    const { modo } = mensaje.datos || {};
-    logger.info(`Cambiando a modo: ${modo}`);
-    // Implementar lógica de cambio de modo aquí
-    return { exito: true, modo };
-  } catch (error) {
-    logger.error('Error al cambiar de modo:', error);
-    throw error;
-  }
-}
-
-// Función para registrar manejadores de mensajes
-async function registrarManejadores() {
-  try {
-    // Los manejadores ya están registrados en la inicialización
-    logger.debug('Verificando estado de los manejadores...');
-    if (!estado.manejadoresRegistrados) {
-      logger.warn('Los manejadores no se registraron durante la inicialización');
-      // Intentar registrar nuevamente si es necesario
-      registrarManejadores();
-    }
-    
-    logger.info('Manejadores de mensajes registrados correctamente');
-    return true;
-  } catch (error) {
-    logger.error('Error al registrar manejadores:', error);
-    throw error;
-  }
-}
-
-// Inicialización principal de la aplicación
-async function inicializar() {
-  if (estadoApp.inicializando || estadoApp.inicializado) {
-    logger.warn('La aplicación ya está inicializada o en proceso de inicialización');
-    return;
-  }
-
-  estadoApp.inicializando = true;
-  logger.info('Inicializando aplicación...');
-
-  try {
-    // 1. Inicializar mensajería primero
-    await inicializarMensajeriaApp();
-    
-    // 2. Registrar manejadores de mensajes
-    registrarManejadores();
-    
-    // 3. Notificar que la aplicación está lista
-    await notificarInicializacion();
-    
-    // 4. Configurar estado
-    estadoApp.inicializado = true;
-    logger.info('Aplicación inicializada correctamente');
-    
-    // 5. Notificar al padre que la aplicación está lista
-    if (window.enviarMensaje) {
-      await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.INICIALIZACION_COMPLETA, {
-        componente: 'app',
-        estado: 'aplicacion_lista',
-        timestamp: new Date().toISOString()
-      });
-    } else {
-      logger.warn('No se pudo notificar al padre: enviarMensaje no está disponible');
-    }
-    
-  } catch (error) {
-    const errorInfo = {
-      mensaje: error.message,
-      stack: error.stack,
-      tipo: 'inicializacion',
-      timestamp: new Date().toISOString()
-    };
-    
-    logger.error('Error durante la inicialización:', errorInfo);
-    
-    // Intentar notificar el error al padre si es posible
-    if (window.enviarMensaje) {
-      try {
-        await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
-          ...errorInfo,
-          origen: CONFIG.IFRAME_ID || 'app'
-        });
-      } catch (e) {
-        console.error('No se pudo notificar el error al padre:', e);
-      }
-    }
-    
-    estadoApp.inicializando = false;
-    throw error;
-  } finally {
-    if (!estadoApp.inicializado) {
-      estadoApp.inicializando = false;
-    }
-  }
-}
-
-/**
- * Inicializa la aplicación principal
+ * Inicializa la aplicación
  * @returns {Promise<boolean>} True si la inicialización fue exitosa
  */
-export async function inicializarAplicacion() {
-  if (estadoApp.inicializando) {
-    if (CONFIG.DEBUG) console.debug('[App] Inicialización ya en curso');
-    return false;
-  }
-  
-  if (estadoApp.inicializado) {
-    if (CONFIG.DEBUG) console.debug('[App] Ya inicializado');
-    return true;
-  }
-  
-  estadoApp.inicializando = true;
-  estadoApp.ultimoError = null;
-  
-  try {
-    estadoApp.inicializando = true;
-    logger.info('Iniciando inicialización de la aplicación...');
-    
-    // 1. Inicializar mensajería
-    await inicializarMensajeriaApp();
-    
-    // 2. Registrar manejadores de mensajes
-    await registrarManejadores();
-    
-    // 3. Notificar que la aplicación está lista
-    await notificarInicializacion();
-    
-    estadoApp.inicializado = true;
-    estadoApp.inicializando = false;
-    
-    logger.info('Aplicación inicializada correctamente');
-    return true;
-    
-  } catch (error) {
-    const errorInfo = {
-      mensaje: error.message,
-      stack: error.stack,
-      timestamp: new Date().toISOString()
-    };
-    
-    estadoApp.ultimoError = errorInfo;
-    console.error('[App] Error en inicialización:', errorInfo);
-    
-    // Notificar el error al padre si es posible
-    if (estadoApp.mensajeriaInicializada) {
-      try {
-        await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
-          tipo: 'inicializacion',
-          error: errorInfo
-        });
-      } catch (e) {
-        console.error('[App] Error al notificar error de inicialización:', e);
-      }
-    }
-    
-    return false;
-  } finally {
-    estadoApp.inicializando = false;
-  }
-}
-
-// Exportar la configuración
-export { CONFIG };
-
-// Inicialización automática cuando se carga el módulo directamente
-if (typeof window !== 'undefined' && !window.__esModule) {
-  (async () => {
+export async function inicializar() {
     try {
-      // 1. Configurar utilidades
-      configurarUtils({
-        debug: CONFIG.DEBUG,
-        logLevel: CONFIG.LOG_LEVEL,
-        reintentos: CONFIG.REINTENTOS
-      });
-
-      // 2. Configurar logger
-      logger.configure({
-        level: CONFIG.LOG_LEVEL,
-        debug: CONFIG.DEBUG
-      });
-
-      // 3. Inicializar mensajería
-      await inicializarMensajeria({
-        iframeId: CONFIG.IFRAME_ID,
-        debug: CONFIG.DEBUG,
-        logLevel: CONFIG.LOG_LEVEL
-      });
-
-      // 4. Registrar manejadores
-      registrarManejadores();
-
-      // 5. Inicializar aplicación
-      await inicializar();
-      
-      // 6. Notificar que la inicialización ha terminado
-      notificarInicializacion();
-      
+        logger.info('Inicializando aplicación...');
+        
+        // No iniciamos mensajería aquí porque se hace en el código padre
+        
+        // Marcar como inicializada
+        logger.info('Aplicación inicializada correctamente');
+        return true;
     } catch (error) {
-      const errorMsg = 'Error crítico durante la inicialización';
-      console.error(errorMsg, error);
-      notificarError('inicializacion_critica', new Error(`${errorMsg}: ${error.message}`));
+        logger.error('Error al inicializar la aplicación:', error);
+        await notificarError('inicializacion', error);
+        throw error;
     }
-  })();
 }
 
-// Exportar solo lo necesario
+/**
+ * Notifica un error al sistema
+ * @param {string} codigo - Código de error
+ * @param {Error} error - Objeto de error
+ */
+export async function notificarError(codigo, error) {
+    try {
+        if (typeof enviarMensaje === 'function') {
+            await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
+                origen: 'app',
+                codigo,
+                mensaje: error.message,
+                stack: error.stack,
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        logger.error(`[${codigo}] ${error.message}`, error);
+    } catch (e) {
+        logger.error('Error al notificar error:', e);
+    }
+}
+
+/**
+ * Envía un mensaje para cambiar el modo de la aplicación
+ * @param {string} nuevoModo - Nuevo modo ('casa' o 'aventura')
+ * @param {string} origen - Origen del cambio
+ * @returns {Promise<Object>} Resultado de la operación
+ */
+export async function enviarCambioModo(nuevoModo, origen = 'app') {
+    if (nuevoModo !== 'casa' && nuevoModo !== 'aventura') {
+        throw new Error(`Modo inválido: ${nuevoModo}`);
+    }
+    
+    return await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, { 
+        modo: nuevoModo,
+        origen,
+        timestamp: new Date().toISOString()
+    });
+}
+
+/**
+ * Manejador de cambio de modo (para uso interno)
+ * @param {Object} mensaje - Mensaje recibido
+ * @returns {Promise<Object>} Resultado de la operación
+ */
+export async function manejarCambioModo(mensaje) {
+    const { modo, origen } = mensaje.datos || {};
+    
+    // Validar el mensaje recibido
+    if (!modo) {
+        const errorMsg = 'Mensaje de cambio de modo inválido: falta modo';
+        logger.error(errorMsg, mensaje);
+        return { exito: false, error: errorMsg };
+    }
+    
+    // Verificar si ya estamos en el modo solicitado
+    if (modo === estado.modo.actual) {
+        logger.info(`Ya estamos en modo ${modo}, no se requiere cambio`);
+        return { exito: true, modo: estado.modo.actual, cambiado: false };
+    }
+    
+    try {
+        // Actualizar el estado local
+        estado.modo.anterior = estado.modo.actual;
+        estado.modo.actual = modo;
+        
+        logger.info(`Modo cambiado a ${modo} desde ${estado.modo.anterior}`);
+        
+        return { 
+            exito: true, 
+            modo: estado.modo.actual,
+            modoAnterior: estado.modo.anterior,
+            cambiado: true
+        };
+    } catch (error) {
+        logger.error(`Error al cambiar a modo ${modo}:`, error);
+        
+        // Revertir cambios si es necesario
+        estado.modo.actual = estado.modo.anterior;
+        
+        return { exito: false, error: error.message };
+    }
+}
+
+// Exportar funciones públicas para que puedan ser usadas por otros módulos
 export {
-  inicializar,
-  notificarError,
-  manejarCambioModo,
-  estadoApp as estado
+    inicializarMapa
 };
-
-// No exportar CONFIG directamente para evitar duplicados
-
-// =============================================
-// Configuración PWA (Progressive Web App)
-// =============================================
-
-// 1. Registrar Service Worker
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', async () => {
-    try {
-      // Crear el Service Worker en línea
-      const swUrl = URL.createObjectURL(new Blob([
-        `const CACHE_NAME = 'valencia-vguides-v1';
-        const ASSETS = [
-          '/',
-          '/js/app.js',
-          '/js/logger.js',
-          '/js/utils.js'
-        ];
-        
-        self.addEventListener('install', (e) => {
-          e.waitUntil(
-            caches.open(CACHE_NAME)
-              .then(cache => cache.addAll(ASSETS))
-          );
-        });
-        
-        self.addEventListener('fetch', (e) => {
-          e.respondWith(
-            caches.match(e.request).then(response => response || fetch(e.request))
-          );
-        });`
-      ], { type: 'application/javascript' }));
-      
-      const registration = await navigator.serviceWorker.register(swUrl);
-      console.log('ServiceWorker registrado con éxito:', registration.scope);
-      
-      // Manejar instalación de la PWA
-      window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        window.deferredPrompt = e;
-        console.log('Puedes instalar esta aplicación');
-      });
-      
-    } catch (error) {
-      console.error('Error al registrar el Service Worker:', error);
-    }
-  });
-}
-
-// 2. Verificar conexión
-function verificarConexion() {
-  const estado = navigator.onLine ? 'online' : 'offline';
-  console.log('Estado de conexión:', estado);
-  document.documentElement.setAttribute('data-connection', estado);
-}
-
-window.addEventListener('online', verificarConexion);
-window.addEventListener('offline', verificarConexion);
-verificarConexion();
