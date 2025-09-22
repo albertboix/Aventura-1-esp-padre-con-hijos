@@ -411,3 +411,62 @@ export {
 };
 
 // No exportar CONFIG directamente para evitar duplicados
+
+// =============================================
+// Configuración PWA (Progressive Web App)
+// =============================================
+
+// 1. Registrar Service Worker
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    try {
+      // Crear el Service Worker en línea
+      const swUrl = URL.createObjectURL(new Blob([
+        `const CACHE_NAME = 'valencia-vguides-v1';
+        const ASSETS = [
+          '/',
+          '/js/app.js',
+          '/js/logger.js',
+          '/js/utils.js'
+        ];
+        
+        self.addEventListener('install', (e) => {
+          e.waitUntil(
+            caches.open(CACHE_NAME)
+              .then(cache => cache.addAll(ASSETS))
+          );
+        });
+        
+        self.addEventListener('fetch', (e) => {
+          e.respondWith(
+            caches.match(e.request).then(response => response || fetch(e.request))
+          );
+        });`
+      ], { type: 'application/javascript' }));
+      
+      const registration = await navigator.serviceWorker.register(swUrl);
+      console.log('ServiceWorker registrado con éxito:', registration.scope);
+      
+      // Manejar instalación de la PWA
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        window.deferredPrompt = e;
+        console.log('Puedes instalar esta aplicación');
+      });
+      
+    } catch (error) {
+      console.error('Error al registrar el Service Worker:', error);
+    }
+  });
+}
+
+// 2. Verificar conexión
+function verificarConexion() {
+  const estado = navigator.onLine ? 'online' : 'offline';
+  console.log('Estado de conexión:', estado);
+  document.documentElement.setAttribute('data-connection', estado);
+}
+
+window.addEventListener('online', verificarConexion);
+window.addEventListener('offline', verificarConexion);
+verificarConexion();
