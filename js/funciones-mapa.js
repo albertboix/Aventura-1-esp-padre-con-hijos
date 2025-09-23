@@ -148,11 +148,16 @@ async function notificarError(codigo, error) {
  * @param {Object} mensaje - Mensaje recibido
  */
 function manejarEstablecerDestino(mensaje) {
+    console.log('🗺️ [MAPA] manejarEstablecerDestino INVOCADO con:', mensaje);
+    console.log('📋 [MAPA] Datos del mensaje:', mensaje.datos);
+
     const { punto } = mensaje.datos || {};
     if (!punto) {
-        logger.warn('Mensaje de establecer destino sin punto');
+        console.warn('⚠️ [MAPA] Mensaje de establecer destino sin punto');
         return;
     }
+
+    console.log('🎯 [MAPA] Estableciendo destino para punto:', punto);
 
     try {
         // Buscar coordenadas según el tipo de punto
@@ -164,16 +169,21 @@ function manejarEstablecerDestino(mensaje) {
         }
 
         if (!coordenadas) {
-            logger.warn(`No se encontraron coordenadas para el punto: ${JSON.stringify(punto)}`);
+            console.warn(`❌ [MAPA] No se encontraron coordenadas para el punto: ${JSON.stringify(punto)}`);
             return;
         }
 
+        console.log('📍 [MAPA] Coordenadas encontradas:', coordenadas);
+
         // Centrar mapa y actualizar marcador
+        console.log('🎯 [MAPA] Centrando mapa en:', coordenadas);
         mapa.flyTo([coordenadas.lat, coordenadas.lng], 17);
         actualizarMarcadorParada(coordenadas, obtenerNombreParada(punto));
-        
+
+        console.log('✅ [MAPA] Destino establecido correctamente');
+
     } catch (error) {
-        logger.error('Error al establecer destino:', error);
+        console.error('❌ [MAPA] Error al establecer destino:', error);
     }
 }
 
