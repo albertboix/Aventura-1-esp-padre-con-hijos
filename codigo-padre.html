@@ -189,6 +189,12 @@
     window.validateMessageFormat = function(msg, source) {
         if (!msg) return false;
         
+        // Filtrar mensajes de extensiones externas como Grammarly
+        if (msg && (msg.__grammarly || msg._grammarly || msg.grammarly_report || msg.ext_id || msg.extension_id)) {
+            console.debug('[Mensajería] Ignorando mensaje de extensión externa');
+            return false;
+        }
+        
         // Verificar estructura básica
         if (typeof msg !== 'object') {
             console.warn(`[Mensajería] Mensaje recibido de ${source || 'desconocido'} no es un objeto:`, msg);
@@ -582,14 +588,27 @@
                     try {
                         // Only process messages that might be from hijo5-casa
                         if (event.source === document.getElementById('hijo5-casa')?.contentWindow) {
-                            console.log('[DEBUG] Mensaje recibido de hijo5-casa:', event.data);
+                            // Ignore Grammarly messages immediately
+                            const data = event.data;
+                            if (data && (data.__grammarly || data._grammarly || data.grammarly_report || data.ext_id || data.extension_id)) {
+                                console.debug('[DEBUG] Ignorando mensaje de Grammarly desde hijo5-casa');
+                                return;
+                            }
+                            
+                            console.log('[DEBUG] Mensaje recibido de hijo5-casa:', data);
                             
                             // Check if the message has the required fields
                             const requiredFields = ['tipo', 'datos'];
-                            const missingFields = requiredFields.filter(field => !event.data || !event.data.hasOwnProperty(field));
+                            const missingFields = requiredFields.filter(field => !data || !data.hasOwnProperty(field));
                             
                             if (missingFields.length > 0) {
-                                console.warn(`[DEBUG] Mensaje de hijo5-casa con campos requeridos faltantes: ${missingFields.join(', ')}`, event.data);
+                                console.warn(`[DEBUG] Mensaje de hijo5-casa con campos requeridos faltantes: ${missingFields.join(', ')}`, data);
+                                
+                                // Log extra details to help debug
+                                if (data) {
+                                    console.log('[DEBUG] Tipo de mensaje:', typeof data);
+                                    console.log('[DEBUG] Keys disponibles:', Object.keys(data));
+                                }
                             }
                         }
                     } catch (error) {
