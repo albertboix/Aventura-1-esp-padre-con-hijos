@@ -228,29 +228,47 @@ async function _enviarMensaje(destino, tipo, datos = {}) {
   }
 }
 
-/**
- * Valida un mensaje entrante.
- * @param {Object} mensaje - Mensaje a validar.
- * @returns {Boolean} True si el mensaje es válido, false de lo contrario.
- */
-function validarMensaje(mensaje) {
-  if (!mensaje) return false;
+// Función para filtrar mensajes externos (como Grammarly) que no siguen nuestro formato
+function esMensajeExterno(msg) {
+  // Detectar mensajes de Grammarly que contienen esta propiedad
+  if (msg && msg.__grammarly) {
+    console.debug('[Mensajería] Ignorando mensaje de Grammarly');
+    return true;
+  }
   
-  const { origen, destino, tipo, timestamp, version } = mensaje;
+  // Otras extensiones o herramientas externas que pueden enviar mensajes
+  if (msg && (
+    msg.hasOwnProperty('_grammarly') || 
+    msg.hasOwnProperty('grammarly_report') ||
+    msg.hasOwnProperty('ext_id') ||
+    msg.hasOwnProperty('extension_id')
+  )) {
+    console.debug('[Mensajería] Ignorando mensaje de extensión externa');
+    return true;
+  }
   
-  // Validar campos requeridos
-  if (!origen || !destino || !tipo || !timestamp || !version) {
-    logger.warn('[Mensajeria] Mensaje inválido: faltan campos requeridos', mensaje);
+  return false;
+}
+
+// Función para validar el formato del mensaje
+function validarMensaje(msg, source) {
+  // Filtrar mensajes de extensiones externas como Grammarly
+  if (esMensajeExterno(msg)) {
     return false;
   }
   
-  // Validar tipos
-  if (typeof origen !== 'string' || 
-      typeof destino !== 'string' || 
-      typeof tipo !== 'string' || 
-      typeof timestamp !== 'string' || 
-      typeof version !== 'string') {
-    logger.warn('[Mensajeria] Mensaje inválido: tipos incorrectos', mensaje);
+  // Verificar que sea un objeto
+  if (!msg || typeof msg !== 'object') {
+    logger.warn(`[${source || 'desconocido'}] [Mensajeria] Mensaje inválido: no es un objeto`, msg);
+    return false;
+  }
+  
+  // Verificar campos requeridos
+  const requiredFields = ['tipo', 'datos'];
+  const missingFields = requiredFields.filter(field => !msg.hasOwnProperty(field));
+  
+  if (missingFields.length > 0) {
+    logger.warn(`[${source || 'desconocido'}] [Mensajeria] Mensaje inválido: faltan campos requeridos`, msg);
     return false;
   }
   
