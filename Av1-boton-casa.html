@@ -441,7 +441,8 @@
             enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, { 
                 modo: nuevoModo, 
                 origen: 'hijo5-casa',
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                version: '1.0'
             });
             
             console.log(`Mensaje de cambio a modo ${nuevoModo} enviado correctamente`);
@@ -517,7 +518,8 @@
         Promise.race([
             enviarMensaje('padre', TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS, {
                 origen: 'hijo5-casa',
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                version: '1.0'
             }),
             timeout
         ])
@@ -613,7 +615,8 @@
                     const resultado = enviarMensaje('padre', TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, {
                         punto: punto,
                         origen: 'hijo5-casa',
-                        timestamp: new Date().toISOString()
+                        timestamp: new Date().toISOString(),
+                        version: '1.0'
                     });
                     console.log('✅ [HIJO5-CASA] Mensaje enviado exitosamente:', resultado);
                 } catch (error) {
@@ -655,6 +658,52 @@
             console.warn('Recibido mensaje de paradas incompleto:', mensaje);
         }
     }
+    
+    // Asegurar que todos los mensajes enviados tengan el formato correcto
+    function validarFormatoMensaje(mensaje) {
+        // Verificar que el mensaje tenga los campos requeridos
+        if (!mensaje.tipo || !mensaje.datos) {
+            console.error('Error: Mensaje sin campos requeridos (tipo o datos)');
+            return false;
+        }
+        
+        // Asegurar que el mensaje tenga un destinatario
+        if (!mensaje.destino) {
+            mensaje.destino = 'padre'; // Por defecto enviar al padre
+        }
+        
+        // Añadir timestamp si no existe
+        if (!mensaje.timestamp) {
+            mensaje.timestamp = new Date().toISOString();
+        }
+        
+        // Añadir origen si no existe
+        if (!mensaje.origen) {
+            mensaje.origen = 'hijo5-casa';
+        }
+        
+        return true;
+    }
+
+    // Modificar la función de envío de mensajes para validar formato
+    const enviarMensajeOriginal = window.enviarMensaje;
+    window.enviarMensaje = function(destino, tipo, datos) {
+        const mensaje = {
+            destino,
+            tipo,
+            datos,
+            origen: 'hijo5-casa',
+            timestamp: new Date().toISOString()
+        };
+        
+        if (!validarFormatoMensaje(mensaje)) {
+            console.error('Error: Formato de mensaje inválido', mensaje);
+            return Promise.reject(new Error('Formato de mensaje inválido'));
+        }
+        
+        console.log('Enviando mensaje validado:', mensaje);
+        return enviarMensajeOriginal(destino, tipo, datos);
+    };
     
     // Inicializa el componente
     async function inicializar() {
@@ -713,7 +762,8 @@
                 estado: 'listo',
                 modo: estado.modo,
                 gpsActivo: estado.gpsActivo,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                version: '1.0'
             });
             
             // Actualizar estado
@@ -741,7 +791,8 @@
                     mensaje: error.message,
                     stack: error.stack,
                     origen: 'hijo5-casa',
-                    timestamp: new Date().toISOString()
+                    timestamp: new Date().toISOString(),
+                    version: '1.0'
                 });
             } catch (e) {
                 console.error('Error al notificar error al padre:', e);
