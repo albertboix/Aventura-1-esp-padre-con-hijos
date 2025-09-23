@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -142,8 +141,9 @@
     <iframe id="hijo5-casa" src="Av1-boton-casa.html"
         title="Botón Casa"
         aria-label="Botón para cambiar entre modo Casa y Aventura"
-        style="position:fixed; left:10px; top:10px; height:100px; width:350px; z-index:1005; pointer-events:auto; transition:width 0.3s; display:block; border:2px solid red;"
-        onload="handleIframeLoad('hijo5-casa')" onerror="handleIframeError('hijo5-casa', event)"></iframe>
+        style="position:fixed; left:10px; top:10px; height:100px; width:350px; z-index:1005; pointer-events:auto; transition:width 0.3s; display:block;"
+        onload="handleIframeLoad('hijo5-casa'); if(window.debugLog) window.debugLog('hijo5-casa iframe loaded'); if(window.notificarInicializacionAHijos) window.notificarInicializacionAHijos();" 
+        onerror="handleIframeError('hijo5-casa', event)"></iframe>
     <iframe id="hijo3" src="Av1_audio_esp.html"
         title="Audio de la aventura"
         aria-label="Reproductor de audio de la aventura"
@@ -176,12 +176,36 @@
     // Configurar manejador global de errores no capturados
     window.addEventListener('error', (event) => {
         console.error('Error no capturado:', event.error || event.message, event);
+        window.debugLog && window.debugLog(`Error no capturado: ${event.error || event.message}`);
     });
 
     // Configurar manejador para promesas no manejadas
     window.addEventListener('unhandledrejection', (event) => {
         console.error('Promesa rechazada no manejada:', event.reason);
+        window.debugLog && window.debugLog(`Promesa rechazada: ${event.reason}`);
     });
+
+    // Mejorar el sistema de mensajería con mejor logging y validación
+    window.validateMessageFormat = function(msg, source) {
+        if (!msg) return false;
+        
+        // Verificar estructura básica
+        if (typeof msg !== 'object') {
+            console.warn(`[Mensajería] Mensaje recibido de ${source || 'desconocido'} no es un objeto:`, msg);
+            return false;
+        }
+        
+        // Verificar campos requeridos
+        const requiredFields = ['tipo', 'datos'];
+        const missingFields = requiredFields.filter(field => !msg.hasOwnProperty(field));
+        
+        if (missingFields.length > 0) {
+            console.warn(`[Mensajería] Mensaje de ${source || 'desconocido'} con campos requeridos faltantes: ${missingFields.join(', ')}`, msg);
+            return false;
+        }
+        
+        return true;
+    };
 
     (async () => {
         try {
@@ -350,6 +374,11 @@
                             estado: 'listo',
                             timestamp: new Date().toISOString()
                         });
+                    }
+                    
+                    // 6. Notificar inicialización a los hijos
+                    if (typeof notificarInicializacionAHijos === 'function') {
+                        await notificarInicializacionAHijos();
                     }
                     
                     logger.info('Aplicación inicializada correctamente');
@@ -547,6 +576,26 @@
             
             function registrarControladoresTotales() {
                 console.log('📝 [PADRE] Registrando controladores de mensajes...');
+
+                // Add specific debug handler for hijo5-casa messages
+                window.addEventListener('message', function(event) {
+                    try {
+                        // Only process messages that might be from hijo5-casa
+                        if (event.source === document.getElementById('hijo5-casa')?.contentWindow) {
+                            console.log('[DEBUG] Mensaje recibido de hijo5-casa:', event.data);
+                            
+                            // Check if the message has the required fields
+                            const requiredFields = ['tipo', 'datos'];
+                            const missingFields = requiredFields.filter(field => !event.data || !event.data.hasOwnProperty(field));
+                            
+                            if (missingFields.length > 0) {
+                                console.warn(`[DEBUG] Mensaje de hijo5-casa con campos requeridos faltantes: ${missingFields.join(', ')}`, event.data);
+                            }
+                        }
+                    } catch (error) {
+                        console.error('[DEBUG] Error al procesar mensaje de hijo5-casa:', error);
+                    }
+                });
 
                 const controladores = {
                     [TIPOS_MENSAJE.SISTEMA.ERROR]: manejarErrorSistema,
@@ -1006,6 +1055,7 @@
             // Make these available globally
             window.TIPOS_MENSAJE = TIPOS_MENSAJE;
             window.enviarMensaje = enviarMensaje;
+            window.notificarInicializacionAHijos = notificarInicializacionAHijos;
             
             // Initialize the app
             try {
