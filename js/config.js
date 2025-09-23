@@ -20,7 +20,7 @@ export const CONFIG = {
         CASA: { id: 'hijo5-casa', nombre: 'Botón Casa' },
         COORDENADAS: { id: 'hijo2', nombre: 'Coordenadas' },
         AUDIO: { id: 'hijo3', nombre: 'Audio' },
-        RETOS: { id: 'hijo4-retos', nombre: 'Retos' }
+        RETOS: { id: 'hijo4', nombre: 'Retos' }  // ← Corregido: coincide con el ID real en HTML
     },
     
     // Configuración de reintentos
