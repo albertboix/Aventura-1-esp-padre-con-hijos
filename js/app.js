@@ -214,6 +214,109 @@ export async function diagnosticarMapa() {
     return true;
 }
 
+/**
+ * Diagnóstico de la comunicación con hijo5-casa
+ * @param {boolean} detallado - Si es true, muestra información detallada
+ * @returns {Promise<Object>} Resultado del diagnóstico
+ */
+export async function diagnosticarComunicacionCasa(detallado = false) {
+    console.log('DIAGNÓSTICO DE COMUNICACIÓN CASA-PADRE:');
+    
+    // 1. Verificar que el iframe existe
+    const iframeCasa = document.getElementById('hijo5-casa');
+    if (!iframeCasa) {
+        console.error('❌ El iframe hijo5-casa no existe en el DOM');
+        return { exito: false, error: 'iframe_no_encontrado' };
+    }
+    
+    console.log('- iframe hijo5-casa encontrado:', iframeCasa);
+    console.log('- iframe visible:', window.getComputedStyle(iframeCasa).display !== 'none');
+    console.log('- iframe dimensiones:', iframeCasa.offsetWidth + 'x' + iframeCasa.offsetHeight);
+    
+    // 2. Verificar estado de la mensajería
+    if (!estado.mensajeriaInicializada) {
+        console.warn('⚠️ Sistema de mensajería no inicializado');
+    }
+    
+    console.log('- Sistema mensajería inicializado:', estado.mensajeriaInicializada);
+    console.log('- Hijos inicializados:', Array.from(estado.hijosInicializados));
+    console.log('- Hijo casa inicializado:', estado.hijosInicializados.has('hijo5-casa'));
+    
+    // 3. Verificar modo actual
+    console.log('- Modo actual:', estado.modo.actual);
+    console.log('- Modo anterior:', estado.modo.anterior);
+    
+    // 4. Prueba de envío de mensaje si está en modo detallado
+    if (detallado && typeof enviarMensaje === 'function') {
+        try {
+            console.log('📤 Enviando mensaje de prueba a hijo5-casa...');
+            const respuesta = await enviarMensaje('hijo5-casa', 'SISTEMA.PING', { 
+                timestamp: Date.now(),
+                origen: 'diagnostico'
+            });
+            console.log('📥 Respuesta recibida:', respuesta);
+        } catch (error) {
+            console.error('❌ Error al enviar mensaje de prueba:', error);
+        }
+    }
+    
+    return { 
+        exito: true,
+        iframeCasa: iframeCasa ? true : false,
+        mensajeria: estado.mensajeriaInicializada,
+        hijoCasaInicializado: estado.hijosInicializados.has('hijo5-casa'),
+        modo: estado.modo.actual
+    };
+}
+
+/**
+ * Prueba la orquestación de componentes con una parada específica
+ * @param {string} paradaId - ID de la parada a probar (ej: 'P-1', 'TR-2')
+ * @returns {Promise<Object>} Resultado de la prueba
+ */
+export async function probarOrquestacionParada(paradaId) {
+    if (!paradaId) {
+        console.error('❌ Se requiere un ID de parada para la prueba');
+        return { exito: false, error: 'id_parada_requerido' };
+    }
+    
+    console.log(`🧪 PRUEBA DE ORQUESTACIÓN para parada ${paradaId}:`);
+    
+    try {
+        // 1. Verificar que estamos en modo casa
+        if (estado.modo.actual !== 'casa') {
+            console.warn('⚠️ Cambiando a modo casa para la prueba...');
+            await enviarCambioModo('casa', 'prueba_orquestacion');
+        }
+        
+        // 2. Crear un mensaje similar al que enviaría hijo5-casa
+        const mensajeSimulado = {
+            origen: 'prueba',
+            tipo: 'NAVEGACION.CAMBIO_PARADA',
+            datos: {
+                punto: { parada_id: paradaId },
+                origen: 'prueba_orquestacion',
+                timestamp: Date.now()
+            }
+        };
+        
+        console.log('📤 Enviando mensaje simulado:', mensajeSimulado);
+        
+        // 3. Enviar el mensaje al padre
+        const respuesta = await enviarMensaje('padre', 'NAVEGACION.CAMBIO_PARADA', mensajeSimulado.datos);
+        console.log('📥 Respuesta recibida:', respuesta);
+        
+        return {
+            exito: true,
+            mensaje: `Prueba de orquestación para ${paradaId} completada`,
+            respuesta
+        };
+    } catch (error) {
+        console.error(`❌ Error en prueba de orquestación: ${error.message}`, error);
+        return { exito: false, error: error.message };
+    }
+}
+
 // Exportar funciones públicas para que puedan ser usadas por otros módulos
 export {
     inicializarMapa
