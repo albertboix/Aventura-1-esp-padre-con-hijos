@@ -65,13 +65,31 @@ export async function inicializarMapa(config = {}) {
         zoomControl: mapConfig.zoomControl !== undefined ? mapConfig.zoomControl : false
     });
 
+    // Add OSM tile layer with explicit options for better visibility
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        tileSize: 256,
+        maxNativeZoom: 19,
+        maxZoom: 19,
+        minZoom: 1,
+        crossOrigin: true,
+        opacity: 1.0,
+        detectRetina: true
     }).addTo(mapa);
     
     // Actualizar estado
     estadoMapa.inicializado = true;
     logger.info('Mapa inicializado correctamente');
+
+    // Add resize handler to ensure the map updates when window size changes
+    window.addEventListener('resize', () => {
+        setTimeout(() => {
+            if (mapa) {
+                mapa.invalidateSize();
+                logger.debug('Tamaño del mapa actualizado después de resize');
+            }
+        }, 100);
+    });
     
     return mapa;
 }
