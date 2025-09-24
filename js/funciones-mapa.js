@@ -353,6 +353,90 @@ function manejarCambioModoMapa(mensaje) {
 }
 
 /**
+ * Muestra todas las paradas en el mapa
+ */
+function mostrarTodasLasParadas() {
+    try {
+        logger.info('Mostrando todas las paradas en el mapa');
+        
+        // Verificar que tengamos una instancia válida del mapa
+        if (!mapa) {
+            logger.error('No se pueden mostrar paradas: mapa no inicializado');
+            console.error('❌ [MAPA] No se pueden mostrar paradas: mapa no inicializado');
+            return;
+        }
+        
+        // Verificar que tengamos datos de paradas
+        if (!arrayParadasLocal || arrayParadasLocal.length === 0) {
+            logger.warn('No hay datos de paradas para mostrar en el mapa');
+            console.warn('⚠️ [MAPA] Array de paradas vacío o no inicializado');
+            return;
+        }
+        
+        console.log('📍 [MAPA] Mostrando paradas en el mapa. Total paradas:', arrayParadasLocal.length);
+        console.log('📍 [MAPA] Primera parada:', arrayParadasLocal[0]);
+        
+        // Limpiar marcadores previos antes de añadir nuevos
+        marcadoresParadas.forEach((marcador) => {
+            if (mapa.hasLayer(marcador)) {
+                mapa.removeLayer(marcador);
+            }
+        });
+        marcadoresParadas.clear();
+        
+        // Implementación básica - mostrar paradas en el mapa
+        arrayParadasLocal.forEach((parada, index) => {
+            if (parada.coordenadas && parada.coordenadas.lat && parada.coordenadas.lng) {
+                const { lat, lng } = parada.coordenadas;
+                
+                // Crear marcador con un estilo más visible y distintivo
+                const icono = L.divIcon({
+                    className: 'marcador-parada',
+                    html: `<div style="background-color: ${parada.tipo === 'parada' ? '#2196F3' : '#FF9800'}; 
+                                        border-radius: 50%; width: 24px; height: 24px; 
+                                        display: flex; justify-content: center; align-items: center; 
+                                        color: white; font-weight: bold; border: 2px solid white;">
+                            ${parada.parada_id ? parada.parada_id.split('-')[1] : index}
+                          </div>`,
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12],
+                    popupAnchor: [0, -12]
+                });
+                
+                const marcador = L.marker([lat, lng], { 
+                    icon: icono,
+                    title: parada.nombre || `Parada ${index + 1}`
+                }).addTo(mapa);
+
+                // Añadir tooltip con el nombre de la parada
+                if (parada.nombre) {
+                    marcador.bindTooltip(parada.nombre, {
+                        permanent: false,
+                        direction: 'top',
+                        className: 'tooltip-parada',
+                        offset: [0, -12]
+                    });
+                }
+
+                // Guardar referencia al marcador
+                marcadoresParadas.set(parada.parada_id || `parada-${index}`, marcador);
+                marcadoresParadas.set(parada.id || parada.parada_id || parada.tramo_id || `parada-${index}`, marcador);
+                
+                console.log(`✅ [MAPA] Marcador añadido para ${parada.nombre || `Parada ${index}`} en ${lat}, ${lng}`);
+            } else {
+                console.warn(`⚠️ [MAPA] La parada ${parada.nombre || index} no tiene coordenadas válidas`, parada);
+            }
+        });
+        
+        logger.info(`Se han añadido ${marcadoresParadas.size} marcadores al mapa`);
+        console.log(`✅ [MAPA] Total de ${marcadoresParadas.size} marcadores añadidos al mapa`);
+    } catch (error) {
+        logger.error('Error al mostrar todas las paradas:', error);
+        console.error('❌ [MAPA] Error al mostrar paradas:', error);
+    }
+}
+
+/**
  * Maneja la recepción de datos de paradas
  * @param {Object} mensaje - Mensaje recibido
  * PROBLEMA 18: Implementación de función faltante
@@ -366,15 +450,21 @@ function manejarRecepcionParadas(mensaje) {
         }
         
         logger.info(`Recibidas ${paradas.length} paradas`);
+        console.log(`📦 [MAPA] Recibidas ${paradas.length} paradas del padre`);
         
         // Actualizar el array local
         establecerDatosParadas(paradas);
         
-        // Si estamos en modo casa, mostrar todas las paradas
+        // Si estamos en modo casa, mostrar todas las paradas inmediatamente
         if (estadoMapa.modo === 'casa') {
-            mostrarTodasLasParadas();
+            console.log('🏠 [MAPA] Modo casa detectado, mostrando todas las paradas');
+            // Pequeño delay para asegurar que el mapa esté listo
+            setTimeout(() => {
+                mostrarTodasLasParadas();
+            }, 100);
         } else {
             // En modo aventura, mostrar solo la parada actual y anteriores
+            console.log('🚶‍♂️ [MAPA] Modo aventura detectado, ocultando paradas futuras');
             ocultarParadasFuturas();
         }
         
@@ -389,6 +479,66 @@ function manejarRecepcionParadas(mensaje) {
             error: error.message
         };
     }
+}
+
+/**
+ * Notifica al usuario que ha alcanzado un waypoint
+ * @param {number} numero - Número del waypoint
+ * @param {number} total - Total de waypoints
+ */
+function notificarWaypointAlcanzado(numero, total) {
+    // Crear o actualizar elemento de notificación
+    let notifElement = document.getElementById('waypoint-notification');
+    if (!notifElement) {
+        notifElement = document.createElement('div');
+        notifElement.id = 'waypoint-notification';
+        notifElement.className = 'waypoint-notification';
+        document.body.appendChild(notifElement);
+    }
+    
+    // Actualizar contenido
+    notifElement.innerHTML = `
+        <div class="notif-icon">🏁</div>
+        <div class="notif-content">
+            <div class="notif-title">¡Punto ${numero} alcanzado!</div>
+            <div class="notif-subtitle">${numero} de ${total} puntos completados</div>
+            <div class="notif-progress">
+                <div class="notif-bar" style="width: ${(numero/total) * 100}%"></div>
+            </div>
+        </div>
+    `;
+    
+    // Mostrar la notificación
+    notifElement.classList.add('show');
+    
+    // Ocultar después de unos segundos
+    setTimeout(() => {
+        notifElement.classList.remove('show');
+    }, 3000);
+}
+
+/**
+ * Establece los datos de paradas para el módulo
+ * @param {Array} paradas - Array con datos de paradas
+ * @returns {boolean} True si los datos se establecieron correctamente
+ */
+export function establecerDatosParadas(paradas) {
+    if (!paradas || !Array.isArray(paradas)) {
+        logger.warn('Se intentó establecer un array de paradas inválido');
+        return false;
+    }
+    
+    arrayParadasLocal = [...paradas];
+    logger.info(`Datos de ${paradas.length} paradas establecidos en el módulo de mapa`);
+    console.log(`📦 [MAPA] Array local actualizado con ${paradas.length} paradas`);
+    
+    // Si el mapa ya está inicializado y estamos en modo casa, mostrar las paradas
+    if (mapa && estadoMapa.inicializado && estadoMapa.modo === 'casa') {
+        console.log('🏠 [MAPA] Modo casa activo, mostrando todas las paradas tras actualizar datos');
+        mostrarTodasLasParadas();
+    }
+    
+    return true;
 }
 
 /**
@@ -512,13 +662,16 @@ function actualizarModoMapa(modo) {
         return;
     }
     
+    const modoAnterior = estadoMapa.modo;
     estadoMapa.modo = modo;
     logger.info(`Modo del mapa actualizado a: ${modo}`);
+    console.log(`🔄 [MAPA] Modo del mapa actualizado de ${modoAnterior} a ${modo}`);
     
     // PROBLEMA 6: Funciones no definidas
     // Reemplazar llamadas a funciones no definidas con implementaciones básicas
     if (modo === 'casa') {
         // Mostrar todas las paradas
+        console.log('🏠 [MAPA] Activando modo casa - mostrando todas las paradas');
         mostrarTodasLasParadas();
         
         // PROBLEMA 20: Desactivar seguimiento de posición en modo casa
@@ -526,63 +679,8 @@ function actualizarModoMapa(modo) {
         estadoMapa.siguiendoRuta = false;
     } else {
         // Mostrar solo la parada actual y las completadas
+        console.log('🚶‍♂️ [MAPA] Activando modo aventura - ocultando paradas futuras');
         ocultarParadasFuturas();
-    }
-}
-
-/**
- * Muestra todas las paradas en el mapa
- * PROBLEMA 6: Implementación de función faltante
- */
-function mostrarTodasLasParadas() {
-    try {
-        logger.info('Mostrando todas las paradas en el mapa');
-        // Implementación básica - mostrar paradas en el mapa
-        arrayParadasLocal.forEach(parada => {
-            if (parada.coordenadas) {
-                const { lat, lng } = parada.coordenadas;
-                
-                // Crear marcador si no existe
-                if (!marcadoresParadas.has(parada.id)) {
-                    const marker = L.marker([lat, lng]).addTo(mapa);
-                    
-                    // PROBLEMA 21: Agregar información y manejo de eventos a los marcadores
-                    if (parada.nombre) {
-                        marker.bindPopup(parada.nombre);
-                    }
-                    
-                    // Agregar evento de clic al marcador
-                    marker.on('click', () => {
-                        mapa.flyTo([lat, lng], 17);
-                        marker.openPopup();
-                        
-                        // Si tiene ID, notificar al padre sobre la selección
-                        if (parada.id) {
-                            enviarMensaje('padre', TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, {
-                                punto: {
-                                    id: parada.id,
-                                    parada_id: parada.id.startsWith('P-') ? parada.id : undefined,
-                                    tramo_id: parada.id.startsWith('TR-') ? parada.id : undefined,
-                                    nombre: parada.nombre
-                                },
-                                origen: 'mapa',
-                                timestamp: new Date().toISOString()
-                            }).catch(error => logger.error('Error al enviar selección de parada:', error));
-                        }
-                    });
-                    
-                    marcadoresParadas.set(parada.id, marker);
-                } else {
-                    // Si ya existe, asegurarse que esté visible
-                    const marcador = marcadoresParadas.get(parada.id);
-                    if (!mapa.hasLayer(marcador)) {
-                        marcador.addTo(mapa);
-                    }
-                }
-            }
-        });
-    } catch (error) {
-        logger.error('Error al mostrar todas las paradas:', error);
     }
 }
 
@@ -621,7 +719,7 @@ function ocultarParadasFuturas() {
 }
 
 /**
- * Dibuja un tramo específico en el mapa con waypoints y decoraciones
+ * Dibuja un tramo específico en el mapa with waypoints y decoraciones
  * @param {Object} tramo - Objeto tramo con inicio, fin y waypoints
  * @param {boolean} destacado - Si es true, se muestra con énfasis
  * @returns {L.Polyline} La polyline creada
@@ -1017,60 +1115,7 @@ function calcularDistancia(punto1, punto2) {
     return R * c; // Distancia en metros
 }
 
-/**
- * Notifica al usuario que ha alcanzado un waypoint
- * @param {number} numero - Número del waypoint
- * @param {number} total - Total de waypoints
- */
-function notificarWaypointAlcanzado(numero, total) {
-    // Crear o actualizar elemento de notificación
-    let notifElement = document.getElementById('waypoint-notification');
-    if (!notifElement) {
-        notifElement = document.createElement('div');
-        notifElement.id = 'waypoint-notification';
-        notifElement.className = 'waypoint-notification';
-        document.body.appendChild(notifElement);
-    }
-    
-    // Actualizar contenido
-    notifElement.innerHTML = `
-        <div class="notif-icon">🏁</div>
-        <div class="notif-content">
-            <div class="notif-title">¡Punto ${numero} alcanzado!</div>
-            <div class="notif-subtitle">${numero} de ${total} puntos completados</div>
-            <div class="notif-progress">
-                <div class="notif-bar" style="width: ${(numero/total) * 100}%"></div>
-            </div>
-        </div>
-    `;
-    
-    // Mostrar la notificación
-    notifElement.classList.add('show');
-    
-    // Ocultar después de unos segundos
-    setTimeout(() => {
-        notifElement.classList.remove('show');
-    }, 3000);
-}
-
-/**
- * Establece los datos de paradas para el módulo
- * @param {Array} paradas - Array con datos de paradas
- * @returns {boolean} True si los datos se establecieron correctamente
- * PROBLEMA 10: Función necesaria para inicializar arrayParadasLocal
- */
-export function establecerDatosParadas(paradas) {
-    if (!paradas || !Array.isArray(paradas)) {
-        logger.warn('Se intentó establecer un array de paradas inválido');
-        return false;
-    }
-    
-    arrayParadasLocal = [...paradas];
-    logger.info(`Datos de ${paradas.length} paradas establecidos en el módulo de mapa`);
-    return true;
-}
-
-// Exportar funciones públicas - PROBLEMA 17: Eliminar duplicación de exportaciones
+// Exportar funciones públicas
 export {
     estadoMapa,
     actualizarModoMapa,
