@@ -49,15 +49,29 @@ export async function inicializar() {
                 logger.info('Actualizando tamaño del mapa...');
                 window.mapa.invalidateSize(true);
             }
+            
+            // Ejecutar diagnóstico del mapa
+            diagnosticarMapa().then(result => {
+                console.log('Diagnóstico del mapa completado con resultado:', result);
+            });
         }, 500);
+        
+        // Verificación visual del contenedor
+        const mapaContainer = document.getElementById('mapa');
+        if (mapaContainer) {
+            // Añadir un borde temporal para verificación visual
+            mapaContainer.style.border = '5px solid red';
+            setTimeout(() => {
+                mapaContainer.style.border = '1px solid #ccc';
+            }, 3000);
+        }
         
         // Marcar como inicializada
         logger.info('Aplicación inicializada correctamente');
         return true;
     } catch (error) {
-        logger.error('Error al inicializar la aplicación:', error);
-        await notificarError('inicializacion', error);
-        throw error;
+        logger.error('Error al inicializar aplicación:', error);
+        return false;
     }
 }
 
@@ -144,6 +158,60 @@ export async function manejarCambioModo(mensaje) {
         
         return { exito: false, error: error.message };
     }
+}
+
+/**
+ * Diagnóstico del mapa para verificar su visibilidad
+ */
+export async function diagnosticarMapa() {
+    const mapa = document.getElementById('mapa');
+    if (!mapa) {
+        console.error('❌ El contenedor del mapa no existe en el DOM');
+        return false;
+    }
+
+    console.log('DIAGNÓSTICO DEL MAPA:');
+    console.log('- Elemento mapa:', mapa);
+    console.log('- Display:', window.getComputedStyle(mapa).display);
+    console.log('- Visibility:', window.getComputedStyle(mapa).visibility);
+    console.log('- Z-index:', window.getComputedStyle(mapa).zIndex);
+    console.log('- Dimensiones:', mapa.offsetWidth + 'x' + mapa.offsetHeight);
+    console.log('- Position:', window.getComputedStyle(mapa).position);
+    
+    // Verificar si la instancia de Leaflet existe
+    if (window.L) {
+        console.log('- Leaflet está disponible (window.L):', window.L.version);
+    } else {
+        console.error('❌ Leaflet NO está disponible (window.L undefined)');
+    }
+    
+    // Verificar si el mapa de Leaflet está instanciado
+    if (window.mapa) {
+        console.log('- Instancia de mapa existe (window.mapa)');
+        console.log('- Centro del mapa:', window.mapa.getCenter());
+        console.log('- Zoom del mapa:', window.mapa.getZoom());
+        
+        // Forzar actualización del mapa
+        try {
+            window.mapa.invalidateSize(true);
+            console.log('✅ Mapa actualizado con invalidateSize()');
+        } catch (e) {
+            console.error('❌ Error al actualizar mapa:', e);
+        }
+    } else {
+        console.error('❌ No hay instancia de mapa (window.mapa undefined)');
+    }
+    
+    // Verificar si hay capas
+    if (window.mapa && window.mapa._layers) {
+        console.log('- Número de capas del mapa:', Object.keys(window.mapa._layers).length);
+    }
+    
+    // Verificar si hay elementos de Leaflet en el DOM
+    const leafletContainers = document.querySelectorAll('.leaflet-container, .leaflet-map-pane');
+    console.log('- Elementos Leaflet en DOM:', leafletContainers.length);
+    
+    return true;
 }
 
 // Exportar funciones públicas para que puedan ser usadas por otros módulos
