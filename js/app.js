@@ -166,10 +166,22 @@ export async function manejarCambioModo(mensaje) {
  * Diagnóstico del mapa para verificar su visibilidad
  */
 export async function diagnosticarMapa() {
-    const mapa = document.getElementById('mapa');
+    let mapa = document.getElementById('mapa');
     if (!mapa) {
         console.error('❌ El contenedor del mapa no existe en el DOM');
-        return false;
+        // Create the container if it doesn't exist
+        console.log('🔄 Creando el contenedor del mapa dinámicamente');
+        mapa = document.createElement('div');
+        mapa.id = 'mapa';
+        mapa.style.position = 'fixed';
+        mapa.style.top = '0';
+        mapa.style.left = '0';
+        mapa.style.width = '100vw';
+        mapa.style.height = '100vh';
+        mapa.style.zIndex = '10';
+        mapa.style.backgroundColor = '#f5f5f5';
+        document.body.prepend(mapa);
+        console.log('✅ Contenedor del mapa creado dinámicamente');
     }
 
     console.log('DIAGNÓSTICO DEL MAPA:');
