@@ -741,6 +741,7 @@
 
         // --- MANEJADORES DE MENSAJES ---
 
+        // Manejadores para mensajes
         async function manejarReproducirAudio(mensaje) {
             console.log('🎵 [AUDIO] manejarReproducirAudio INVOCADO con:', mensaje);
             console.log('📋 [AUDIO] Datos del mensaje:', mensaje.datos);
@@ -748,17 +749,86 @@
             const { audioId, src } = mensaje.datos;
             console.log('🎵 [AUDIO] Recibido para reproducir:', audioId, 'con src:', src);
 
-            if (src) {
-                currentAudioId = audioId;
-                console.log('🎵 [AUDIO] Configurando src del audio:', src);
-                audioPlayer.src = src;
-                console.log('🎵 [AUDIO] Iniciando reproducción...');
-                audioPlayer.play();
-                console.log('✅ [AUDIO] Reproducción iniciada correctamente');
-            } else {
-                console.warn('⚠️ [AUDIO] No se proporcionó src para el audioId:', audioId);
-                logger.warn(`No se proporcionó 'src' para el audioId: ${audioId}`);
+            try {
+                if (src) {
+                    currentAudioId = audioId;
+                    console.log('🎵 [AUDIO] Configurando src del audio:', src);
+                    audioPlayer.src = src;
+                    console.log('🎵 [AUDIO] Iniciando reproducción...');
+                    
+                    // Intento de reproducción que puede fallar si el usuario no ha interactuado
+                    try {
+                        await audioPlayer.play();
+                        console.log('✅ [AUDIO] Reproducción iniciada correctamente');
+                        
+                        // Devolver confirmación exitosa
+                        return {
+                            exito: true,
+                            mensaje: `Reproducción de ${audioId} iniciada`,
+                            timestamp: Date.now()
+                        };
+                    } catch (playError) {
+                        console.error('❌ [AUDIO] Error al reproducir:', playError);
+                        
+                        // Devolver error específico
+                        return {
+                            exito: false,
+                            error: `Error al reproducir: ${playError.message}`,
+                            codigo: 'ERROR_REPRODUCCION',
+                            timestamp: Date.now()
+                        };
+                    }
+                } else {
+                    // Buscar el archivo en nuestro array local
+                    const matchingAudio = audioFiles.find(audio => audio.id === audioId);
+                    
+                    if (matchingAudio) {
+                        // Si encontramos el audio, configuramos el src y reproducimos
+                        currentAudioId = matchingAudio.id;
+                        audioPlayer.src = matchingAudio.file;
+                        audioPlayer.play();
+                        
+                        console.log('🎵 [AUDIO] Audio encontrado localmente y reproducción iniciada:', matchingAudio);
+                        
+                        // Devolver resultado exitoso
+                        return {
+                            exito: true,
+                            mensaje: `Reproducción de ${audioId} iniciada desde fuente local`,
+                            timestamp: Date.now()
+                        };
+                    } else {
+                        console.warn('⚠️ [AUDIO] Audio no encontrado en la fuente proporcionada ni en la lista local:', audioId);
+                        
+                        // Devolver error de audio no encontrado
+                        return {
+                            exito: false,
+                            error: 'Audio no encontrado',
+                            codigo: 'AUDIO_NO_ENCONTRADO',
+                            timestamp: Date.now()
+                        };
+                    }
+                }
+            } catch (error) {
+                console.error('❌ [AUDIO] Error general al manejar audio:', error);
+                
+                // Devolver error general
+                return {
+                    exito: false,
+                    error: `Error al manejar audio: ${error.message}`,
+                    timestamp: Date.now()
+                };
             }
+        }
+
+        // Manejador para mensajes de PING (diagnóstico)
+        function manejarPing(mensaje) {
+            console.log('[AUDIO] Ping recibido de:', mensaje.origen);
+            return {
+                exito: true,
+                mensaje: 'Pong desde componente de audio',
+                timestamp: Date.now(),
+                componenteId: IFRAME_ID
+            };
         }
 
         // Manejadores para mensajes de control
@@ -786,6 +856,7 @@
             registrarControlador(TIPOS_MENSAJE.AUDIO.REPRODUCIR, manejarReproducirAudio);
             registrarControlador(TIPOS_MENSAJE.CONTROL.HABILITAR, manejarHabilitarControles);
             registrarControlador(TIPOS_MENSAJE.CONTROL.DESHABILITAR, manejarDeshabilitarControles);
+            registrarControlador(TIPOS_MENSAJE.SISTEMA.PING, manejarPing);
             
             await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO, { componente: IFRAME_ID });
             logger.info(`${IFRAME_ID} inicializado.`);
