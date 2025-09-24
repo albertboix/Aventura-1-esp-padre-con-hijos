@@ -1235,6 +1235,7 @@
                 
                 // Registrar controladores de navegación
                 controladores[TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA] = manejarSeleccionPuntoCasa;
+                console.log(`🎯 [PADRE] Registrando controlador para cambio de parada: ${TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA}`);
                 
                 // Registrar controladores de audio
                 controladores[TIPOS_MENSAJE.AUDIO.FINALIZADO] = manejarAudioFinalizado;
@@ -1526,7 +1527,8 @@
             }
             
             /**
-             * Maneja la selección de un punto en el mapa
+             * Maneja la selección de un punto en el mapa cuando viene de hijo5-casa
+             * Esta función es clave para la orquestación entre todos los componentes
              * @param {Object} msg - Mensaje con los datos del punto seleccionado
              * @returns {Promise<Object>} Resultado de la operación
              */
@@ -1565,19 +1567,29 @@
                 
                 console.log('✅ [PADRE] Punto encontrado:', paradaCompleta ? 'SÍ' : 'NO, usando punto original');
                 const idLog = paradaCompleta?.padreid || punto.padreid || punto.parada_id || punto.tramo_id || 'desconocido';
-                logger.info(`Recibida selección de punto en modo casa: ${idLog}`);
+                logger.info(`Recibida selección de punto en modo casa: ${idLog} desde ${origen}`);
 
                 // 2. Orquestar al mapa para que se centre en el punto
                 console.log('🗺️ [PADRE] Paso 1: Enviando ESTABLECER_DESTINO al mapa');
-                await enviarMensaje('mapa', TIPOS_MENSAJE.NAVEGACION.ESTABLECER_DESTINO, { 
-                    punto: puntoNormalizado 
-                });
+                try {
+                    await enviarMensaje('mapa', TIPOS_MENSAJE.NAVEGACION.ESTABLECER_DESTINO, { 
+                        punto: puntoNormalizado 
+                    });
+                    console.log('✅ [PADRE] Mapa actualizado correctamente');
+                } catch (mapError) {
+                    console.error('❌ [PADRE] Error al actualizar mapa:', mapError);
+                }
 
                 // 3. Orquestar al hijo de audio para que cargue el audio correspondiente
                 const audioId = puntoNormalizado.audio_id;
                 if (audioId) {
                     console.log('🎵 [PADRE] Paso 2: Enviando REPRODUCIR al audio:', audioId);
-                    await reproducirAudio(audioId, puntoNormalizado.tipo);
+                    try {
+                        await reproducirAudio(audioId, puntoNormalizado.tipo);
+                        console.log('✅ [PADRE] Audio enviado correctamente');
+                    } catch (audioError) {
+                        console.error('❌ [PADRE] Error al enviar audio:', audioError);
+                    }
                 } else {
                     console.log('🔇 [PADRE] Paso 2: No hay audio_id, saltando audio');
                 }
@@ -1587,20 +1599,30 @@
                 
                 if (retoId) {
                     console.log('🎯 [PADRE] Paso 3: Enviando MOSTRAR_RETO:', retoId);
-                    await manejarMostrarReto({ datos: { retoId } });
+                    try {
+                        await manejarMostrarReto({ datos: { retoId } });
+                        console.log('✅ [PADRE] Reto mostrado correctamente');
+                    } catch (retoError) {
+                        console.error('❌ [PADRE] Error al mostrar reto:', retoError);
+                    }
                 } else {
                     console.log('🎮 [PADRE] Paso 3: No hay reto_id, ocultando retos');
                     await manejarOcultarReto(); // Ocultar si no hay reto
                 }
 
                 // 5. Obtener y mostrar medios (imagen/video) desde hijo2
-                const medios = await obtenerMediosParaPunto(puntoNormalizado);
-                
-                // Mostrar medios si se encontraron
-                if (medios) {
-                    mostrarMedios(medios);
-                } else {
-                    console.log('❌ [PADRE] No se encontraron medios para el punto:', puntoNormalizado);
+                try {
+                    const medios = await obtenerMediosParaPunto(puntoNormalizado);
+                    
+                    // Mostrar medios si se encontraron
+                    if (medios) {
+                        mostrarMedios(medios);
+                        console.log('✅ [PADRE] Medios mostrados correctamente');
+                    } else {
+                        console.log('ℹ️ [PADRE] No se encontraron medios para el punto:', puntoNormalizado);
+                    }
+                } catch (mediosError) {
+                    console.error('❌ [PADRE] Error al obtener/mostrar medios:', mediosError);
                 }
 
                 console.log('🎉 [PADRE] Orquestación completada exitosamente para:', idLog);
@@ -1817,8 +1839,11 @@
             function extraerRetoId(parada, indice = 0) {
                 if (!parada) return null;
                 
+                console.log('🔍 [PADRE] Extrayendo reto_id de:', parada);
+                
                 // Caso 1: Hay un reto_id directo
                 if (parada.reto_id) {
+                    console.log('✅ [PADRE] Encontrado reto_id directo:', parada.reto_id);
                     return parada.reto_id;
                 }
                 
@@ -1829,9 +1854,12 @@
                     const reto = parada.retos[idx];
                     
                     // Puede ser un string directo o un objeto con id
-                    return typeof reto === 'string' ? reto : reto?.id || null;
+                    const retoId = typeof reto === 'string' ? reto : reto?.id || null;
+                    console.log('✅ [PADRE] Encontrado reto_id en array:', retoId);
+                    return retoId;
                 }
                 
+                console.log('ℹ️ [PADRE] No se encontró reto_id en esta parada');
                 return null;
             }
             
