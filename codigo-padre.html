@@ -6,15 +6,41 @@
     <title>Aventura 1 - Padre</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🗺️%3C/text%3E%3C/svg%3E">
 
-    <!-- Carga de Leaflet desde CDN -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Carga de Leaflet desde CDN con Integrity y Crossorigin -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
+          crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" 
+            crossorigin=""></script>
+    
+    <!-- Script para verificar que Leaflet está cargado -->
+    <script>
+        window.addEventListener('load', function() {
+            if (typeof L === 'undefined') {
+                console.error('❌ Leaflet no se ha cargado correctamente. L no está definido en window.');
+            } else {
+                console.log('✅ Leaflet cargado correctamente:', L.version);
+            }
+        });
+    </script>
 
     <style>
         /* Estilos generales, mapa, debug, logo, iframes, etc. */
         html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; background: transparent; }
         iframe { background: transparent; border: none; }
-        #mapa { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 3; background-color: #f5f5f5; }
+        #mapa { 
+            position: fixed; 
+            top: 0; 
+            left: 0; 
+            width: 100vw; 
+            height: 100vh; 
+            z-index: 3; 
+            background-color: #f5f5f5;
+            border: 1px solid #ccc;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
         #map-debug { position: fixed; top: 10px; left: 10px; background: rgba(255, 255, 255, 0.9); padding: 5px 8px; border-radius: 5px; z-index: 5000; font-size: 12px; font-family: monospace; display: none; transition: opacity 0.5s; }
         #logo-aventura { position: fixed; top: -13px; left: 50%; transform: translateX(-50%); width: 190px; height: 140px; z-index: 3000; object-fit: contain; }
         #fondo-blanco { position: fixed; top: -24px; left: 50%; transform: translateX(-50%); width: 210px; height: 150px; z-index: 2999; background: white; border-bottom-left-radius: 24px; border-bottom-right-radius: 24px; }
@@ -469,15 +495,32 @@
                         throw new Error('No se encontró el contenedor del mapa');
                     }
                     
+                    // Preparar explícitamente el contenedor para asegurar que esté visible y correctamente dimensionado
+                    mapaContainer.style.display = 'block';
+                    mapaContainer.style.visibility = 'visible';
+                    mapaContainer.style.width = '100vw';
+                    mapaContainer.style.height = '100vh';
+                    mapaContainer.style.backgroundColor = '#f5f5f5'; // Fondo visible para debug
+                    
+                    console.log('🔍 [PADRE] Contenedor del mapa preparado:', 
+                                mapaContainer.offsetWidth + 'x' + mapaContainer.offsetHeight);
+                    
+                    // Pequeño retraso para asegurar que el DOM esté completamente listo
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    
+                    // Inicializar el mapa con la función mejorada
                     const mapaInstance = await iniciarSistemaMapa();
                     if (!mapaInstance) {
                         throw new Error('No se pudo inicializar el mapa');
                     }
                     
                     logger.info('Sistema de mapa inicializado correctamente');
+                    console.log('✅ [PADRE] Sistema de mapa inicializado correctamente');
                     
-                    // 4. Configurar actualización de tamaño del mapa
+                    // 4. Configurar actualización de tamaño del mapa con múltiples intentos
                     setTimeout(updateMapSize, 100);
+                    setTimeout(updateMapSize, 500);
+                    setTimeout(updateMapSize, 1000);
                     window.addEventListener('resize', () => setTimeout(updateMapSize, 100));
                     
                     // 5. Notificar que la aplicación está lista
@@ -695,18 +738,85 @@
 
             async function iniciarSistemaMapa() {
                 try {
-                    logger.info('Iniciando sistema de mapa...'); // Now logger is defined
+                    logger.info('Iniciando sistema de mapa...');
+                    console.log('🗺️ [PADRE] Inicializando mapa Leaflet...');
                     
-                    const mapaInstance = await inicializarMapa({ 
-                        ...MAP_CONFIG 
-                    });
-                    
-                    if (!mapaInstance) {
-                        throw new Error('inicializarMapa no devolvió una instancia del mapa.');
+                    // Verificar que el contenedor del mapa existe y está visible
+                    const mapaContainer = document.getElementById('mapa');
+                    if (!mapaContainer) {
+                        throw new Error('No se encontró el contenedor del mapa con ID "mapa"');
                     }
                     
+                    // Asegurarse de que el contenedor esté visible y tenga dimensiones
+                    mapaContainer.style.display = 'block';
+                    if (mapaContainer.offsetWidth === 0 || mapaContainer.offsetHeight === 0) {
+                        console.warn('⚠️ [PADRE] El contenedor del mapa tiene dimensiones cero');
+                        mapaContainer.style.width = '100vw';
+                        mapaContainer.style.height = '100vh';
+                        console.log('🔄 [PADRE] Dimensiones del contenedor ajustadas:', 
+                                    mapaContainer.offsetWidth + 'x' + mapaContainer.offsetHeight);
+                    }
+
+                    // Si por alguna razón ya existe un mapa, destruirlo
+                    if (window.mapa && typeof window.mapa.remove === 'function') {
+                        console.log('🗑️ [PADRE] Eliminando instancia anterior del mapa');
+                        window.mapa.remove();
+                        window.mapa = null;
+                    }
+                    
+                    // Crear nueva instancia del mapa directamente sin esperar por la función importada
+                    // que podría estar causando problemas
+                    if (!window.L) {
+                        console.error('❌ [PADRE] Leaflet no está disponible (L no definido)');
+                        await new Promise(resolve => setTimeout(resolve, 500)); // Esperar por si acaso
+                        if (!window.L) {
+                            throw new Error('Leaflet no está disponible en window.L');
+                        }
+                    }
+                    
+                    // Crear el mapa directamente
+                    console.log('🗺️ [PADRE] Creando instancia de mapa con configuración:', MAP_CONFIG);
+                    const directMapInstance = L.map('mapa', {
+                        center: MAP_CONFIG.center,
+                        zoom: MAP_CONFIG.zoom,
+                        minZoom: MAP_CONFIG.minZoom,
+                        maxZoom: MAP_CONFIG.maxZoom,
+                        zoomControl: MAP_CONFIG.zoomControl
+                    });
+                    
+                    // Añadir capa base de OpenStreetMap
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    }).addTo(directMapInstance);
+                    
+                    console.log('✅ [PADRE] Mapa creado directamente:', directMapInstance);
+                    
+                    // También intentar la inicialización a través de la función importada
+                    let importedMapInstance = null;
+                    try {
+                        importedMapInstance = await inicializarMapa({ 
+                            ...MAP_CONFIG 
+                        });
+                        
+                        if (importedMapInstance) {
+                            console.log('✅ [PADRE] Mapa inicializado mediante función importada');
+                        }
+                    } catch (mapError) {
+                        console.warn('⚠️ [PADRE] Error al inicializar mapa mediante función importada:', mapError);
+                        // Continuamos con el mapa creado directamente
+                    }
+                    
+                    // Usar la instancia creada por la función importada si está disponible,
+                    // de lo contrario usar la creada directamente
+                    const mapaInstance = importedMapInstance || directMapInstance;
+                    
                     // Inicializar el módulo de mapa para registrar manejadores de mensajería
-                    await inicializarModuloMapa();
+                    try {
+                        await inicializarModuloMapa();
+                        console.log('✅ [PADRE] Módulo de mapa inicializado');
+                    } catch (moduleError) {
+                        console.warn('⚠️ [PADRE] Error al inicializar módulo de mapa:', moduleError);
+                    }
                     
                     window.mapa = mapaInstance;
                     logger.info('Mapa inicializado correctamente');
@@ -717,16 +827,35 @@
                         if (window.mapa) {
                             window.mapa.invalidateSize();
                             logger.debug('Map size updated');
+                            console.log('🔄 [PADRE] Tamaño del mapa actualizado');
                         }
                     };
                     
+                    // Actualizar tamaño inmediatamente y después de un corto delay
+                    updateMapSize();
                     setTimeout(updateMapSize, 100);
+                    setTimeout(updateMapSize, 500);
+                    setTimeout(updateMapSize, 1000);
                     window.addEventListener('resize', () => setTimeout(updateMapSize, 100));
                     
                     return mapaInstance;
                 } catch (error) {
-                    logger.error('Error al inicializar el mapa:', error); // Now logger is defined
-                    throw error;
+                    logger.error('Error al inicializar el mapa:', error);
+                    console.error('❌ [PADRE] Error al inicializar el mapa:', error);
+                    
+                    // Último intento: crear un mapa simple en caso de error
+                    try {
+                        console.log('🔄 [PADRE] Intentando crear mapa simple como último recurso...');
+                        const fallbackMap = L.map('mapa').setView([39.4699, -0.3763], 13);
+                        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                        }).addTo(fallbackMap);
+                        window.mapa = fallbackMap;
+                        return fallbackMap;
+                    } catch (fallbackError) {
+                        console.error('❌ [PADRE] Fallo en la creación del mapa de respaldo:', fallbackError);
+                        throw error; // Lanzar el error original
+                    }
                 }
             }
 
@@ -1816,11 +1945,6 @@
             }
             
             // La función updateMapDebug ya está definida globalmente arriba
-            
-            // Marcar la aplicación como completamente inicializada
-            window.appInitStatus = window.appInitStatus || {};
-            window.appInitStatus.completed = true;
-            window.appInitStatus.completedTimestamp = Date.now();
             
             // Marcar la aplicación como completamente inicializada
             window.appInitStatus = window.appInitStatus || {};
