@@ -188,11 +188,11 @@ export async function diagnosticarMapa() {
     }
     
     // Verificar si el mapa de Leaflet está instanciado
-    if (window.mapa && window.L && window.L.Map) {
+    if (window.mapa) {
         // Verificar si window.mapa es una instancia válida de Leaflet Map
-        if (typeof window.mapa.getCenter === 'function' && typeof window.mapa.getZoom === 'function') {
+        if (window.mapa instanceof window.L.Map) {
             try {
-                console.log('- Instancia de mapa existe (window.mapa)');
+                console.log('- Instancia de mapa existe y es válida (window.mapa)');
                 console.log('- Centro del mapa:', window.mapa.getCenter());
                 console.log('- Zoom del mapa:', window.mapa.getZoom());
                 
@@ -201,15 +201,15 @@ export async function diagnosticarMapa() {
                 console.log('✅ Mapa actualizado con invalidateSize()');
             } catch (e) {
                 console.error('❌ Error al acceder a métodos del mapa:', e);
+                return false;
             }
         } else {
-            console.warn('⚠️ window.mapa existe pero no tiene métodos de Leaflet');
+            console.error('❌ window.mapa existe pero NO es una instancia válida de L.Map');
+            return false;
         }
     } else {
-        console.error('❌ No hay instancia de mapa o Leaflet no está disponible');
-        if (!window.L) console.error('   - Leaflet (L) no está definido');
-        if (!window.L || !window.L.Map) console.error('   - L.Map no está disponible');
-        if (!window.mapa) console.error('   - window.mapa no está definido');
+        console.error('❌ No hay instancia de mapa (window.mapa undefined)');
+        return false;
     }
     
     // Verificar si hay capas
@@ -221,7 +221,7 @@ export async function diagnosticarMapa() {
     const leafletContainers = document.querySelectorAll('.leaflet-container, .leaflet-map-pane');
     console.log('- Elementos Leaflet en DOM:', leafletContainers.length);
     
-    return true;
+    return leafletContainers.length > 0 && window.mapa instanceof window.L.Map;
 }
 
 /**
