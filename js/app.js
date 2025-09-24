@@ -216,6 +216,7 @@ export async function diagnosticarMapa() {
 
 /**
  * Diagnóstico de la comunicación con hijo5-casa
+ * Ver js/comunicacion-componentes.md para más información sobre el flujo completo
  * @param {boolean} detallado - Si es true, muestra información detallada
  * @returns {Promise<Object>} Resultado del diagnóstico
  */
@@ -271,6 +272,7 @@ export async function diagnosticarComunicacionCasa(detallado = false) {
 
 /**
  * Prueba la orquestación de componentes con una parada específica
+ * Ver js/comunicacion-componentes.md para más información sobre el proceso de orquestación
  * @param {string} paradaId - ID de la parada a probar (ej: 'P-1', 'TR-2')
  * @returns {Promise<Object>} Resultado de la prueba
  */
