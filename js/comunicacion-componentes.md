@@ -1,86 +1,61 @@
-# Flujo de Comunicación entre Componentes
+# Comunicación entre componentes
 
-## Comunicación hijo5-casa → padre
+## Patrón Async/Await para envío de mensajes
 
-El flujo de comunicación cuando un usuario selecciona una parada o tramo en el modo casa es el siguiente:
+Cuando utilizamos el sistema de mensajería entre componentes, debemos seguir estas pautas:
 
-1. **Evento de usuario en hijo5-casa**:
-   - El usuario hace clic en una parada o tramo en el componente hijo5-casa
-   - hijo5-casa identifica qué parada o tramo se ha seleccionado
+1. Toda función que use `await` debe declararse como `async`
+2. El patrón correcto para funciones de evento es:
 
-2. **Envío de mensaje desde hijo5-casa al padre**:
    ```javascript
-   // Ejemplo de código en hijo5-casa
-   enviarMensaje('padre', TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, {
-     punto: {
-       parada_id: 'P-1', // o tramo_id: 'TR-1'
-       tipo: 'parada' // o 'tramo'
-     },
-     origen: 'hijo5-casa',
-     timestamp: Date.now()
+   // ❌ INCORRECTO - No se puede usar await en función no async
+   button.addEventListener('click', () => {
+       await enviarMensaje('padre', TIPO_MENSAJE, datos);
+   });
+
+   // ✅ CORRECTO - Función anónima declarada como async
+   button.addEventListener('click', async () => {
+       await enviarMensaje('padre', TIPO_MENSAJE, datos);
    });
    ```
 
-3. **Recepción y procesamiento por parte del padre**:
-   - El padre recibe el mensaje a través de la función `manejarSeleccionPuntoCasa`
-   - Busca la información completa de la parada/tramo en su base de datos (`buscarParada`)
-   - Coordina con los demás componentes:
-     - Actualiza la posición del mapa
-     - Reproduce el audio correspondiente
-     - Muestra el reto/puzzle si existe
-     - Muestra medios (imágenes/videos) si existen
+3. Lo mismo aplica para funciones nombradas:
 
-## Orquestación completa del padre
-
-El padre actúa como orquestador central, coordinando todos los componentes:
-
-1. **Con el mapa**:
    ```javascript
-   enviarMensaje('mapa', TIPOS_MENSAJE.NAVEGACION.ESTABLECER_DESTINO, {
-     punto: puntoNormalizado
-   });
-   ```
+   // ❌ INCORRECTO
+   function enviarDatos() {
+       await enviarMensaje('padre', TIPO_MENSAJE, datos);
+   }
 
-2. **Con el componente de audio**:
-   ```javascript
-   reproducirAudio(audioId, puntoNormalizado.tipo);
-   ```
-
-3. **Con el componente de retos**:
-   ```javascript
-   if (retoId) {
-     manejarMostrarReto({ datos: { retoId } });
-   } else {
-     manejarOcultarReto();
+   // ✅ CORRECTO
+   async function enviarDatos() {
+       await enviarMensaje('padre', TIPO_MENSAJE, datos);
    }
    ```
 
-4. **Obtención y muestra de medios**:
-   ```javascript
-   const medios = await obtenerMediosParaPunto(puntoNormalizado);
-   if (medios) {
-     mostrarMedios(medios);
-   }
-   ```
+## Flujo de comunicación entre componentes
 
-## Solución de problemas
+### Inicialización
+1. Cada componente hijo inicia con `inicializarMensajeria()`
+2. El componente notifica que está listo con `SISTEMA.COMPONENTE_LISTO`
+3. El padre recibe la notificación y actualiza su registro de componentes
 
-Si la comunicación entre hijo5-casa y el padre falla:
+### Cambio de modo
+1. Un componente solicita cambio de modo con `SISTEMA.CAMBIO_MODO`
+2. El padre procesa la solicitud y notifica a todos los hijos
+3. Cada hijo actualiza su interfaz según el nuevo modo
 
-1. Verifica que el sistema de mensajería esté inicializado
-2. Asegúrate de que los eventos de clic en hijo5-casa envíen correctamente los mensajes
-3. Comprueba que el padre tenga registrado el controlador para `NAVEGACION.CAMBIO_PARADA`
-4. Verifica que las funciones `manejarSeleccionPuntoCasa`, `buscarParada` y otras funciones relacionadas estén funcionando correctamente
-5. Examina la consola para errores específicos
+### Navegación entre paradas
+1. El usuario selecciona una parada/tramo en hijo5-casa
+2. Se envía mensaje `NAVEGACION.CAMBIO_PARADA` al padre
+3. El padre orquesta todos los componentes:
+   - Actualiza mapa (posición)
+   - Actualiza componente de coordenadas (botones)
+   - Reproduce audio relevante
+   - Muestra retos si corresponde
 
-## Funciones de diagnóstico
-
-Para diagnosticar problemas, puedes usar:
-
-```javascript
-// Para diagnosticar la comunicación con hijo5-casa
-diagnosticarComunicacionCasa(true);
-
-// Para probar la orquestación con una parada específica
-probarOrquestacionParada('P-1');
-```
+### Retos y preguntas
+1. El padre envía mensaje `RETO.MOSTRAR` al hijo4
+2. hijo4 muestra la interfaz de reto
+3. Al completar, envía `RETO.COMPLETADO` al padre
+4. El padre registra el progreso y coordina el avance
