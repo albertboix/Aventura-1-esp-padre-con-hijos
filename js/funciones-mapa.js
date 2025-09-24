@@ -53,10 +53,15 @@ export async function inicializarMapa(config = {}) {
             
             // Obtener el contenedor del mapa
             const containerId = config.containerId || 'mapa';
-            const container = document.getElementById(containerId);
+            let container = document.getElementById(containerId);
             
             if (!container) {
-                throw new Error(`Contenedor del mapa con ID "${containerId}" no encontrado.`);
+                logger.warn(`Contenedor del mapa con ID "${containerId}" no encontrado. Creando uno nuevo...`);
+                // Crear el contenedor si no existe
+                container = document.createElement('div');
+                container.id = containerId;
+                document.body.prepend(container);
+                logger.info('✅ Contenedor del mapa creado dinámicamente');
             }
             
             // Preparar el contenedor explícitamente
@@ -65,8 +70,11 @@ export async function inicializarMapa(config = {}) {
             container.style.opacity = '1';
             container.style.width = '100%';
             container.style.height = '100%';
-            container.style.position = 'relative';
+            container.style.position = 'fixed';
+            container.style.top = '0';
+            container.style.left = '0';
             container.style.zIndex = '10';
+            container.style.backgroundColor = '#f5f5f5';
             
             // Si ya existe un mapa, destruirlo para evitar problemas
             if (window.mapa && typeof window.mapa.remove === 'function') {
