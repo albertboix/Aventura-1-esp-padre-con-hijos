@@ -34,7 +34,9 @@ export const TIPOS_MENSAJE = {
         CAMBIO_MODO: 'SISTEMA.CAMBIO_MODO',
         CONFIRMACION: 'SISTEMA.CONFIRMACION',
         COMPONENTE_LISTO: 'SISTEMA.COMPONENTE_LISTO',
-        PING: 'SISTEMA.PING'
+        PING: 'SISTEMA.PING',
+        PONG: 'SISTEMA.PONG',
+        LISTO: 'SISTEMA.LISTO'
     },
     CONTROL: {
         HABILITAR: 'CONTROL.HABILITAR',
@@ -65,6 +67,11 @@ export const TIPOS_MENSAJE = {
     },
     UI: {
         MODAL: 'UI.MODAL'
+    },
+    MEDIOS: {
+        EVENTO: 'MEDIOS.EVENTO',
+        MOSTRAR: 'MEDIOS.MOSTRAR',
+        OCULTAR: 'MEDIOS.OCULTAR'
     }
 };
 
