@@ -18,17 +18,75 @@ let mapa = null;
 const marcadoresParadas = new Map();
 let marcadorDestino = null;
 let rutasTramos = [];
+let marcadorUsuario = null; // PROBLEMA 1: Faltaba definir el marcador de usuario
 
 // Estado del mapa para seguimiento interno
 const estadoMapa = {
     inicializado: false,
     modo: 'casa', // 'casa' o 'aventura'
     paradaActual: 0,
-    posicionUsuario: null
+    tramoActual: null, // PROBLEMA 2: Faltaba definir tramoActual que se usa en verificarProximidadWaypoints
+    posicionUsuario: null,
+    watchId: null, // PROBLEMA 3: Faltaba definir watchId que se usa en activarSeguimientoUsuario
+    siguiendoRuta: false // PROBLEMA 15: Falta variable para controlar si se está siguiendo una ruta
 };
 
 // Referencia local a los datos de paradas
-let arrayParadasLocal = [];
+let arrayParadasLocal = []; // PROBLEMA 4: Array vacío, pero necesita ser inicializado
+
+// Estilos CSS para notificaciones de waypoint - PROBLEMA 16: Faltaban estilos CSS
+const WAYPOINT_STYLES = `
+.waypoint-notification {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: rgba(33, 150, 243, 0.9);
+    color: white;
+    border-radius: 8px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    z-index: 9999;
+    opacity: 0;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+    max-width: 80%;
+}
+
+.waypoint-notification.show {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+}
+
+.notif-icon {
+    font-size: 24px;
+    margin-right: 12px;
+}
+
+.notif-content {
+    flex: 1;
+}
+
+.notif-title {
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+
+.notif-progress {
+    height: 6px;
+    background: rgba(255,255,255,0.3);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 4px;
+}
+
+.notif-bar {
+    height: 100%;
+    background: white;
+    border-radius: 3px;
+}
+`;
 
 /**
  * Inicializa el mapa y los manejadores de mensajes.
@@ -37,6 +95,15 @@ let arrayParadasLocal = [];
  */
 export async function inicializarMapa(config = {}) {
     logger.info('🗺️ Inicializando mapa...');
+    
+    // PROBLEMA 17: Insertar estilos CSS para notificaciones
+    if (!document.getElementById('waypoint-styles')) {
+        const styleElement = document.createElement('style');
+        styleElement.id = 'waypoint-styles';
+        styleElement.textContent = WAYPOINT_STYLES;
+        document.head.appendChild(styleElement);
+        logger.debug('Estilos CSS para notificaciones de waypoint insertados');
+    }
     
     return new Promise((resolve, reject) => {
         try {
@@ -104,6 +171,7 @@ export async function inicializarMapa(config = {}) {
             // Actualizar estado
             estadoMapa.inicializado = true;
             window.mapa = mapInstance; // Referencia global
+            mapa = mapInstance; // Guardar referencia local también (PROBLEMA 5: Faltaba asignar a variable local)
             
             // Verificar que el mapa se inicializó correctamente
             if (typeof mapInstance.getCenter === 'function') {
@@ -171,6 +239,10 @@ function registrarManejadoresMensajes() {
     registrarControlador(TIPOS_MENSAJE.NAVEGACION.ESTABLECER_DESTINO, manejarEstablecerDestino);
     registrarControlador(TIPOS_MENSAJE.NAVEGACION.ACTUALIZAR_POSICION, manejarActualizarPosicion);
     registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejarCambioModoMapa);
+    
+    // PROBLEMA 18: Registrar manejadores para recepción de paradas y estado del sistema
+    registrarControlador(TIPOS_MENSAJE.DATOS.RESPUESTA_PARADAS, manejarRecepcionParadas);
+    registrarControlador(TIPOS_MENSAJE.SISTEMA.ESTADO, manejarEstadoSistema);
     
     logger.debug('Manejadores de mensajes del mapa registrados');
 }
@@ -252,6 +324,11 @@ function manejarActualizarPosicion(mensaje) {
     try {
         estadoMapa.posicionUsuario = coordenadas;
         actualizarPuntoActual(coordenadas);
+        
+        // PROBLEMA 19: Verificar proximidad a waypoints cuando hay seguimiento activo
+        if (estadoMapa.siguiendoRuta && estadoMapa.modo === 'aventura') {
+            verificarProximidadWaypoints(coordenadas);
+        }
     } catch (error) {
         logger.error('Error al actualizar posición:', error);
     }
@@ -272,6 +349,77 @@ function manejarCambioModoMapa(mensaje) {
         actualizarModoMapa(modo);
     } catch (error) {
         logger.error('Error al cambiar modo del mapa:', error);
+    }
+}
+
+/**
+ * Maneja la recepción de datos de paradas
+ * @param {Object} mensaje - Mensaje recibido
+ * PROBLEMA 18: Implementación de función faltante
+ */
+function manejarRecepcionParadas(mensaje) {
+    try {
+        const { paradas } = mensaje.datos || {};
+        if (!paradas || !Array.isArray(paradas) || paradas.length === 0) {
+            logger.warn('Mensaje de paradas recibido sin datos válidos');
+            return;
+        }
+        
+        logger.info(`Recibidas ${paradas.length} paradas`);
+        
+        // Actualizar el array local
+        establecerDatosParadas(paradas);
+        
+        // Si estamos en modo casa, mostrar todas las paradas
+        if (estadoMapa.modo === 'casa') {
+            mostrarTodasLasParadas();
+        } else {
+            // En modo aventura, mostrar solo la parada actual y anteriores
+            ocultarParadasFuturas();
+        }
+        
+        return {
+            exito: true,
+            paradasCargadas: paradas.length
+        };
+    } catch (error) {
+        logger.error('Error al manejar recepción de paradas:', error);
+        return {
+            exito: false,
+            error: error.message
+        };
+    }
+}
+
+/**
+ * Maneja el estado del sistema
+ * @param {Object} mensaje - Mensaje recibido
+ * PROBLEMA 18: Implementación de función faltante
+ */
+function manejarEstadoSistema(mensaje) {
+    try {
+        const { modo, paradas, paradaActual } = mensaje.datos || {};
+        
+        // Actualizar modo si viene en el mensaje
+        if (modo && modo !== estadoMapa.modo) {
+            actualizarModoMapa(modo);
+        }
+        
+        // Actualizar parada actual si viene en el mensaje
+        if (typeof paradaActual === 'number' && paradaActual !== estadoMapa.paradaActual) {
+            estadoMapa.paradaActual = paradaActual;
+            logger.info(`Parada actual actualizada a: ${paradaActual}`);
+        }
+        
+        // Actualizar paradas si vienen en el mensaje
+        if (paradas && Array.isArray(paradas) && paradas.length > 0) {
+            establecerDatosParadas(paradas);
+        }
+        
+        return { exito: true };
+    } catch (error) {
+        logger.error('Error al manejar estado del sistema:', error);
+        return { exito: false, error: error.message };
     }
 }
 
@@ -367,10 +515,15 @@ function actualizarModoMapa(modo) {
     estadoMapa.modo = modo;
     logger.info(`Modo del mapa actualizado a: ${modo}`);
     
-    // Actualizar visualización según el modo
+    // PROBLEMA 6: Funciones no definidas
+    // Reemplazar llamadas a funciones no definidas con implementaciones básicas
     if (modo === 'casa') {
         // Mostrar todas las paradas
         mostrarTodasLasParadas();
+        
+        // PROBLEMA 20: Desactivar seguimiento de posición en modo casa
+        activarSeguimientoUsuario(false);
+        estadoMapa.siguiendoRuta = false;
     } else {
         // Mostrar solo la parada actual y las completadas
         ocultarParadasFuturas();
@@ -378,189 +531,308 @@ function actualizarModoMapa(modo) {
 }
 
 /**
- * Muestra todas las paradas en el mapa (modo casa)
+ * Muestra todas las paradas en el mapa
+ * PROBLEMA 6: Implementación de función faltante
  */
 function mostrarTodasLasParadas() {
-    logger.info('Mostrando todas las paradas (modo casa)');
-    
-    // Limpiar marcadores anteriores
-    limpiarMarcadoresParadas();
-    
-    // Validar que tenemos datos
-    if (!arrayParadasLocal || arrayParadasLocal.length === 0) {
-        logger.warn('No hay paradas cargadas para mostrar');
-        return;
+    try {
+        logger.info('Mostrando todas las paradas en el mapa');
+        // Implementación básica - mostrar paradas en el mapa
+        arrayParadasLocal.forEach(parada => {
+            if (parada.coordenadas) {
+                const { lat, lng } = parada.coordenadas;
+                
+                // Crear marcador si no existe
+                if (!marcadoresParadas.has(parada.id)) {
+                    const marker = L.marker([lat, lng]).addTo(mapa);
+                    
+                    // PROBLEMA 21: Agregar información y manejo de eventos a los marcadores
+                    if (parada.nombre) {
+                        marker.bindPopup(parada.nombre);
+                    }
+                    
+                    // Agregar evento de clic al marcador
+                    marker.on('click', () => {
+                        mapa.flyTo([lat, lng], 17);
+                        marker.openPopup();
+                        
+                        // Si tiene ID, notificar al padre sobre la selección
+                        if (parada.id) {
+                            enviarMensaje('padre', TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, {
+                                punto: {
+                                    id: parada.id,
+                                    parada_id: parada.id.startsWith('P-') ? parada.id : undefined,
+                                    tramo_id: parada.id.startsWith('TR-') ? parada.id : undefined,
+                                    nombre: parada.nombre
+                                },
+                                origen: 'mapa',
+                                timestamp: new Date().toISOString()
+                            }).catch(error => logger.error('Error al enviar selección de parada:', error));
+                        }
+                    });
+                    
+                    marcadoresParadas.set(parada.id, marker);
+                } else {
+                    // Si ya existe, asegurarse que esté visible
+                    const marcador = marcadoresParadas.get(parada.id);
+                    if (!mapa.hasLayer(marcador)) {
+                        marcador.addTo(mapa);
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        logger.error('Error al mostrar todas las paradas:', error);
+    }
+}
+
+/**
+ * Oculta paradas futuras en modo aventura
+ * PROBLEMA 6: Implementación de función faltante
+ */
+function ocultarParadasFuturas() {
+    try {
+        logger.info('Ocultando paradas futuras en modo aventura');
+        
+        // Implementación básica - ocultar paradas futuras
+        const paradaActualIndex = arrayParadasLocal.findIndex(p => 
+            p.parada === estadoMapa.paradaActual ||
+            (p.id && p.id === `P-${estadoMapa.paradaActual}`)
+        );
+        
+        if (paradaActualIndex >= 0) {
+            // Ocultar paradas futuras
+            arrayParadasLocal.forEach((parada, index) => {
+                const marcador = marcadoresParadas.get(parada.id);
+                if (marcador) {
+                    if (index > paradaActualIndex) {
+                        mapa.removeLayer(marcador);
+                    } else {
+                        if (!mapa.hasLayer(marcador)) {
+                            marcador.addTo(mapa);
+                        }
+                    }
+                }
+            });
+        }
+    } catch (error) {
+        logger.error('Error al ocultar paradas futuras:', error);
+    }
+}
+
+/**
+ * Dibuja un tramo específico en el mapa con waypoints y decoraciones
+ * @param {Object} tramo - Objeto tramo con inicio, fin y waypoints
+ * @param {boolean} destacado - Si es true, se muestra con énfasis
+ * @returns {L.Polyline} La polyline creada
+ * PROBLEMA 11: Función no estaba definida pero se usa en mostrarTramo
+ */
+function dibujarTramo(tramo, destacado = false) {
+    if (!tramo || !tramo.inicio || !tramo.fin) {
+        logger.warn('No se puede dibujar el tramo, faltan datos');
+        return null;
     }
     
-    // Añadir marcadores para cada parada
-    arrayParadasLocal.forEach((parada, index) => {
-        if (parada.tipo !== 'tramo' && parada.coordenadas) {
-            // Crear marcador para esta parada
-            const icon = L.divIcon({
-                className: 'marcador-parada',
-                html: `<div class="numero-parada">${index + 1}</div>`,
-                iconSize: [24, 24],
-                iconAnchor: [12, 12]
-            });
-            
-            const marker = L.marker([parada.coordenadas.lat, parada.coordenadas.lng], {
-                icon: icon
-            }).addTo(mapa);
-            
-            // Añadir popup con información
-            marker.bindPopup(`
-                <strong>${parada.nombre || `Parada ${index + 1}`}</strong>
-                <p>${parada.descripcion || ''}</p>
-                <button class="btn-ir" data-parada-id="${parada.id || parada.parada_id}">Ir aquí</button>
-            `);
-            
-            // Guardar referencia
-            marcadoresParadas.set(parada.id || parada.parada_id, marker);
-        }
-    });
+    // Crear array de puntos para la polyline
+    const puntos = [
+        [tramo.inicio.lat, tramo.inicio.lng]
+    ];
     
-    // Dibujar líneas para los tramos
-    arrayParadasLocal.forEach(tramo => {
-        if (tramo.tipo === 'tramo' && tramo.inicio && tramo.fin) {
-            const puntos = [
-                [tramo.inicio.lat, tramo.inicio.lng]
-            ];
-            
-            // Añadir waypoints si existen
-            if (tramo.waypoints && tramo.waypoints.length) {
-                tramo.waypoints.forEach(wp => {
-                    puntos.push([wp.lat, wp.lng]);
-                });
-            }
-            
-            // Añadir punto final
-            puntos.push([tramo.fin.lat, tramo.fin.lng]);
-            
-            // Crear línea
-            const ruta = L.polyline(puntos, {
-                color: '#3388ff',
-                weight: 5,
-                opacity: 0.7
-            }).addTo(mapa);
-            
-            // Guardar referencia
-            rutasTramos.push(ruta);
-        }
-    });
+    // Añadir waypoints si existen para crear una ruta con curvas naturales
+    if (tramo.waypoints && tramo.waypoints.length) {
+        tramo.waypoints.forEach(wp => {
+            puntos.push([wp.lat, wp.lng]);
+        });
+    }
     
-    // Ajustar mapa para mostrar todas las paradas
-    if (marcadoresParadas.size > 0) {
-        const bounds = [];
-        marcadoresParadas.forEach(marker => {
-            bounds.push(marker.getLatLng());
+    // Añadir punto final
+    puntos.push([tramo.fin.lat, tramo.fin.lng]);
+    
+    // Estilo base de la polyline
+    const estilo = {
+        color: destacado ? '#ff4500' : '#3388ff',
+        weight: destacado ? 6 : 4,
+        opacity: destacado ? 0.9 : 0.7,
+        dashArray: destacado ? null : '10, 10',
+        lineCap: 'round',
+        lineJoin: 'round'
+    };
+    
+    // Crear la polyline
+    const polyline = L.polyline(puntos, estilo).addTo(mapa);
+    
+    // Añadir decoraciones (flechas) para indicar la dirección
+    // PROBLEMA 20: Verificar si L.polylineDecorator está disponible
+    if (typeof L.polylineDecorator === 'function') {
+        try {
+            const decoraciones = L.polylineDecorator(polyline, {
+                patterns: [
+                    {
+                        offset: '10%',
+                        repeat: 100,
+                        symbol: L.Symbol.arrowHead({
+                            pixelSize: 15,
+                            headAngle: 45,
+                            pathOptions: {
+                                fillColor: destacado ? '#ff4500' : '#3388ff',
+                                fillOpacity: 0.8,
+                                weight: 0
+                            }
+                        })
+                    }
+                ]
+            }).addTo(mapa);
+        } catch (error) {
+            logger.warn('No se pudieron añadir decoraciones al tramo:', error);
+        }
+    }
+    
+    return polyline;
+}
+
+/**
+ * Muestra un tramo específico en el mapa y centra la vista
+ * @param {string} tramoId - ID del tramo a mostrar
+ * PROBLEMA 12: Función usada pero no definida
+ */
+function mostrarTramo(tramoId) {
+    try {
+        // Buscar tramo por ID
+        const tramo = buscarCoordenadasTramo(tramoId);
+        if (!tramo) {
+            logger.warn(`Tramo no encontrado: ${tramoId}`);
+            return;
+        }
+        
+        // Limpiar tramos anteriores
+        rutasTramos.forEach(ruta => mapa.removeLayer(ruta));
+        rutasTramos = [];
+        
+        // Dibujar este tramo destacado
+        const polyline = dibujarTramo(tramo, true);
+        rutasTramos.push(polyline);
+        
+        // Determinar bounds para ajustar la vista
+        const bounds = polyline.getBounds();
+        mapa.fitBounds(bounds, {
+            padding: [50, 50],
+            maxZoom: 17
         });
         
-        mapa.fitBounds(L.latLngBounds(bounds), {
-            padding: [50, 50],
-            maxZoom: 16
-        });
+        // Añadir marcadores solo en inicio y fin
+        const inicioMarker = L.marker([tramo.inicio.lat, tramo.inicio.lng], {
+            icon: L.divIcon({
+                className: 'inicio-marker',
+                html: '<div class="marker-letter">A</div>',
+                iconSize: [30, 30],
+                iconAnchor: [15, 30]
+            })
+        }).addTo(mapa);
+        
+        const finMarker = L.marker([tramo.fin.lat, tramo.fin.lng], {
+            icon: L.divIcon({
+                className: 'fin-marker',
+                html: '<div class="marker-letter">B</div>',
+                iconSize: [30, 30],
+                iconAnchor: [15, 30]
+            })
+        }).addTo(mapa);
+        
+        // Guardar referencia
+        rutasTramos.push(inicioMarker, finMarker);
+        
+        // PROBLEMA 13: Actualizar estadoMapa.tramoActual para correcta detección de waypoints
+        estadoMapa.tramoActual = tramoId;
+    } catch (error) {
+        logger.error('Error al mostrar tramo:', error);
     }
 }
 
 /**
- * Limpia los marcadores de paradas
+ * Actualiza el marcador de posición actual del usuario
+ * @param {Object} coordenadas - Coordenadas {lat, lng}
+ * PROBLEMA 7: Función usada pero no definida
  */
-function limpiarMarcadoresParadas() {
-    // Eliminar todos los marcadores
-    marcadoresParadas.forEach(marker => {
-        mapa.removeLayer(marker);
-    });
-    marcadoresParadas.clear();
-    
-    // Eliminar rutas
-    rutasTramos.forEach(ruta => {
-        mapa.removeLayer(ruta);
-    });
-    rutasTramos = [];
-}
-
-/**
- * Carga los datos de paradas desde una fuente externa
- * @param {Array} paradas - Array de paradas
- */
-function cargarDatosParada(paradas) {
-    if (!Array.isArray(paradas)) {
-        logger.warn('cargarDatosParada: los datos proporcionados no son un array');
+function actualizarPuntoActual(coordenadas) {
+    if (!mapa) {
+        logger.warn('No se puede actualizar posición: mapa no inicializado');
         return;
     }
     
-    arrayParadasLocal = paradas;
-    logger.info(`Datos de ${paradas.length} paradas cargados correctamente`);
-}
-
-/**
- * Actualiza la posición actual en el mapa
- * @param {Object} coordenadas - Coordenadas {lat, lng}
- * @param {Object} opciones - Opciones adicionales
- */
-function actualizarPuntoActual(coordenadas, opciones = {}) {
-    try {
-        if (!mapa) {
-            logger.warn('No se puede actualizar el punto: el mapa no está inicializado');
-            return false;
+    // Guardar coordenadas
+    estadoMapa.posicionUsuario = coordenadas;
+    
+    // Eliminar marcador anterior si existe
+    if (marcadorUsuario) {
+        mapa.removeLayer(marcadorUsuario);
+        if (marcadorUsuario.marcadorPunto) {
+            mapa.removeLayer(marcadorUsuario.marcadorPunto);
         }
-
-        // Opciones por defecto
-        const config = {
-            zoom: 18,
-            animate: true,
-            duration: 1,
-            ...opciones
-        };
-
-        // Centrar el mapa en las nuevas coordenadas si se solicita
-        if (config.centrar) {
-            mapa.flyTo([coordenadas.lat, coordenadas.lng], config.zoom, {
-                animate: config.animate,
-                duration: config.duration
-            });
-        }
-
-        // Actualizar marcador de posición actual si existe
-        if (window.marcadorPosicionActual) {
-            window.marcadorPosicionActual.setLatLng([coordenadas.lat, coordenadas.lng]);
-        } else {
-            // Crear marcador si no existe
-            window.marcadorPosicionActual = L.marker([coordenadas.lat, coordenadas.lng], {
-                icon: L.divIcon({
-                    className: 'marcador-posicion-actual',
-                    html: '📍',
-                    iconSize: [30, 30],
-                    iconAnchor: [15, 30]
-                })
-            }).addTo(mapa);
-        }
-
-        return true;
-    } catch (error) {
-        logger.error('Error al actualizar el punto actual:', error);
-        return false;
     }
+    
+    // Crear nuevo marcador
+    marcadorUsuario = L.circle([coordenadas.lat, coordenadas.lng], {
+        color: '#4285F4',
+        fillColor: '#4285F4',
+        fillOpacity: 0.8,
+        radius: coordenadas.accuracy || 10,
+        weight: 2
+    }).addTo(mapa);
+    
+    // Crear marcador de posición exacta
+    const iconoUsuario = L.divIcon({
+        className: 'marcador-usuario',
+        html: '<div class="usuario-punto"></div>',
+        iconSize: [12, 12],
+        iconAnchor: [6, 6]
+    });
+    
+    const marcadorPunto = L.marker([coordenadas.lat, coordenadas.lng], {
+        icon: iconoUsuario,
+        zIndexOffset: 1000
+    }).addTo(mapa);
+    
+    // Guardar referencia al marcador de punto también
+    marcadorUsuario.marcadorPunto = marcadorPunto;
 }
 
 /**
  * Limpia los recursos del mapa
+ * PROBLEMA 8: Función incompleta
  */
 function limpiarRecursos() {
     try {
+        // Limpiar seguimiento de usuario
+        if (estadoMapa.watchId) {
+            navigator.geolocation.clearWatch(estadoMapa.watchId);
+            estadoMapa.watchId = null;
+        }
+        
         // Eliminar marcadores
-        if (marcadorDestino) {
+        if (marcadorUsuario) {
+            if (mapa) mapa.removeLayer(marcadorUsuario);
+            if (marcadorUsuario.marcadorPunto && mapa) {
+                mapa.removeLayer(marcadorUsuario.marcadorPunto);
+            }
+            marcadorUsuario = null;
+        }
+        
+        // Eliminar marcador de destino
+        if (marcadorDestino && mapa) {
             mapa.removeLayer(marcadorDestino);
             marcadorDestino = null;
         }
         
-        if (window.marcadorPosicionActual) {
-            mapa.removeLayer(window.marcadorPosicionActual);
-            window.marcadorPosicionActual = null;
-        }
+        // Eliminar marcadores de paradas
+        marcadoresParadas.forEach((marcador) => {
+            if (mapa) mapa.removeLayer(marcador);
+        });
+        marcadoresParadas.clear();
         
         // Eliminar rutas
-        rutasTramos.forEach(ruta => mapa.removeLayer(ruta));
+        rutasTramos.forEach(ruta => {
+            if (mapa) mapa.removeLayer(ruta);
+        });
         rutasTramos = [];
         
         logger.debug('Recursos del mapa limpiados');
@@ -569,12 +841,236 @@ function limpiarRecursos() {
     }
 }
 
-// Limpiar recursos cuando se descargue la página
+// PROBLEMA 14: Limpiar recursos cuando se descargue la página
 window.addEventListener('beforeunload', () => {
     limpiarRecursos();
 });
 
-// Exportar funciones públicas
+/**
+ * Carga los datos de una parada específica
+ * @param {string} paradaId - ID de la parada a cargar
+ * @returns {Object|null} Datos de la parada o null si no se encuentra
+ * PROBLEMA 9: Función faltante pero exportada
+ */
+function cargarDatosParada(paradaId) {
+    try {
+        // Buscar parada por ID
+        const parada = arrayParadasLocal.find(p => 
+            p.id === paradaId || 
+            p.parada_id === paradaId
+        );
+        
+        if (!parada) {
+            logger.warn(`Parada no encontrada: ${paradaId}`);
+            return null;
+        }
+        
+        logger.info(`Datos de parada ${paradaId} cargados`);
+        return parada;
+    } catch (error) {
+        logger.error(`Error al cargar datos de parada ${paradaId}:`, error);
+        return null;
+    }
+}
+
+/**
+ * Inicia la navegación activa desde un punto a otro
+ * @param {string} tramoId - ID del tramo a navegar
+ */
+export function iniciarNavegacionTramo(tramoId) {
+    try {
+        // Mostrar el tramo en el mapa
+        mostrarTramo(tramoId);
+        
+        // Buscar datos del tramo
+        const tramo = arrayParadasLocal.find(p => p.id === tramoId || p.tramo_id === tramoId);
+        if (!tramo) {
+            logger.warn(`Tramo no encontrado para navegación: ${tramoId}`);
+            return;
+        }
+        
+        // Si estamos en modo aventura, activar seguimiento de posición del usuario
+        if (estadoMapa.modo === 'aventura') {
+            activarSeguimientoUsuario(true);
+            // PROBLEMA 15: Marcar que estamos siguiendo una ruta
+            estadoMapa.siguiendoRuta = true;
+        }
+        
+        logger.info(`Navegación iniciada para tramo: ${tramoId}`);
+    } catch (error) {
+        logger.error('Error al iniciar navegación de tramo:', error);
+    }
+}
+
+/**
+ * Activa o desactiva el seguimiento de la posición del usuario
+ * @param {boolean} activar - Si es true, activa el seguimiento
+ */
+function activarSeguimientoUsuario(activar) {
+    // Si ya hay un watcher activo, cancelarlo primero
+    if (estadoMapa.watchId) {
+        navigator.geolocation.clearWatch(estadoMapa.watchId);
+        estadoMapa.watchId = null;
+    }
+    
+    if (!activar) return;
+    
+    // Solicitar permiso para geolocalización
+    if (navigator.geolocation) {
+        estadoMapa.watchId = navigator.geolocation.watchPosition(
+            position => {
+                const { latitude, longitude, accuracy } = position.coords;
+                const coordenadas = { 
+                    lat: latitude, 
+                    lng: longitude,
+                    accuracy: accuracy || 10 // PROBLEMA 20: Usar valor por defecto si no hay exactitud
+                };
+                
+                // Actualizar marcador de posición del usuario
+                actualizarPuntoActual(coordenadas);
+                
+                // Verificar proximidad a waypoints si estamos en modo aventura
+                if (estadoMapa.modo === 'aventura' && estadoMapa.siguiendoRuta) {
+                    verificarProximidadWaypoints(coordenadas);
+                }
+            },
+            error => {
+                logger.error('Error de geolocalización:', error);
+                alert('No se pudo obtener tu ubicación. Por favor activa el GPS.');
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0
+            }
+        );
+    } else {
+        alert('Tu navegador no soporta geolocalización.');
+    }
+}
+
+/**
+ * Verifica si el usuario está cerca de algún waypoint del tramo actual
+ * @param {Object} coordenadasUsuario - Coordenadas del usuario {lat, lng}
+ */
+function verificarProximidadWaypoints(coordenadasUsuario) {
+    // Obtener tramo actual
+    const tramo = arrayParadasLocal.find(p => 
+        p.id === estadoMapa.tramoActual || 
+        p.tramo_id === estadoMapa.tramoActual
+    );
+    
+    if (!tramo || !tramo.waypoints || !tramo.waypoints.length) return;
+    
+    // Distancia de proximidad en metros
+    const DISTANCIA_PROXIMA = 25;
+    
+    // Verificar cada waypoint
+    tramo.waypoints.forEach((waypoint, index) => {
+        // Calcular distancia
+        const distancia = calcularDistancia(coordenadasUsuario, waypoint);
+        
+        // Si está cerca y no se ha registrado como visitado
+        if (distancia <= DISTANCIA_PROXIMA && !tramo.waypointsVisitados?.includes(index)) {
+            // Marcar como visitado
+            if (!tramo.waypointsVisitados) tramo.waypointsVisitados = [];
+            tramo.waypointsVisitados.push(index);
+            
+            // PROBLEMA 16: Llamar a notificarWaypointAlcanzado para mostrar notificación
+            notificarWaypointAlcanzado(index + 1, tramo.waypoints.length);
+            
+            // Verificar progreso del tramo (por ejemplo para estadísticas)
+            const progreso = (tramo.waypointsVisitados.length / tramo.waypoints.length) * 100;
+            logger.debug(`Waypoint ${index + 1} alcanzado, distancia: ${distancia.toFixed(2)}m, progreso: ${progreso.toFixed(0)}%`);
+            
+            // Notificar al padre que se alcanzó un waypoint
+            enviarMensaje('padre', TIPOS_MENSAJE.NAVEGACION.WAYPOINT_ALCANZADO, {
+                tramoId: estadoMapa.tramoActual,
+                waypointIndex: index,
+                totalWaypoints: tramo.waypoints.length,
+                progreso: Math.round(progreso),
+                coordenadas: waypoint,
+                timestamp: new Date().toISOString()
+            }).catch(error => logger.error('Error al notificar waypoint alcanzado:', error));
+        }
+    });
+}
+
+/**
+ * Calcula la distancia en metros entre dos puntos geográficos
+ * @param {Object} punto1 - Coordenadas del primer punto {lat, lng}
+ * @param {Object} punto2 - Coordenadas del segundo punto {lat, lng}
+ * @returns {number} Distancia en metros
+ */
+function calcularDistancia(punto1, punto2) {
+    const R = 6371e3; // Radio de la Tierra en metros
+    const φ1 = punto1.lat * Math.PI/180;
+    const φ2 = punto2.lat * Math.PI/180;
+    const Δφ = (punto2.lat - punto1.lat) * Math.PI/180;
+    const Δλ = (punto2.lng - punto1.lng) * Math.PI/180;
+
+    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+              Math.cos(φ1) * Math.cos(φ2) *
+              Math.sin(Δλ/2) * Math.sin(Δλ/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+    return R * c; // Distancia en metros
+}
+
+/**
+ * Notifica al usuario que ha alcanzado un waypoint
+ * @param {number} numero - Número del waypoint
+ * @param {number} total - Total de waypoints
+ */
+function notificarWaypointAlcanzado(numero, total) {
+    // Crear o actualizar elemento de notificación
+    let notifElement = document.getElementById('waypoint-notification');
+    if (!notifElement) {
+        notifElement = document.createElement('div');
+        notifElement.id = 'waypoint-notification';
+        notifElement.className = 'waypoint-notification';
+        document.body.appendChild(notifElement);
+    }
+    
+    // Actualizar contenido
+    notifElement.innerHTML = `
+        <div class="notif-icon">🏁</div>
+        <div class="notif-content">
+            <div class="notif-title">¡Punto ${numero} alcanzado!</div>
+            <div class="notif-subtitle">${numero} de ${total} puntos completados</div>
+            <div class="notif-progress">
+                <div class="notif-bar" style="width: ${(numero/total) * 100}%"></div>
+            </div>
+        </div>
+    `;
+    
+    // Mostrar la notificación
+    notifElement.classList.add('show');
+    
+    // Ocultar después de unos segundos
+    setTimeout(() => {
+        notifElement.classList.remove('show');
+    }, 3000);
+}
+
+/**
+ * Establece los datos de paradas para el módulo
+ * @param {Array} paradas - Array con datos de paradas
+ * @returns {boolean} True si los datos se establecieron correctamente
+ * PROBLEMA 10: Función necesaria para inicializar arrayParadasLocal
+ */
+export function establecerDatosParadas(paradas) {
+    if (!paradas || !Array.isArray(paradas)) {
+        logger.warn('Se intentó establecer un array de paradas inválido');
+        return false;
+    }
+    
+    arrayParadasLocal = [...paradas];
+    logger.info(`Datos de ${paradas.length} paradas establecidos en el módulo de mapa`);
+    return true;
+}
+
+// Exportar funciones públicas - PROBLEMA 17: Eliminar duplicación de exportaciones
 export {
     estadoMapa,
     actualizarModoMapa,
