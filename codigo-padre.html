@@ -194,41 +194,76 @@
             } else {
                 console.log('✅ Leaflet disponible en DOMContentLoaded, versión:', L.version);
                 
-                // Verificar si el mapa ya existe después de 2 segundos
-                setTimeout(function() {
-                    if (!window.mapa || !window.mapa._container) {
-                        console.log('⚠️ No se detecta mapa inicializado después de 2 segundos, creando mapa directo...');
+                // Reemplazar con la inicialización adecuada del mapa
+                async function initializeMap() {
+                    try {
+                        const mapContainer = document.getElementById('mapa');
                         
-                        // Limpiar el contenedor del mapa por si acaso
-                        const mapaContainer = document.getElementById('mapa');
-                        if (mapaContainer) {
-                            mapaContainer.innerHTML = '';
-                            mapaContainer.style.display = 'block';
-                            mapaContainer.style.visibility = 'visible';
-                            mapaContainer.style.zIndex = '10';
-                            
-                            // Crear un mapa directo como último recurso
-                            try {
-                                const emergencyMap = L.map('mapa').setView([39.4699, -0.3763], 13);
-                                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-                                    opacity: 1.0,
-                                    detectRetina: true
-                                }).addTo(emergencyMap);
-                                
-                                window.mapa = emergencyMap;
-                                console.log('✅ Mapa de emergencia creado correctamente');
-                                
-                                // Forzar actualización del tamaño
-                                setTimeout(function() {
-                                    emergencyMap.invalidateSize(true);
-                                }, 300);
-                            } catch (e) {
-                                console.error('❌ Error al crear mapa de emergencia:', e);
-                            }
+                        // Asegurarse de que el contenedor esté correctamente visible y dimensionado
+                        if (mapContainer) {
+                            mapContainer.style.width = '100%';
+                            mapContainer.style.height = '100%';
+                            mapContainer.style.display = 'block';
+                            mapContainer.style.position = 'relative';
+                            mapContainer.style.zIndex = '1';
                         }
+                        
+                        // Limpiar cualquier instancia de mapa existente para evitar duplicados
+                        if (window.mapa && typeof window.mapa.remove === 'function') {
+                            console.log('Removing existing map instance');
+                            window.mapa.remove();
+                            window.mapa = null;
+                        }
+                        
+                        // Crear el mapa con opciones explícitas para asegurar una inicialización correcta
+                        console.log('Creating new Leaflet map instance');
+                        window.mapa = L.map('mapa', {
+                            center: [39.4699, -0.3763], // Valencia
+                            zoom: 16,
+                            minZoom: 12,
+                            maxZoom: 18,
+                            zoomControl: true,
+                            attributionControl: true
+                        });
+                        
+                        // Añadir capa de mosaico de OpenStreetMap
+                        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                            maxZoom: 19,
+                            tileSize: 256
+                        }).addTo(window.mapa);
+                        
+                        // Verificar que el mapa se haya inicializado correctamente
+                        if (typeof window.mapa.getCenter === 'function') {
+                            console.log('✅ Map initialized successfully at center:', window.mapa.getCenter());
+                            return true;
+                        } else {
+                            console.error('❌ Map initialization failed - map methods not available');
+                            return false;
+                        }
+                    } catch (error) {
+                        console.error('❌ Error initializing map:', error);
+                        return false;
                     }
-                }, 2000);
+                }
+
+                // Reemplazar el código de inicialización del mapa en su flujo de inicialización principal
+                async function initializeApp() {
+                    // ...código existente...
+                    
+                    // Reemplazar la inicialización del mapa con nuestra nueva función
+                    const mapInitialized = await initializeMap();
+                    if (mapInitialized) {
+                        console.log('Map component initialized successfully');
+                    } else {
+                        console.warn('Map initialization failed, application may have limited functionality');
+                    }
+                    
+                    // ...código existente...
+                }
+
+                // Iniciar la aplicación
+                initializeApp();
             }
         });
     </script>
@@ -2130,22 +2165,6 @@
         console.error('❌ [PADRE] Error asíncrono no capturado:', error);
         window.debugLog && window.debugLog(`Error asíncrono no capturado: ${error.message}`);
         window.handleApplicationError(error, 'error_asincrono');
-    });
-    
-    // Agregar un manejador global para capturar errores asíncronos
-    window.addEventListener('error', function(event) {
-        console.error('❌ [PADRE] Error global no capturado:', event.error || event.message);
-        window.handleApplicationError(event.error || new Error(event.message), 'error_global');
-    });
-    
-    // Capturar promesas rechazadas no manejadas
-    window.addEventListener('unhandledrejection', function(event) {
-        console.error('❌ [PADRE] Promesa rechazada no manejada:', event.reason);
-        window.handleApplicationError(event.reason, 'promesa_rechazada');
-    });
-        </script>
-</body>
-</html>
     });
     
     // Agregar un manejador global para capturar errores asíncronos
