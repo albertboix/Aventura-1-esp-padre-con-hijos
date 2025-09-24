@@ -45,7 +45,9 @@ export async function inicializar() {
         
         // Intentar actualizar el tamaño del mapa para asegurar que se renderice correctamente
         setTimeout(() => {
-            if (window.mapa && typeof window.mapa.invalidateSize === 'function' && window.mapa instanceof L.Map) {
+            if (window.mapa && window.L && window.L.Map && 
+                typeof window.mapa.invalidateSize === 'function' && 
+                typeof window.mapa.getCenter === 'function') {
                 logger.info('Actualizando tamaño del mapa...');
                 window.mapa.invalidateSize(true);
             }
@@ -186,20 +188,28 @@ export async function diagnosticarMapa() {
     }
     
     // Verificar si el mapa de Leaflet está instanciado
-    if (window.mapa && typeof window.mapa.getCenter === 'function' && window.mapa instanceof L.Map) {
-        console.log('- Instancia de mapa existe (window.mapa)');
-        console.log('- Centro del mapa:', window.mapa.getCenter());
-        console.log('- Zoom del mapa:', window.mapa.getZoom());
-        
-        // Forzar actualización del mapa
-        try {
-            window.mapa.invalidateSize(true);
-            console.log('✅ Mapa actualizado con invalidateSize()');
-        } catch (e) {
-            console.error('❌ Error al actualizar mapa:', e);
+    if (window.mapa && window.L && window.L.Map) {
+        // Verificar si window.mapa es una instancia válida de Leaflet Map
+        if (typeof window.mapa.getCenter === 'function' && typeof window.mapa.getZoom === 'function') {
+            try {
+                console.log('- Instancia de mapa existe (window.mapa)');
+                console.log('- Centro del mapa:', window.mapa.getCenter());
+                console.log('- Zoom del mapa:', window.mapa.getZoom());
+                
+                // Forzar actualización del mapa
+                window.mapa.invalidateSize(true);
+                console.log('✅ Mapa actualizado con invalidateSize()');
+            } catch (e) {
+                console.error('❌ Error al acceder a métodos del mapa:', e);
+            }
+        } else {
+            console.warn('⚠️ window.mapa existe pero no tiene métodos de Leaflet');
         }
     } else {
-        console.error('❌ No hay instancia de mapa (window.mapa undefined o no es una instancia válida de Leaflet)');
+        console.error('❌ No hay instancia de mapa o Leaflet no está disponible');
+        if (!window.L) console.error('   - Leaflet (L) no está definido');
+        if (!window.L || !window.L.Map) console.error('   - L.Map no está disponible');
+        if (!window.mapa) console.error('   - window.mapa no está definido');
     }
     
     // Verificar si hay capas
