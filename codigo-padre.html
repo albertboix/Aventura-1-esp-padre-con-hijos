@@ -1061,7 +1061,7 @@
 
             // 6. REGISTRO DE CONTROLADORES DE MENSAJES
             // Función para manejar actualizaciones del mapa
-            function manejarActualizacionMapa(msg) {
+            async function manejarActualizacionMapa(msg) {
                 const { accion, datos } = msg.datos || {};
                 
                 if (!window.mapa) {
@@ -1159,7 +1159,7 @@
                 }
             }
             
-            function registrarControladoresTotales() {
+            async function registrarControladoresTotales() {
                 console.log('📝 [PADRE] Registrando controladores de mensajes...');
 
                 // Remover cualquier manejador existente para evitar duplicaciones
@@ -1457,6 +1457,7 @@
                     logger.error(errorMsg, error);
                     
                     // Notificar del error
+                   
                     await enviarMensaje('todos', TIPOS_MENSAJE.SISTEMA.ERROR, {
                         codigo: 'ERROR_CAMBIO_MODO',
                         mensaje: errorMsg,
@@ -1640,6 +1641,18 @@
                 };
 
                 console.log('📤 [PADRE] Enviando respuesta detallada a hijo5-casa:', resultadoOrquestacion);
+
+                // Enviar respuesta de vuelta al hijo que solicitó la orquestación
+                try {
+                    await enviarMensaje(origen, TIPOS_MENSAJE.SISTEMA.ESTADO, {
+                        tipo: 'orquestacion_completada',
+                        resultado: resultadoOrquestacion,
+                        timestamp: Date.now()
+                    });
+                } catch (error) {
+                    console.error('❌ [PADRE] Error al enviar respuesta de orquestación:', error);
+                }
+
                 return resultadoOrquestacion;
             }
             /**
@@ -1675,7 +1688,7 @@
              * @param {Object} medios - Objeto con rutas de imagen y/o video
              * @returns {boolean} - Si se mostró algún medio
              */
-            function mostrarMedios(medios) {
+            async function mostrarMedios(medios) {
                 if (!medios) return false;
                 
                 const { imagen, video } = medios;
@@ -1714,23 +1727,6 @@
                 }
                 
                 return false;
-            }
-            
-            /**
-             * Función auxiliar para ocultar el overlay de medios
-             */
-            function ocultarMedios() {
-                const mediaOverlay = document.getElementById('media-overlay');
-                const videoElement = document.getElementById('parada-video');
-                
-                if (mediaOverlay) {
-                    mediaOverlay.style.display = 'none';
-                }
-                
-                if (videoElement) {
-                    videoElement.pause();
-                    videoElement.currentTime = 0;
-                }
             }
             
             /**
@@ -1850,7 +1846,7 @@
              * @param {number} indice - Índice del reto a extraer en caso de múltiples retos (por defecto 0)
              * @returns {string|null} - ID del reto o null si no hay
              */
-            function extraerRetoId(parada, indice = 0) {
+            async function extraerRetoId(parada, indice = 0) {
                 if (!parada) return null;
                 
                 console.log('🔍 [PADRE] Extrayendo reto_id de:', parada);
@@ -1882,7 +1878,7 @@
              * @param {Object} parada - Parada de la que extraer los IDs de retos
              * @returns {Array<string>} - Array de IDs de retos
              */
-            function obtenerTodosLosRetos(parada) {
+            async function obtenerTodosLosRetos(parada) {
                 if (!parada) return [];
                 
                 const retos = [];
@@ -2134,6 +2130,22 @@
         console.error('❌ [PADRE] Error asíncrono no capturado:', error);
         window.debugLog && window.debugLog(`Error asíncrono no capturado: ${error.message}`);
         window.handleApplicationError(error, 'error_asincrono');
+    });
+    
+    // Agregar un manejador global para capturar errores asíncronos
+    window.addEventListener('error', function(event) {
+        console.error('❌ [PADRE] Error global no capturado:', event.error || event.message);
+        window.handleApplicationError(event.error || new Error(event.message), 'error_global');
+    });
+    
+    // Capturar promesas rechazadas no manejadas
+    window.addEventListener('unhandledrejection', function(event) {
+        console.error('❌ [PADRE] Promesa rechazada no manejada:', event.reason);
+        window.handleApplicationError(event.reason, 'promesa_rechazada');
+    });
+        </script>
+</body>
+</html>
     });
     
     // Agregar un manejador global para capturar errores asíncronos
