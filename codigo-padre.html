@@ -142,7 +142,7 @@
         title="Botón Casa"
         aria-label="Botón para cambiar entre modo Casa y Aventura"
         style="position:fixed; left:10px; top:10px; height:100px; width:350px; z-index:1005; pointer-events:auto; transition:width 0.3s; display:block;"
-        onload="handleIframeLoad('hijo5-casa'); if(window.debugLog) window.debugLog('hijo5-casa iframe loaded'); if(window.notificarInicializacionAHijos) window.notificarInicializacionAHijos();" 
+        onload="handleIframeLoad('hijo5-casa'); if(window.debugLog) window.debugLog('hijo5-casa iframe loaded');" 
         onerror="handleIframeError('hijo5-casa', event)"></iframe>
     <iframe id="hijo3" src="Av1_audio_esp.html"
         title="Audio de la aventura"
@@ -213,57 +213,152 @@
         return true;
     };
 
+    // Definir primero algunas funciones globales críticas
+    window.updateMapDebug = function(mensaje) {
+        const debugElement = document.getElementById('map-debug');
+        if (debugElement) {
+            debugElement.textContent = mensaje;
+            debugElement.style.display = 'block';
+            
+            // Ocultar automáticamente después de unos segundos si no es un mensaje de error
+            if (!mensaje.toLowerCase().includes('error')) {
+                setTimeout(() => {
+                    debugElement.style.opacity = '0';
+                    setTimeout(() => {
+                        debugElement.style.display = 'none';
+                        debugElement.style.opacity = '1';
+                    }, 500);
+                }, 3000);
+            }
+        }
+        
+        // Registrar también en la consola
+        console.debug('[Map Debug]', mensaje);
+    };
+    
+    // Variable global para rastrear inicialización
+    window.appInitStatus = {
+        started: false,
+        completed: false,
+        errors: [],
+        modules: {},
+        timestamp: Date.now()
+    };
+    
+    // Verificamos si ya se ha iniciado la aplicación para evitar inicializaciones múltiples
+    if (!window.appInitialized) { // Cambiado a negación para evitar return en módulo de nivel superior
+        // Marcar como inicializado
+        window.appInitialized = true;
+    } else {
+        console.warn('⚠️ [PADRE] La aplicación ya fue inicializada anteriormente. Evitando inicialización duplicada.');
+        // No usar return, solo continuamos pero no ejecutaremos el código de inicialización de nuevo
+        window.appInitStatus.duplicateInitAttempt = true;
+        window.debugLog && window.debugLog('Se detectó un intento de inicialización duplicada');
+    }
+    
+    // Validar que no tengamos múltiples ejecuciones
+    if (window.appInitStatus && window.appInitStatus.iifePrincipalIniciada) {
+        console.warn('⚠️ [PADRE] La función principal IIFE ya se ha iniciado anteriormente');
+        return; // Salimos del script completamente
+    }
+    
+    // Definir función de utilidad para manejo centralizado de errores
+    window.handleApplicationError = function(error, phase) {
+        console.error(`❌ [PADRE] Error en ${phase || 'fase desconocida'}:`, error);
+        if (window.debugLog) window.debugLog(`Error crítico en ${phase || 'aplicación'}: ${error.message}`);
+        if (window.updateMapDebug) window.updateMapDebug(`Error: ${error.message}`);
+    };
+    
+    // IIFE principal con estructura simplificada
     (async () => {
         try {
-            window.debugLog('Inicializando aplicación...');
+            // Marcar el inicio de la inicialización
+            window.appInitStatus = window.appInitStatus || {};
+            window.appInitStatus.iifePrincipalIniciada = true;
+            window.appInitStatus.startTimestamp = Date.now();
+            window.appInitStatus.initStarted = true;
+                
+            console.log('🔍 [PADRE] IIFE principal iniciada - Timestamp:', window.appInitStatus.startTimestamp);
+            console.log('🚀 [PADRE] Comenzando inicialización de la aplicación...');
+            window.debugLog && window.debugLog('Inicializando aplicación...');
+            window.appInitStatus.started = true;
+            window.updateMapDebug && window.updateMapDebug('Iniciando carga de módulos principales...');
             
             // Importar módulos
             window.debugLog('Importando módulos...');
             
-            // FIX: Import modules individually to avoid naming conflicts
-            const appModule = await import('./js/app.js');
-            const mapaModule = await import('./js/funciones-mapa.js');
-            const mensajeriaModule = await import('./js/mensajeria.js');
-            const constantsModule = await import('./js/constants.js');
-            const configModule = await import('./js/config.js');
-            const loggerModule = await import('./js/logger.js');
+            // Verificar que no haya imports previos
+            if (window.appModulesLoaded) {
+                console.warn('⚠️ [PADRE] Los módulos ya fueron importados anteriormente');
+            } else {
+                console.log('📦 [PADRE] Importando módulos por primera vez...');
+                window.appModulesLoaded = true;
+            }
+                // FIX: Import modules individually to avoid naming conflicts
+                const appModule = await import('./js/app.js');
+                console.log('✅ [PADRE] Módulo app.js cargado');
+                const mapaModule = await import('./js/funciones-mapa.js');
+                console.log('✅ [PADRE] Módulo funciones-mapa.js cargado');
+                const mensajeriaModule = await import('./js/mensajeria.js');
+                console.log('✅ [PADRE] Módulo mensajeria.js cargado');
+                const constantsModule = await import('./js/constants.js');
+                console.log('✅ [PADRE] Módulo constants.js cargado');
+                const configModule = await import('./js/config.js');
+                console.log('✅ [PADRE] Módulo config.js cargado');
+                const loggerModule = await import('./js/logger.js');
+                console.log('✅ [PADRE] Módulo logger.js cargado');
+                
+                // Destructure with aliases to avoid naming conflicts
+                const { 
+                    estado: appEstado,
+                    notificarError,
+                    enviarCambioModo
+                } = appModule;
             
-            // Destructure with aliases to avoid naming conflicts
-            const { 
-                estado: appEstado,
-                notificarError,
-                enviarCambioModo
-            } = appModule;
+                const {
+                    inicializarMapa,
+                    inicializarModuloMapa
+                } = mapaModule;
+                
+                const {
+                    inicializarMensajeria,
+                    registrarControlador,
+                    enviarMensaje
+                } = mensajeriaModule;
+                
+                const { TIPOS_MENSAJE } = constantsModule;
+                const { CONFIG } = configModule;
+                const logger = loggerModule.default; // FIX: Get logger properly
             
-            const {
-                inicializarMapa,
-                inicializarModuloMapa
-            } = mapaModule;
+                // Make available globally
+                window.logger = logger; // FIX: Make logger available globally
+                
+                // Usar HIJOS de la configuración centralizada
+                const { HIJOS } = CONFIG;
+                
+                const MAP_CONFIG = {
+                    center: [39.4699, -0.3763], zoom: 13, minZoom: 12, maxZoom: 18, zoomControl: false
+                };
+
+                // FIX: Use the imported state rather than creating a duplicate
+                const estadoApp = appEstado;
+                window.estadoApp = estadoApp;
             
-            const {
-                inicializarMensajeria,
-                registrarControlador,
-                enviarMensaje
-            } = mensajeriaModule;
-            
-            const { TIPOS_MENSAJE } = constantsModule;
-            const { CONFIG } = configModule;
-            const logger = loggerModule.default; // FIX: Get logger properly
-            
-            // Make available globally
-            window.logger = logger; // FIX: Make logger available globally
-            
-            // Usar HIJOS de la configuración centralizada
-            const { HIJOS } = CONFIG;
-            
-            const MAP_CONFIG = {
-                center: [39.4699, -0.3763], zoom: 13, minZoom: 12, maxZoom: 18, zoomControl: false
+            // Definir funciones de utilidad globalmente
+            window.ocultarMedios = function() {
+                const mediaOverlay = document.getElementById('media-overlay');
+                const videoElement = document.getElementById('parada-video');
+                
+                if (mediaOverlay) {
+                    mediaOverlay.style.display = 'none';
+                }
+                
+                if (videoElement) {
+                    videoElement.pause();
+                    videoElement.currentTime = 0;
+                }
             };
-
-            // FIX: Use the imported state rather than creating a duplicate
-            const estadoApp = appEstado;
-            window.estadoApp = estadoApp;
-
+            
             // 3. DATOS DE LA AVENTURA
             const AVENTURA_PARADAS = [
                 { padreid: "padre-P-0", tipo: "inicio", parada_id: 'P-0', audio_id: "audio-P-0", reto_id: "R-2" },
@@ -329,7 +424,19 @@
             ];
 
             // 4. LÓGICA DE ARRANQUE
+            // Crear variable para controlar si el evento DOMContentLoaded ya se procesó
+            window.domContentLoadedProcessed = false;
+            
             document.addEventListener('DOMContentLoaded', async () => {
+                // Evitar múltiples ejecuciones del mismo evento
+                if (window.domContentLoadedProcessed) {
+                    console.warn('⚠️ [PADRE] DOMContentLoaded ya fue procesado anteriormente. Evitando inicialización duplicada.');
+                    return;
+                }
+                
+                window.domContentLoadedProcessed = true;
+                console.log('🔄 [PADRE] Procesando evento DOMContentLoaded...');
+                
                 const logger = {
                     info: (msg, ...args) => console.log(`[INFO] ${msg}`, ...args),
                     error: (msg, ...args) => console.error(`[ERROR] ${msg}`, ...args),
@@ -383,8 +490,96 @@
                     }
                     
                     // 6. Notificar inicialización a los hijos
-                    if (typeof notificarInicializacionAHijos === 'function') {
-                        await notificarInicializacionAHijos();
+                    try {
+                        // Implementamos la función de notificación directamente aquí para evitar problemas de hoisting
+                        // y referencias
+                        logger.info('Notificando inicialización a los hijos...');
+                        
+                        // Preparar el array de paradas adaptado para cada tipo de hijo
+                        const arrayParadasSimplificado = AVENTURA_PARADAS.map(parada => ({
+                            id: parada.padreid,
+                            tipo: parada.tipo,
+                            parada_id: parada.parada_id,
+                            tramo_id: parada.tramo_id,
+                            audio_id: parada.audio_id,
+                            reto_id: parada.reto_id || (parada.retos && parada.retos.length > 0 ? 
+                                        (typeof parada.retos[0] === 'string' ? 
+                                        parada.retos[0] : parada.retos[0].id) : null)
+                        }));
+                        
+                        const promesas = Object.values(HIJOS).map(hijo => {
+                            // Dependiendo del tipo de hijo, enviar los datos que necesita
+                            let datosEspecificos = { aventuraParadas: AVENTURA_PARADAS };
+                            
+                            // Para el mapa y componentes visuales, enviar datos simplificados
+                            if (hijo.id === HIJOS.CASA.id || hijo.id === HIJOS.COORDENADAS.id) {
+                                datosEspecificos = { 
+                                    aventuraParadas: arrayParadasSimplificado,
+                                    modoActual: estadoApp.modo.actual
+                                };
+                            }
+                            
+                            // Para el componente de audio, enviar solo IDs de audio
+                            if (hijo.id === HIJOS.AUDIO.id) {
+                                datosEspecificos = { 
+                                    audios: AVENTURA_PARADAS.map(p => ({
+                                        id: p.audio_id,
+                                        tipo: p.tipo,
+                                        padreid: p.padreid
+                                    }))
+                                };
+                            }
+                            
+                            // Para el componente de retos, enviar solo IDs de retos
+                            if (hijo.id === HIJOS.RETOS.id) {
+                                const retos = [];
+                                AVENTURA_PARADAS.forEach(p => {
+                                    if (p.reto_id) {
+                                        retos.push({
+                                            id: p.reto_id,
+                                            padreid: p.padreid,
+                                            tipo: 'reto'
+                                        });
+                                    }
+                                    if (p.retos && Array.isArray(p.retos)) {
+                                        p.retos.forEach(r => {
+                                            const retoId = typeof r === 'string' ? r : r.id;
+                                            const retoTipo = typeof r === 'string' ? 'reto' : r.tipo;
+                                            retos.push({
+                                                id: retoId,
+                                                padreid: p.padreid,
+                                                tipo: retoTipo
+                                            });
+                                        });
+                                    }
+                                });
+                                datosEspecificos = { retos };
+                            }
+                            
+                            return enviarMensaje(hijo.id, TIPOS_MENSAJE.SISTEMA.INICIALIZACION, datosEspecificos)
+                                .catch(err => logger.warn(`No se pudo notificar a ${hijo.nombre}:`, err.message));
+                        });
+                        
+                        await Promise.allSettled(promesas);
+                        logger.info('Notificación a hijos completada desde flujo principal');
+                    } catch (error) {
+                        logger.error("Error al notificar a los hijos:", error);
+                        updateMapDebug("Error al notificar a los hijos: " + error.message);
+                    }
+                    
+                    // 7. Configurar cierre del overlay de medios
+                    const closeMediaBtn = document.getElementById('close-media');
+                    if (closeMediaBtn) {
+                        console.log('🔍 [PADRE] Configurando botón de cierre del overlay de medios');
+                        
+                        // Eliminar listeners anteriores si existen para evitar duplicados
+                        closeMediaBtn.removeEventListener('click', window.ocultarMedios);
+                        
+                        // Agregar nuevo listener
+                        closeMediaBtn.addEventListener('click', window.ocultarMedios);
+                        console.log('✅ [PADRE] Botón de cierre configurado correctamente');
+                    } else {
+                        console.warn('⚠️ [PADRE] No se encontró el botón de cierre del overlay de medios');
                     }
                     
                     logger.info('Aplicación inicializada correctamente');
@@ -424,11 +619,78 @@
             });
 
             // 5. FUNCIONES PRINCIPALES
+            // Variable para controlar la inicialización del sistema de mensajería
+            window._mensajeriaInicializandose = false;
+            
             async function inicializarSistemaMensajeria() {
-                if (estadoApp.mensajeriaInicializada) return;
-                await inicializarMensajeria({ iframeId: CONFIG.ID_PADRE, logLevel: CONFIG.LOG_LEVEL });
-                estadoApp.mensajeriaInicializada = true;
-                logger.info('Sistema de mensajería inicializado.');
+                try {
+                    console.log('🔄 [PADRE] Iniciando inicialización del sistema de mensajería');
+                    
+                    // Verificar si el sistema ya está inicializado
+                    if (estadoApp.mensajeriaInicializada) {
+                        console.log('✅ [PADRE] Sistema de mensajería ya inicializado');
+                        return true;
+                    }
+                    
+                    // Verificar si hay una inicialización en curso
+                    if (window._mensajeriaInicializandose) {
+                        console.log('⏳ [PADRE] Sistema de mensajería ya está inicializándose. Esperando...');
+                        // Esperar a que termine la inicialización en curso
+                        let intentos = 0;
+                        while (window._mensajeriaInicializandose && intentos < 10) {
+                            await new Promise(resolve => setTimeout(resolve, 100));
+                            intentos++;
+                        }
+                        
+                        if (estadoApp.mensajeriaInicializada) {
+                            console.log('✅ [PADRE] Sistema de mensajería inicializado por otro proceso');
+                            return true;
+                        }
+                    }
+                    
+                    // Marcar como en proceso de inicialización
+                    window._mensajeriaInicializandose = true;
+                    
+                    // Confirmar que tenemos las funciones necesarias
+                    if (typeof inicializarMensajeria !== 'function') {
+                        throw new Error('La función inicializarMensajeria no está disponible');
+                    }
+                    
+                    console.log('🔄 [PADRE] Llamando a inicializarMensajeria con:', { 
+                        iframeId: CONFIG.ID_PADRE, 
+                        logLevel: CONFIG.LOG_LEVEL 
+                    });
+                    
+                    await inicializarMensajeria({ 
+                        iframeId: CONFIG.ID_PADRE, 
+                        logLevel: CONFIG.LOG_LEVEL 
+                    });
+                    
+                    estadoApp.mensajeriaInicializada = true;
+                    window._mensajeriaInicializandose = false; // Liberar flag de inicialización
+                    logger.info('Sistema de mensajería inicializado correctamente');
+                    console.log('✅ [PADRE] Sistema de mensajería inicializado correctamente');
+                    
+                    return true;
+                } catch (error) {
+                    const errorMsg = `Error al inicializar sistema de mensajería: ${error.message}`;
+                    console.error('❌ [PADRE] ' + errorMsg, error);
+                    logger.error(errorMsg, error);
+                    updateMapDebug(`Error: No se pudo inicializar el sistema de mensajería - ${error.message}`);
+                    
+                    // Si hay un error al inicializar la mensajería, intentar configurar un respaldo básico
+                    console.warn('⚠️ [PADRE] Intentando configurar sistema de mensajería de respaldo');
+                    window.addEventListener('message', function(event) {
+                        try {
+                            const data = event.data;
+                            console.debug('[RESPALDO] Mensaje recibido:', data);
+                        } catch (e) {
+                            console.error('[RESPALDO] Error al procesar mensaje:', e);
+                        }
+                    });
+                    
+                    throw error;
+                }
             }
 
             async function iniciarSistemaMapa() {
@@ -470,12 +732,72 @@
 
             async function notificarInicializacionAHijos() {
                 logger.info('Notificando inicialización a los hijos...');
-                const promesas = Object.values(CONFIG.HIJOS).map(hijo =>
-                    // FIX: Use the imported function
-                    enviarMensaje(hijo.id, TIPOS_MENSAJE.SISTEMA.INICIALIZACION, {
-                        aventuraParadas: AVENTURA_PARADAS
-                    }).catch(err => logger.warn(`No se pudo notificar a ${hijo.nombre}:`, err.message))
-                );
+                
+                // Preparar el array de paradas adaptado para cada tipo de hijo
+                const arrayParadasSimplificado = AVENTURA_PARADAS.map(parada => ({
+                    id: parada.padreid,
+                    tipo: parada.tipo,
+                    parada_id: parada.parada_id,
+                    tramo_id: parada.tramo_id,
+                    audio_id: parada.audio_id,
+                    reto_id: parada.reto_id || (parada.retos && parada.retos.length > 0 ? 
+                                (typeof parada.retos[0] === 'string' ? 
+                                parada.retos[0] : parada.retos[0].id) : null)
+                }));
+                
+                const promesas = Object.values(CONFIG.HIJOS).map(hijo => {
+                    // Dependiendo del tipo de hijo, enviar los datos que necesita
+                    let datosEspecificos = { aventuraParadas: AVENTURA_PARADAS };
+                    
+                    // Para el mapa y componentes visuales, enviar datos simplificados
+                    if (hijo.id === CONFIG.HIJOS.CASA.id || hijo.id === CONFIG.HIJOS.COORDENADAS.id) {
+                        datosEspecificos = { 
+                            aventuraParadas: arrayParadasSimplificado,
+                            modoActual: estadoApp.modo.actual
+                        };
+                    }
+                    
+                    // Para el componente de audio, enviar solo IDs de audio
+                    if (hijo.id === CONFIG.HIJOS.AUDIO.id) {
+                        datosEspecificos = { 
+                            audios: AVENTURA_PARADAS.map(p => ({
+                                id: p.audio_id,
+                                tipo: p.tipo,
+                                padreid: p.padreid
+                            }))
+                        };
+                    }
+                    
+                    // Para el componente de retos, enviar solo IDs de retos
+                    if (hijo.id === CONFIG.HIJOS.RETOS.id) {
+                        const retos = [];
+                        AVENTURA_PARADAS.forEach(p => {
+                            if (p.reto_id) {
+                                retos.push({
+                                    id: p.reto_id,
+                                    padreid: p.padreid,
+                                    tipo: 'reto'
+                                });
+                            }
+                            if (p.retos && Array.isArray(p.retos)) {
+                                p.retos.forEach(r => {
+                                    const retoId = typeof r === 'string' ? r : r.id;
+                                    const retoTipo = typeof r === 'string' ? 'reto' : r.tipo;
+                                    retos.push({
+                                        id: retoId,
+                                        padreid: p.padreid,
+                                        tipo: retoTipo
+                                    });
+                                });
+                            }
+                        });
+                        datosEspecificos = { retos };
+                    }
+                    
+                    return enviarMensaje(hijo.id, TIPOS_MENSAJE.SISTEMA.INICIALIZACION, datosEspecificos)
+                        .catch(err => logger.warn(`No se pudo notificar a ${hijo.nombre}:`, err.message));
+                });
+                
                 await Promise.allSettled(promesas);
                 logger.info('Notificación a hijos completada.');
             }
@@ -583,8 +905,14 @@
             function registrarControladoresTotales() {
                 console.log('📝 [PADRE] Registrando controladores de mensajes...');
 
-                // Add specific debug handler for hijo5-casa messages
-                window.addEventListener('message', function(event) {
+                // Remover cualquier manejador existente para evitar duplicaciones
+                if (window.handleHijo5CasaMessages) {
+                    window.removeEventListener('message', window.handleHijo5CasaMessages);
+                    console.log('🔄 [PADRE] Manejador anterior de mensajes hijo5-casa eliminado');
+                }
+                
+                // Define a global handler for hijo5-casa messages
+                window.handleHijo5CasaMessages = function(event) {
                     try {
                         // Only process messages that might be from hijo5-casa
                         if (event.source === document.getElementById('hijo5-casa')?.contentWindow) {
@@ -609,34 +937,75 @@
                                     console.log('[DEBUG] Tipo de mensaje:', typeof data);
                                     console.log('[DEBUG] Keys disponibles:', Object.keys(data));
                                 }
+                            } else {
+                                // Valid message, try to handle it directly if possible
+                                console.log('[DEBUG] Mensaje válido de hijo5-casa:', data.tipo);
+                                if (data.tipo === 'SISTEMA.CAMBIO_MODO' && typeof manejarCambioModo === 'function') {
+                                    console.log('[DEBUG] Procesando mensaje de cambio de modo');
+                                    try {
+                                        manejarCambioModo({origen: 'hijo5-casa', datos: data.datos});
+                                    } catch (e) {
+                                        console.error('[DEBUG] Error al manejar cambio de modo:', e);
+                                    }
+                                }
                             }
                         }
                     } catch (error) {
                         console.error('[DEBUG] Error al procesar mensaje de hijo5-casa:', error);
                     }
-                });
-
-                const controladores = {
-                    [TIPOS_MENSAJE.SISTEMA.ERROR]: manejarErrorSistema,
-                    [TIPOS_MENSAJE.SISTEMA.INICIALIZACION_COMPLETADA]: manejarHijoInicializado,
-                    [TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO]: manejarCambioModo,
-                    [TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS]: manejarSolicitudArrayParadas,
-                    [TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA]: manejarSeleccionPuntoCasa,
-                    [TIPOS_MENSAJE.AUDIO.FINALIZADO]: manejarAudioFinalizado,
-                    [TIPOS_MENSAJE.RETO.MOSTRAR]: manejarMostrarReto,
-                    [TIPOS_MENSAJE.RETO.OCULTAR]: manejarOcultarReto,
-                    [TIPOS_MENSAJE.RETO.COMPLETADO]: manejarRetoCompletado,
-                    ['MAPA.ACTUALIZAR']: manejarActualizacionMapa, // Nuevo manejador para actualizaciones del mapa
                 };
+                
+                // Add the debug handler
+                // Eliminar manejador anterior si existe y añadir el nuevo
+            if (window._hijo5CasaMessageHandlerRegistered) {
+                console.log('🔄 [PADRE] Evitando registro duplicado del manejador de hijo5-casa');
+            } else {
+                window.addEventListener('message', window.handleHijo5CasaMessages);
+                window._hijo5CasaMessageHandlerRegistered = true;
+                console.log('✅ [PADRE] Manejador global para hijo5-casa registrado');
+            }
+
+                // Registrar cada controlador con nombre directo para evitar problemas de referencia
+                const controladores = {};
+                
+                // Registrar controladores del sistema
+                controladores[TIPOS_MENSAJE.SISTEMA.ERROR] = manejarErrorSistema;
+                controladores[TIPOS_MENSAJE.SISTEMA.INICIALIZACION_COMPLETADA] = manejarHijoInicializado;
+                controladores[TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO] = manejarCambioModo;
+                
+                // Registrar controladores de datos
+                controladores[TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS] = manejarSolicitudArrayParadas;
+                
+                // Registrar controladores de navegación
+                controladores[TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA] = manejarSeleccionPuntoCasa;
+                
+                // Registrar controladores de audio
+                controladores[TIPOS_MENSAJE.AUDIO.FINALIZADO] = manejarAudioFinalizado;
+                console.log(`🔊 [PADRE] Registrando controlador para audio finalizado: ${TIPOS_MENSAJE.AUDIO.FINALIZADO}`);
+                
+                // Registrar controladores de retos
+                controladores[TIPOS_MENSAJE.RETO.MOSTRAR] = manejarMostrarReto;
+                controladores[TIPOS_MENSAJE.RETO.OCULTAR] = manejarOcultarReto;
+                controladores[TIPOS_MENSAJE.RETO.COMPLETADO] = manejarRetoCompletado;
+                
+                // Otros controladores
+                controladores['MAPA.ACTUALIZAR'] = manejarActualizacionMapa;
+                controladores[TIPOS_MENSAJE.MEDIOS.EVENTO] = manejarEventosMedios;
 
                 console.log('🎯 [PADRE] Controladores a registrar:', Object.keys(controladores));
                 console.log('🔍 [PADRE] Verificando registro de NAVEGACION.CAMBIO_PARADA:', TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA);
 
-                for (const tipo in controladores) {
-                    console.log(`📌 [PADRE] Registrando controlador para: ${tipo}`);
-                    // FIX: Use the imported function
-                    registrarControlador(tipo, controladores[tipo]);
-                }
+                // Registro individual de controladores para mayor control
+                Object.entries(controladores).forEach(([tipo, handler]) => {
+                    try {
+                        console.log(`📌 [PADRE] Registrando controlador para: ${tipo}`);
+                        registrarControlador(tipo, handler);
+                        console.log(`✅ [PADRE] Controlador para ${tipo} registrado correctamente`);
+                    } catch (error) {
+                        console.error(`❌ [PADRE] Error al registrar controlador para ${tipo}:`, error);
+                        logger.error(`Error al registrar controlador para ${tipo}:`, error);
+                    }
+                });
                 console.log('✅ [PADRE] Controladores de mensajes registrados correctamente.');
                 logger.info('Controladores de mensajes registrados.');
             }
@@ -660,15 +1029,65 @@
                 }
             }
             
+            /**
+             * Maneja las solicitudes de datos de paradas desde los hijos
+             * @param {Object} msg - Mensaje de solicitud de paradas
+             * @returns {Object} - Respuesta con los datos solicitados
+             */
             function manejarSolicitudArrayParadas(msg) { 
-                const { origen, timestamp } = msg.datos || {};
-                logger.info(`Solicitud de paradas desde ${origen}`, { timestamp });
+                const { origen, puntoId, paradaId, tramoId, timestamp } = msg.datos || {};
+                logger.info(`Solicitud de datos de paradas desde ${origen}`, { puntoId, paradaId, tramoId, timestamp });
+                
+                // 1. Solicitud de todas las paradas (comportamiento predeterminado)
+                if (!puntoId && !paradaId && !tramoId) {
+                    return { 
+                        exito: true, 
+                        paradas: AVENTURA_PARADAS,
+                        timestamp: Date.now(),
+                        totalParadas: AVENTURA_PARADAS.length
+                    }; 
+                }
+                
+                // 2. Solicitud de una parada específica
+                let idBuscado = puntoId || paradaId || tramoId;
+                if (idBuscado) {
+                    // Buscar la parada solicitada
+                    const parada = buscarParada(idBuscado);
+                    
+                    if (parada) {
+                        // Extraer los medios si existen (implementación ejemplo, adaptar según estructura real)
+                        const datosPunto = {
+                            id: parada.padreid,
+                            tipo: parada.tipo,
+                            titulo: `${parada.tipo === 'parada' ? 'Parada' : 'Tramo'} ${parada.parada_id || parada.tramo_id}`,
+                            // Los campos imagen y video deberían venir de alguna parte, 
+                            // posiblemente CONFIG o de algún otro array con esa información
+                            imagen: parada.imagen || null,
+                            video: parada.video || null
+                        };
+                        
+                        return {
+                            exito: true,
+                            parada,
+                            datosPunto,
+                            timestamp: Date.now()
+                        };
+                    }
+                    
+                    // No se encontró la parada
+                    return {
+                        exito: false,
+                        error: `No se encontró parada con ID: ${idBuscado}`,
+                        timestamp: Date.now()
+                    };
+                }
+                
+                // Solicitud inválida
                 return { 
-                    exito: true, 
-                    paradas: AVENTURA_PARADAS,
-                    timestamp: Date.now(),
-                    totalParadas: AVENTURA_PARADAS.length
-                }; 
+                    exito: false, 
+                    error: 'Solicitud de parada inválida',
+                    timestamp: Date.now()
+                };
             }
             /**
              * Maneja el cambio de modo (casa/aventura) solicitado por un hijo
@@ -804,6 +1223,52 @@
             }
 
             /**
+             * Busca una parada completa en el array AVENTURA_PARADAS por cualquiera de sus IDs
+             * @param {Object} criterio - Criterio de búsqueda (padreid, parada_id, tramo_id, etc)
+             * @returns {Object|null} La parada encontrada o null si no existe
+             */
+            function buscarParada(criterio) {
+                if (!criterio) return null;
+                
+                // Si nos pasan un objeto punto, extraemos los ids principales
+                if (typeof criterio === 'object') {
+                    const { padreid, parada_id, tramo_id } = criterio;
+                    
+                    // Buscar primero por padreid (identificador interno)
+                    if (padreid) {
+                        const porPadreId = AVENTURA_PARADAS.find(p => p.padreid === padreid);
+                        if (porPadreId) return porPadreId;
+                    }
+                    
+                    // Luego buscar por los ids específicos de tipo
+                    if (parada_id) {
+                        const porParadaId = AVENTURA_PARADAS.find(p => p.parada_id === parada_id);
+                        if (porParadaId) return porParadaId;
+                    }
+                    
+                    if (tramo_id) {
+                        const porTramoId = AVENTURA_PARADAS.find(p => p.tramo_id === tramo_id);
+                        if (porTramoId) return porTramoId;
+                    }
+                    
+                    return null;
+                }
+                
+                // Si es un string, intentar buscar en todos los campos de id
+                if (typeof criterio === 'string') {
+                    return AVENTURA_PARADAS.find(p => 
+                        p.padreid === criterio || 
+                        p.parada_id === criterio || 
+                        p.tramo_id === criterio || 
+                        p.audio_id === criterio || 
+                        p.reto_id === criterio
+                    );
+                }
+                
+                return null;
+            }
+            
+            /**
              * Maneja la selección de un punto en el mapa
              * @param {Object} msg - Mensaje con los datos del punto seleccionado
              * @returns {Promise<Object>} Resultado de la operación
@@ -816,7 +1281,7 @@
 
                 const { punto, origen, timestamp } = msg.datos || {};
 
-                if (!punto || !punto.padreid) {
+                if (!punto) {
                     const errorMsg = 'Datos de punto inválidos o faltantes';
                     console.error('❌ [PADRE] Error de validación:', errorMsg, { punto, origen, timestamp });
                     logger.error(errorMsg, { punto, origen, timestamp });
@@ -825,8 +1290,7 @@
                         codigo: 'PUNTO_INVALIDO',
                         mensaje: errorMsg,
                         origen: 'padre',
-                        timestamp: Date.now(),
-                        datos: { puntoId: punto?.padreid }
+                        timestamp: Date.now()
                     });
 
                     return {
@@ -836,120 +1300,313 @@
                     };
                 }
 
-                console.log('✅ [PADRE] Punto válido, iniciando orquestación para:', punto.padreid);
-                logger.info(`Recibida selección de punto en modo casa: ${punto.padreid}`);
+                // 1. Buscar la información completa de la parada en nuestro array
+                const paradaCompleta = buscarParada(punto);
+                
+                // Si no encontramos la parada, intentamos usar directamente el punto recibido
+                const puntoNormalizado = paradaCompleta || punto;
+                
+                console.log('✅ [PADRE] Punto encontrado:', paradaCompleta ? 'SÍ' : 'NO, usando punto original');
+                const idLog = paradaCompleta?.padreid || punto.padreid || punto.parada_id || punto.tramo_id || 'desconocido';
+                logger.info(`Recibida selección de punto en modo casa: ${idLog}`);
 
-                // 1. Orquestar al mapa para que se centre en el punto
+                // 2. Orquestar al mapa para que se centre en el punto
                 console.log('🗺️ [PADRE] Paso 1: Enviando ESTABLECER_DESTINO al mapa');
-                await enviarMensaje('mapa', TIPOS_MENSAJE.NAVEGACION.ESTABLECER_DESTINO, { punto });
+                await enviarMensaje('mapa', TIPOS_MENSAJE.NAVEGACION.ESTABLECER_DESTINO, { 
+                    punto: puntoNormalizado 
+                });
 
-                // 2. Orquestar al hijo de audio para que cargue el audio correspondiente
-                if (punto.audio_id) {
-                    console.log('🎵 [PADRE] Paso 2: Enviando REPRODUCIR al audio:', punto.audio_id);
-                    await enviarMensaje(CONFIG.HIJOS.AUDIO.id, TIPOS_MENSAJE.AUDIO.REPRODUCIR, { id: punto.audio_id });
+                // 3. Orquestar al hijo de audio para que cargue el audio correspondiente
+                const audioId = puntoNormalizado.audio_id;
+                if (audioId) {
+                    console.log('🎵 [PADRE] Paso 2: Enviando REPRODUCIR al audio:', audioId);
+                    await reproducirAudio(audioId, puntoNormalizado.tipo);
                 } else {
                     console.log('🔇 [PADRE] Paso 2: No hay audio_id, saltando audio');
                 }
 
-                // 3. Orquestar al hijo de retos si hay un reto
-                if (punto.reto_id) {
-                    console.log('🎯 [PADRE] Paso 3: Enviando MOSTRAR_RETO:', punto.reto_id);
-                    await manejarMostrarReto({ datos: { retoId: punto.reto_id } });
+                // 4. Orquestar al hijo de retos si hay un reto
+                const retoId = extraerRetoId(puntoNormalizado);
+                
+                if (retoId) {
+                    console.log('🎯 [PADRE] Paso 3: Enviando MOSTRAR_RETO:', retoId);
+                    await manejarMostrarReto({ datos: { retoId } });
                 } else {
                     console.log('🎮 [PADRE] Paso 3: No hay reto_id, ocultando retos');
                     await manejarOcultarReto(); // Ocultar si no hay reto
                 }
 
-                // 4. Obtener y mostrar medios (imagen/video) desde hijo2
-                const puntoId = punto.parada_id || punto.tramo_id;
-                console.log('📸 [PADRE] Paso 4: Solicitando medios para puntoId:', puntoId);
-                const respuestaMedios = await enviarMensaje(CONFIG.HIJOS.COORDENADAS.id, TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS, { puntoId });
-                if (respuestaMedios.exito && respuestaMedios.datosPunto) {
-                    const datosPunto = respuestaMedios.datosPunto;
-                    // Aquí se podría mostrar la imagen/video en un overlay del padre si se desea
-                    console.log('📸 [PADRE] Medios encontrados:', { img: datosPunto.imagen, video: datosPunto.video });
-                    logger.info(`Medios para ${puntoId}:`, { img: datosPunto.imagen, video: datosPunto.video });
+                // 5. Obtener y mostrar medios (imagen/video) desde hijo2
+                const medios = await obtenerMediosParaPunto(puntoNormalizado);
+                
+                // Mostrar medios si se encontraron
+                if (medios) {
+                    mostrarMedios(medios);
                 } else {
-                    console.log('❌ [PADRE] No se encontraron medios para:', puntoId);
+                    console.log('❌ [PADRE] No se encontraron medios para el punto:', puntoNormalizado);
                 }
 
-                console.log('🎉 [PADRE] Orquestación completada exitosamente para:', punto.padreid);
-                return { exito: true, mensaje: `Orquestación para ${punto.padreid} iniciada.` };
+                console.log('🎉 [PADRE] Orquestación completada exitosamente para:', idLog);
+                return { exito: true, mensaje: `Orquestación para ${idLog} iniciada.` };
             }
-
             /**
-             * Maneja la finalización de la reproducción de audio
-             * @param {Object} msg - Mensaje con los datos del audio
+             * Función auxiliar para enviar un mensaje estandarizado al componente de audio
+             * @param {string} audioId - ID del audio a reproducir
+             * @param {string} tipo - Tipo de audio (parada, tramo, etc.)
              * @returns {Promise<Object>} Resultado de la operación
              */
-            async function manejarAudioFinalizado(msg) {
-                const { audioId, exito, error, origen, timestamp } = msg.datos || {};
-                const logContext = { audioId, exito, origen, timestamp };
-                
+            async function reproducirAudio(audioId, tipo = 'desconocido') {
                 if (!audioId) {
-                    const errorMsg = 'ID de audio no proporcionado';
-                    logger.error(errorMsg, logContext);
-                    return { 
-                        exito: false, 
-                        error: errorMsg,
-                        timestamp: Date.now()
-                    };
+                    logger.warn('Se intentó reproducir un audio sin ID');
+                    return { exito: false, error: 'ID de audio no proporcionado' };
                 }
                 
-                if (exito) {
-                    logger.info(`Audio finalizado correctamente: ${audioId}`, logContext);
-                } else {
-                    logger.error(`Error al reproducir audio ${audioId}: ${error || 'Error desconocido'}`, logContext);
-                }
+                console.log(`🎵 [PADRE] Enviando reproducir audio: ${audioId} (${tipo})`);
                 
-                return { 
-                    exito: true, 
-                    audioId,
-                    timestamp: Date.now()
-                };
+                try {
+                    // Asegurarse de que siempre se envía con el mismo formato
+                    return await enviarMensaje(CONFIG.HIJOS.AUDIO.id, TIPOS_MENSAJE.AUDIO.REPRODUCIR, {
+                        audioId, // Siempre usar audioId como parámetro principal
+                        id: audioId, // Mantener compatibilidad con implementaciones anteriores
+                        tipo
+                    });
+                } catch (error) {
+                    const errorMsg = `Error al reproducir audio ${audioId}: ${error.message}`;
+                    logger.error(errorMsg, { audioId, tipo, error });
+                    return { exito: false, error: errorMsg };
+                }
             }
-
+            
             /**
-             * Maneja la finalización de un reto
-             * @param {Object} msg - Mensaje con los datos del reto
-             * @returns {Promise<Object>} Resultado de la operación
+             * Función auxiliar para mostrar medios en el overlay
+             * @param {Object} medios - Objeto con rutas de imagen y/o video
+             * @returns {boolean} - Si se mostró algún medio
              */
-            async function manejarRetoCompletado(msg) {
-                const { retoId, exito, puntuacion, datos, origen, timestamp } = msg.datos || {};
-                const logContext = { retoId, exito, puntuacion, origen, timestamp };
+            function mostrarMedios(medios) {
+                if (!medios) return false;
                 
-                if (!retoId) {
-                    const errorMsg = 'ID de reto no proporcionado';
-                    logger.error(errorMsg, logContext);
-                    return { 
-                        exito: false, 
-                        error: errorMsg,
-                        timestamp: Date.now()
-                    };
+                const { imagen, video } = medios;
+                if (!imagen && !video) return false;
+                
+                const mediaOverlay = document.getElementById('media-overlay');
+                const videoElement = document.getElementById('parada-video');
+                const imagenElement = document.getElementById('parada-imagen');
+                
+                if (!mediaOverlay || (!videoElement && !imagenElement)) {
+                    console.error('❌ [PADRE] No se encontraron los elementos del overlay de medios');
+                    return false;
                 }
                 
-                if (exito) {
-                    logger.info(`Reto ${retoId} completado exitosamente`, logContext);
-                    // Actualizar estado de la parada como completada
-                    const parada = AVENTURA_PARADAS.find(p => p.reto_id === retoId);
-                    if (parada) {
-                        logger.info(`Parada ${parada.parada_id} marcada como completada`);
-                        // Aquí podrías actualizar el estado de la parada en la interfaz
-                    }
-                } else {
-                    logger.warn(`Reto ${retoId} no completado`, logContext);
+                // Ocultar ambos elementos por defecto
+                if (videoElement) videoElement.style.display = 'none';
+                if (imagenElement) imagenElement.style.display = 'none';
+                
+                let mostrado = false;
+                
+                // Preferir video sobre imagen si ambos están presentes
+                if (video && videoElement) {
+                    videoElement.src = video;
+                    videoElement.style.display = 'block';
+                    mostrado = true;
+                } else if (imagen && imagenElement) {
+                    imagenElement.src = imagen;
+                    imagenElement.style.display = 'block';
+                    mostrado = true;
                 }
                 
-                // Ocultar el reto después de completarse
-                await manejarOcultarReto();
+                // Mostrar el overlay si se encontró algún medio
+                if (mostrado) {
+                    mediaOverlay.style.display = 'flex';
+                    return true;
+                }
                 
-                return { 
-                    exito: true, 
-                    retoId,
-                    timestamp: Date.now()
-                };
+                return false;
             }
-
+            
+            /**
+             * Función auxiliar para ocultar el overlay de medios
+             */
+            function ocultarMedios() {
+                const mediaOverlay = document.getElementById('media-overlay');
+                const videoElement = document.getElementById('parada-video');
+                
+                if (mediaOverlay) {
+                    mediaOverlay.style.display = 'none';
+                }
+                
+                if (videoElement) {
+                    videoElement.pause();
+                    videoElement.currentTime = 0;
+                }
+            }
+            
+            /**
+             * Obtiene los datos de medios para un punto desde el componente de coordenadas
+             * @param {Object} punto - Punto del que obtener los medios
+             * @returns {Promise<Object|null>} - Objeto con los medios obtenidos o null
+             */
+            async function obtenerMediosParaPunto(punto) {
+                if (!punto) return null;
+                
+                // Preparar todas las posibles formas de ID para aumentar posibilidades de éxito
+                const puntoIds = [
+                    punto.parada_id,
+                    punto.tramo_id,
+                    punto.id,
+                    (punto.tipo === 'parada' && punto.parada) ? `P-${punto.parada}` : null,
+                    (punto.tipo === 'tramo' && punto.tramo) ? `TR-${punto.tramo}` : null
+                ].filter(Boolean); // Eliminar nulls
+                
+                console.log('📸 [PADRE] Solicitando medios para puntoIds:', puntoIds);
+                
+                // Intentar obtener medios con cada ID posible
+                for (const puntoId of puntoIds) {
+                    try {
+                        const respuestaMedios = await enviarMensaje(
+                            CONFIG.HIJOS.COORDENADAS.id, 
+                            TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS, 
+                            { puntoId }
+                        );
+                        
+                        // Si obtuvimos datos, retornarlos
+                        if (respuestaMedios && respuestaMedios.exito && respuestaMedios.datosPunto) {
+                            console.log('📸 [PADRE] Medios encontrados con ID:', puntoId);
+                            return respuestaMedios.datosPunto;
+                        }
+                    } catch (error) {
+                        console.warn(`📸 [PADRE] Error al obtener medios para puntoId ${puntoId}:`, error.message);
+                    }
+                }
+                
+                console.log('❌ [PADRE] No se encontraron medios para ninguno de los IDs:', puntoIds);
+                return null;
+            }
+            
+            /**
+             * Centraliza el manejo de eventos relacionados con medios (imágenes/videos)
+             * @param {Object} msg - Mensaje con datos del evento de medios
+             * @returns {Promise<Object>} Resultado del manejo del evento
+             */
+            async function manejarEventosMedios(msg) {
+                const { accion, datos, origen } = msg.datos || {};
+                
+                switch (accion) {
+                    case 'mostrar': {
+                        // Mostrar medios específicos
+                        const { imagen, video } = datos || {};
+                        const mostrado = mostrarMedios({ imagen, video });
+                        return { 
+                            exito: mostrado, 
+                            mensaje: mostrado ? 'Medios mostrados' : 'No se pudieron mostrar los medios',
+                            timestamp: Date.now()
+                        };
+                    }
+                    
+                    case 'ocultar': 
+                        // Ocultar todos los medios
+                        ocultarMedios();
+                        return { 
+                            exito: true, 
+                            mensaje: 'Medios ocultados',
+                            timestamp: Date.now()
+                        };
+                    
+                    case 'obtener': {
+                        // Obtener medios para un punto específico
+                        const { puntoId, paradaId, tramoId } = datos || {};
+                        const idBuscado = puntoId || paradaId || tramoId;
+                        
+                        if (!idBuscado) {
+                            return { 
+                                exito: false, 
+                                error: 'No se proporcionó ningún ID para buscar medios',
+                                timestamp: Date.now()
+                            };
+                        }
+                        
+                        const parada = buscarParada(idBuscado);
+                        if (!parada) {
+                            return { 
+                                exito: false, 
+                                error: `No se encontró parada con ID: ${idBuscado}`,
+                                timestamp: Date.now()
+                            };
+                        }
+                        
+                        const medios = await obtenerMediosParaPunto(parada);
+                        return { 
+                            exito: !!medios, 
+                            medios,
+                            parada: parada.padreid,
+                            timestamp: Date.now()
+                        };
+                    }
+                    
+                    default:
+                        return { 
+                            exito: false, 
+                            error: `Acción de medios no reconocida: ${accion || 'no especificada'}`,
+                            timestamp: Date.now()
+                        };
+                }
+            }
+            
+            /**
+             * Extrae el ID del reto de una parada, manejando tanto reto_id como el array retos
+             * @param {Object} parada - Parada de la que extraer el ID del reto
+             * @param {number} indice - Índice del reto a extraer en caso de múltiples retos (por defecto 0)
+             * @returns {string|null} - ID del reto o null si no hay
+             */
+            function extraerRetoId(parada, indice = 0) {
+                if (!parada) return null;
+                
+                // Caso 1: Hay un reto_id directo
+                if (parada.reto_id) {
+                    return parada.reto_id;
+                }
+                
+                // Caso 2: Hay un array de retos
+                if (parada.retos && Array.isArray(parada.retos) && parada.retos.length > 0) {
+                    // Si el índice está fuera de rango, usar el primer reto
+                    const idx = indice >= 0 && indice < parada.retos.length ? indice : 0;
+                    const reto = parada.retos[idx];
+                    
+                    // Puede ser un string directo o un objeto con id
+                    return typeof reto === 'string' ? reto : reto?.id || null;
+                }
+                
+                return null;
+            }
+            
+            /**
+             * Obtiene todos los IDs de retos asociados a una parada
+             * @param {Object} parada - Parada de la que extraer los IDs de retos
+             * @returns {Array<string>} - Array de IDs de retos
+             */
+            function obtenerTodosLosRetos(parada) {
+                if (!parada) return [];
+                
+                const retos = [];
+                
+                // Caso 1: Hay un reto_id directo
+                if (parada.reto_id) {
+                    retos.push(parada.reto_id);
+                }
+                
+                // Caso 2: Hay un array de retos
+                if (parada.retos && Array.isArray(parada.retos)) {
+                    parada.retos.forEach(reto => {
+                        // Puede ser un string directo o un objeto con id
+                        const retoId = typeof reto === 'string' ? reto : reto?.id;
+                        if (retoId) {
+                            retos.push(retoId);
+                        }
+                    });
+                }
+                
+                return retos;
+            }
+            
             /**
              * Muestra un reto en la interfaz
              * @param {Object} msg - Mensaje con los datos del reto a mostrar
@@ -1008,6 +1665,7 @@
                 try {
                     const retoElement = document.getElementById('hijo4');
                     if (retoElement) {
+                        await enviarMensaje(CONFIG.HIJOS.RETOS.id, TIPOS_MENSAJE.RETO.OCULTAR, { timestamp: Date.now() });
                         retoElement.style.display = 'none';
                         logger.info('Reto ocultado');
                     }
@@ -1025,68 +1683,176 @@
                     };
                 }
             }
-
-            // En el manejador de llegada a parada (ejemplo)
-            function manejarLlegadaParada(msg) {
-                const { paradaId, origen } = msg.datos || {};
-                const paradaIndex = AVENTURA_PARADAS.findIndex(p => p.parada_id === paradaId);
-                if (paradaIndex === -1) return;
-
-                // Solo permitir avanzar si la parada anterior fue visitada
-                if (paradaIndex > estadoApp.paradaActual + 1) {
-                    logger.warn(`Intento de saltar parada. Actual: ${estadoApp.paradaActual}, solicitada: ${paradaIndex}`);
-                    // Opcional: notificar al usuario/hijo que debe visitar la anterior primero
-                    enviarMensaje(origen, TIPOS_MENSAJE.SISTEMA.ERROR, {
-                        tipo: 'orden_paradas',
-                        mensaje: 'Debes visitar la parada anterior antes de avanzar.',
-                        paradaActual: estadoApp.paradaActual,
-                        paradaSolicitada: paradaIndex
-                    });
-                    return;
-                }
-
-                // Si es la siguiente parada, actualizar el estado
-                if (paradaIndex === estadoApp.paradaActual + 1) {
-                    estadoApp.paradaActual = paradaIndex; // ← se actualiza la última parada completada
-                    // Notificar a todos los hijos la nueva parada activa
-                    enviarMensaje('todos', TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, {
-                        paradaId: AVENTURA_PARADAS[paradaIndex].parada_id,
-                        index: paradaIndex
-                    });
-                }
-            }
-
-            // 8. FUNCIONES AUXILIARES
-            function updateMapDebug(status, hideAfter = 0) {
-                const el = document.getElementById('map-debug');
-                if (el) {
-                    el.style.display = 'block';
-                    el.style.opacity = '1';
-                    el.textContent = `Estado: ${status}`;
-                    if (hideAfter > 0) {
-                        setTimeout(() => {
-                            el.style.opacity = '0';
-                            setTimeout(() => el.style.display = 'none', 500);
-                        }, hideAfter);
-                    }
-                }
-            }
-            // Make these available globally
-            window.TIPOS_MENSAJE = TIPOS_MENSAJE;
-            window.enviarMensaje = enviarMensaje;
-            window.notificarInicializacionAHijos = notificarInicializacionAHijos;
             
-            // Initialize the app
-            try {
-                await iniciarSistemaMapa();
-                window.debugLog('Aplicación inicializada correctamente');
-            } catch (error) {
-                console.error('Error al inicializar la aplicación:', error);
+            /**
+             * Maneja la finalización de un reto
+             * @param {Object} msg - Mensaje con los datos del reto
+             * @returns {Promise<Object>} Resultado de la operación
+             */
+            async function manejarRetoCompletado(msg) {
+                const { retoId, exito, puntuacion, datos, origen, timestamp } = msg.datos || {};
+                const logContext = { retoId, exito, puntuacion, origen, timestamp };
+                
+                if (!retoId) {
+                    const errorMsg = 'ID de reto no proporcionado';
+                    logger.error(errorMsg, logContext);
+                    return { 
+                        exito: false, 
+                        error: errorMsg,
+                        timestamp: Date.now()
+                    };
+                }
+                
+                if (exito) {
+                    logger.info(`Reto ${retoId} completado exitosamente`, logContext);
+                    // Actualizar estado de la parada como completada
+                    const parada = AVENTURA_PARADAS.find(p => 
+                        p.reto_id === retoId || obtenerTodosLosRetos(p).includes(retoId));
+                        
+                    if (parada) {
+                        logger.info(`Parada ${parada.padreid} marcada como completada`);
+                        // Aquí se podría actualizar algún estado visual para marcar la parada como completada
+                    }
+                } else {
+                    logger.warn(`Reto ${retoId} no completado`, logContext);
+                }
+                
+                // Ocultar el reto después de completarse
+                await manejarOcultarReto();
+                
+                return { 
+                    exito: true, 
+                    retoId,
+                    timestamp: Date.now()
+                };
             }
+            
+            /**
+             * Maneja la finalización de la reproducción de un audio
+             * @param {Object} msg - Mensaje con los datos del audio finalizado
+             * @returns {Promise<Object>} Resultado de la operación
+             */
+            window.manejarAudioFinalizado = window.manejarAudioFinalizado || async function(msg) {
+                console.log('🔊 [PADRE] manejarAudioFinalizado llamado con:', msg);
+                try {
+                    const { audioId, id, tipo, exito, origen, timestamp } = msg?.datos || {};
+                    console.log('🔊 [PADRE] Audio finalizado:', { audioId, id, tipo, exito, origen });
+                    
+                    // Usar cualquiera de los dos IDs que podrían venir en el mensaje
+                    const audioIdFinal = audioId || id;
+                    
+                    if (!audioIdFinal) {
+                        console.warn('⚠️ [PADRE] Recibida finalización de audio sin ID');
+                        logger.warn('Recibida finalización de audio sin ID');
+                        return { 
+                            exito: false, 
+                            error: 'ID de audio no proporcionado',
+                            timestamp: Date.now()
+                        };
+                    }
+                    
+                    logger.info(`Audio ${audioIdFinal} finalizado`, { tipo, exito, origen });
+                    
+                    // Si se requiere alguna acción después de que un audio finalice,
+                    // como mostrar un reto o avanzar automáticamente, se haría aquí
+                    
+                    // Por ejemplo, se podría buscar si hay alguna parada con ese audio_id
+                    // y verificar si tiene un reto asociado para mostrarlo automáticamente
+                    const paradaAsociada = AVENTURA_PARADAS.find(p => p.audio_id === audioIdFinal);
+                    if (paradaAsociada) {
+                        console.log(`🎧 [PADRE] Audio ${audioIdFinal} asociado a parada ${paradaAsociada.padreid}`);
+                        logger.debug(`Audio ${audioIdFinal} asociado a parada ${paradaAsociada.padreid}`);
+                        
+                        // Verificar si hay un reto asociado que podría mostrarse automáticamente
+                        const retoId = extraerRetoId(paradaAsociada);
+                        if (retoId) {
+                            console.log(`🎮 [PADRE] Audio finalizado - Parada tiene reto: ${retoId}`);
+                            
+                            // Si estamos en modo casa y se quiere mostrar automáticamente
+                            // (descomentar este bloque para activar mostrar retos automáticamente)
+                            /*
+                            if (estadoApp.modo.actual === 'casa') {
+                                const retoElement = document.getElementById('hijo4');
+                                if (retoElement && retoElement.style.display === 'none') {
+                                    await manejarMostrarReto({ datos: { retoId } });
+                                }
+                            }
+                            */
+                        }
+                    } else {
+                        console.log(`🔍 [PADRE] No se encontró parada asociada al audio ${audioIdFinal}`);
+                    }
+                    
+                    // Si hay alguna acción personalizada para audios específicos
+                    switch (audioIdFinal) {
+                        case 'audio-bienvenida':
+                            console.log('🎵 [PADRE] Audio de bienvenida finalizado, mostrando instrucciones');
+                            // Acción específica para el audio de bienvenida
+                            break;
+                            
+                        case 'audio-instrucciones':
+                            console.log('🎵 [PADRE] Audio de instrucciones finalizado');
+                            // Acción específica para el audio de instrucciones
+                            break;
+                            
+                        // Añadir más casos específicos aquí
+                    }
+                    
+                    return { 
+                        exito: true, 
+                        audioId: audioIdFinal,
+                        paradaId: paradaAsociada?.padreid || null,
+                        timestamp: Date.now()
+                    };
+                } catch (error) {
+                    console.error('❌ [PADRE] Error al manejar audio finalizado:', error);
+                    logger.error('Error al manejar audio finalizado:', error);
+                    return {
+                        exito: false,
+                        error: `Error al manejar audio finalizado: ${error.message}`,
+                        timestamp: Date.now()
+                    };
+                }
+            }
+            
+            // La función updateMapDebug ya está definida globalmente arriba
+            
+            // Marcar la aplicación como completamente inicializada
+            window.appInitStatus = window.appInitStatus || {};
+            window.appInitStatus.completed = true;
+            window.appInitStatus.completedTimestamp = Date.now();
+            
+            // Marcar la aplicación como completamente inicializada
+            window.appInitStatus = window.appInitStatus || {};
+            window.appInitStatus.completed = true;
+            window.appInitStatus.completedTimestamp = Date.now();
+            window.appInitStatus.iifePrincipalFinalizada = true;
+            
+            console.log('✅ [PADRE] Inicialización de la aplicación completada - Total tiempo:', 
+                       (window.appInitStatus.completedTimestamp - window.appInitStatus.startTimestamp) + 'ms');
+            window.debugLog && window.debugLog('Aplicación completamente inicializada');
         } catch (error) {
-            console.error('Error al inicializar la aplicación:', error);
+            console.error('❌ [PADRE] Error en ejecución de la IIFE:', error);
+            window.debugLog && window.debugLog(`Error en ejecución de IIFE: ${error.message}`);
+            window.handleApplicationError(error, 'ejecucion_IIFE');
         }
-    })();
-    </script>
+    })().catch(error => {
+        console.error('❌ [PADRE] Error asíncrono no capturado:', error);
+        window.debugLog && window.debugLog(`Error asíncrono no capturado: ${error.message}`);
+        window.handleApplicationError(error, 'error_asincrono');
+    });
+    
+    // Agregar un manejador global para capturar errores asíncronos
+    window.addEventListener('error', function(event) {
+        console.error('❌ [PADRE] Error global no capturado:', event.error || event.message);
+        window.handleApplicationError(event.error || new Error(event.message), 'error_global');
+    });
+    
+    // Capturar promesas rechazadas no manejadas
+    window.addEventListener('unhandledrejection', function(event) {
+        console.error('❌ [PADRE] Promesa rechazada no manejada:', event.reason);
+        window.handleApplicationError(event.reason, 'promesa_rechazada');
+    });
+        </script>
 </body>
 </html>
