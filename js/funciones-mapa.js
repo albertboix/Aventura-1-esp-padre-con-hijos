@@ -37,61 +37,102 @@ let arrayParadasLocal = [];
  */
 export async function inicializarMapa(config = {}) {
     logger.info('🗺️ Inicializando mapa...');
-
-    if (typeof L === 'undefined') {
-        throw new Error("Leaflet (L) no está cargado.");
-    }
-
-    // Usar valores por defecto si no se proporcionan
-    const mapConfig = {
-        center: [39.4699, -0.3763], // Valencia
-        zoom: 16,
-        ...config
-    };
     
-    // Obtener el contenedor del mapa
-    const containerId = config.containerId || 'mapa';
-    const container = document.getElementById(containerId);
-    
-    if (!container) {
-        throw new Error(`Contenedor del mapa con ID "${containerId}" no encontrado.`);
-    }
-
-    mapa = L.map(containerId, {
-        center: mapConfig.center,
-        zoom: mapConfig.zoom,
-        minZoom: mapConfig.minZoom || 12,
-        maxZoom: mapConfig.maxZoom || 18,
-        zoomControl: mapConfig.zoomControl !== undefined ? mapConfig.zoomControl : false
-    });
-
-    // Add OSM tile layer with explicit options for better visibility
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-        tileSize: 256,
-        maxNativeZoom: 19,
-        maxZoom: 19,
-        minZoom: 1,
-        crossOrigin: true,
-        opacity: 1.0,
-        detectRetina: true
-    }).addTo(mapa);
-    
-    // Actualizar estado
-    estadoMapa.inicializado = true;
-    logger.info('Mapa inicializado correctamente');
-
-    // Add resize handler to ensure the map updates when window size changes
-    window.addEventListener('resize', () => {
-        setTimeout(() => {
-            if (mapa) {
-                mapa.invalidateSize();
-                logger.debug('Tamaño del mapa actualizado después de resize');
+    return new Promise((resolve, reject) => {
+        try {
+            if (typeof L === 'undefined') {
+                throw new Error("Leaflet (L) no está cargado.");
             }
-        }, 100);
+
+            // Usar valores por defecto si no se proporcionan
+            const mapConfig = {
+                center: [39.4699, -0.3763], // Valencia
+                zoom: 16,
+                ...config
+            };
+            
+            // Obtener el contenedor del mapa
+            const containerId = config.containerId || 'mapa';
+            const container = document.getElementById(containerId);
+            
+            if (!container) {
+                throw new Error(`Contenedor del mapa con ID "${containerId}" no encontrado.`);
+            }
+            
+            // Preparar el contenedor explícitamente
+            container.style.display = 'block';
+            container.style.visibility = 'visible';
+            container.style.opacity = '1';
+            container.style.width = '100vw';
+            container.style.height = '100vh';
+            container.style.position = 'fixed';
+            container.style.zIndex = '10'; // Prioridad alta
+            
+            // Si ya existe un mapa, destruirlo para evitar problemas
+            if (window.mapa && typeof window.mapa.remove === 'function') {
+                window.mapa.remove();
+                window.mapa = null;
+            }
+
+            // Pequeño retraso para asegurar que el DOM está listo
+            setTimeout(() => {
+                try {
+                    // Crear nueva instancia del mapa
+                    const mapInstance = L.map(containerId, {
+                        center: mapConfig.center,
+                        zoom: mapConfig.zoom,
+                        minZoom: mapConfig.minZoom || 12,
+                        maxZoom: mapConfig.maxZoom || 18,
+                        zoomControl: mapConfig.zoomControl !== undefined ? mapConfig.zoomControl : false
+                    });
+
+                    // Añadir capa base de OpenStreetMap con opciones explícitas
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                        tileSize: 256,
+                        maxNativeZoom: 19,
+                        maxZoom: 19,
+                        minZoom: 1,
+                        crossOrigin: true,
+                        opacity: 1.0,
+                        detectRetina: true
+                    }).addTo(mapInstance);
+
+                    // Actualizar estado
+                    estadoMapa.inicializado = true;
+                    window.mapa = mapInstance; // Referencia global
+                    
+                    logger.info('Mapa inicializado correctamente');
+                    console.log('✅ Mapa Leaflet inicializado correctamente:', mapInstance);
+                    
+                    // Forzar actualización del tamaño
+                    setTimeout(() => {
+                        mapInstance.invalidateSize(true);
+                        console.log('🔄 Tamaño del mapa actualizado forzosamente');
+                    }, 300);
+                    
+                    // Añadir event listener para cambios de tamaño de ventana
+                    window.addEventListener('resize', () => {
+                        if (mapInstance) {
+                            setTimeout(() => {
+                                mapInstance.invalidateSize(true);
+                                console.log('🔄 Tamaño del mapa actualizado después de resize');
+                            }, 100);
+                        }
+                    });
+
+                    resolve(mapInstance);
+                } catch (innerError) {
+                    console.error('❌ Error al crear mapa Leaflet:', innerError);
+                    reject(innerError);
+                }
+            }, 200);
+            
+        } catch (error) {
+            console.error('❌ Error al inicializar mapa:', error);
+            reject(error);
+        }
     });
-    
-    return mapa;
 }
 
 /**
