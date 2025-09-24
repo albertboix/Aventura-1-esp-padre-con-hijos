@@ -63,10 +63,10 @@ export async function inicializarMapa(config = {}) {
             container.style.display = 'block';
             container.style.visibility = 'visible';
             container.style.opacity = '1';
-            container.style.width = '100vw';
-            container.style.height = '100vh';
-            container.style.position = 'fixed';
-            container.style.zIndex = '10'; // Prioridad alta
+            container.style.width = '100%';
+            container.style.height = '100%';
+            container.style.position = 'relative';
+            container.style.zIndex = '10';
             
             // Si ya existe un mapa, destruirlo para evitar problemas
             if (window.mapa && typeof window.mapa.remove === 'function') {
@@ -74,62 +74,46 @@ export async function inicializarMapa(config = {}) {
                 window.mapa = null;
             }
 
-            // Pequeño retraso para asegurar que el DOM está listo
-            setTimeout(() => {
-                try {
-                    // Crear nueva instancia del mapa
-                    const mapInstance = L.map(containerId, {
-                        center: mapConfig.center,
-                        zoom: mapConfig.zoom,
-                        minZoom: mapConfig.minZoom || 12,
-                        maxZoom: mapConfig.maxZoom || 18,
-                        zoomControl: mapConfig.zoomControl !== undefined ? mapConfig.zoomControl : false
-                    });
+            // Crear nueva instancia del mapa
+            const mapInstance = L.map(containerId, {
+                center: mapConfig.center,
+                zoom: mapConfig.zoom,
+                minZoom: mapConfig.minZoom || 12,
+                maxZoom: mapConfig.maxZoom || 18,
+                zoomControl: mapConfig.zoomControl !== undefined ? mapConfig.zoomControl : true,
+                attributionControl: true
+            });
 
-                    // Añadir capa base de OpenStreetMap con opciones explícitas
-                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-                        tileSize: 256,
-                        maxNativeZoom: 19,
-                        maxZoom: 19,
-                        minZoom: 1,
-                        crossOrigin: true,
-                        opacity: 1.0,
-                        detectRetina: true
-                    }).addTo(mapInstance);
+            // Añadir capa base de OpenStreetMap con opciones explícitas
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                tileSize: 256,
+                maxZoom: 19,
+                minZoom: 1,
+                detectRetina: true
+            }).addTo(mapInstance);
 
-                    // Actualizar estado
-                    estadoMapa.inicializado = true;
-                    window.mapa = mapInstance; // Referencia global
-                    
-                    logger.info('Mapa inicializado correctamente');
-                    console.log('✅ Mapa Leaflet inicializado correctamente:', mapInstance);
-                    
-                    // Forzar actualización del tamaño
-                    setTimeout(() => {
-                        mapInstance.invalidateSize(true);
-                        console.log('🔄 Tamaño del mapa actualizado forzosamente');
-                    }, 300);
-                    
-                    // Añadir event listener para cambios de tamaño de ventana
-                    window.addEventListener('resize', () => {
-                        if (mapInstance) {
-                            setTimeout(() => {
-                                mapInstance.invalidateSize(true);
-                                console.log('🔄 Tamaño del mapa actualizado después de resize');
-                            }, 100);
-                        }
-                    });
-
-                    resolve(mapInstance);
-                } catch (innerError) {
-                    console.error('❌ Error al crear mapa Leaflet:', innerError);
-                    reject(innerError);
-                }
-            }, 200);
+            // Actualizar estado
+            estadoMapa.inicializado = true;
+            window.mapa = mapInstance; // Referencia global
+            
+            // Verificar que el mapa se inicializó correctamente
+            if (typeof mapInstance.getCenter === 'function') {
+                logger.info('✅ Mapa inicializado correctamente en:', mapInstance.getCenter());
+                
+                // Forzar actualización del tamaño
+                setTimeout(() => {
+                    mapInstance.invalidateSize(true);
+                    logger.info('🔄 Tamaño del mapa actualizado forzosamente');
+                }, 300);
+                
+                resolve(mapInstance);
+            } else {
+                reject(new Error('El mapa no se inicializó correctamente'));
+            }
             
         } catch (error) {
-            console.error('❌ Error al inicializar mapa:', error);
+            logger.error('❌ Error al inicializar mapa:', error);
             reject(error);
         }
     });
