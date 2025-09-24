@@ -1,7 +1,7 @@
 /**
  * Módulo de mensajería para comunicación entre iframes.
  * @module Mensajeria
- * @version 2.4.0
+ * @version 2.6.0
  */
 
 // Importar dependencias
@@ -24,8 +24,22 @@ const estado = {
     factor: 2 
   },
   // Cache de instancias para evitar duplicados
-  instancias: new Map()
+  instancias: new Map(),
+  // Problema #10: Agregar registro de mensajes procesados para evitar duplicados
+  mensajesProcesados: new Set()
 };
+
+// Limpiar mensajes procesados periódicamente para evitar crecimiento excesivo
+// Problema #10: Implementar limpieza de mensajes procesados
+setInterval(() => {
+  // Mantener solo los últimos 100 mensajes
+  if (estado.mensajesProcesados.size > 100) {
+    const mensajesArray = Array.from(estado.mensajesProcesados);
+    // Eliminar los mensajes más antiguos
+    const mensajesAEliminar = mensajesArray.slice(0, mensajesArray.length - 100);
+    mensajesAEliminar.forEach(id => estado.mensajesProcesados.delete(id));
+  }
+}, 60000); // Cada minuto
 
 // Configuración por defecto
 const CONFIG_DEFAULT = {
@@ -42,6 +56,18 @@ const CONFIG_DEFAULT = {
 // Estado de inicialización
 let isLoggerInitialized = true; // Set to true since we're importing logger directly
 
+// Problema #8: Implementar limpieza periódica de instancias no utilizadas
+setInterval(() => {
+  // Eliminar instancias que no se han usado en los últimos 30 minutos
+  const tiempoLimite = Date.now() - 30 * 60 * 1000;
+  estado.instancias.forEach((instancia, id) => {
+    if (instancia.ultimoUso && instancia.ultimoUso < tiempoLimite) {
+      estado.instancias.delete(id);
+      logger.debug(`[Mensajeria] Instancia eliminada por inactividad: ${id}`);
+    }
+  });
+}, 15 * 60 * 1000); // Cada 15 minutos
+
 /**
  * Obtiene o crea una instancia de mensajería
  * @param {Object} config - Configuración de la instancia
@@ -52,7 +78,10 @@ function obtenerInstancia(config = {}) {
   
   // Si ya existe una instancia para este ID, devolverla
   if (estado.instancias.has(id)) {
-    return estado.instancias.get(id);
+    const instancia = estado.instancias.get(id);
+    // Problema #8: Actualizar timestamp de último uso
+    instancia.ultimoUso = Date.now();
+    return instancia;
   }
   
   // Crear nueva instancia
@@ -61,11 +90,30 @@ function obtenerInstancia(config = {}) {
     config: { ...CONFIG_DEFAULT, ...config },
     manejadores: new Map(),
     inicializado: false,
-    inicializando: false
+    inicializando: false,
+    // Problema #8: Agregar timestamp de creación y último uso
+    creado: Date.now(),
+    ultimoUso: Date.now()
   };
   
   estado.instancias.set(id, instancia);
   return instancia;
+}
+
+/**
+ * Verifica si el sistema de mensajería está inicializado
+ * @param {boolean} throwError - Si es true, lanza un error si no está inicializado
+ * @returns {boolean} - True si está inicializado
+ */
+// Problema #9: Agregar función para verificar estado de inicialización
+function verificarInicializado(throwError = false) {
+  if (!estado.inicializado) {
+    if (throwError) {
+      throw new Error('El sistema de mensajería no está inicializado');
+    }
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -159,6 +207,12 @@ async function _inicializarMensajeria(config = {}) {
  */
 // Función interna para registrar controladores
 function _registrarControlador(tipo, manejador) {
+  // Problema #4: Verificar que el manejador sea una función válida
+  if (typeof manejador !== 'function') {
+    logger.error(`[Mensajeria] Intento de registrar manejador inválido para tipo: ${tipo}`);
+    throw new Error(`Manejador inválido para tipo: ${tipo}`);
+  }
+
   estado.manejadores.set(tipo, manejador);
   logger.debug(`[Mensajeria] Controlador registrado para tipo: ${tipo}`);
 }
@@ -172,60 +226,99 @@ function _registrarControlador(tipo, manejador) {
  */
 // Función interna para enviar mensajes
 async function _enviarMensaje(destino, tipo, datos = {}) {
-  if (!destino || !tipo) {
-    logger.error('[Mensajeria] Falta destino o tipo en enviarMensaje', { destino, tipo });
-    return;
-  }
-  
-  // Validar si estamos inicializados
-  if (!estado.inicializado) {
-    logger.warn('[Mensajeria] Intentando enviar mensaje sin inicializar');
-    await inicializarMensajeria();
-  }
-  
-  const mensaje = {
-    origen: estado.iframeId,
-    destino,
-    tipo,
-    datos,
-    timestamp: new Date().toISOString(),
-    version: '1.0'
-  };
-  
-  try {
-    // Validar mensaje
-    if (!validarMensaje(mensaje)) {
-      throw new Error('Mensaje no válido');
+    if (!destino || !tipo) {
+        logger.error('[Mensajeria] Falta destino o tipo en enviarMensaje', { destino, tipo });
+        return;
     }
     
-    // Enviar mensaje
-    if (destino === 'padre') {
-      // Enviar al padre
-      window.parent.postMessage(mensaje, '*');
-    } else if (destino === 'todos') {
-      // Enviar a todos los iframes
-      estado.iframes.forEach(iframe => {
-        const frame = document.getElementById(iframe.id);
-        if (frame && frame.contentWindow) {
-          frame.contentWindow.postMessage(mensaje, '*');
+    // Problema #9: Validar si estamos inicializados usando la nueva función
+    if (!verificarInicializado()) {
+        logger.warn('[Mensajeria] Intentando enviar mensaje sin inicializar');
+        await inicializarMensajeria();
+    }
+    
+    // Generar ID único para este mensaje para rastreo
+    const mensajeId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    const mensaje = {
+        origen: estado.iframeId,
+        destino,
+        tipo,
+        datos: {
+            ...datos,
+            mensajeId // Incluir ID en cada mensaje para facilitar rastreo
+        },
+        timestamp: Date.now(),
+        version: '2.0'
+    };
+    
+    // Si el mensaje requiere confirmación, usamos un enfoque diferente
+    if (datos.requireConfirmation) {
+        return await enviarMensajeConConfirmacion(destino, tipo, datos);
+    }
+    
+    try {
+        // Validar mensaje
+        if (!validarMensaje(mensaje)) {
+            throw new Error('Mensaje no válido');
         }
-      });
-    } else {
-      // Enviar a un iframe específico
-      const frame = document.getElementById(destino);
-      if (frame && frame.contentWindow) {
-        frame.contentWindow.postMessage(mensaje, '*');
-      } else {
-        throw new Error(`Destino no encontrado: ${destino}`);
-      }
+        
+        // Enviar mensaje
+        if (destino === 'padre') {
+            // Enviar al padre
+            window.parent.postMessage(mensaje, '*');
+        } else if (destino === 'todos') {
+            // Enviar a todos los iframes
+            estado.iframes.forEach(iframe => {
+                const frame = document.getElementById(iframe.id);
+                if (frame && frame.contentWindow) {
+                    frame.contentWindow.postMessage(mensaje, '*');
+                }
+            });
+        } else {
+            // Enviar a un iframe específico
+            const frame = document.getElementById(destino);
+            if (frame && frame.contentWindow) {
+                frame.contentWindow.postMessage(mensaje, '*');
+            } else {
+                throw new Error(`Destino no encontrado: ${destino}`);
+            }
+        }
+        
+        // Problema #6: Usar una función segura para logs de objetos grandes/complejos
+        logMensajeSeguro(`[Mensajeria] Mensaje enviado a ${destino}:`, mensaje);
+        return mensaje;
+    } catch (error) {
+        logger.error(`[Mensajeria] Error al enviar mensaje a ${destino}:`, error);
+        throw error;
     }
-    
-    logger.debug(`[Mensajeria] Mensaje enviado:`, mensaje);
-    return mensaje;
-  } catch (error) {
-    logger.error(`[Mensajeria] Error al enviar mensaje:`, error);
-    throw error;
-  }
+}
+
+/**
+ * Registra un mensaje en el log de manera segura, evitando problemas con referencias circulares
+ * @param {string} texto - Texto descriptivo
+ * @param {Object} objeto - Objeto a registrar
+ */
+// Problema #6: Implementar función para logging seguro de objetos
+function logMensajeSeguro(texto, objeto) {
+    try {
+        // Intentar usar el logger directamente para objetos simples
+        logger.debug(texto, objeto);
+    } catch (error) {
+        // Si hay error (posible referencia circular), usar un enfoque más seguro
+        try {
+            const objetoSimplificado = JSON.parse(JSON.stringify(objeto));
+            logger.debug(texto, objetoSimplificado);
+        } catch (e) {
+            // Si también falla, registrar solo información básica
+            logger.debug(`${texto} [Objeto complejo - no serializable]`, {
+                tipo: objeto?.tipo,
+                origen: objeto?.origen,
+                destino: objeto?.destino,
+                timestamp: objeto?.timestamp
+            });
+        }
+    }
 }
 
 // Función para filtrar mensajes externos (como Grammarly) que no siguen nuestro formato
@@ -280,38 +373,86 @@ function validarMensaje(msg, source) {
  * @param {MessageEvent} event - Evento de mensaje.
  */
 function recibirMensaje(event) {
-  const mensaje = event.data;
-  
-  try {
-    // Validar mensaje
-    if (!validarMensaje(mensaje)) {
-      return;
-    }
+    const mensaje = event.data;
     
-    // Verificar si el mensaje es para este iframe
-    if (mensaje.destino !== 'todos' && 
-        mensaje.destino !== estado.iframeId && 
-        mensaje.destino !== 'padre') {
-      return;
+    try {
+        // Validar mensaje
+        if (!validarMensaje(mensaje)) {
+            return;
+        }
+        
+        // Verificar si el mensaje es para este iframe
+        if (mensaje.destino !== 'todos' && 
+            mensaje.destino !== estado.iframeId && 
+            mensaje.destino !== 'padre') {
+            return;
+        }
+        
+        // Problema #10: Verificar si el mensaje ya se ha procesado (evitar duplicados)
+        if (mensaje.datos?.mensajeId) {
+            const mensajeId = mensaje.datos.mensajeId;
+            if (estado.mensajesProcesados.has(mensajeId)) {
+                logger.debug(`[Mensajeria] Ignorando mensaje duplicado: ${mensajeId}`);
+                return;
+            }
+            estado.mensajesProcesados.add(mensajeId);
+        }
+        
+        logger.debug(`[Mensajeria] Mensaje recibido de ${mensaje.origen}:`, mensaje);
+        
+        // Manejar ping directamente para optimizar tiempo de respuesta
+        if (mensaje.tipo === 'SISTEMA.PING') {
+            const respuesta = manejarPing(mensaje);
+            enviarMensaje(mensaje.origen, 'SISTEMA.PONG', respuesta).catch(error => {
+                // Problema #3: Estandarizar el nombre de la variable de error
+                logger.error('Error al enviar respuesta de ping:', error);
+            });
+            return;
+        }
+        
+        // Buscar manejador para este tipo de mensaje
+        const manejador = estado.manejadores.get(mensaje.tipo);
+        if (manejador) {
+            // Ejecutar manejador y enviar respuesta al origen si hay datos
+            try {
+                const resultado = manejador(mensaje);
+                // Si el manejador devuelve un valor (no undefined), enviar respuesta al origen
+                if (resultado !== undefined && mensaje.datos?.mensajeId) {
+                    // Solo enviar respuesta si hay un ID de mensaje para referenciar
+                    enviarMensaje(mensaje.origen, TIPOS_MENSAJE.SISTEMA.CONFIRMACION, {
+                        mensajeOriginalId: mensaje.datos.mensajeId,
+                        tipoOriginal: mensaje.tipo,
+                        resultado,
+                        timestamp: Date.now()
+                    }).catch(error => {
+                        // Problema #3: Estandarizar el nombre de la variable de error
+                        logger.error('Error al enviar confirmación de mensaje:', error);
+                    });
+                }
+            } catch (error) {
+                // Problema #3: Estandarizar el nombre de la variable de error
+                logger.error(`[Mensajeria] Error en manejador para ${mensaje.tipo}:`, error);
+                // Enviar error al origen si hay un ID de mensaje
+                if (mensaje.datos?.mensajeId) {
+                    enviarMensaje(mensaje.origen, TIPOS_MENSAJE.SISTEMA.ERROR, {
+                        mensajeOriginalId: mensaje.datos.mensajeId,
+                        tipoOriginal: mensaje.tipo,
+                        error: error.message,
+                        stack: error.stack,
+                        timestamp: Date.now()
+                    }).catch(error => {
+                        // Problema #3: Estandarizar el nombre de la variable de error
+                        logger.error('Error al enviar notificación de error:', error);
+                    });
+                }
+            }
+        } else {
+            logger.warn(`[Mensajeria] No hay manejador para el tipo: ${mensaje.tipo}`);
+        }
+    } catch (error) {
+        // Problema #3: Estandarizar el nombre de la variable de error
+        logger.error('[Mensajeria] Error al procesar mensaje:', error);
     }
-    
-    logger.debug(`[Mensajeria] Mensaje recibido:`, mensaje);
-    
-    // Buscar manejador para este tipo de mensaje
-    const manejador = estado.manejadores.get(mensaje.tipo);
-    if (manejador) {
-      // Ejecutar manejador
-      try {
-        manejador(mensaje);
-      } catch (error) {
-        logger.error(`[Mensajeria] Error en manejador para ${mensaje.tipo}:`, error);
-      }
-    } else {
-      logger.warn(`[Mensajeria] No hay manejador para el tipo: ${mensaje.tipo}`);
-    }
-  } catch (error) {
-    logger.error('[Mensajeria] Error al procesar mensaje:', error);
-  }
 }
 
 /**
@@ -324,6 +465,8 @@ function limpiarMensajeria() {
     estado.iframes = [];
     estado.inicializado = false;
     estado.instancias.clear();
+    // Problema #10: Limpiar también los mensajes procesados
+    estado.mensajesProcesados.clear();
     logger.debug(`[Mensajeria] Recursos liberados para ${estado.iframeId}`);
   }
 }
@@ -342,31 +485,48 @@ async function enviarMensajeConConfirmacion(destino, tipo, datos = {}, opciones 
   const timeout = opciones.timeout || 5000;
   const silencioso = opciones.silencioso || false;
   
+  // Problema #9: Validar si estamos inicializados
+  if (!verificarInicializado()) {
+    logger.warn('[Mensajeria] Intentando enviar mensaje con confirmación sin inicializar');
+    await inicializarMensajeria();
+  }
+  
+  // Generar un ID único para este mensaje
+  const mensajeId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  
+  // Problema #7: Usar una variable para seguimiento del manejador temporal
+  const manejadorKey = `${TIPOS_MENSAJE.SISTEMA.CONFIRMACION}_${mensajeId}`;
+  let timeoutId = null;
+  
   try {
-    // Generar un ID único para este mensaje
-    const mensajeId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
     // Crear una promesa para esperar la confirmación
     const confirmacionPromise = new Promise((resolve, reject) => {
       // Manejador temporal para la confirmación
       const manejadorConfirmacion = (mensaje) => {
         if (mensaje.datos && mensaje.datos.mensajeOriginalId === mensajeId) {
-          // Quitar el manejador temporal
-          estado.manejadores.delete(`${TIPOS_MENSAJE.SISTEMA.CONFIRMACION}_${mensajeId}`);
+          // Quitar el manejador temporal y cancelar el timeout
+          estado.manejadores.delete(manejadorKey);
+          if (timeoutId) clearTimeout(timeoutId);
           resolve(mensaje);
         }
       };
       
       // Registrar el manejador temporal
-      estado.manejadores.set(`${TIPOS_MENSAJE.SISTEMA.CONFIRMACION}_${mensajeId}`, manejadorConfirmacion);
+      estado.manejadores.set(manejadorKey, manejadorConfirmacion);
       
       // Configurar timeout
-      setTimeout(() => {
+      timeoutId = setTimeout(() => {
         // Quitar el manejador temporal
-        estado.manejadores.delete(`${TIPOS_MENSAJE.SISTEMA.CONFIRMACION}_${mensajeId}`);
+        estado.manejadores.delete(manejadorKey);
         
+        // Problema #5: Manejar mejor el caso silencioso
         if (silencioso) {
-          resolve(null); // Resolver con null si es silencioso
+          // Resolver con un objeto que indica timeout, pero no es error
+          resolve({
+            timeout: true,
+            mensaje: `Timeout esperando confirmación para mensaje ${tipo} a ${destino}`,
+            timestamp: Date.now()
+          });
         } else {
           reject(new Error(`Timeout esperando confirmación para mensaje ${tipo} a ${destino}`));
         }
@@ -381,13 +541,24 @@ async function enviarMensajeConConfirmacion(destino, tipo, datos = {}, opciones 
     
     // Esperar confirmación
     return await confirmacionPromise;
+    
   } catch (error) {
+    // Problema #7: Limpiar manejador y timeout en caso de error
+    estado.manejadores.delete(manejadorKey);
+    if (timeoutId) clearTimeout(timeoutId);
+    
     logger.error(`Error en enviarMensajeConConfirmacion (${tipo} a ${destino}):`, error);
     
+    // Problema #5: Manejar mejor el caso silencioso
     if (silencioso) {
-      return null;
+      return {
+        error: true,
+        mensaje: error.message,
+        timestamp: Date.now()
+      };
     }
     
+    // Problema #2: Eliminar código inalcanzable
     throw error;
   }
 }
@@ -400,6 +571,12 @@ async function enviarMensajeConConfirmacion(destino, tipo, datos = {}, opciones 
  */
 async function enviarConfirmacion(mensajeOriginal, datos = {}) {
   try {
+    // Problema #9: Validar si estamos inicializados
+    if (!verificarInicializado()) {
+      logger.warn('[Mensajeria] Intentando enviar confirmación sin inicializar');
+      await inicializarMensajeria();
+    }
+    
     if (!mensajeOriginal || !mensajeOriginal.origen) {
       throw new Error('Mensaje original inválido');
     }
@@ -407,7 +584,7 @@ async function enviarConfirmacion(mensajeOriginal, datos = {}) {
     // Usar TIPOS_MENSAJE importado
     return await _enviarMensaje(
       mensajeOriginal.origen,
-      TIPOS_MENSAJE.SISTEMA.CONFIRMACION, // Corregido para usar la constante importada
+      TIPOS_MENSAJE.SISTEMA.CONFIRMACION,
       {
         ...datos,
         mensajeOriginalId: mensajeOriginal.datos?.mensajeId,
@@ -417,6 +594,7 @@ async function enviarConfirmacion(mensajeOriginal, datos = {}) {
       }
     );
   } catch (error) {
+    // Problema #3: Estandarizar el nombre de la variable de error
     logger.error('Error al enviar confirmación:', error);
     throw error;
   }
@@ -430,6 +608,12 @@ async function enviarConfirmacion(mensajeOriginal, datos = {}) {
  */
 async function enviarError(mensajeOriginal, error = {}) {
   try {
+    // Problema #9: Validar si estamos inicializados
+    if (!verificarInicializado()) {
+      logger.warn('[Mensajeria] Intentando enviar error sin inicializar');
+      await inicializarMensajeria();
+    }
+    
     if (!mensajeOriginal || !mensajeOriginal.origen) {
       throw new Error('Mensaje original inválido');
     }
@@ -449,13 +633,37 @@ async function enviarError(mensajeOriginal, error = {}) {
         }
       }
     );
-  } catch (err) {
-    logger.error('Error al enviar notificación de error:', err);
-    throw err;
+  } catch (error) {
+    // Problema #3: Estandarizar el nombre de la variable de error
+    logger.error('Error al enviar notificación de error:', error);
+    throw error;
   }
 }
 
+/**
+ * Función para manejar mensajes de ping (diagnóstico de comunicación)
+ * @param {Object} mensaje - Mensaje recibido
+ * @returns {Object} Respuesta con timestamp
+ */
+// Problema #1: Corregir declaración del comentario JSDoc
+function manejarPing(mensaje) {
+    logger.debug(`[Mensajeria] Ping recibido de ${mensaje.origen}`);
+    return {
+        exito: true,
+        mensaje: `Pong desde ${estado.iframeId}`,
+        timestamp: Date.now(),
+        origen: estado.iframeId,
+        destino: mensaje.origen,
+        timestampOriginal: mensaje.datos?.timestamp
+    };
+}
 
+// Problema #4: Registrar manejador de ping solo si la función existe
+if (typeof manejarPing === 'function') {
+    _registrarControlador('SISTEMA.PING', manejarPing);
+} else {
+    logger.warn('[Mensajeria] No se pudo registrar manejador de ping: función no definida');
+}
 
 // Exportar la API pública
 export async function inicializarMensajeria(config) {
@@ -470,14 +678,24 @@ export async function enviarMensaje(destino, tipo, datos = {}) {
     return await _enviarMensaje(destino, tipo, datos);
 }
 
-// Re-export TIPOS_MENSAJE from constants.js
-export { TIPOS_MENSAJE };
+// Problema #11: Evitar re-exportar TIPOS_MENSAJE directamente para evitar dependencia circular
+// En lugar de re-exportar, exportamos solo las constantes que necesitamos
+export const TIPOS_MENSAJE_BASICOS = {
+    SISTEMA: {
+        CONFIRMACION: 'SISTEMA.CONFIRMACION',
+        ERROR: 'SISTEMA.ERROR',
+        PING: 'SISTEMA.PING',
+        PONG: 'SISTEMA.PONG'
+    }
+};
 
 // Exportar las nuevas funciones
 export {
     enviarMensajeConConfirmacion,
     enviarConfirmacion,
-    enviarError
+    enviarError,
+    verificarInicializado,
+    limpiarMensajeria
 };
 
 export default {
@@ -487,5 +705,6 @@ export default {
     enviarMensajeConConfirmacion,
     enviarConfirmacion,
     enviarError,
-    TIPOS_MENSAJE
+    verificarInicializado,
+    limpiarMensajeria
 };
