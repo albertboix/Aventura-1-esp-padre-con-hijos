@@ -146,6 +146,23 @@
     // Log initial load
     debugLog('Parent page loading...');
     </script>
+    <!-- Script para verificar Leaflet después de cargar DOM -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🔍 DOM completamente cargado, verificando Leaflet...');
+            if (typeof L === 'undefined') {
+                console.error('❌ ERROR: Leaflet (L) no está definido en DOMContentLoaded');
+                document.getElementById('map-debug').textContent = 'ERROR: Leaflet no está disponible';
+                document.getElementById('map-debug').style.display = 'block';
+                document.getElementById('map-debug').style.color = 'red';
+                document.getElementById('map-debug').style.backgroundColor = 'white';
+                document.getElementById('map-debug').style.padding = '10px';
+            } else {
+                console.log('✅ Leaflet disponible en DOMContentLoaded, versión:', L.version);
+            }
+        });
+    </script>
+    
     <!-- Contenedores de la UI -->
     <div id="mapa"></div>
     <div id="map-debug"></div>
@@ -285,7 +302,8 @@
     // Validar que no tengamos múltiples ejecuciones
     if (window.appInitStatus && window.appInitStatus.iifePrincipalIniciada) {
         console.warn('⚠️ [PADRE] La función principal IIFE ya se ha iniciado anteriormente');
-        return; // Salimos del script completamente
+        // No usamos return aquí, ya que estamos en un contexto de módulo de nivel superior
+        window.appInitStatus.abortInitialization = true;
     }
     
     // Definir función de utilidad para manejo centralizado de errores
@@ -298,6 +316,12 @@
     // IIFE principal con estructura simplificada
     (async () => {
         try {
+            // Verificar si debemos abortar la inicialización
+            if (window.appInitStatus && window.appInitStatus.abortInitialization) {
+                console.warn('⚠️ [PADRE] Abortando inicialización debido a inicialización previa');
+                return; // Es seguro usar return dentro de la función IIFE
+            }
+            
             // Marcar el inicio de la inicialización
             window.appInitStatus = window.appInitStatus || {};
             window.appInitStatus.iifePrincipalIniciada = true;
