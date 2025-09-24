@@ -261,6 +261,20 @@
       70% { box-shadow: 0 0 0 10px rgba(255, 215, 0, 0); }
       100% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0); }
     }
+
+    /* Estilo para el feedback de error */
+    #gps-casa-btn.error {
+      animation: shake 0.5s;
+      background-color: #ff0000 !important;
+    }
+
+    @keyframes shake {
+      0% { transform: translateX(0); }
+      25% { transform: translateX(-5px); }
+      50% { transform: translateX(5px); }
+      75% { transform: translateX(-5px); }
+      100% { transform: translateX(0); }
+    }
     </style>
     <script type="module">
     // Importar módulos primero (before everything else)
@@ -461,33 +475,40 @@
             // Actualizar la interfaz primero para feedback inmediato
             actualizarInterfaz(nuevoModo);
             
-            // Enviar el mensaje al padre - Asegurar que tiene todos los campos requeridos
+            // Enviar el mensaje al padre con el formato exacto esperado
             console.log(`📤 [CASA] Enviando mensaje SISTEMA.CAMBIO_MODO al padre...`);
             await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, { 
                 modo: nuevoModo, 
                 origen: 'hijo5-casa',
-                timestamp: new Date().toISOString(),
-                version: '1.0'
+                timestamp: new Date().toISOString()
             });
             
             console.log(`✅ [CASA] Mensaje de cambio a modo ${nuevoModo} enviado correctamente`);
             
+            // Actualizar estado interno
+            estado.modo = nuevoModo;
+            
             // Renderizar lista de paradas si estamos en modo casa
             if (nuevoModo === 'casa') {
-                console.log('🔄 [CASA] Actualizando lista de paradas para modo casa');
+                console.log('🏠 [CASA] Mostrando lista de paradas para exploración libre');
                 renderizarListaParadas();
-            }
-            
-            // Guardar en localStorage para persistencia
-            try {
-                localStorage.setItem('gpsState', JSON.stringify(estado.gpsActivo));
-            } catch (e) {
-                console.error('Error al guardar en localStorage:', e);
+            } else {
+                console.log('🧭 [CASA] Ocultando lista de paradas en modo aventura');
+                // Ocultar la lista de paradas en modo aventura
+                const paradasWindow = document.getElementById('paradas-window');
+                if (paradasWindow) {
+                    paradasWindow.classList.remove('visible');
+                    paradasWindow.classList.add('hidden');
+                }
             }
         } catch (error) {
             console.error('❌ [CASA] Error al cambiar el modo:', error);
-            // Revertir cambios en la interfaz en caso de error
-            actualizarInterfaz(estado.modo);
+            // Feedback visual del error
+            const boton = document.getElementById('gps-casa-btn');
+            if (boton) {
+                boton.classList.add('error');
+                setTimeout(() => boton.classList.remove('error'), 500);
+            }
             alert('No se pudo cambiar de modo. Intente de nuevo.');
         }
     }// IMPORTANTE: Exponer la función manejarClickCambioModo al objeto window
