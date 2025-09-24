@@ -43,6 +43,14 @@ export async function inicializar() {
         
         // No iniciamos mensajería aquí porque se hace en el código padre
         
+        // Intentar actualizar el tamaño del mapa para asegurar que se renderice correctamente
+        setTimeout(() => {
+            if (window.mapa && typeof window.mapa.invalidateSize === 'function') {
+                logger.info('Actualizando tamaño del mapa...');
+                window.mapa.invalidateSize(true);
+            }
+        }, 500);
+        
         // Marcar como inicializada
         logger.info('Aplicación inicializada correctamente');
         return true;
