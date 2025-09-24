@@ -266,9 +266,11 @@
         function initializeMap() {
             try {
                 console.log('Inicializando mapa...');
+                
+                // SOLUCIÓN: Verificar siempre que el contenedor existe ANTES de crear el mapa
                 const mapContainer = document.getElementById('mapa');
                 
-                // Create the container if it doesn't exist
+                // Si no existe el contenedor, crearlo
                 if (!mapContainer) {
                     console.log('Contenedor del mapa no encontrado, creando uno nuevo...');
                     const newContainer = document.createElement('div');
@@ -282,25 +284,48 @@
                     newContainer.style.backgroundColor = '#f5f5f5';
                     document.body.prepend(newContainer);
                     console.log('Contenedor del mapa creado dinámicamente');
+                    
+                    // SOLUCIÓN: Esperar a que el DOM se actualice antes de crear el mapa
+                    // Forzar un reflow del DOM para asegurarnos que el contenedor está disponible
+                    document.body.offsetHeight;
                 }
                 
-                // Get the container reference again (in case we just created it)
+                // Obtener la referencia al contenedor (ya sea existente o recién creado)
                 const container = document.getElementById('mapa');
                 
-                // Asegurarse de que el contenedor esté correctamente visible y dimensionado
-                if (container) {
-                    container.style.width = '100vw';
-                    container.style.height = '100vh';
-                    container.style.display = 'block';
-                    container.style.position = 'fixed';
-                    container.style.zIndex = '10';
+                // SOLUCIÓN: Verificar que el contenedor se obtuvo correctamente
+                if (!container) {
+                    throw new Error('No se pudo obtener/crear el contenedor del mapa');
                 }
+                
+                // Asegurarse de que el contenedor esté correctamente visible y dimensionado
+                container.style.width = '100vw';
+                container.style.height = '100vh';
+                container.style.display = 'block';
+                container.style.position = 'fixed';
+                container.style.zIndex = '10';
+                container.style.visibility = 'visible';  // SOLUCIÓN: Asegurar que sea visible
                 
                 // Limpiar cualquier instancia de mapa existente para evitar duplicados
                 if (window.mapa && typeof window.mapa.remove === 'function') {
                     console.log('Removing existing map instance');
                     window.mapa.remove();
                     window.mapa = null;
+                }
+                
+                // SOLUCIÓN: Comprobar dimensiones del contenedor
+                console.log('Dimensiones del contenedor antes de crear el mapa:', 
+                            container.offsetWidth + 'x' + container.offsetHeight);
+                
+                if (container.offsetWidth === 0 || container.offsetHeight === 0) {
+                    console.warn('¡Advertencia! El contenedor tiene dimensiones cero.');
+                    // Forzar dimensiones mínimas
+                    container.style.width = '100vw';
+                    container.style.height = '100vh';
+                    container.style.minWidth = '100px';
+                    container.style.minHeight = '100px';
+                    // Forzar un reflow del DOM
+                    container.offsetHeight;
                 }
                 
                 // Crear el mapa con opciones explícitas para asegurar una inicialización correcta
@@ -327,7 +352,7 @@
                         window.mapa.invalidateSize(true);
                         console.log('✅ Map size updated');
                     }
-                }, 500);
+                }, 100); // Reducir el tiempo de espera para una respuesta más rápida
                 
                 console.log('✅ Map initialized successfully');
                 return true;
@@ -607,17 +632,40 @@
                             newContainer.style.left = '0';
                             newContainer.style.zIndex = '10';
                             newContainer.style.backgroundColor = '#f5f5f5';
-                            document.body.prepend(newContainer);
+                            
+                            // Insertar al inicio del body para garantizar que está en el DOM
+                            document.body.insertBefore(newContainer, document.body.firstChild);
                             console.log('✅ [PADRE] Contenedor del mapa creado dinámicamente');
+                            
+                            // SOLUCIÓN: Esperar un momento para que el DOM se actualice
+                            await new Promise(resolve => setTimeout(resolve, 50));
+                        }
+                        
+                        // SOLUCIÓN: Verificar dimensiones del contenedor
+                        const contenedor = document.getElementById('mapa');
+                        if (contenedor) {
+                            console.log('Dimensiones del contenedor:', contenedor.offsetWidth + 'x' + contenedor.offsetHeight);
                         }
                         
                         // Check if the map is already initialized
                         if (!window.mapa || typeof window.mapa.getCenter !== 'function') {
                             console.log('🔄 [PADRE] Inicializando el mapa...');
-                            // Initialize map using the initializeMap function that's already defined
-                            const mapInitialized = initializeMap();
+                            // SOLUCIÓN: Implementar reintentos si falla la primera vez
+                            let intentos = 0;
+                            const MAX_INTENTOS = 3;
+                            let mapInitialized = false;
+                            
+                            while (!mapInitialized && intentos < MAX_INTENTOS) {
+                                mapInitialized = initializeMap();
+                                if (!mapInitialized) {
+                                    console.log(`Intento ${intentos + 1}/${MAX_INTENTOS} fallido. Reintentando...`);
+                                    await new Promise(resolve => setTimeout(resolve, 200));
+                                    intentos++;
+                                }
+                            }
+                            
                             if (!mapInitialized) {
-                                throw new Error('No se pudo inicializar el mapa');
+                                throw new Error('No se pudo inicializar el mapa después de varios intentos');
                             }
                         }
                         
