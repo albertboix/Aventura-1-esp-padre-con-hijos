@@ -11,13 +11,18 @@
       position: relative;
       width: 100%;
       height: 60px;
+      display: flex;
+      flex-direction: row;
+      align-items: flex-start;
+      gap: 0;
+      justify-content: center;
     }
     
     /* Botón GPS: estilo actualizado with emoji de satélite y etiqueta ON/OFF */
     #gps-casa-btn {
-      position: absolute;
-      top: 5px;
-      left: 5px;
+      position: relative;
+      margin: 0 0 0 10px;
+      z-index: 2; /* Asegura que el botón esté por encima de la ventana de paradas */
       width: 50px;
       height: 50px;
       min-width: 50px;
@@ -32,8 +37,6 @@
       box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
       transition: all 0.3s ease;
       padding: 0;
-      margin: 0 0 0 10px;
-      z-index: 10002;
       cursor: pointer;
       font-size: 16px;
     }
@@ -101,10 +104,11 @@
     
     /* Ventana de paradas compacta y horizontal */
     #paradas-window {
-      position: absolute;
-      top: 1px; /* 1px desde arriba, alineado con el botón */
-      left: 58px; /* 50px (botón) + 5px (left del botón) + 3px (espacio) = 58px */
-      /* Si cambias el tamaño del botón, ajusta este valor */
+      position: absolute; /* Cambiado de relative a absolute */
+      top: 0;
+      left: 60px; /* Justo a la derecha del botón (ajusta según el ancho real del botón) */
+      margin-left: 0; /* Elimina el margen, ya no es necesario */
+      z-index: 3; /* Por encima del botón */
       background: rgba(255,255,255,0.95);
       border-radius: 20px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.2);
@@ -115,7 +119,6 @@
       width: auto;
       min-width: 220px;
       max-width: 340px;
-      z-index: 10003;
       height: 47px; /* 36px botón + 8px scroll + 1px arriba + 1px abajo + 1px entre = 47px */
       overflow: hidden;
     }
@@ -164,9 +167,9 @@
       flex: 0 0 auto;
       font-size: 12px;
       display: flex;
-      flex-direction: row;
-      align-items: flex-start;
-      justify-content: flex-start;
+      flex-direction: column; /* Cambia a columna para apilar líneas */
+      align-items: center;
+      justify-content: center;
       min-width: 120px;
       max-width: 180px;
       min-height: 36px;
@@ -201,36 +204,38 @@
       position: relative;
     }
     
+    .btn-row {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      gap: 4px;
+    }
     .btn-icon {
       font-size: 1.2em;
       flex-shrink: 0;
       margin-right: 2px;
     }
-    
     .btn-title {
       font-weight: 600;
       white-space: nowrap;
       font-size: 0.93em;
       margin-bottom: 0;
     }
-    
     .btn-desc {
       font-size: 0.82em;
       opacity: 0.9;
-      white-space: normal; /* Asegura que NO sea nowrap */
+      white-space: normal;
       overflow: hidden;
       text-overflow: ellipsis;
       max-width: 90px;
       font-weight: 500;
       line-height: 1.1;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      text-align: left;
+      text-align: center;
       max-height: 2.2em;
-      line-clamp: 2;
-      box-orient: vertical;
-      display: box;
+      display: block;
+      margin-top: 2px;
     }
     
     /* Modificar estas clases para usar con #lista-paradas */
@@ -239,7 +244,7 @@
         width: 90% !important;
         max-width: 1000px !important;
         opacity: 1 !important;
-        height: 120px !important;
+        height: 47px !important; /* Ajusta para que no crezca verticalmente */
     }
     
     #paradas-window.hidden {
@@ -682,37 +687,57 @@
         });
     }
     
-    // Nueva función para renderizar botones con mejor formato
+    // Nueva función para renderizar botones con formato solicitado
     function renderizarBotonesParadas(container, paradas) {
         container.innerHTML = '';
-        if (!paradas || paradas.length === 0) {
-            container.innerHTML = '<div class="sin-paradas">No hay paradas disponibles</div>';
-            return;
-        }
         paradas.forEach((p, idx) => {
+            // Determinar tipo y emoji
+            let emoji = '';
+            let tipoLabel = '';
+            if (p.tipo === 'inicio') {
+                emoji = '🏁';
+                tipoLabel = 'Inicio';
+            } else if (p.tipo === 'parada') {
+                emoji = '🅿️';
+                tipoLabel = `Parada ${p.parada !== undefined ? p.parada : ''}`;
+            } else if (p.tipo === 'tramo') {
+                emoji = '➡️';
+                tipoLabel = `Tramo ${p.tramo !== undefined ? p.tramo : ''}`;
+            } else {
+                emoji = '❓';
+                tipoLabel = p.tipo || '';
+            }
+
+            // Crear botón
             const btn = document.createElement('button');
-            const esParada = p.tipo === 'parada' || p.tipo === 'inicio';
-            const esInicio = p.tipo === 'inicio';
-            const esActual = (esParada && p.parada === estado.paradaActual) || (!esParada && p.tramo === estado.tramoActual);
-            btn.className = 'parada-tramo-btn';
-            if (esParada) btn.classList.add('parada-btn');
-            if (esInicio) btn.classList.add('inicio-btn');
-            if (!esParada) btn.classList.add('tramo-btn');
-            if (esActual) btn.classList.add('actual');
-            const numero = esParada ? p.parada : p.tramo;
-            const icono = esParada ? (esInicio ? '🏁' : '📍') : '🛣️';
-            const titulo = esParada ? (esInicio ? 'Inicio' : `Parada ${numero}`) : `Tramo ${numero}`;
-            btn.innerHTML = `
-              <span class="btn-icon">${icono}</span>
-              <span class="btn-title">${titulo}</span>
-              <span class="btn-desc">${p.nombre}</span>
-            `;
-            btn.addEventListener('click', async (e) => {
-                e.stopPropagation();
-                const parada_id = p.parada_id || (p.tipo === 'parada' ? `P-${p.parada}` : (p.tipo === 'inicio' ? `P-${p.parada}` : undefined));
-                const tramo_id = p.tramo_id || (p.tipo === 'tramo' ? `TR-${p.tramo}` : undefined);
-                await enviarMensaje('padre', TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, { punto: { parada_id, tramo_id } });
-            });
+            btn.className = `parada-tramo-btn ${p.tipo === 'parada' ? 'parada-btn' : (p.tipo === 'tramo' ? 'tramo-btn' : '')}`;
+            btn.setAttribute('data-id', p.padreid || p.parada_id || p.tramo_id || '');
+            btn.setAttribute('type', 'button');
+            btn.setAttribute('tabindex', '0');
+            btn.setAttribute('aria-label', `${tipoLabel}: ${p.nombre || ''}`);
+
+            // Línea 1: emoji + tipo + número
+            const row1 = document.createElement('div');
+            row1.className = 'btn-row';
+            const iconSpan = document.createElement('span');
+            iconSpan.className = 'btn-icon';
+            iconSpan.textContent = emoji;
+            const titleSpan = document.createElement('span');
+            titleSpan.className = 'btn-title';
+            titleSpan.textContent = tipoLabel;
+            row1.appendChild(iconSpan);
+            row1.appendChild(titleSpan);
+
+            // Línea 2: nombre
+            const descSpan = document.createElement('span');
+            descSpan.className = 'btn-desc';
+            descSpan.textContent = p.nombre || '';
+
+            btn.appendChild(row1);
+            btn.appendChild(descSpan);
+
+            // ...aquí puedes añadir eventos al botón si lo necesitas...
+
             container.appendChild(btn);
         });
     }
@@ -906,13 +931,13 @@
   </div>
 
   <div id="zona-boton-casa" role="region" aria-label="Control de navegación">
-    <button id="gps-casa-btn" class="off" title="Activar GPS (Cambiar a modo Aventura)">
-      <div class="button-content">
-        <span class="satellite-emoji">📡</span>
-        <span class="gps-label">OFF</span>
-      </div>
+    <button id="gps-casa-btn">
+      <span class="button-content">
+        <span class="satellite-emoji">🛰️</span>
+        <span class="gps-label">GPS</span>
+      </span>
     </button>
-    <div id="paradas-window" class="hidden">
+    <div id="paradas-window">
       <div id="lista-paradas"></div>
     </div>
   </div>
