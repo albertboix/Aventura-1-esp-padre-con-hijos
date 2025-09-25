@@ -672,78 +672,19 @@
                            (!esParada && p.tramo === estado.tramoActual);
             
             // Aplicar clases según el tipo
-            btn.className = 'parada-tramo-btn';
+            btn.className = 'parada-tramo-btn ' + (p.tipo === 'parada' ? 'parada-btn' : (p.tipo === 'tramo' ? 'tramo-btn' : ''));
+            btn.innerHTML = `<span class="btn-title">${p.nombre}</span>`;
             
-            if (esInicio) {
-                btn.classList.add('inicio-btn');
-            } else if (esParada) {
-                btn.classList.add('parada-btn');
-            } else {
-                btn.classList.add('tramo-btn');
-            }
-            
-            if (esActual) {
-                btn.classList.add('actual');
-            }
-            
-            // Contenido del botón
-            const icono = esInicio ? '🏁' : (esParada ? '📍' : '🛣️');
-            const titulo = esInicio ? 'Inicio' : (esParada ? `Parada ${p.parada}` : `Tramo ${p.tramo}`);
-            
-            btn.innerHTML = `
-                <span class="btn-icon">${icono}</span>
-                <div class="btn-text">
-                    <div class="btn-title">${titulo}</div>
-                    <div class="btn-desc">${p.nombre}</div>
-                </div>
-            `;
-            
-            // Manejar clic
-            btn.addEventListener('click', (e) => {
+            // Evento click: enviar mensaje de navegación al padre
+            btn.addEventListener('click', async (e) => {
                 e.stopPropagation();
-                
-                // Añadir efecto visual
-                btn.classList.add('seleccionando');
-                
-                if (esParada) {
-                    estado.paradaActual = p.parada;
-                    estado.tramoActual = -1;
-                } else {
-                    estado.tramoActual = p.tramo;
-                    estado.paradaActual = -1;
-                }
-                
-                // Renderizar nuevamente para actualizar la parada actual
-                renderizarBotonesParadas(container, paradas);
-                
-                // Preparar datos del punto seleccionado
-                const punto = {
-                    tipo: esParada ? 'parada' : 'tramo',
-                    padreid: esParada ? `padre-P-${p.parada}` : `padre-TR-${p.tramo}`,
-                    id: esParada ? `P-${p.parada}` : `TR-${p.tramo}`,
-                    parada: esParada ? p.parada : undefined,
-                    parada_id: esParada ? `P-${p.parada}` : undefined,
-                    tramo: !esParada ? p.tramo : undefined,
-                    tramo_id: !esParada ? `TR-${p.tramo}` : undefined,
-                    nombre: p.nombre
-                };
-                
-                // Enviar mensaje al padre
-                window.parent.postMessage({
-                    type: 'puntoSeleccionado',
-                    origen: 'hijo5-casa',
-                    punto: punto,
-                    modo: estado.modo,
-                    gpsActivo: estado.gpsActivo
-                }, '*');
-                
-                // Quitar clase de selección después de la animación
-                setTimeout(() => {
-                    // Añadir feedback de éxito
-                    btn.classList.remove('seleccionando');
-                    btn.classList.add('seleccionado');
-                    setTimeout(() => btn.classList.remove('seleccionado'), 1000);
-                }, 300);
+                // Construir el identificador correcto
+                const parada_id = p.parada_id || (p.tipo === 'parada' ? `P-${p.parada}` : undefined);
+                const tramo_id = p.tramo_id || (p.tipo === 'tramo' ? `TR-${p.tramo}` : undefined);
+                // Enviar mensaje de navegación al padre
+                await enviarMensaje('padre', TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, { punto: { parada_id, tramo_id } });
+                // (Opcional) También puedes solicitar información detallada si lo necesitas
+                // await solicitarInfoParadaOTramo({ parada_id, tramo_id });
             });
             
             botonesContainer.appendChild(btn);
