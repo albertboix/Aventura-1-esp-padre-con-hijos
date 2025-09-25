@@ -687,7 +687,7 @@
         });
     }
     
-    // Nueva función para renderizar botones con formato solicitado
+    // Nueva función para renderizar botones con mejor formato
     function renderizarBotonesParadas(container, paradas) {
         container.innerHTML = '';
         paradas.forEach((p, idx) => {
@@ -736,11 +736,56 @@
             btn.appendChild(row1);
             btn.appendChild(descSpan);
 
-            // ...aquí puedes añadir eventos al botón si lo necesitas...
+            // Añadir evento click para enviar mensaje al padre cuando se selecciona una parada/tramo
+            btn.addEventListener('click', async () => {
+                try {
+                    const id = btn.getAttribute('data-id');
+                    const tipo = p.tipo;
+                    
+                    // Añadir clase visual para feedback al usuario
+                    btn.classList.add('seleccionando');
+                    
+                    // Preparar datos según el tipo (parada o tramo)
+                    const datos = {
+                        punto: {}
+                    };
+                    
+                    // Asignar el ID correcto según el tipo
+                    if (tipo === 'parada' || tipo === 'inicio') {
+                        datos.punto.parada_id = id;
+                    } else if (tipo === 'tramo') {
+                        datos.punto.tramo_id = id;
+                    }
+                    
+                    // Añadir información adicional
+                    datos.origen = 'hijo5-casa';
+                    datos.timestamp = Date.now();
+                    
+                    // Enviar mensaje al padre con la parada/tramo seleccionado
+                    logger.debug(`Enviando selección de ${tipo} con ID: ${id}`);
+                    await enviarMensaje('padre', TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, datos);
+                    
+                    // Quitar clase de seleccionando y añadir clase seleccionado para animación
+                    btn.classList.remove('seleccionando');
+                    btn.classList.add('seleccionado');
+                    
+                    // Quitar la clase después de la animación
+                    setTimeout(() => btn.classList.remove('seleccionado'), 1000);
+                    
+                    logger.info(`Usuario seleccionó ${tipo}: ${id} - ${p.nombre || ''}`);
+                } catch (error) {
+                    console.error('Error al enviar selección de parada/tramo:', error);
+                    btn.classList.remove('seleccionando');
+                    btn.classList.add('error');
+                    setTimeout(() => btn.classList.remove('error'), 1000);
+                    
+                    logger.error(`Error al enviar selección de ${p.tipo}:`, error);
+                }
+            });
 
-            container.appendChild(btn);
-        });
-    }
+        container.appendChild(btn);
+    });
+}
     
     // Función para mostrar estado de carga
     function mostrarEstadoCarga(cargando, mensaje = '', esError = false) {
