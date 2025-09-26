@@ -361,4 +361,12 @@ if (typeof window !== 'undefined' && !window.Logger) {
   }
 }
 
+// Manejo global de errores
+window.addEventListener('error', (event) => {
+    console.error('Error global capturado:', event.message, event);
+    if (window.logger?.error) {
+        window.logger.error(event.message, event);
+    }
+});
+
 export default logger;
