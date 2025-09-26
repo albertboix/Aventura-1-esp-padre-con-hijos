@@ -81,6 +81,27 @@ export function generarId() {
 }
 
 /**
+ * Genera un ID único con mayor entropía usando timestamp, aleatorio y prefijo opcional
+ * @param {string} [prefix='msg'] - Prefijo opcional para el ID
+ * @returns {string} ID único garantizado
+ */
+export function generarIdUnico(prefix = 'msg') {
+    // Usar timestamp con milisegundos
+    const timestamp = Date.now();
+    // Generar componente aleatorio con mayor entropía
+    const random = Math.random().toString(36).substring(2, 10) + 
+                  Math.random().toString(36).substring(2, 10);
+    // Componente único del navegador (cuando esté disponible)
+    let uniqueComponent = '';
+    if (typeof window !== 'undefined') {
+        // Usar información de la sesión cuando esté disponible
+        uniqueComponent = window.name || window.sessionStorage?.getItem('session-id') || '';
+    }
+    
+    return `${prefix}-${timestamp}-${random}-${uniqueComponent}`;
+}
+
+/**
  * Debounce function
  * @param {Function} func - Función a ejecutar
  * @param {number} wait - Tiempo de espera en ms
@@ -120,6 +141,7 @@ export default {
     crearObjetoError,
     validarObjeto,
     generarId,
+    generarIdUnico,
     debounce,
     throttle
 };
