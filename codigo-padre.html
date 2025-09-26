@@ -432,5 +432,312 @@
         </div>
     </div>
 
+    <!-- Sistema de orquestación entre componentes -->
+    <script type="module">
+    import { TIPOS_MENSAJE, MODOS } from './js/constants.js';
+    import { inicializarMensajeria, registrarControlador, enviarMensaje } from './js/mensajeria.js';
+    import logger from './js/logger.js';
+    
+    // Estado global de la orquestación
+    const estadoOrquestacion = {
+        modo: 'casa',
+        paradaActual: null,
+        usuarioDistanciaParada: Infinity,
+        audioReproduciendo: false,
+        retoActivo: false,
+        retoCompletado: false,
+        botonGPSHabilitado: true
+    };
+    
+    // Función para avanzar a la siguiente parada/tramo
+    async function avanzarASiguienteParada() {
+        try {
+            // Lógica para determinar la siguiente parada/tramo basado en la actual
+            const siguienteParada = obtenerSiguienteParada(estadoOrquestacion.paradaActual);
+            
+            if (siguienteParada) {
+                logger.info(`Avanzando a la siguiente parada: ${siguienteParada.id}`);
+                
+                // Notificar a todos los componentes del cambio
+                await enviarMensaje('todos', TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, {
+                    punto: { 
+                        parada_id: siguienteParada.parada_id,
+                        tramo_id: siguienteParada.tramo_id
+                    }
+                });
+                
+                // Actualizar estado
+                estadoOrquestacion.paradaActual = siguienteParada;
+                estadoOrquestacion.retoCompletado = false;
+                estadoOrquestacion.retoActivo = false;
+                estadoOrquestacion.audioReproduciendo = false;
+            } else {
+                logger.warn('No se encontró una siguiente parada');
+            }
+        } catch (error) {
+            logger.error('Error al avanzar a la siguiente parada:', error);
+        }
+    }
+    
+    // Registrar manejadores para coordinar el flujo
+    
+    // 1. Manejador para actualizaciones de posición del usuario
+    registrarControlador(TIPOS_MENSAJE.NAVEGACION.ACTUALIZAR_POSICION, async (mensaje) => {
+        const { coordenadas } = mensaje.datos || {};
+        if (!coordenadas) return;
+        
+        // Calcular distancia a la parada actual
+        if (estadoOrquestacion.paradaActual && estadoOrquestacion.paradaActual.coordenadas) {
+            const distancia = calcularDistancia(
+                coordenadas,
+                estadoOrquestacion.paradaActual.coordenadas
+            );
+            
+            estadoOrquestacion.usuarioDistanciaParada = distancia;
+            
+            // Actualizar habilitación de botones según la distancia
+            actualizarHabilitacionBotones(distancia);
+        }
+    });
+    
+    // 2. Manejador para finalización de audio
+    registrarControlador(TIPOS_MENSAJE.AUDIO.FIN_REPRODUCCION, async (mensaje) => {
+        logger.info('Audio finalizado:', mensaje.datos?.audioId);
+        
+        estadoOrquestacion.audioReproduciendo = false;
+        
+        // Verificar si hay un reto asociado a esta parada
+        const retoAsociado = obtenerRetoAsociadoAParada(estadoOrquestacion.paradaActual);
+        
+        if (retoAsociado) {
+            // Si hay reto: Primero mostrar el reto, los botones se habilitarán después
+            await enviarMensaje('hijo4', TIPOS_MENSAJE.CONTROL.HABILITAR, {
+                origen: 'padre',
+                timestamp: new Date().toISOString()
+            });
+            
+            await enviarMensaje('hijo4', TIPOS_MENSAJE.RETO.MOSTRAR, {
+                reto: retoAsociado,
+                parada: estadoOrquestacion.paradaActual
+            });
+            
+            estadoOrquestacion.retoActivo = true;
+            
+        } else {
+            // Si NO hay reto: Habilitar todos los botones inmediatamente
+            await enviarMensaje('hijo2', TIPOS_MENSAJE.CONTROL.HABILITAR, {
+                boton: 'gps',
+                origen: 'padre'
+            });
+            
+            await enviarMensaje('hijo2', TIPOS_MENSAJE.CONTROL.HABILITAR, {
+                boton: 'imagen',
+                origen: 'padre'
+            });
+            
+            // Si es un tramo, habilitar también el botón de vídeo
+            if (estadoOrquestacion.paradaActual && estadoOrquestacion.paradaActual.tramo_id) {
+                await enviarMensaje('hijo2', TIPOS_MENSAJE.CONTROL.HABILITAR, {
+                    boton: 'video',
+                    origen: 'padre'
+                });
+            }
+            
+            estadoOrquestacion.botonGPSHabilitado = true;
+            logger.info('No hay reto asociado, botones habilitados directamente');
+        }
+        
+        // El audio siempre puede reproducirse de nuevo mientras el usuario esté en la parada/tramo
+        await enviarMensaje('hijo3', TIPOS_MENSAJE.CONTROL.HABILITAR, {
+            origen: 'padre'
+        });
+    });
+    
+    // 3. Manejador para reto completado
+    registrarControlador(TIPOS_MENSAJE.RETO.COMPLETADO, async (mensaje) => {
+        logger.info('Reto completado:', mensaje.datos);
+        
+        estadoOrquestacion.retoCompletado = true;
+        estadoOrquestacion.retoActivo = false;
+        
+        // Habilitar TODOS los botones después de completar el reto
+        await enviarMensaje('hijo2', TIPOS_MENSAJE.CONTROL.HABILITAR, {
+            boton: 'gps',
+            origen: 'padre'
+        });
+        
+        await enviarMensaje('hijo2', TIPOS_MENSAJE.CONTROL.HABILITAR, {
+            boton: 'imagen',
+            origen: 'padre'
+        });
+        
+        // Si es un tramo, habilitar también el botón de vídeo
+        if (estadoOrquestacion.paradaActual && estadoOrquestacion.paradaActual.tramo_id) {
+            await enviarMensaje('hijo2', TIPOS_MENSAJE.CONTROL.HABILITAR, {
+                boton: 'video',
+                origen: 'padre'
+            });
+        }
+        
+        estadoOrquestacion.botonGPSHabilitado = true;
+        
+        // Avanzar a la siguiente parada
+        await avanzarASiguienteParada();
+    });
+    
+    // 4. Manejador para inicio de reproducción de audio
+    registrarControlador(TIPOS_MENSAJE.AUDIO.REPRODUCIR, async (mensaje) => {
+        logger.info('Audio iniciado:', mensaje.datos);
+        
+        estadoOrquestacion.audioReproduciendo = true;
+        
+        // Deshabilitar botón GPS durante la reproducción del audio
+        await enviarMensaje('hijo2', TIPOS_MENSAJE.CONTROL.DESHABILITAR, {
+            boton: 'gps',
+            origen: 'padre'
+        });
+        
+        estadoOrquestacion.botonGPSHabilitado = false;
+    });
+    
+    // Función para actualizar la habilitación de botones según la distancia
+    async function actualizarHabilitacionBotones(distancia) {
+        try {
+            // Si estamos en modo casa, asegurar que los botones audio y retos estén siempre habilitados
+            if (estadoOrquestacion.modo === 'casa') {
+                // Habilitar botones de audio y retos en modo casa
+                await enviarMensaje('hijo3', TIPOS_MENSAJE.CONTROL.HABILITAR, {
+                    origen: 'padre'
+                });
+                await enviarMensaje('hijo4', TIPOS_MENSAJE.CONTROL.HABILITAR, {
+                    origen: 'padre'
+                });
+                return; // No seguir con la lógica basada en distancia en modo casa
+            }
+
+            // Si está activo un reto, no modificar estado del botón GPS
+            if (estadoOrquestacion.retoActivo) {
+                logger.debug('Hay un reto activo, no se actualiza estado del botón GPS');
+                return;
+            }
+            
+            if (distancia <= 10) {
+                // A menos de 10m: Deshabilitar botón de imagen
+                await enviarMensaje('hijo2', TIPOS_MENSAJE.CONTROL.DESHABILITAR, {
+                    boton: 'imagen',
+                    origen: 'padre'
+                });
+                
+                // El audio siempre está disponible cuando está cerca
+                await enviarMensaje('hijo3', TIPOS_MENSAJE.CONTROL.HABILITAR, {
+                    origen: 'padre'
+                });
+            } else if (distancia > 10 && distancia <= 60) {
+                // Entre 10-60m: Habilitar GPS e imagen
+                // Solo habilitar GPS si no está reproduciendo audio
+                if (!estadoOrquestacion.audioReproduciendo) {
+                    await enviarMensaje('hijo2', TIPOS_MENSAJE.CONTROL.HABILITAR, {
+                        boton: 'gps',
+                        origen: 'padre'
+                    });
+                    estadoOrquestacion.botonGPSHabilitado = true;
+                }
+                
+                await enviarMensaje('hijo2', TIPOS_MENSAJE.CONTROL.HABILITAR, {
+                    boton: 'imagen',
+                    origen: 'padre'
+                });
+                
+                // Habilitar audio también
+                await enviarMensaje('hijo3', TIPOS_MENSAJE.CONTROL.HABILITAR, {
+                    origen: 'padre'
+                });
+            } else {
+                // A más de 60m: Deshabilitar GPS
+                await enviarMensaje('hijo2', TIPOS_MENSAJE.CONTROL.DESHABILITAR, {
+                    boton: 'gps',
+                    origen: 'padre'
+                });
+                
+                estadoOrquestacion.botonGPSHabilitado = false;
+            }
+        } catch (error) {
+            logger.error('Error al actualizar habilitación de botones:', error);
+        }
+    }
+    
+    // Funciones auxiliares
+    function calcularDistancia(coord1, coord2) {
+        const R = 6371e3; // Radio de la Tierra en metros
+        const φ1 = coord1.lat * Math.PI/180;
+        const φ2 = coord2.lat * Math.PI/180;
+        const Δφ = (coord2.lat - coord1.lat) * Math.PI/180;
+        const Δλ = (coord2.lng - coord1.lng) * Math.PI/180;
+
+        const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                Math.cos(φ1) * Math.cos(φ2) *
+                Math.sin(Δλ/2) * Math.sin(Δλ/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+        return R * c; // Distancia en metros
+    }
+    
+    function obtenerSiguienteParada(paradaActual) {
+        // Implementación real buscaría en el array de paradas
+        // Simulación simple para el ejemplo
+        return { id: 'siguiente-parada', parada_id: 'P-' + (parseInt(paradaActual?.id?.split('-')[1] || '0') + 1) };
+    }
+    
+    function obtenerRetoAsociadoAParada(parada) {
+        // Verificar si tenemos un punto válido
+        if (!parada) return null;
+        
+        // Obtener el ID normalizado para buscar (parada_id o tramo_id)
+        const idBusqueda = parada.parada_id || parada.tramo_id || parada.id || '';
+        
+        // Lista simple de puntos con retos asociados (tanto paradas como tramos)
+        const puntosConReto = ['P-1', 'P-3', 'P-5', 'P-7', 'P-9', 'P-12', 'P-15'];
+        
+        // Verificar si este punto tiene reto
+        if (puntosConReto.includes(idBusqueda)) {
+            return {
+                id: 'reto-' + idBusqueda.split('-')[1],
+                titulo: `Reto del punto ${idBusqueda}`,
+                tipo: 'pregunta',
+                datos: {
+                    pregunta: '¿Cuál es el elemento principal que se observa en este punto?',
+                    opciones: ['Fuente', 'Estatua', 'Edificio', 'Puerta'],
+                    correcta: 2
+                }
+            };
+        }
+        
+        return null; // Este punto no tiene reto asociado
+    }
+    
+    // Inicialización
+    async function iniciarOrquestacion() {
+        try {
+            // Establecer la primera parada por defecto (P-0 Torres de Serranos)
+            estadoOrquestacion.paradaActual = {
+                id: 'P-0',
+                parada_id: 'P-0',
+                nombre: 'Torres de Serranos',
+                coordenadas: {
+                    lat: 39.47876,
+                    lng: -0.37626
+                }
+            };
+            
+            logger.info('Orquestación iniciada con parada inicial:', estadoOrquestacion.paradaActual);
+        } catch (error) {
+            logger.error('Error al iniciar orquestación:', error);
+        }
+    }
+    
+    // Iniciar la orquestación cuando se cargue el DOM
+    document.addEventListener('DOMContentLoaded', iniciarOrquestacion);
+</script>
+
 </body>
 </html>
