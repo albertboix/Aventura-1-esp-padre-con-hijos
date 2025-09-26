@@ -227,7 +227,7 @@ function _registrarControlador(tipo, manejador) {
 // Función interna para enviar mensajes
 async function _enviarMensaje(destino, tipo, datos = {}) {
     if (!destino || !tipo) {
-        logger.error('[Mensajeria] Falta destino o tipo en enviarMensaje', { destino, tipo });
+        logger.error('[Mensajeria] Falta destino o tipo en enviarMensaje', { destino, tipo, datos });
         return;
     }
     
