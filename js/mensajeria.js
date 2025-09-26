@@ -756,8 +756,14 @@ export async function inicializarMensajeria(config) {
     return await _inicializarMensajeria(config);
 }
 
-export function registrarControlador(tipo, manejador) {
-    return _registrarControlador(tipo, manejador);
+export function registrarControlador(tipoMensaje, controlador) {
+    if (!tipoMensaje || typeof controlador !== 'function') {
+        console.error('Error al registrar controlador: tipoMensaje o controlador inválido', { tipoMensaje, controlador });
+        return;
+    }
+    // Registrar el controlador normalmente
+    estado.manejadores.set(tipoMensaje, controlador);
+    logger.debug(`[Mensajeria] Controlador registrado para tipo: ${tipoMensaje}`);
 }
 
 export async function enviarMensaje(destino, tipo, datos = {}) {
