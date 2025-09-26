@@ -239,6 +239,47 @@
     
     <!-- PROBLEMA #2: Arreglar el script de inicialización del mapa -->
     <script>
+        // Crear el contenedor del mapa inmediatamente - lo más temprano posible
+        (function crearContenedorMapa() {
+            console.log('Creando contenedor del mapa al cargar el script...');
+            let mapContainer = document.getElementById('mapa');
+            
+            if (!mapContainer) {
+                console.log('Contenedor del mapa no encontrado, creando uno nuevo inmediatamente...');
+                mapContainer = document.createElement('div');
+                mapContainer.id = 'mapa';
+                mapContainer.style.cssText = `
+                    position: fixed !important;
+                    top: 0 !important;
+                    left: 0 !important;
+                    width: 100vw !important;
+                    height: 100vh !important;
+                    z-index: 10 !important;
+                    background-color: #f5f5f5 !important;
+                    border: 1px solid #ccc !important;
+                    visibility: visible !important;
+                    opacity: 1 !important;
+                    display: block !important;
+                    pointer-events: auto !important;
+                    overflow: visible !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                `;
+                
+                // Si el body ya está disponible, añadir el contenedor
+                if (document.body) {
+                    document.body.prepend(mapContainer);
+                    console.log('Contenedor del mapa añadido al body');
+                } else {
+                    // Si el body aún no está disponible, usar un MutationObserver
+                    document.addEventListener('DOMContentLoaded', () => {
+                        document.body.prepend(mapContainer);
+                        console.log('Contenedor del mapa añadido al body en DOMContentLoaded');
+                    });
+                }
+            }
+        })();
+        
         document.addEventListener('DOMContentLoaded', function() {
             console.log('🔍 DOM completamente cargado, verificando Leaflet...');
             if (typeof L === 'undefined') {
@@ -297,7 +338,7 @@
                 try {
                     console.log('Inicializando mapa...');
                     
-                    // 1. PRIMER PASO: Asegurar que el contenedor existe
+                    // 1. PRIMER PASO: Asegurar que el contenedor existe y tiene dimensiones
                     let mapContainer = document.getElementById('mapa');
                     
                     if (!mapContainer) {
@@ -308,33 +349,61 @@
                         console.log('Contenedor del mapa creado dinámicamente');
                     }
                     
-                    // 2. SEGUNDO PASO: Garantizar dimensiones del 100% de la pantalla
-                    mapContainer.style.width = '100vw';
-                    mapContainer.style.height = '100vh';
-                    mapContainer.style.position = 'fixed';
-                    mapContainer.style.top = '0';
-                    mapContainer.style.left = '0';
-                    mapContainer.style.zIndex = '10';
-                    mapContainer.style.visibility = 'visible';
-                    mapContainer.style.opacity = '1';
-                    mapContainer.style.backgroundColor = '#f5f5f5';
+                    // 2. Aplicar estilos imperativa y explícitamente
+                    mapContainer.style.cssText = `
+                        position: fixed !important;
+                        top: 0 !important;
+                        left: 0 !important;
+                        width: 100vw !important;
+                        height: 100vh !important;
+                        z-index: 10 !important;
+                        background-color: #f5f5f5 !important;
+                        border: 1px solid #ccc !important;
+                        visibility: visible !important;
+                        opacity: 1 !important;
+                        display: block !important;
+                        pointer-events: auto !important;
+                        overflow: visible !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                    `;
                     
-                    // 3. TERCER PASO: Forzar un reflow para que el navegador actualice el DOM
+                    // 3. TERCER PASO: Forzar múltiples reflows para garantizar que el navegador actualice el DOM
                     void mapContainer.offsetHeight;
+                    void mapContainer.offsetWidth;
+                    void mapContainer.getBoundingClientRect();
                     
                     console.log('Dimensiones del contenedor: ' + mapContainer.offsetWidth + 'x' + mapContainer.offsetHeight);
                     
-                    // 4. PASO CRÍTICO: Usar requestAnimationFrame para esperar al siguiente ciclo de pintado
+                    // Verificar que el contenedor tenga dimensiones válidas
+                    if (mapContainer.offsetWidth <= 0 || mapContainer.offsetHeight <= 0) {
+                        console.error('❌ El contenedor del mapa tiene dimensiones inválidas:', 
+                                    mapContainer.offsetWidth + 'x' + mapContainer.offsetHeight);
+                        
+                        // Reintentar con un timeout más largo
+                        return setTimeout(() => {
+                            console.log('🔄 Reintentando inicializar el mapa después de detectar dimensiones inválidas...');
+                            initializeMap().then(resolve).catch(reject);
+                        }, 500);
+                    }
+                    
+                    // 4. PASO CRÍTICO: Usar una cadena de delays para asegurar que el contenedor está listo
+                    console.log('Esperando a que el navegador pinte el contenedor...');
                     requestAnimationFrame(() => {
                         setTimeout(() => {
                             try {
+                                // Verificar dimensiones nuevamente después del delay
+                                console.log('Verificando dimensiones después del delay:', 
+                                          mapContainer.offsetWidth + 'x' + mapContainer.offsetHeight);
+                                
                                 // 5. Si ya hay un mapa existente, destruirlo
                                 if (window.mapa && typeof window.mapa.remove === 'function') {
                                     window.mapa.remove();
                                     window.mapa = null;
+                                    console.log('Instancia previa del mapa destruida');
                                 }
                                 
-                                // 6. Crear el nuevo mapa
+                                // 6. Crear el nuevo mapa con opciones explícitas
                                 console.log('Creating new Leaflet map instance');
                                 window.mapa = L.map('mapa', {
                                     center: [39.4699, -0.3763], // Valencia
@@ -342,31 +411,42 @@
                                     minZoom: 12,
                                     maxZoom: 18,
                                     zoomControl: true,
-                                    attributionControl: true
+                                    attributionControl: true,
+                                    fadeAnimation: false, // Desactivar animaciones para mayor estabilidad
+                                    zoomAnimation: false  // Desactivar animaciones para mayor estabilidad
                                 });
                                 
-                                // 7. Añadir capa de OpenStreetMap
+                                // 7. Añadir capa de OpenStreetMap con opciones explícitas
                                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                                     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
                                     maxZoom: 19,
+                                    minZoom: 1,
                                     tileSize: 256
                                 }).addTo(window.mapa);
                                 
-                                // 8. Forzar actualización del tamaño del mapa
+                                // 8. Forzar múltiples actualizaciones del tamaño del mapa
+                                window.mapa.invalidateSize(true);
+                                
                                 setTimeout(() => {
                                     if (window.mapa && typeof window.mapa.invalidateSize === 'function') {
                                         window.mapa.invalidateSize(true);
-                                        console.log('✅ Map size updated');
+                                        console.log('✅ Map size updated (second invalidation)');
+                                        
+                                        // Agregar marcador de prueba para confirmar que el mapa funciona
+                                        L.marker([39.4699, -0.3763]).addTo(window.mapa)
+                                            .bindPopup('Mapa inicializado correctamente')
+                                            .openPopup();
+                                        
+                                        resolve(window.mapa);
                                     }
-                                    resolve(window.mapa);
-                                }, 100);
+                                }, 250);
                                 
                                 console.log('✅ Map initialized successfully');
                             } catch (mapError) {
                                 console.error('❌ Error creating Leaflet map:', mapError);
                                 reject(mapError);
                             }
-                        }, 50); // Pequeño delay para asegurar que el DOM esté actualizado
+                        }, 150); // Incrementado a 150ms para dar más tiempo al navegador
                     });
                 } catch (error) {
                     console.error('❌ Error preparing map container:', error);
@@ -375,25 +455,31 @@
             });
         }
     </script>
+
+    <div id="mapa"></div>    <!-- Contenedor del mapa (ahora se crea dinámicamente) -->
+
+    <!-- IFrames de los Hijos -->
+    <iframe id="hijo2" src="Av1-botones-coordenadas.html" style="position: fixed; bottom: 20vh; left: 50%; transform: translateX(-50%); width: 280px; height: 120px; z-index: 1000; border: none; pointer-events: none;"></iframe>
+
+    <iframe id="hijo3" src="Av1_audio_esp.html" style="position: fixed; bottom: 2vh; left: 50%; transform: translateX(-50%); width: 320px; height: 140px; z-index: 1000; border: none; pointer-events: auto;"></iframe>
     
-    <!-- Contenedores de la UI -->
-    <div id="mapa"></div>
+    <iframe id="hijo4" src="Av1-esp-retos-preguntas.html" style="display: none;"></iframe>
+
+    <iframe id="hijo5-casa" src="Av1-boton-casa.html" style="position: fixed; top: 0; left: 0; width: 370px; height: 55px; z-index: 1001; border: none;"></iframe>
+
     <div id="map-debug"></div>
     <iframe id="fondo-blanco" tabindex="-1" aria-hidden="true"></iframe>
     <img id="logo-aventura" src="fotos_Av1/LOGO LETRAS FINAL transparente recorte.png" alt="Logo" />
     <div id="info-parada"></div>
 
-    <!-- IFrames de los Hijos -->
-    <!-- ...existing code... -->
-
     <!-- Overlay para Media -->
     <div id="media-overlay">
-        <!-- ...existing code... -->
+        <div id="media-container">
+            <button id="close-media">&times;</button>
+            <video id="parada-video" controls></video>
+            <img id="parada-imagen" />
+        </div>
     </div>
 
-    <!-- SCRIPT PRINCIPAL UNIFICADO DE LA APLICACIÓN -->
-    <script type="module">
-    // ...existing code...
-    </script>
 </body>
 </html>
