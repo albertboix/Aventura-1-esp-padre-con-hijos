@@ -241,7 +241,7 @@ async function _enviarMensaje(destino, tipo, datos = {}) {
     const mensajeId = generarIdUnico(tipo.split('.')[0].toLowerCase());
     
     const mensaje = {
-        origen: estado.iframeId,
+        origen: window.IFRAME_ID || 'padre', // Añadir origen al mensaje
         destino,
         tipo,
         datos: {
