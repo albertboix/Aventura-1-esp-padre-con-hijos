@@ -375,7 +375,7 @@
     
     <!-- PROBLEMA #2: Arreglar el script de inicialización del mapa -->
     <script>
-        // Crear el contenedor del mapa inmediatamente - lo más temprano posible
+        // Crear el contenedor del mapa inmediatamente y añadirlo al DOM
         (function crearContenedorMapa() {
             console.log('Creando contenedor del mapa al cargar el script...');
             let mapContainer = document.getElementById('mapa');
@@ -398,145 +398,21 @@
                     display: block !important;
                     pointer-events: auto !important;
                     overflow: visible !important;
-                    margin: 0 !important;
-                    padding: 0 !important;
                 `;
-                
-                // Si el body ya está disponible, añadir el contenedor
-                if (document.body) {
-                    document.body.prepend(mapContainer);
-                    console.log('Contenedor del mapa añadido al body');
-                } else {
-                    // Si el body aún no está disponible, usar un MutationObserver
-                    document.addEventListener('DOMContentLoaded', () => {
-                        document.body.prepend(mapContainer);
-                        console.log('Contenedor del mapa añadido al body en DOMContentLoaded');
-                    });
-                }
+                document.body.appendChild(mapContainer); // Añadir al DOM
             }
         })();
-        
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('🔍 DOM completamente cargado, verificando Leaflet...');
-            if (typeof L === 'undefined') {
-                console.error('❌ ERROR: Leaflet (L) no está definido en DOMContentLoaded');
-                const mapDebug = document.getElementById('map-debug');
-                if (mapDebug) {
-                    mapDebug.textContent = 'ERROR: Leaflet no está disponible';
-                    mapDebug.style.display = 'block';
-                    mapDebug.style.color = 'red';
-                    mapDebug.style.backgroundColor = 'white';
-                    mapDebug.style.padding = '10px';
-                }
 
-                // PROBLEMA #3: Cargar Leaflet dinámicamente si no está disponible
-                const script = document.createElement('script');
-                script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-                script.onload = () => {
-                    console.log('✅ Leaflet cargado dinámicamente');
-                    // Ahora initializeMap devuelve una promesa, así que manejémosla
-                    initializeMap().then(result => {
-                        console.log('Resultado de inicialización del mapa:', result);
-                    }).catch(err => {
-                        console.error('Error durante inicialización del mapa:', err);
-                    });
-                };
-                document.head.appendChild(script);
+        // Inicializar el mapa después de que el DOM esté completamente cargado
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🔍 DOM completamente cargado, inicializando mapa...');
+            if (typeof L !== 'undefined') {
+                const map = L.map('mapa').setView([39.47876, -0.37626], 13);
+                console.log('✅ Mapa inicializado correctamente');
             } else {
-                console.log('✅ Leaflet disponible en DOMContentLoaded, versión:', L.version);
-                // Ahora initializeMap devuelve una promesa, así que manejémosla
-                initializeMap().then(result => {
-                    console.log('Resultado de inicialización del mapa:', result);
-                }).catch(err => {
-                    console.error('Error durante inicialización del mapa:', err);
-                });
+                console.error('❌ Leaflet no está disponible');
             }
         });
-
-        // PROBLEMA #4: Función de inicialización del mapa simplificada y separada
-        function initializeMap() {
-            return new Promise((resolve, reject) => {
-                try {
-                    console.log('Inicializando mapa...');
-                    
-                    // 1. PRIMER PASO: Asegurar que el contenedor existe
-                    let mapContainer = document.getElementById('mapa');
-                    
-                    if (!mapContainer) {
-                        console.log('Contenedor del mapa no encontrado, creando uno nuevo...');
-                        mapContainer = document.createElement('div');
-                        mapContainer.id = 'mapa';
-                        document.body.prepend(mapContainer);
-                        console.log('Contenedor del mapa creado dinámicamente');
-                    }
-                    
-                    // 2. SEGUNDO PASO: Garantizar dimensiones del 100% de la pantalla
-                    mapContainer.style.width = '100vw';
-                    mapContainer.style.height = '100vh';
-                    mapContainer.style.position = 'fixed';
-                    mapContainer.style.top = '0';
-                    mapContainer.style.left = '0';
-                    mapContainer.style.zIndex = '10';
-                    mapContainer.style.visibility = 'visible';
-                    mapContainer.style.opacity = '1';
-                    mapContainer.style.backgroundColor = '#f5f5f5';
-                    
-                    // 3. TERCER PASO: Forzar un reflow para que el navegador actualice el DOM
-                    void mapContainer.offsetHeight;
-                    
-                    console.log('Dimensiones del contenedor: ' + mapContainer.offsetWidth + 'x' + mapContainer.offsetHeight);
-                    
-                    // 4. PASO CRÍTICO: Usar requestAnimationFrame para esperar al siguiente ciclo de pintado
-                    requestAnimationFrame(() => {
-                        setTimeout(() => {
-                            try {
-                                // 5. Si ya hay un mapa existente, destruirlo
-                                if (window.mapa && typeof window.mapa.remove === 'function') {
-                                    window.mapa.remove();
-                                    window.mapa = null;
-                                    console.log('Instancia previa del mapa destruida');
-                                }
-                                
-                                // 6. Crear el nuevo mapa
-                                console.log('Creating new Leaflet map instance');
-                                window.mapa = L.map('mapa', {
-                                    center: [39.4699, -0.3763], // Valencia
-                                    zoom: 16,
-                                    minZoom: 12,
-                                    maxZoom: 18,
-                                    zoomControl: true,
-                                    attributionControl: true
-                                });
-                                
-                                // 7. Añadir capa de OpenStreetMap
-                                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-                                    maxZoom: 19,
-                                    tileSize: 256
-                                }).addTo(window.mapa);
-                                
-                                // 8. Forzar actualización del tamaño del mapa
-                                setTimeout(() => {
-                                    if (window.mapa && typeof window.mapa.invalidateSize === 'function') {
-                                        window.mapa.invalidateSize(true);
-                                        console.log('✅ Map size updated');
-                                        resolve(window.mapa);
-                                    }
-                                }, 100);
-                                
-                                console.log('✅ Map initialized successfully');
-                            } catch (mapError) {
-                                console.error('❌ Error creating Leaflet map:', mapError);
-                                reject(mapError);
-                            }
-                        }, 50); // Pequeño delay para asegurar que el DOM esté actualizado
-                    });
-                } catch (error) {
-                    console.error('❌ Error preparing map container:', error);
-                    reject(error);
-                }
-            });
-        }
     </script>
 
     <div id="mapa"></div>    <!-- Contenedor del mapa (ahora se crea dinámicamente) -->
@@ -561,7 +437,9 @@
     
     <iframe id="hijo4" src="Av1-esp-retos-preguntas.html" style="display: none;"></iframe>
 
-    <iframe id="hijo5-casa" src="Av1-boton-casa.html" style="position: fixed; top: 15px; left: 10px; width: 410px; height: 60px; z-index: 1001; border: none; pointer-events: auto;"></iframe>
+    <iframe id="hijo5-casa" src="Av1-boton-casa.html" 
+        style="position: fixed; top: 15px; left: 10px; width: 410px; height: 60px; z-index: 99999; border: none; pointer-events: auto;">
+    </iframe>
 
     <!-- Añadir iframes para hamburguesa y opciones -->
     <iframe id="hijo1-hamburguesa" src="./botones-y-subfunciones-hamburguesa.html" 
