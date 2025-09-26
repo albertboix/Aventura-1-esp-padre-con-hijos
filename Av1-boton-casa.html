@@ -462,51 +462,7 @@
         estado.gpsActivo = gpsActivo;
         console.log(`Interfaz actualizada. Modo: ${modo}, GPS: ${estado.gpsActivo ? 'ACTIVADO' : 'DESACTIVADO'}`);
         
-        // Gestionar GPS real
-        manejarCambioGPS(gpsActivo);
-    }
-    
-    // Función para manejar la activación/desactivación del GPS
-    function manejarCambioGPS(activar) {
-        if (activar) {
-            if (estado.watchId !== null) {
-                navigator.geolocation.clearWatch(estado.watchId);
-                estado.watchId = null;
-            }
-            
-            if ('geolocation' in navigator) {
-                estado.watchId = navigator.geolocation.watchPosition(
-                    (position) => {
-                        const coords = {
-                            lat: position.coords.latitude,
-                            lng: position.coords.longitude,
-                            accuracy: position.coords.accuracy
-                        };
-                        
-                        console.log('Posición GPS obtenida:', coords);
-                        
-                        // Notificar al padre la posición actual
-                        enviarMensaje('padre', TIPOS_MENSAJE.NAVEGACION.ACTUALIZAR_POSICION, {
-                            coordenadas: coords,
-                            timestamp: new Date().toISOString()
-                        }).catch(err => console.error('Error al enviar posición:', err));
-                    },
-                    (err) => {
-                        console.warn(`ERROR GPS (${err.code}): ${err.message}`);
-                    },
-                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-                );
-                console.log('GPS activado correctamente');
-            } else {
-                console.error('Geolocation no está soportada en este navegador');
-            }
-        } else {
-            if (estado.watchId !== null) {
-                navigator.geolocation.clearWatch(estado.watchId);
-                estado.watchId = null;
-                console.log('GPS desactivado');
-            }
-        }
+        // ELIMINAR la llamada a manejarCambioGPS - ahora es responsabilidad de hijo2
     }
     
     // Función para manejar el cambio de modo - DEFINICIÓN ÚNICA
@@ -656,8 +612,6 @@
         
         Promise.race([
             enviarMensaje('padre', TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS, {
-                origen: 'hijo5-casa',
-                timestamp: new Date().toISOString(),
                 version: '1.0'
             }),
             timeout
@@ -867,186 +821,61 @@
             if (TIPOS_MENSAJE.NAVEGACION.PARADAS) {
                 registrarControlador(TIPOS_MENSAJE.NAVEGACION.PARADAS, manejarRecepcionParadas);
             }
-            
-            console.log('Manejadores registrados');
-            
-            // Notificar al padre que estamos listos
-            await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO, {
-                componente: 'hijo5-casa',
-                estado: 'listo',
-                modo: estado.modo,
-                gpsActivo: estado.gpsActivo,
-                timestamp: new Date().toISOString(),
-                version: '1.0'
-            });
-            
-            // Actualizar estado
-            estado.inicializado = true;
-            estado.inicializando = false;
-            
-            // Ocultar indicador de carga
-            if (loadingIndicator) loadingIndicator.style.display = 'none';
-            
-            // Inicializar interfaz
+
+            // Actualizar interfaz inicialmente según el estado
             actualizarInterfaz(estado.modo);
             
-            // Ya tenemos las paradas locales, no necesitamos esperar al padre
-            console.log('Componente boton-casa inicializado correctamente');
+            // Enviar mensaje inicial al padre para sincronizar estado
+            enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.INICIALIZAR, {
+                origen: 'hijo5-casa',
+                timestamp: new Date().toISOString()
+            });
             
+            console.log('Componente inicializado correctamente');
         } catch (error) {
+            console.error('Error durante la inicialización del componente:', error);
+            mostrarEstadoCarga(false);
+        } finally {
+            estado.inicializado = true;
             estado.inicializando = false;
-            estado.error = error;
-            console.error('Error al inicializar componente:', error);
-            
-            // Notificar al padre el error
-            try {
-                await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
-                    tipo: 'inicializacion',
-                    mensaje: error.message,
-                    stack: error.stack,
-                    origen: 'hijo5-casa',
-                    timestamp: new Date().toISOString(),
-                    version: '1.0'
-                });
-            } catch (e) {
-                console.error('Error al notificar error al padre:', e);
-            }
-            
-            // Ocultar indicador de carga
-            const loadingIndicator = document.getElementById('loading-indicator');
-            if (loadingIndicator) loadingIndicator.style.display = 'none';
         }
     }
-
-    // Inicializar cuando el DOM esté listo
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', inicializar);
-    } else {
-        inicializar().catch(console.error);
-    }
-    // Función para solicitar información detallada de una parada/tramo al padre
-    async function solicitarInfoParadaOTramo({ parada_id, tramo_id }) {
-        try {
-            const respuesta = await enviarMensaje('padre', TIPOS_MENSAJE.DATOS.SOLICITAR_PARADA, { parada_id, tramo_id });
-            if (respuesta && respuesta.parada) {
-                // Aquí puedes usar la información recibida (respuesta.parada)
-                console.log('Información recibida del padre:', respuesta.parada);
-                // Ejemplo: podrías mostrar un modal, actualizar la UI, etc.
-                return respuesta.parada;
-            } else {
-                console.warn('No se encontró información para:', parada_id || tramo_id);
-                return null;
-            }
-        } catch (error) {
-            console.error('Error al solicitar información:', error);
-            return null;
-        }
-    }
-    // Añade la función para evitar el error
-    function manejarEstadoSistema(mensaje) {
-        // Puedes implementar la lógica que necesites aquí o dejarlo vacío
-        console.log('[hijo5-casa] manejarEstadoSistema recibido:', mensaje);
-    }
+    
+    // Iniciar el componente después de que el DOM esté completamente cargado
+    document.addEventListener('DOMContentLoaded', (event) => {
+        console.log('DOM completamente cargado');
+        inicializar();
+    });
     </script>
 </head>
 <body>
-  <!-- Loading indicator -->
-  <div id="loading-indicator" style="
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0,0,0,0.5);
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      z-index: 9999;
-      display: none; /* Hidden by default */
-  ">
-      <div style="
-          background: white;
-          padding: 20px;
-          border-radius: 8px;
-          text-align: center;
-      ">
-          <div class="spinner"></div>
-          <p>Cargando aplicación...</p>
-      </div>
-  </div>
-
-  <div id="zona-boton-casa" role="region" aria-label="Control de navegación">
-    <button id="gps-casa-btn">
-      <span class="button-content">
-        <span class="satellite-emoji">🛰️</span>
-        <span class="gps-label">GPS</span>
-      </span>
-    </button>
-    <div id="paradas-window">
-      <div id="lista-paradas"></div>
+    <!-- Contenedor principal para el botón de casa y la ventana de paradas -->
+    <div id="zona-boton-casa">
+        <!-- Botón de GPS (Casa) -->
+        <div id="gps-casa-btn" class="off">
+            <div class="button-content">
+                <!-- Emoji de satélite -->
+                <div class="satellite-emoji">🛰️</div>
+                <!-- Etiqueta ON/OFF -->
+                <div class="gps-label">OFF</div>
+            </div>
+        </div>
+        
+        <!-- Ventana de paradas (inicialmente oculta) -->
+        <div id="paradas-window" class="hidden">
+            <!-- Lista de paradas (scroll horizontal) -->
+            <div id="lista-paradas"></div>
+        </div>
     </div>
-  </div>
-  
-  <script>
-    // Configurar el botón de GPS
-    document.getElementById('gps-casa-btn').addEventListener('click', function() {
-      // La lógica de cambio de modo se maneja en el módulo principal
-      try {
-        // Asegurarnos de que el evento de clic se maneje correctamente y con mejor feedback visual
-        this.classList.add('pulsando');
-        setTimeout(() => this.classList.remove('pulsando'), 300);
-        
-        // Llamar a la función de cambio de modo
-        if (window.manejarClickCambioModo) {
-          window.manejarClickCambioModo();
-          // Log para diagnóstico
-          console.log('✅ [CASA] Cambio de modo solicitado correctamente');
-        } else {
-          console.warn('⚠️ [CASA] manejarClickCambioModo no está disponible');
-          alert('Error: No se puede cambiar de modo en este momento');
-        }
-      } catch (e) {
-        console.error('❌ [CASA] Error al manejar clic de cambio de modo:', e);
-        alert('Error al cambiar de modo: ' + e.message);
-      }
-    });
     
-    // Manejador global de errores no capturados
-    window.addEventListener('error', function(event) {
-      const error = event.error || new Error(event.message);
-      const errorMsg = 'Error no manejado';
-      const errorDetails = error instanceof Error ? error.message : String(error);
-      
-      // Usar logger si está disponible, si no usar console
-      const logError = window.logger ? window.logger.error : console.error;
-      logError(errorMsg, error);
-      
-      // Mostrar mensaje de error al usuario
-      try {
-        const errorContainer = document.createElement('div');
-        errorContainer.style.cssText = [
-          'position: fixed;',
-          'top: 0;',
-          'left: 0;',
-          'right: 0;',
-          'background: #ff4444;',
-          'color: white;',
-          'padding: 1rem;',
-          'z-index: 10000;',
-          'text-align: center;',
-          'font-family: Arial, sans-serif;'
-        ].join(' ');
-        
-        errorContainer.textContent = `${errorMsg}: ${errorDetails}`;
-        document.body.prepend(errorContainer);
-      } catch (e) {
-        if (window.logger) {
-          logger.error('No se pudo mostrar el mensaje de error:', e);
-        } else {
-          console.error('No se pudo mostrar el mensaje de error:', e);
-        }
-      }
-    });
-  </script>
+    <!-- Indicador de carga (spinner) - oculto por defecto -->
+    <div id="loading-indicator" style="display:none;">
+        <i class="fas fa-spinner fa-spin"></i> Cargando...
+    </div>
+    
+    <!-- Script para manejar la lógica del componente -->
+    <script>
+    // Aquí va el código JavaScript para manejar el componente
+    </script>
 </body>
 </html>
