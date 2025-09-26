@@ -96,6 +96,18 @@ export const CODIGOS_ERROR = {
     NAVEGACION: 'ERROR_NAVEGACION'
 };
 
+/**
+ * Configuración de throttling para diferentes tipos de mensajes
+ */
+export const THROTTLE_CONFIG = {
+    // Navegación GPS: 10 segundos por defecto
+    'NAVEGACION.ACTUALIZAR_POSICION': 10000,
+    // Cambio de parada: evitar cambios rápidos accidentales
+    'NAVEGACION.CAMBIO_PARADA': 1000,
+    // Eventos del sistema: permitir más frecuencia
+    'SISTEMA.ESTADO': 500
+};
+
 export default {
     LOG_LEVELS,
     MODOS,
