@@ -298,27 +298,12 @@
                 script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
                 script.onload = () => {
                     console.log('✅ Leaflet cargado dinámicamente');
-                    // Preparar el contenedor antes de intentar inicializar el mapa
-                    let mapContainer = document.getElementById('mapa');
-                    if (!mapContainer) {
-                        mapContainer = document.createElement('div');
-                        mapContainer.id = 'mapa';
-                        mapContainer.style.width = '100vw';
-                        mapContainer.style.height = '100vh';
-                        mapContainer.style.position = 'fixed';
-                        mapContainer.style.top = '0';
-                        mapContainer.style.left = '0';
-                        mapContainer.style.zIndex = '10';
-                        document.body.prepend(mapContainer);
-                    }
-                    // Esperar un momento y luego inicializar
-                    setTimeout(() => {
-                        initializeMap().then(result => {
-                            console.log('Resultado de inicialización del mapa:', result);
-                        }).catch(err => {
-                            console.error('Error durante inicialización del mapa:', err);
-                        });
-                    }, 100);
+                    // Ahora initializeMap devuelve una promesa, así que manejémosla
+                    initializeMap().then(result => {
+                        console.log('Resultado de inicialización del mapa:', result);
+                    }).catch(err => {
+                        console.error('Error durante inicialización del mapa:', err);
+                    });
                 };
                 document.head.appendChild(script);
             } else {
@@ -338,7 +323,7 @@
                 try {
                     console.log('Inicializando mapa...');
                     
-                    // 1. PRIMER PASO: Asegurar que el contenedor existe y tiene dimensiones
+                    // 1. PRIMER PASO: Asegurar que el contenedor existe
                     let mapContainer = document.getElementById('mapa');
                     
                     if (!mapContainer) {
@@ -349,53 +334,26 @@
                         console.log('Contenedor del mapa creado dinámicamente');
                     }
                     
-                    // 2. Aplicar estilos imperativa y explícitamente
-                    mapContainer.style.cssText = `
-                        position: fixed !important;
-                        top: 0 !important;
-                        left: 0 !important;
-                        width: 100vw !important;
-                        height: 100vh !important;
-                        z-index: 10 !important;
-                        background-color: #f5f5f5 !important;
-                        border: 1px solid #ccc !important;
-                        visibility: visible !important;
-                        opacity: 1 !important;
-                        display: block !important;
-                        pointer-events: auto !important;
-                        overflow: visible !important;
-                        margin: 0 !important;
-                        padding: 0 !important;
-                    `;
+                    // 2. SEGUNDO PASO: Garantizar dimensiones del 100% de la pantalla
+                    mapContainer.style.width = '100vw';
+                    mapContainer.style.height = '100vh';
+                    mapContainer.style.position = 'fixed';
+                    mapContainer.style.top = '0';
+                    mapContainer.style.left = '0';
+                    mapContainer.style.zIndex = '10';
+                    mapContainer.style.visibility = 'visible';
+                    mapContainer.style.opacity = '1';
+                    mapContainer.style.backgroundColor = '#f5f5f5';
                     
-                    // 3. TERCER PASO: Forzar múltiples reflows para garantizar que el navegador actualice el DOM
+                    // 3. TERCER PASO: Forzar un reflow para que el navegador actualice el DOM
                     void mapContainer.offsetHeight;
-                    void mapContainer.offsetWidth;
-                    void mapContainer.getBoundingClientRect();
                     
                     console.log('Dimensiones del contenedor: ' + mapContainer.offsetWidth + 'x' + mapContainer.offsetHeight);
                     
-                    // Verificar que el contenedor tenga dimensiones válidas
-                    if (mapContainer.offsetWidth <= 0 || mapContainer.offsetHeight <= 0) {
-                        console.error('❌ El contenedor del mapa tiene dimensiones inválidas:', 
-                                    mapContainer.offsetWidth + 'x' + mapContainer.offsetHeight);
-                        
-                        // Reintentar con un timeout más largo
-                        return setTimeout(() => {
-                            console.log('🔄 Reintentando inicializar el mapa después de detectar dimensiones inválidas...');
-                            initializeMap().then(resolve).catch(reject);
-                        }, 500);
-                    }
-                    
-                    // 4. PASO CRÍTICO: Usar una cadena de delays para asegurar que el contenedor está listo
-                    console.log('Esperando a que el navegador pinte el contenedor...');
+                    // 4. PASO CRÍTICO: Usar requestAnimationFrame para esperar al siguiente ciclo de pintado
                     requestAnimationFrame(() => {
                         setTimeout(() => {
                             try {
-                                // Verificar dimensiones nuevamente después del delay
-                                console.log('Verificando dimensiones después del delay:', 
-                                          mapContainer.offsetWidth + 'x' + mapContainer.offsetHeight);
-                                
                                 // 5. Si ya hay un mapa existente, destruirlo
                                 if (window.mapa && typeof window.mapa.remove === 'function') {
                                     window.mapa.remove();
@@ -403,7 +361,7 @@
                                     console.log('Instancia previa del mapa destruida');
                                 }
                                 
-                                // 6. Crear el nuevo mapa con opciones explícitas
+                                // 6. Crear el nuevo mapa
                                 console.log('Creating new Leaflet map instance');
                                 window.mapa = L.map('mapa', {
                                     center: [39.4699, -0.3763], // Valencia
@@ -411,25 +369,67 @@
                                     minZoom: 12,
                                     maxZoom: 18,
                                     zoomControl: true,
-                                    attributionControl: true,
-                                    fadeAnimation: false, // Desactivar animaciones para mayor estabilidad
-                                    zoomAnimation: false  // Desactivar animaciones para mayor estabilidad
+                                    attributionControl: true
                                 });
                                 
-                                // 7. Añadir capa de OpenStreetMap con opciones explícitas
+                                // 7. Añadir capa de OpenStreetMap
                                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                                     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
                                     maxZoom: 19,
-                                    minZoom: 1,
                                     tileSize: 256
                                 }).addTo(window.mapa);
                                 
-                                // 8. Forzar múltiples actualizaciones del tamaño del mapa
-                                window.mapa.invalidateSize(true);
-                                
+                                // 8. Forzar actualización del tamaño del mapa
                                 setTimeout(() => {
                                     if (window.mapa && typeof window.mapa.invalidateSize === 'function') {
                                         window.mapa.invalidateSize(true);
+                                        console.log('✅ Map size updated');
+                                    }
+                                    resolve(window.mapa);
+                                }, 100);
+                                
+                                console.log('✅ Map initialized successfully');
+                            } catch (mapError) {
+                                console.error('❌ Error creating Leaflet map:', mapError);
+                                reject(mapError);
+                            }
+                        }, 50); // Pequeño delay para asegurar que el DOM esté actualizado
+                    });
+                } catch (error) {
+                    console.error('❌ Error preparing map container:', error);
+                    reject(error);
+                }
+            });
+        }
+    </script>
+
+    <div id="mapa"></div>    <!-- Contenedor del mapa (ahora se crea dinámicamente) -->
+
+    <!-- IFrames de los Hijos -->
+    <iframe id="hijo2" src="Av1-botones-coordenadas.html" style="position: fixed; bottom: 20vh; left: 50%; transform: translateX(-50%); width: 280px; height: 120px; z-index: 1000; border: none; pointer-events: none;"></iframe>
+
+    <iframe id="hijo3" src="Av1_audio_esp.html" style="position: fixed; bottom: 2vh; left: 50%; transform: translateX(-50%); width: 320px; height: 140px; z-index: 1000; border: none; pointer-events: auto;"></iframe>
+    
+    <iframe id="hijo4" src="Av1-esp-retos-preguntas.html" style="display: none;"></iframe>
+
+    <iframe id="hijo5-casa" src="Av1-boton-casa.html" style="position: fixed; top: 0; left: 0; width: 370px; height: 55px; z-index: 1001; border: none;"></iframe>
+
+    <div id="map-debug"></div>
+    <iframe id="fondo-blanco" tabindex="-1" aria-hidden="true"></iframe>
+    <img id="logo-aventura" src="fotos_Av1/LOGO LETRAS FINAL transparente recorte.png" alt="Logo" />
+    <div id="info-parada"></div>
+
+    <!-- Overlay para Media -->
+    <div id="media-overlay">
+        <div id="media-container">
+            <button id="close-media">&times;</button>
+            <video id="parada-video" controls></video>
+            <img id="parada-imagen" />
+        </div>
+    </div>
+
+</body>
+</html>
                                         console.log('✅ Map size updated (second invalidation)');
                                         
                                         // Agregar marcador de prueba para confirmar que el mapa funciona
