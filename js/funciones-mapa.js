@@ -18,7 +18,8 @@ let mapa = null;
 const marcadoresParadas = new Map();
 let marcadorDestino = null;
 let rutasTramos = [];
-let marcadorUsuario = null; // Añadido: Variable marcadorUsuario definida
+let rutasActivas = []; // Añadir variable para separar rutas activas de tramos
+let marcadorUsuario = null;
 
 // Estado del mapa para seguimiento interno
 const estadoMapa = {
@@ -216,6 +217,9 @@ export async function inicializarModuloMapa() {
         registrarManejadoresMensajes();
         await inicializarMapa();
         
+        // Solicitar datos de paradas al padre después de inicializar
+        await solicitarDatosParadas();
+        
         estadoMapa.inicializado = true;
         logger.info('Módulo de mapa inicializado correctamente');
         return true;
@@ -243,6 +247,27 @@ function registrarManejadoresMensajes() {
     // PROBLEMA 18: Registrar manejadores para recepción de paradas y estado del sistema
     registrarControlador(TIPOS_MENSAJE.DATOS.RESPUESTA_PARADAS, manejarRecepcionParadas);
     registrarControlador(TIPOS_MENSAJE.SISTEMA.ESTADO, manejarEstadoSistema);
+    
+    // Añadir manejador para mostrar ruta (polyline)
+    registrarControlador(TIPOS_MENSAJE.NAVEGACION.MOSTRAR_RUTA, manejarMostrarRuta);
+    
+    // Registrar controlador específico para solicitud de paradas
+    registrarControlador(TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS, async (mensaje) => {
+        try {
+            // Responder con las paradas actuales
+            return {
+                exito: true,
+                paradas: arrayParadasLocal,
+                timestamp: new Date().toISOString()
+            };
+        } catch (error) {
+            logger.error('Error al responder solicitud de paradas:', error);
+            return {
+                exito: false,
+                error: error.message
+            };
+        }
+    });
     
     logger.debug('Manejadores de mensajes del mapa registrados');
 }
@@ -439,21 +464,33 @@ function mostrarTodasLasParadas() {
 /**
  * Maneja la recepción de datos de paradas
  * @param {Object} mensaje - Mensaje recibido
- * PROBLEMA 18: Implementación de función faltante
  */
 function manejarRecepcionParadas(mensaje) {
     try {
-        const { paradas } = mensaje.datos || {};
-        if (!paradas || !Array.isArray(paradas) || paradas.length === 0) {
+        // Aceptar múltiples formatos de datos para mayor compatibilidad
+        const { paradas, aventuraParadas, puntos, puntosRuta } = mensaje.datos || {};
+        
+        // Encontrar el array de paradas válido (en orden de prioridad)
+        const paradasData = paradas || aventuraParadas || puntos || puntosRuta;
+        
+        if (!paradasData || !Array.isArray(paradasData) || paradasData.length === 0) {
             logger.warn('Mensaje de paradas recibido sin datos válidos');
-            return;
+            return { exito: false, error: 'Datos de paradas inválidos o vacíos' };
         }
         
-        logger.info(`Recibidas ${paradas.length} paradas`);
-        console.log(`📦 [MAPA] Recibidas ${paradas.length} paradas del padre`);
+        logger.info(`Recibidas ${paradasData.length} paradas`);
+        console.log(`📦 [MAPA] Recibidas ${paradasData.length} paradas del padre`);
         
-        // Actualizar el array local
-        establecerDatosParadas(paradas);
+        // Actualizar el array local - usar copia profunda para evitar referencias
+        establecerDatosParadas(JSON.parse(JSON.stringify(paradasData)));
+        
+        // Solicitar detalles adicionales si es necesario
+        if (paradasData.length > 0 && !paradasData[0].coordenadas) {
+            logger.info('Paradas recibidas sin coordenadas, solicitando datos completos');
+            enviarMensaje('padre', TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS_COMPLETAS, {
+                timestamp: new Date().toISOString()
+            }).catch(err => logger.error('Error al solicitar paradas completas:', err));
+        }
         
         // Si estamos en modo casa, mostrar todas las paradas inmediatamente
         if (estadoMapa.modo === 'casa') {
@@ -470,7 +507,7 @@ function manejarRecepcionParadas(mensaje) {
         
         return {
             exito: true,
-            paradasCargadas: paradas.length
+            paradasCargadas: paradasData.length
         };
     } catch (error) {
         logger.error('Error al manejar recepción de paradas:', error);
@@ -933,6 +970,14 @@ function limpiarRecursos() {
         });
         rutasTramos = [];
         
+        // Limpiar rutas activas (creadas con manejarMostrarRuta)
+        rutasActivas.forEach(ruta => {
+            if (mapa.hasLayer(ruta)) {
+                mapa.removeLayer(ruta);
+            }
+        });
+        rutasActivas = [];
+        
         logger.debug('Recursos del mapa limpiados');
     } catch (error) {
         logger.error('Error al limpiar recursos del mapa:', error);
@@ -1113,6 +1158,98 @@ function calcularDistancia(punto1, punto2) {
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 
     return R * c; // Distancia en metros
+}
+
+/**
+ * Maneja el mensaje para mostrar una ruta entre dos puntos
+ * @param {Object} mensaje - Mensaje con origen, destino, color, grosor
+ * @returns {Object} Resultado de la operación
+ */
+function manejarMostrarRuta(mensaje) {
+    const { origen, destino, color, grosor, mostrarFlecha } = mensaje.datos || {};
+    
+    if (!origen || !destino || !origen.lat || !origen.lng || !destino.lat || !destino.lng) {
+        logger.warn('Mensaje MOSTRAR_RUTA sin coordenadas válidas');
+        return { exito: false, error: 'Coordenadas inválidas' };
+    }
+    
+    try {
+        // Limpiar rutas anteriores
+        limpiarRutasActivas();
+        
+        // Crear puntos para polyline
+        const puntos = [
+            [origen.lat, origen.lng],
+            [destino.lat, destino.lng]
+        ];
+        
+        // Configurar estilo
+        const estiloRuta = {
+            color: color || '#0077ff',
+            weight: grosor || 6,
+            opacity: 0.8,
+            lineCap: 'round',
+            lineJoin: 'round'
+        };
+        
+        // Crear polyline
+        const polyline = L.polyline(puntos, estiloRuta).addTo(mapa);
+        
+        // Añadir flechas de dirección si se solicita
+        if (mostrarFlecha && typeof L.polylineDecorator === 'function') {
+            const decorador = L.polylineDecorator(polyline, {
+                patterns: [
+                    {
+                        offset: '25%',
+                        repeat: 50,
+                        symbol: L.Symbol.arrowHead({
+                            pixelSize: 15,
+                            headAngle: 45,
+                            pathOptions: {
+                                fillColor: color || '#0077ff',
+                                fillOpacity: 0.8,
+                                weight: 0
+                            }
+                        })
+                    }
+                ]
+            }).addTo(mapa);
+            
+            // Guardar referencia al decorador
+            rutasActivas.push(decorador);
+        }
+        
+        // Guardar referencia a la ruta
+        rutasActivas.push(polyline);
+        
+        // Ajustar vista para mostrar toda la ruta
+        const bounds = polyline.getBounds();
+        mapa.fitBounds(bounds, {
+            padding: [50, 50],
+            maxZoom: 17
+        });
+        
+        logger.info('Ruta mostrada exitosamente');
+        return { exito: true };
+    } catch (error) {
+        logger.error('Error al mostrar ruta:', error);
+        return { exito: false, error: error.message };
+    }
+}
+
+/**
+ * Limpia las rutas activas en el mapa
+ */
+function limpiarRutasActivas() {
+    if (!mapa) return;
+    
+    // Limpiar rutas activas (creadas con manejarMostrarRuta)
+    rutasActivas.forEach(ruta => {
+        if (mapa.hasLayer(ruta)) {
+            mapa.removeLayer(ruta);
+        }
+    });
+    rutasActivas = [];
 }
 
 // Exportar funciones públicas
