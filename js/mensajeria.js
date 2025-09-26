@@ -6,7 +6,7 @@
 
 // Importar dependencias
 import { TIPOS_MENSAJE } from './constants.js';
-import { configurarUtils, crearObjetoError } from './utils.js';
+import { configurarUtils, crearObjetoError, generarIdUnico } from './utils.js';
 import logger from './logger.js';
 
 // Estado interno de la mensajería
@@ -237,8 +237,8 @@ async function _enviarMensaje(destino, tipo, datos = {}) {
         await inicializarMensajeria();
     }
     
-    // Generar ID único para este mensaje para rastreo
-    const mensajeId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    // Generar ID único para este mensaje con mayor entropía
+    const mensajeId = generarIdUnico(tipo.split('.')[0].toLowerCase());
     
     const mensaje = {
         origen: estado.iframeId,
@@ -249,7 +249,9 @@ async function _enviarMensaje(destino, tipo, datos = {}) {
             mensajeId // Incluir ID en cada mensaje para facilitar rastreo
         },
         timestamp: Date.now(),
-        version: '2.0'
+        version: '2.0',
+        // Nuevo: hash para verificar contenido
+        contentHash: generarHashContenido(tipo, datos)
     };
     
     // Si el mensaje requiere confirmación, usamos un enfoque diferente
@@ -291,6 +293,58 @@ async function _enviarMensaje(destino, tipo, datos = {}) {
     } catch (error) {
         logger.error(`[Mensajeria] Error al enviar mensaje a ${destino}:`, error);
         throw error;
+    }
+}
+
+/**
+ * Genera un hash simple del contenido para comparaciones rápidas
+ * @param {string} tipo - Tipo de mensaje
+ * @param {Object} datos - Datos del mensaje
+ * @returns {string} Hash del contenido
+ */
+function generarHashContenido(tipo, datos) {
+    try {
+        // Extraer solo propiedades relevantes según el tipo de mensaje para el hash
+        let contenidoRelevante = {};
+        
+        // Para mensajes de navegación, las propiedades relevantes dependen del subtipo
+        if (tipo.startsWith('NAVEGACION.')) {
+            if (datos.punto) {
+                // Para cambios de parada, el punto es lo relevante
+                contenidoRelevante = { 
+                    punto: datos.punto,
+                    timestamp: Math.floor(Date.now() / 10000) // Agrupar por bloques de 10s
+                };
+            } else if (datos.coordenadas) {
+                // Para actualizaciones de posición, redondear coordenadas para evitar microcambios
+                const { lat, lng } = datos.coordenadas;
+                contenidoRelevante = {
+                    lat: lat ? parseFloat(lat.toFixed(5)) : null,
+                    lng: lng ? parseFloat(lng.toFixed(5)) : null,
+                    timestamp: Math.floor(Date.now() / 10000) // Agrupar por bloques de 10s
+                };
+            }
+        } else {
+            // Para otros tipos, usar todo el objeto excepto campos que cambian constantemente
+            contenidoRelevante = { ...datos };
+            delete contenidoRelevante.timestamp; // Ignorar timestamp para comparación
+            delete contenidoRelevante.mensajeId; // Ignorar mensajeId para comparación
+        }
+        
+        // Convertir a string para hash
+        const str = JSON.stringify(contenidoRelevante);
+        
+        // Crear un hash simple para comparación rápida
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            hash = ((hash << 5) - hash) + str.charCodeAt(i);
+            hash |= 0; // Convertir a entero de 32 bits
+        }
+        
+        return hash.toString(36);
+    } catch (e) {
+        // En caso de error, devolver timestamp como fallback
+        return Date.now().toString(36);
     }
 }
 
@@ -389,13 +443,45 @@ function recibirMensaje(event) {
         }
         
         // Problema #10: Verificar si el mensaje ya se ha procesado (evitar duplicados)
-        if (mensaje.datos?.mensajeId) {
-            const mensajeId = mensaje.datos.mensajeId;
-            if (estado.mensajesProcesados.has(mensajeId)) {
-                logger.debug(`[Mensajeria] Ignorando mensaje duplicado: ${mensajeId}`);
+        if (mensaje.datos?.mensajeId || mensaje.contentHash) {
+            const mensajeId = mensaje.datos?.mensajeId;
+            const contentHash = mensaje.contentHash;
+            
+            // Control de duplicados por ID
+            if (mensajeId && estado.mensajesProcesados.has(mensajeId)) {
+                logger.debug(`[Mensajeria] Ignorando mensaje duplicado por ID: ${mensajeId}`);
                 return;
             }
-            estado.mensajesProcesados.add(mensajeId);
+            
+            // Mejorado: Control de duplicados por contenido
+            if (contentHash) {
+                // Solo para mensajes de navegación, que son los más propensos a duplicarse
+                if (mensaje.tipo.startsWith('NAVEGACION.') && 
+                    estado.hashesContenidoProcesados && 
+                    estado.hashesContenidoProcesados.has(contentHash)) {
+                    logger.debug(`[Mensajeria] Ignorando mensaje duplicado por contenido: ${contentHash}`);
+                    return;
+                }
+                
+                // Registrar hash para futuras comparaciones
+                if (!estado.hashesContenidoProcesados) {
+                    estado.hashesContenidoProcesados = new Set();
+                }
+                estado.hashesContenidoProcesados.add(contentHash);
+                
+                // Limpieza de hashes antiguos
+                if (estado.hashesContenidoProcesados.size > 100) {
+                    const hashesArray = Array.from(estado.hashesContenidoProcesados);
+                    // Eliminar los hashes más antiguos
+                    const hashesAEliminar = hashesArray.slice(0, hashesArray.length - 100);
+                    hashesAEliminar.forEach(hash => estado.hashesContenidoProcesados.delete(hash));
+                }
+            }
+            
+            // Registrar ID procesado
+            if (mensajeId) {
+                estado.mensajesProcesados.add(mensajeId);
+            }
         }
         
         logger.debug(`[Mensajeria] Mensaje recibido de ${mensaje.origen}:`, mensaje);
