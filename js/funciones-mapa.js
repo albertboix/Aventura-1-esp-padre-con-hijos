@@ -18,21 +18,21 @@ let mapa = null;
 const marcadoresParadas = new Map();
 let marcadorDestino = null;
 let rutasTramos = [];
-let marcadorUsuario = null; // PROBLEMA 1: Faltaba definir el marcador de usuario
+let marcadorUsuario = null; // Añadido: Variable marcadorUsuario definida
 
 // Estado del mapa para seguimiento interno
 const estadoMapa = {
     inicializado: false,
     modo: 'casa', // 'casa' o 'aventura'
     paradaActual: 0,
-    tramoActual: null, // PROBLEMA 2: Faltaba definir tramoActual que se usa en verificarProximidadWaypoints
+    tramoActual: null, // Añadido: Variable tramoActual definida
     posicionUsuario: null,
-    watchId: null, // PROBLEMA 3: Faltaba definir watchId que se usa en activarSeguimientoUsuario
-    siguiendoRuta: false // PROBLEMA 15: Falta variable para controlar si se está siguiendo una ruta
+    watchId: null, // Añadido: Variable watchId definida
+    siguiendoRuta: false // Añadido: Variable para controlar seguimiento de ruta
 };
 
 // Referencia local a los datos de paradas
-let arrayParadasLocal = []; // PROBLEMA 4: Array vacío, pero necesita ser inicializado
+let arrayParadasLocal = []; // Añadido: Array inicializado vacío
 
 // Estilos CSS para notificaciones de waypoint - PROBLEMA 16: Faltaban estilos CSS
 const WAYPOINT_STYLES = `
