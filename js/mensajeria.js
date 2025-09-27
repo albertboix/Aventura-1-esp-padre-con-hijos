@@ -884,7 +884,17 @@ const TIPOS_MENSAJE_VALIDOS = [
 export function registrarControlador(tipoMensaje, controlador) {
     // Validar que se hayan proporcionado los parámetros necesarios
     if (arguments.length < 2) {
-        console.error('❌ Error: Se requieren dos argumentos (tipoMensaje, controlador)');
+        const errorMsg = '❌ Error: Se requieren dos argumentos (tipoMensaje, controlador)';
+        console.error(errorMsg);
+        logger.error('[Mensajeria] ' + errorMsg);
+        return false;
+    }
+    
+    // Validar que el tipo de mensaje no sea undefined o null
+    if (tipoMensaje === undefined || tipoMensaje === null) {
+        const errorMsg = '❌ Error: El tipo de mensaje no puede ser undefined o null';
+        console.error(errorMsg);
+        logger.error('[Mensajeria] ' + errorMsg, { tipoMensaje, controlador });
         return false;
     }
     
@@ -892,11 +902,17 @@ export function registrarControlador(tipoMensaje, controlador) {
         // Validar que el tipo de mensaje sea una cadena no vacía
         const validacion = validarFormatoTipoMensaje(tipoMensaje);
         if (!validacion.valido) {
+            const errorMsg = `❌ Error al validar tipo de mensaje: ${validacion.error}`;
+            console.error(errorMsg, { tipoMensaje, controlador });
+            logger.error('[Mensajeria] ' + errorMsg, { tipoMensaje, controlador });
             throw new Error(validacion.error);
         }
         
         // Validar que el controlador sea una función
         if (typeof controlador !== 'function') {
+            const errorMsg = '❌ Error: El controlador debe ser una función';
+            console.error(errorMsg, { tipoMensaje, controlador });
+            logger.error('[Mensajeria] ' + errorMsg, { tipoMensaje, controlador });
             throw new Error('El controlador debe ser una función');
         }
         
@@ -905,10 +921,13 @@ export function registrarControlador(tipoMensaje, controlador) {
         
         // Verificar si el tipo de mensaje está en la lista de válidos
         if (!TIPOS_MENSAJE_VALIDOS.includes(tipoNormalizado)) {
-            console.warn(`⚠️ Advertencia: El tipo de mensaje '${tipoNormalizado}' no está en la lista de tipos válidos. Tipos válidos:`, TIPOS_MENSAJE_VALIDOS);
-            
-            // Registrar el tipo de mensaje de todos modos, pero con una advertencia
-            console.warn('⚠️ El mensaje se registrará de todos modos, pero esto podría causar problemas si no se maneja correctamente.');
+            const warnMsg = `⚠️ Advertencia: El tipo de mensaje '${tipoNormalizado}' no está en la lista de tipos válidos`;
+            console.warn(warnMsg);
+            logger.warn('[Mensajeria] ' + warnMsg, { 
+                tipoMensaje, 
+                tipoNormalizado, 
+                tiposValidos: TIPOS_MENSAJE_VALIDOS 
+            });
         }
         
         // Inicializar el array de controladores para este tipo de mensaje si no existe
@@ -923,14 +942,24 @@ export function registrarControlador(tipoMensaje, controlador) {
         
         if (!existeControlador) {
             controladores[tipoNormalizado].push(controlador);
-            console.log(`✅ Controlador registrado para tipoMensaje: ${tipoNormalizado}`);
+            const successMsg = `✅ Controlador registrado para tipoMensaje: ${tipoNormalizado}`;
+            console.log(successMsg);
+            logger.debug('[Mensajeria] ' + successMsg, { tipoMensaje, tipoNormalizado });
         } else {
-            console.log(`ℹ️ Controlador ya registrado para tipoMensaje: ${tipoNormalizado}`);
+            const infoMsg = `ℹ️ Controlador ya registrado para tipoMensaje: ${tipoNormalizado}`;
+            console.log(infoMsg);
+            logger.debug('[Mensajeria] ' + infoMsg, { tipoMensaje, tipoNormalizado });
         }
         
         return true;
     } catch (error) {
-        console.error(`❌ Error al registrar controlador para '${tipoMensaje}':`, error.message);
+        const errorMsg = `❌ Error al registrar controlador para '${tipoMensaje}': ${error.message}`;
+        console.error(errorMsg, error);
+        logger.error('[Mensajeria] ' + errorMsg, { 
+            tipoMensaje, 
+            error: error.message, 
+            stack: error.stack 
+        });
         return false;
     }
 }
