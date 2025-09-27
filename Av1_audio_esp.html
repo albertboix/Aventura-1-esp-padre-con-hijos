@@ -53,12 +53,19 @@
             flex-direction: column;
             align-items: center;
             justify-content: space-around;
-            gap: 0.05em; /* MODIFICADO: Reducido de 0.1em a 0.05em (mitad) */
-            z-index: 1200;
+            gap: 0.05em;
+            z-index: 9999; /* Aseguramos que esté por encima de otros elementos */
             padding: 5px 8px 5px 8px;
             box-sizing: border-box;
-            border: none;
+            border: 2px solid #0077cc; /* Borde para mejor visibilidad */
             margin: 5px 0;
+            position: fixed; /* Fijo en la pantalla */
+            bottom: 10px; /* Posicionado en la parte inferior */
+            left: 50%; /* Centrado horizontalmente */
+            transform: translateX(-50%); /* Centrado exacto */
+            opacity: 1 !important; /* Forzar visibilidad */
+            visibility: visible !important; /* Forzar visibilidad */
+            background-color: white !important; /* Fondo blanco para mejor contraste */
         }
 
         .player-buttons-row {
@@ -888,9 +895,17 @@
 
         // --- INICIALIZACIÓN ---
         async function inicializar() {
+            console.log('🚀 [AUDIO] Iniciando inicialización del reproductor de audio...');
+            
             try {
+                // Configurar logger
+                console.log('📝 [AUDIO] Configurando logger...');
                 logger.configure({ iframeId: IFRAME_ID, debug: true });
+                
+                // Inicializar mensajería
+                console.log('📩 [AUDIO] Inicializando mensajería...');
                 await inicializarMensajeria({ iframeId: IFRAME_ID });
+                console.log('✅ [AUDIO] Mensajería inicializada correctamente');
 
                 registrarControlador(TIPOS_MENSAJE.AUDIO.REPRODUCIR, manejarReproducirAudio);
                 registrarControlador(TIPOS_MENSAJE.CONTROL.HABILITAR, manejarHabilitarControles);
@@ -898,19 +913,37 @@
                 registrarControlador(TIPOS_MENSAJE.SISTEMA.PING, manejarPing);
                 
                 // Suscribirse a cambios de modo
+                console.log('🔄 [AUDIO] Suscribiéndose a cambios de modo...');
                 modoHandler.suscribir('audio-player', (nuevoModo) => {
+                    console.log(`🔄 [AUDIO] Cambio de modo detectado: ${nuevoModo}`);
                     actualizarInterfazModo(nuevoModo);
                 });
                 
                 // Aplicar el modo actual
-                actualizarInterfazModo(modoHandler.obtenerModoActual());
+                const modoActual = modoHandler.obtenerModoActual();
+                console.log(`🎨 [AUDIO] Aplicando modo actual: ${modoActual}`);
+                actualizarInterfazModo(modoActual);
                 
+                // Notificar al padre que el componente está listo
+                console.log('📤 [AUDIO] Notificando al padre que el componente está listo...');
                 await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO, { 
                     componente: IFRAME_ID,
-                    modo: modoHandler.obtenerModoActual()
+                    modo: modoActual,
+                    timestamp: new Date().toISOString(),
+                    version: '1.0.0',
+                    features: ['audio', 'controles', 'cambio_modo']
                 });
                 
-                logger.info(`${IFRAME_ID} inicializado en modo ${modoHandler.obtenerModoActual()}.`);
+                console.log(`✅ [AUDIO] ${IFRAME_ID} inicializado correctamente en modo ${modoActual}`);
+                
+                // Forzar visibilidad después de la inicialización
+                const container = document.querySelector('.audio-player-controls');
+                if (container) {
+                    container.style.display = 'flex';
+                    container.style.visibility = 'visible';
+                    container.style.opacity = '1';
+                    console.log('👁️ [AUDIO] Visibilidad forzada después de la inicialización');
+                }
             } catch (error) {
                 console.error('Error al inicializar el reproductor de audio:', error);
                 logger.error('Error al inicializar el reproductor de audio:', error);
@@ -918,7 +951,36 @@
         }
 
         // Inicializar cuando el DOM esté listo
-        document.addEventListener('DOMContentLoaded', inicializar);
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('🔄 [AUDIO] DOM cargado, iniciando inicialización...');
+            
+            // Forzar visibilidad del contenedor principal
+            const container = document.querySelector('.audio-player-controls');
+            if (container) {
+                container.style.display = 'flex';
+                container.style.visibility = 'visible';
+                container.style.opacity = '1';
+                console.log('👁️ [AUDIO] Contenedor de controles de audio forzado a visible');
+            } else {
+                console.error('❌ [AUDIO] No se encontró el contenedor de controles de audio');
+            }
+            
+            // Inicializar el componente
+            inicializar().catch(error => {
+                console.error('❌ [AUDIO] Error durante la inicialización:', error);
+                // Intentar notificar al padre del error
+                try {
+                    enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
+                        componente: IFRAME_ID,
+                        error: `Error de inicialización: ${error.message}`,
+                        stack: error.stack,
+                        timestamp: new Date().toISOString()
+                    });
+                } catch (e) {
+                    console.error('❌ [AUDIO] No se pudo notificar el error al padre:', e);
+                }
+            });
+        });
 
         // Registrar controlador para solicitud de audio
         registrarControlador(TIPOS_MENSAJE.DATOS.SOLICITAR_PARADA, (mensaje) => {
