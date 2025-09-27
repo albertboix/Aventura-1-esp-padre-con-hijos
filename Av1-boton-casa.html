@@ -900,31 +900,56 @@
                 actualizarInterfazModo(nuevoModo);
             });
             
-            // Registrar manejadores para los diferentes tipos de mensajes
-            registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejarCambioModo);
-            registrarControlador(TIPOS_MENSAJE.DATOS.PARADAS, manejarRecepcionParadas);
-            
-            // Notificar que el componente está listo
-            enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO, {
-                componente: COMPONENTE_ID,
-                modo: modoHandler.obtenerModoActual(),
-                timestamp: new Date().toISOString()
-            });
-            
-            logger.info(`[${COMPONENTE_ID}] Componente inicializado correctamente`);
-
-            // Registrar para diferentes formatos de datos de paradas
-            if (TIPOS_MENSAJE.DATOS.COORDENADAS_PARADAS) {
-                registrarControlador(TIPOS_MENSAJE.DATOS.COORDENADAS_PARADAS, manejarRecepcionParadas);
-            }
-            if (TIPOS_MENSAJE.DATOS.PUNTOS) {
-                registrarControlador(TIPOS_MENSAJE.DATOS.PUNTOS, manejarRecepcionParadas);
-            }
-            if (TIPOS_MENSAJE.DATOS.PUNTOS_RUTA) {
-                registrarControlador(TIPOS_MENSAJE.DATOS.PUNTOS_RUTA, manejarRecepcionParadas);
-            }
-            if (TIPOS_MENSAJE.NAVEGACION.PARADAS) {
-                registrarControlador(TIPOS_MENSAJE.NAVEGACION.PARADAS, manejarRecepcionParadas);
+            // Registrar manejadores para los diferentes tipos de mensajes con manejo de errores
+            try {
+                // Registrar controlador para cambios de modo
+                registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejarCambioModo);
+                logger.debug(`[${COMPONENTE_ID}] Registrado controlador para ${TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO}`);
+                
+                // Registrar controladores para diferentes formatos de datos de paradas
+                const tiposMensajeParadas = [
+                    { tipo: TIPOS_MENSAJE.DATOS.PARADAS, nombre: 'DATOS.PARADAS' },
+                    { tipo: TIPOS_MENSAJE.DATOS.COORDENADAS_PARADAS, nombre: 'DATOS.COORDENADAS_PARADAS' },
+                    { tipo: TIPOS_MENSAJE.DATOS.PUNTOS, nombre: 'DATOS.PUNTOS' },
+                    { tipo: TIPOS_MENSAJE.DATOS.PUNTOS_RUTA, nombre: 'DATOS.PUNTOS_RUTA' },
+                    { tipo: TIPOS_MENSAJE.NAVEGACION.PARADAS, nombre: 'NAVEGACION.PARADAS' }
+                ];
+                
+                tiposMensajeParadas.forEach(({ tipo, nombre }) => {
+                    try {
+                        if (tipo) {
+                            registrarControlador(tipo, manejarRecepcionParadas);
+                            logger.debug(`[${COMPONENTE_ID}] Registrado controlador para ${nombre}`);
+                        } else {
+                            logger.warn(`[${COMPONENTE_ID}] El tipo de mensaje ${nombre} no está definido`);
+                        }
+                    } catch (error) {
+                        logger.error(`[${COMPONENTE_ID}] Error al registrar controlador para ${nombre}:`, error);
+                    }
+                });
+                
+                // Notificar que el componente está listo
+                enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO, {
+                    componente: COMPONENTE_ID,
+                    modo: modoHandler.obtenerModoActual(),
+                    timestamp: new Date().toISOString(),
+                    tiposMensajeRegistrados: tiposMensajeParadas
+                        .filter(({ tipo }) => tipo)
+                        .map(({ nombre }) => nombre)
+                });
+                
+                logger.info(`[${COMPONENTE_ID}] Componente inicializado correctamente con ${tiposMensajeParadas.filter(({ tipo }) => tipo).length} tipos de mensaje registrados`);
+                
+            } catch (error) {
+                logger.error(`[${COMPONENTE_ID}] Error durante el registro de controladores:`, error);
+                // Notificar el error al padre
+                enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
+                    componente: COMPONENTE_ID,
+                    error: `Error en inicialización: ${error.message}`,
+                    stack: error.stack,
+                    timestamp: new Date().toISOString()
+                });
+                throw error; // Relanzar para que se maneje en el catch exterior
             }
 
             // Registrar controlador para TIPOS_MENSAJE.CONTROL.CAMBIAR_MODO
