@@ -751,8 +751,8 @@ if (typeof manejarPing === 'function') {
     logger.warn('[Mensajeria] No se pudo registrar manejador de ping: función no definida');
 }
 
-// Define el objeto controladores si no está definido previamente
-let controladores = controladores || {};
+// Inicializar el objeto controladores
+let controladores = {};
 
 // Registrar controlador para TIPOS_MENSAJE.CONTROL.CAMBIAR_MODO
 registrarControlador(TIPOS_MENSAJE.CONTROL.CAMBIAR_MODO, (mensaje) => {
