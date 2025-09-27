@@ -321,14 +321,11 @@
     }
     </style>
     <script type="module">
-    // Importar módulos primero (before everything else)
-    import { 
-        inicializarMensajeria,
-        registrarControlador, 
-        enviarMensaje 
-    } from './js/mensajeria.js';
+    // Importar módulos necesarios
+    import { inicializarMensajeria, enviarMensaje, registrarControlador } from './js/mensajeria.js';
+    import { configurarLogger } from './js/logger.js';
+    import { ModoHandler } from './js/modo-handler.js';
     import { TIPOS_MENSAJE } from './js/constants.js';
-    import { modoHandler } from './js/modo-handler.js';
     import logger from './js/logger.js';
     
     const COMPONENTE_ID = 'BOTON-CASA';
@@ -902,27 +899,39 @@
             
             // Registrar manejadores para los diferentes tipos de mensajes con manejo de errores
             try {
+                // Verificar que TIPOS_MENSAJE esté disponible
+                if (!TIPOS_MENSAJE) {
+                    throw new Error('TIPOS_MENSAJE no está definido');
+                }
+                
                 // Registrar controlador para cambios de modo
-                registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejarCambioModo);
-                logger.debug(`[${COMPONENTE_ID}] Registrado controlador para ${TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO}`);
+                if (TIPOS_MENSAJE?.SISTEMA?.CAMBIO_MODO) {
+                    registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejarCambioModo);
+                    logger.debug(`[${COMPONENTE_ID}] Registrado controlador para SISTEMA.CAMBIO_MODO`);
+                } else {
+                    logger.warn(`[${COMPONENTE_ID}] No se pudo registrar controlador: SISTEMA.CAMBIO_MODO no está definido`);
+                }
                 
                 // Registrar controladores para diferentes formatos de datos de paradas
                 const tiposMensajeParadas = [
-                    { tipo: TIPOS_MENSAJE.DATOS.PARADAS, nombre: 'DATOS.PARADAS' },
-                    { tipo: TIPOS_MENSAJE.DATOS.COORDENADAS_PARADAS, nombre: 'DATOS.COORDENADAS_PARADAS' },
-                    { tipo: TIPOS_MENSAJE.DATOS.PUNTOS, nombre: 'DATOS.PUNTOS' },
-                    { tipo: TIPOS_MENSAJE.DATOS.PUNTOS_RUTA, nombre: 'DATOS.PUNTOS_RUTA' },
-                    { tipo: TIPOS_MENSAJE.NAVEGACION.PARADAS, nombre: 'NAVEGACION.PARADAS' }
-                ];
+                    { tipo: TIPOS_MENSAJE?.DATOS?.PARADAS, nombre: 'DATOS.PARADAS' },
+                    { tipo: TIPOS_MENSAJE?.DATOS?.COORDENADAS_PARADAS, nombre: 'DATOS.COORDENADAS_PARADAS' },
+                    { tipo: TIPOS_MENSAJE?.DATOS?.PUNTOS, nombre: 'DATOS.PUNTOS' },
+                    { tipo: TIPOS_MENSAJE?.DATOS?.PUNTOS_RUTA, nombre: 'DATOS.PUNTOS_RUTA' },
+                    { tipo: TIPOS_MENSAJE?.NAVEGACION?.PARADAS, nombre: 'NAVEGACION.PARADAS' }
+                ].filter(item => {
+                    if (!item.tipo) {
+                        logger.warn(`[${COMPONENTE_ID}] El tipo de mensaje ${item.nombre} no está definido en TIPOS_MENSAJE`);
+                        return false;
+                    }
+                    return true;
+                });
                 
+                // Registrar solo los tipos que existen
                 tiposMensajeParadas.forEach(({ tipo, nombre }) => {
                     try {
-                        if (tipo) {
-                            registrarControlador(tipo, manejarRecepcionParadas);
-                            logger.debug(`[${COMPONENTE_ID}] Registrado controlador para ${nombre}`);
-                        } else {
-                            logger.warn(`[${COMPONENTE_ID}] El tipo de mensaje ${nombre} no está definido`);
-                        }
+                        registrarControlador(tipo, manejarRecepcionParadas);
+                        logger.debug(`[${COMPONENTE_ID}] Registrado controlador para ${nombre}`);
                     } catch (error) {
                         logger.error(`[${COMPONENTE_ID}] Error al registrar controlador para ${nombre}:`, error);
                     }
