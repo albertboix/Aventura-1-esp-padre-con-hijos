@@ -466,11 +466,12 @@
     <script type="module">
     import { TIPOS_MENSAJE, MODOS } from './js/constants.js';
     import { inicializarMensajeria, registrarControlador, enviarMensaje } from './js/mensajeria.js';
+    import { modoHandler } from './js/modo-handler.js';
     import logger from './js/logger.js';
     
     // Estado global de la orquestación
     let estadoOrquestacion = {
-        modo: 'casa',
+        // modo ahora se maneja a través de modoHandler
         paradaActual: null,
         usuarioDistanciaParada: Infinity,
         audioReproduciendo: false,
@@ -478,6 +479,18 @@
         retoCompletado: false,
         botonGPSHabilitado: true
     };
+    
+    // Obtener el modo actual del manejador centralizado
+    Object.defineProperty(estadoOrquestacion, 'modo', {
+        get: function() {
+            return modoHandler.obtenerModoActual();
+        },
+        set: function(nuevoModo) {
+            modoHandler.cambiarModo(nuevoModo, 'PADRE');
+        },
+        enumerable: true,
+        configurable: true
+    });
     
     // Función para avanzar a la siguiente parada/tramo
     async function avanzarASiguienteParada() {
@@ -770,15 +783,18 @@
         try {
             const iframe = document.getElementById('hijo5-casa');
             if (!iframe) {
-                console.warn('⚠️ El iframe hijo5-casa no está disponible.');
+                console.warn('No se encontró el iframe hijo5-casa');
                 return;
             }
 
             // Enviar mensaje al iframe para cambiar el modo
-            await enviarMensaje('hijo5-casa', TIPOS_MENSAJE.CONTROL.CAMBIAR_MODO, { modo: nuevoModo });
-            console.log(`✅ Modo cambiado a "${nuevoModo}" en hijo5-casa.`);
+            await enviarMensaje('hijo5-casa', TIPOS_MENSAJE.CONTROL.CAMBIAR_MODO, { 
+                modo: nuevoModo,
+                timestamp: new Date().toISOString()
+            });
+            logger.info(`Modo cambiado a "${nuevoModo}" en hijo5-casa`);
         } catch (error) {
-            console.error('❌ Error al cambiar el modo de hijo5-casa:', error);
+            logger.error('Error al cambiar el modo de hijo5-casa:', error);
         }
     }
 
