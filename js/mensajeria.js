@@ -814,11 +814,40 @@ const TIPOS_MENSAJE_VALIDOS = [
     'RETO.MOSTRAR'
 ];
 
+// Función auxiliar para validar el formato del tipo de mensaje
+const validarFormatoTipoMensaje = (tipo) => {
+    if (typeof tipo !== 'string') {
+        return { valido: false, error: 'El tipo de mensaje debe ser una cadena' };
+    }
+    
+    const tipoLimpio = tipo.trim();
+    if (tipoLimpio === '') {
+        return { valido: false, error: 'El tipo de mensaje no puede estar vacío' };
+    }
+    
+    // Verificar el formato: DEBERIA.SER_ASI
+    if (!/^[A-Z0-9_]+(\.[A-Z0-9_]+)*$/.test(tipoLimpio)) {
+        return { 
+            valido: false, 
+            error: `Formato de tipo de mensaje inválido: '${tipo}'. Debe ser en formato 'MODULO.ACCION'` 
+        };
+    }
+    
+    return { valido: true };
+};
+
 export function registrarControlador(tipoMensaje, controlador) {
+    // Validar que se hayan proporcionado los parámetros necesarios
+    if (arguments.length < 2) {
+        console.error('❌ Error: Se requieren dos argumentos (tipoMensaje, controlador)');
+        return false;
+    }
+    
     try {
         // Validar que el tipo de mensaje sea una cadena no vacía
-        if (typeof tipoMensaje !== 'string' || tipoMensaje.trim() === '') {
-            throw new Error('El tipo de mensaje debe ser una cadena no vacía');
+        const validacion = validarFormatoTipoMensaje(tipoMensaje);
+        if (!validacion.valido) {
+            throw new Error(validacion.error);
         }
         
         // Validar que el controlador sea una función
@@ -826,14 +855,20 @@ export function registrarControlador(tipoMensaje, controlador) {
             throw new Error('El controlador debe ser una función');
         }
         
+        // Asegurarse de que el tipo de mensaje esté en mayúsculas
+        const tipoNormalizado = tipoMensaje.trim().toUpperCase();
+        
         // Verificar si el tipo de mensaje está en la lista de válidos
-        if (!TIPOS_MENSAJE_VALIDOS.includes(tipoMensaje)) {
-            console.warn(`⚠️ Advertencia: El tipo de mensaje '${tipoMensaje}' no está en la lista de tipos válidos`);
+        if (!TIPOS_MENSAJE_VALIDOS.includes(tipoNormalizado)) {
+            console.warn(`⚠️ Advertencia: El tipo de mensaje '${tipoNormalizado}' no está en la lista de tipos válidos. Tipos válidos:`, TIPOS_MENSAJE_VALIDOS);
+            
+            // Registrar el tipo de mensaje de todos modos, pero con una advertencia
+            console.warn('⚠️ El mensaje se registrará de todos modos, pero esto podría causar problemas si no se maneja correctamente.');
         }
         
         // Inicializar el array de controladores para este tipo de mensaje si no existe
-        if (!controladores[tipoMensaje]) {
-            controladores[tipoMensaje] = [];
+        if (!controladores[tipoNormalizado]) {
+            controladores[tipoNormalizado] = [];
         }
         
         // Evitar duplicados
