@@ -781,31 +781,77 @@
     // Función para cambiar el modo del iframe hijo5-casa
     async function cambiarModoHijo5Casa(nuevoModo) {
         try {
+            logger.debug(`[PADRE] Solicitando cambio de modo a "${nuevoModo}" para hijo5-casa`);
+            
             const iframe = document.getElementById('hijo5-casa');
             if (!iframe) {
-                console.warn('No se encontró el iframe hijo5-casa');
+                logger.warn('[PADRE] No se encontró el iframe hijo5-casa');
+                return;
+            }
+
+            // Verificar que el modo sea válido
+            if (nuevoModo !== 'casa' && nuevoModo !== 'aventura') {
+                logger.warn(`[PADRE] Intento de cambiar a modo no válido: ${nuevoModo}`);
                 return;
             }
 
             // Enviar mensaje al iframe para cambiar el modo
             await enviarMensaje('hijo5-casa', TIPOS_MENSAJE.CONTROL.CAMBIAR_MODO, { 
                 modo: nuevoModo,
+                origen: 'PADRE',
                 timestamp: new Date().toISOString()
             });
-            logger.info(`Modo cambiado a "${nuevoModo}" en hijo5-casa`);
+            
+            logger.info(`[PADRE] Modo cambiado a "${nuevoModo}" en hijo5-casa`);
         } catch (error) {
-            logger.error('Error al cambiar el modo de hijo5-casa:', error);
+            logger.error('[PADRE] Error al cambiar el modo de hijo5-casa:', error);
+            
+            // Enviar mensaje de error al sistema
+            enviarMensaje('todos', TIPOS_MENSAJE.SISTEMA.ERROR, {
+                tipo: 'CAMBIO_MODO',
+                error: error.message,
+                stack: error.stack,
+                origen: 'PADRE',
+                timestamp: new Date().toISOString()
+            });
         }
     }
 
-    // Observa cambios en el estado de la orquestación y actualiza hijo5-casa
+    // Suscribir el manejador de cambios de modo
+    modoHandler.suscribir('PADRE', (nuevoModo) => {
+        logger.info(`[PADRE] Recibido cambio de modo a: ${nuevoModo}`);
+        
+        // Actualizar la interfaz del padre según el modo
+        try {
+            // Aquí puedes añadir lógica específica para actualizar la interfaz del padre
+            const body = document.body;
+            if (nuevoModo === 'aventura') {
+                body.classList.add('modo-aventura');
+                body.classList.remove('modo-casa');
+            } else {
+                body.classList.add('modo-casa');
+                body.classList.remove('modo-aventura');
+            }
+            
+            // Actualizar el iframe hijo5-casa
+            cambiarModoHijo5Casa(nuevoModo);
+            
+            logger.debug(`[PADRE] Interfaz actualizada para modo: ${nuevoModo}`);
+        } catch (error) {
+            logger.error('[PADRE] Error al actualizar la interfaz para el nuevo modo:', error);
+        }
+    });
+
+    // Observa cambios en el estado de la orquestación
     function observarEstadoOrquestacion() {
-        const observer = new Proxy(estadoOrquestacion, {
+        return new Proxy(estadoOrquestacion, {
             set(target, prop, value) {
+                const oldValue = target[prop];
                 target[prop] = value;
 
-                if (prop === 'modo') {
-                    cambiarModoHijo5Casa(value);
+                if (prop === 'modo' && value !== oldValue) {
+                    // Usar el modoHandler para manejar el cambio de modo
+                    modoHandler.cambiarModo(value, 'PADRE');
                 }
 
                 return true;
