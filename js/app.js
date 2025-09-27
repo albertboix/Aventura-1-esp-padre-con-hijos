@@ -41,18 +41,30 @@ export async function inicializar() {
     try {
         logger.info('Inicializando aplicación...');
         
-        // No iniciamos mensajería aquí porque se hace en el código padre
-        
-        // Intentar actualizar el tamaño del mapa para asegurar que se renderice correctamente
-        setTimeout(() => {
-            if (window.mapa && window.L && window.L.Map && 
-                typeof window.mapa.invalidateSize === 'function' && 
-                typeof window.mapa.getCenter === 'function') {
-                logger.info('Actualizando tamaño del mapa...');
-                window.mapa.invalidateSize(true);
+        // Inicializar el mapa si no está ya inicializado
+        if (!window.mapa) {
+            try {
+                logger.info('Inicializando mapa...');
+                window.mapa = await inicializarMapa({
+                    containerId: 'mapa',
+                    center: [39.4699, -0.3763], // Coordenadas de Valencia
+                    zoom: 14,
+                    minZoom: 10,
+                    maxZoom: 18
+                });
+                logger.info('Mapa inicializado correctamente');
+            } catch (error) {
+                logger.error('Error al inicializar el mapa:', error);
+                throw new Error('No se pudo inicializar el mapa: ' + error.message);
             }
-            
-            // Ejecutar diagnóstico del mapa
+        }
+        
+        // Actualizar el tamaño del mapa después de un breve retraso para asegurar que el contenedor tenga dimensiones
+        setTimeout(() => {
+            if (window.mapa && typeof window.mapa.invalidateSize === 'function') {
+                window.mapa.invalidateSize(true);
+                logger.info('Tamaño del mapa actualizado');
+            }
             diagnosticarMapa().then(result => {
                 console.log('Diagnóstico del mapa completado con resultado:', result);
             });
