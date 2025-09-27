@@ -9,6 +9,28 @@ import { TIPOS_MENSAJE } from './constants.js';
 import { configurarUtils, crearObjetoError, generarIdUnico } from './utils.js';
 import logger from './logger.js';
 
+// Función auxiliar para validar el formato del tipo de mensaje
+const validarFormatoTipoMensaje = (tipo) => {
+    if (typeof tipo !== 'string') {
+        return { valido: false, error: 'El tipo de mensaje debe ser una cadena' };
+    }
+    
+    const tipoLimpio = tipo.trim();
+    if (tipoLimpio === '') {
+        return { valido: false, error: 'El tipo de mensaje no puede estar vacío' };
+    }
+    
+    // Verificar el formato: DEBERIA.SER_ASI
+    if (!/^[A-Z0-9_]+(\.[A-Z0-9_]+)*$/.test(tipoLimpio)) {
+        return { 
+            valido: false, 
+            error: `Formato de tipo de mensaje inválido: '${tipo}'. Debe ser en formato 'MODULO.ACCION'` 
+        };
+    }
+    
+    return { valido: true };
+};
+
 // Estado interno de la mensajería
 const estado = {
   iframeId: null,
@@ -799,42 +821,62 @@ export async function inicializarMensajeria(config) {
     return await _inicializarMensajeria(config);
 }
 
-// Lista de tipos de mensajes válidos
+
+// Lista de tipos de mensajes válidos - Actualizada para incluir todos los tipos definidos en constants.js
 const TIPOS_MENSAJE_VALIDOS = [
-    'SISTEMA.PING',
+    // SISTEMA
+    'SISTEMA.INICIALIZACION',
+    'SISTEMA.INICIALIZACION_COMPLETADA',
+    'SISTEMA.ESTADO',
+    'SISTEMA.ERROR',
     'SISTEMA.CAMBIO_MODO',
-    'NAVEGACION.ACTUALIZAR_POSICION',
-    'AUDIO.FIN_REPRODUCCION',
-    'RETO.COMPLETADO',
-    'AUDIO.REPRODUCIR',
-    'DATOS.SOLICITAR_PARADA',
-    'CONTROL.CAMBIAR_MODO',
+    'SISTEMA.CONFIRMACION',
+    'SISTEMA.COMPONENTE_LISTO',
+    'SISTEMA.PING',
+    'SISTEMA.PONG',
+    'SISTEMA.LISTO',
+    'SISTEMA.COMPONENTE_INICIALIZADO',
+    'SISTEMA.INICIALIZACION_FINALIZADA',
+    
+    // CONTROL
     'CONTROL.HABILITAR',
     'CONTROL.DESHABILITAR',
-    'RETO.MOSTRAR'
+    'CONTROL.GPS',
+    'CONTROL.CAMBIAR_MODO',
+    
+    // NAVEGACION
+    'NAVEGACION.CAMBIO_PARADA',
+    'NAVEGACION.SOLICITAR_DESTINO',
+    'NAVEGACION.ESTABLECER_DESTINO',
+    'NAVEGACION.ACTUALIZAR_POSICION',
+    
+    // AUDIO
+    'AUDIO.REPRODUCIR',
+    'AUDIO.PAUSAR',
+    'AUDIO.FIN_REPRODUCCION',
+    'AUDIO.FINALIZADO',
+    
+    // RETO
+    'RETO.MOSTRAR',
+    'RETO.OCULTAR',
+    'RETO.COMPLETADO',
+    
+    // DATOS
+    'DATOS.SOLICITAR_PARADAS',
+    'DATOS.SOLICITAR_PARADA',
+    'DATOS.RESPUESTA_PARADAS',
+    'DATOS.RESPUESTA_PARADA',
+    
+    // UI
+    'UI.MODAL',
+    
+    // MEDIOS
+    'MEDIOS.EVENTO',
+    'MEDIOS.MOSTRAR',
+    'MEDIOS.OCULTAR'
 ];
 
-// Función auxiliar para validar el formato del tipo de mensaje
-const validarFormatoTipoMensaje = (tipo) => {
-    if (typeof tipo !== 'string') {
-        return { valido: false, error: 'El tipo de mensaje debe ser una cadena' };
-    }
-    
-    const tipoLimpio = tipo.trim();
-    if (tipoLimpio === '') {
-        return { valido: false, error: 'El tipo de mensaje no puede estar vacío' };
-    }
-    
-    // Verificar el formato: DEBERIA.SER_ASI
-    if (!/^[A-Z0-9_]+(\.[A-Z0-9_]+)*$/.test(tipoLimpio)) {
-        return { 
-            valido: false, 
-            error: `Formato de tipo de mensaje inválido: '${tipo}'. Debe ser en formato 'MODULO.ACCION'` 
-        };
-    }
-    
-    return { valido: true };
-};
+
 
 export function registrarControlador(tipoMensaje, controlador) {
     // Validar que se hayan proporcionado los parámetros necesarios
