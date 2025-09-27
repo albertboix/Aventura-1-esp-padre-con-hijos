@@ -917,15 +917,15 @@ export function registrarControlador(tipoMensaje, controlador) {
         }
         
         // Evitar duplicados
-        const existeControlador = controladores[tipoMensaje].some(
+        const existeControlador = controladores[tipoNormalizado].some(
             c => c.toString() === controlador.toString()
         );
         
         if (!existeControlador) {
-            controladores[tipoMensaje].push(controlador);
-            console.log(`✅ Controlador registrado para tipoMensaje: ${tipoMensaje}`);
+            controladores[tipoNormalizado].push(controlador);
+            console.log(`✅ Controlador registrado para tipoMensaje: ${tipoNormalizado}`);
         } else {
-            console.log(`ℹ️ Controlador ya registrado para tipoMensaje: ${tipoMensaje}`);
+            console.log(`ℹ️ Controlador ya registrado para tipoMensaje: ${tipoNormalizado}`);
         }
         
         return true;
