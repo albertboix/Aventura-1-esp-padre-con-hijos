@@ -751,8 +751,8 @@ if (typeof manejarPing === 'function') {
     logger.warn('[Mensajeria] No se pudo registrar manejador de ping: función no definida');
 }
 
-// Define el objeto controladores si no está definido
-const controladores = controladores || {};
+// Define el objeto controladores si no está definido previamente
+let controladores = controladores || {};
 
 // Registrar controlador para TIPOS_MENSAJE.CONTROL.CAMBIAR_MODO
 registrarControlador(TIPOS_MENSAJE.CONTROL.CAMBIAR_MODO, (mensaje) => {
@@ -762,9 +762,8 @@ registrarControlador(TIPOS_MENSAJE.CONTROL.CAMBIAR_MODO, (mensaje) => {
         return;
     }
 
-    console.log(`✅ Modo recibido en hijo5-casa: ${modo}`);
-    // Aquí puedes agregar la lógica para cambiar el modo en el iframe
-    cambiarModoEnHijo5Casa(modo);
+    console.log(`✅ Modo recibido: ${modo}`);
+    // Aquí puedes agregar la lógica para cambiar el modo
 });
 
 // Función para cambiar el modo en el iframe hijo5-casa
