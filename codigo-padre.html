@@ -433,7 +433,7 @@
                         console.log('⚠️ window.mapa no es una instancia válida de L.Map. Reinstanciando...');
                         
                         // Limpiar cualquier instancia previa de mapa
-                        if (window.mapa) {
+                        if (window.mapa && typeof window.mapa.remove === 'function') {
                             window.mapa.remove();
                             console.log('🗑️ Instancia previa de mapa eliminada.');
                         }
@@ -506,7 +506,7 @@
     import logger from './js/logger.js';
     
     // Estado global de la orquestación
-    const estadoOrquestacion = {
+    let estadoOrquestacion = {
         modo: 'casa',
         paradaActual: null,
         usuarioDistanciaParada: Infinity,
@@ -802,6 +802,43 @@
         }
     }
     
+    // Función para cambiar el modo del iframe hijo5-casa
+    async function cambiarModoHijo5Casa(nuevoModo) {
+        try {
+            const iframe = document.getElementById('hijo5-casa');
+            if (!iframe) {
+                console.warn('⚠️ El iframe hijo5-casa no está disponible.');
+                return;
+            }
+
+            // Enviar mensaje al iframe para cambiar el modo
+            await enviarMensaje('hijo5-casa', TIPOS_MENSAJE.CONTROL.CAMBIAR_MODO, { modo: nuevoModo });
+            console.log(`✅ Modo cambiado a "${nuevoModo}" en hijo5-casa.`);
+        } catch (error) {
+            console.error('❌ Error al cambiar el modo de hijo5-casa:', error);
+        }
+    }
+
+    // Observa cambios en el estado de la orquestación y actualiza hijo5-casa
+    function observarEstadoOrquestacion() {
+        const observer = new Proxy(estadoOrquestacion, {
+            set(target, prop, value) {
+                target[prop] = value;
+
+                if (prop === 'modo') {
+                    cambiarModoHijo5Casa(value);
+                }
+
+                return true;
+            }
+        });
+
+        return observer;
+    }
+
+    // Reemplazar el estado global con el proxy observado
+    estadoOrquestacion = observarEstadoOrquestacion();
+
     // Iniciar la orquestación cuando se cargue el DOM
     document.addEventListener('DOMContentLoaded', iniciarOrquestacion);
 </script>
