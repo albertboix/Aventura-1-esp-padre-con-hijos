@@ -322,16 +322,19 @@
     </style>
     <script type="module">
     // Importar módulos primero (before everything else)
-    import { TIPOS_MENSAJE, MODOS } from './js/constants.js';
-    import { CONFIG } from './js/config.js';
-    import logger from './js/logger.js';
     import { 
         inicializarMensajeria,
         registrarControlador, 
         enviarMensaje 
     } from './js/mensajeria.js';
+    import { TIPOS_MENSAJE } from './js/constants.js';
+    import { modoHandler } from './js/modo-handler.js';
+    import logger from './js/logger.js';
     
+    const COMPONENTE_ID = 'BOTON-CASA';
     const IFRAME_ID = 'hijo5-casa';
+    
+    // Estado del componente (se define más adelante)
 
     // Configuración de mensajería
     const CONFIG_MENSAJERIA = {
@@ -345,6 +348,16 @@
         }
     };
     
+    // Manejador de mensajes para cambio de modo
+    function manejarCambioModo(mensaje) {
+        const { modo } = mensaje.datos || {};
+        if (!modo) {
+            console.warn('⚠️ No se especificó un modo en el mensaje de cambio de modo.');
+            return;
+        }
+        console.log(`✅ [${COMPONENTE_ID}] Cambio de modo recibido: ${modo}`);
+        actualizarInterfazModo(modo);
+    }
     // Array definido de paradas y tramos con sus respectivos padreid
     const puntosRuta = [
       { tipo: "inicio", parada: 0, nombre: "Torres de Serranos (start)", padreid: "padre-P-0" },
@@ -521,26 +534,93 @@
                 boton.classList.add('error');
                 setTimeout(() => boton.classList.remove('error'), 500);
             }
+            logger.error('[BOTON-CASA] No se pudo cambiar de modo');
             alert('No se pudo cambiar de modo. Intente de nuevo.');
         }
-    }// IMPORTANTE: Exponer la función manejarClickCambioModo al objeto window
+    }
+    
+    // Exponer la función al objeto window
     window.manejarClickCambioModo = manejarClickCambioModo;
-    console.log('Función manejarClickCambioModo expuesta al window');
+    logger.debug('[BOTON-CASA] Función manejarClickCambioModo expuesta al window');
 
     // ========================================
     // MANEJADORES DE MENSAJES
     // ========================================
 
-    // Manejador para recibir cambios de modo desde el padre
+    // Manejador para recibir cambios de modo
     function manejarCambioModo(mensaje) {
-        const { modo } = mensaje.datos || {};
-        if (!modo) return;
-        
-        console.log(`Recibido cambio de modo desde ${mensaje.origen || 'origen desconocido'}: ${modo}`);
-        
-        // Solo actualizar si el modo es diferente
-        if (modo !== estado.modo) {
-            actualizarInterfaz(modo);
+        try {
+            const { modo, origen } = mensaje.datos || {};
+            if (!modo) {
+                logger.warn(`[${COMPONENTE_ID}] Mensaje de cambio de modo sin datos`);
+                return;
+            }
+            
+            logger.info(`[${COMPONENTE_ID}] Cambio de modo solicitado por ${origen || 'origen desconocido'}: ${modo}`);
+            
+            // Validar que el modo sea válido
+            if (modo !== 'casa' && modo !== 'aventura') {
+                logger.warn(`[${COMPONENTE_ID}] Intento de cambiar a modo no válido: ${modo}`);
+                return;
+            }
+            
+            // Usar el modoHandler para manejar el cambio de modo
+            modoHandler.cambiarModo(modo, COMPONENTE_ID);
+            
+        } catch (error) {
+            logger.error(`[${COMPONENTE_ID}] Error en manejo de cambio de modo:`, error);
+            
+            // Notificar al padre en caso de error
+            if (window.parent !== window) {
+                enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
+                    tipo: 'CAMBIO_MODO',
+                    error: error.message,
+                    origen: COMPONENTE_ID,
+                    timestamp: new Date().toISOString()
+                });
+            }
+        }
+    
+    } // Cierre de manejarCambioModo
+    
+    // Función para actualizar la interfaz según el modo
+    function actualizarInterfazModo(modo) {
+        try {
+            logger.debug(`[${COMPONENTE_ID}] Actualizando interfaz para modo: ${modo}`);
+            
+            // Actualizar el estado local
+            if (estado) {
+                estado.modo = modo;
+            }
+            
+            // Aquí puedes añadir lógica específica para actualizar la interfaz
+            // Por ejemplo, cambiar clases CSS, mostrar/ocultar elementos, etc.
+            const body = document.body;
+            if (modo === 'aventura') {
+                body.classList.add('modo-aventura');
+                body.classList.remove('modo-casa');
+            } else {
+                body.classList.add('modo-casa');
+                body.classList.remove('modo-aventura');
+            }
+            
+            // Notificar que la interfaz se ha actualizado
+            logger.info(`[${COMPONENTE_ID}] Interfaz actualizada para modo: ${modo}`);
+            
+        } catch (error) {
+            logger.error(`[${COMPONENTE_ID}] Error al actualizar la interfaz:`, error);
+            
+            // Notificar al padre en caso de error
+            if (window.parent !== window) {
+                enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
+                    tipo: 'ACTUALIZACION_INTERFAZ',
+                    error: error.message,
+                    origen: COMPONENTE_ID,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            
+            throw error; // Relanzar para manejarlo en el manejador de errores
         }
     }
     
@@ -750,9 +830,9 @@
                 }
             });
 
-        container.appendChild(btn);
-    }); 
-}
+            container.appendChild(btn);
+        });
+    }
     
     // Función para mostrar estado de carga
     function mostrarEstadoCarga(cargando, mensaje = '', esError = false) {
@@ -824,10 +904,24 @@
             await inicializarMensajeria(CONFIG_MENSAJERIA);
             console.log('Mensajería inicializada correctamente');
             
-            // Registrar manejadores para los diferentes tipos de mensajes que pueden contener paradas
+            // Inicializar el modoHandler
+            modoHandler.suscribir(COMPONENTE_ID, (nuevoModo) => {
+                logger.info(`[${COMPONENTE_ID}] Recibido cambio de modo a: ${nuevoModo}`);
+                actualizarInterfazModo(nuevoModo);
+            });
+            
+            // Registrar manejadores para los diferentes tipos de mensajes
             registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejarCambioModo);
             registrarControlador(TIPOS_MENSAJE.DATOS.PARADAS, manejarRecepcionParadas);
-            // registrarControlador(TIPOS_MENSAJE.SISTEMA.ESTADO, manejarEstadoSistema); // Comentado para evitar error
+            
+            // Notificar que el componente está listo
+            enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO, {
+                componente: COMPONENTE_ID,
+                modo: modoHandler.obtenerModoActual(),
+                timestamp: new Date().toISOString()
+            });
+            
+            logger.info(`[${COMPONENTE_ID}] Componente inicializado correctamente`);
 
             // Registrar para diferentes formatos de datos de paradas
             if (TIPOS_MENSAJE.DATOS.COORDENADAS_PARADAS) {
@@ -894,11 +988,51 @@
         }
     }
     
+    // Función para configurar los manejadores de eventos
+    function configurarManejadoresEventos() {
+        // Configurar el manejador de clic para el botón de GPS
+        const gpsBtn = document.getElementById('gps-casa-btn');
+        if (gpsBtn) {
+            gpsBtn.addEventListener('click', manejarClickCambioModo);
+            console.log('Manejador de clic configurado para el botón de GPS');
+        } else {
+            console.error('No se encontró el botón de GPS');
+        }
+    }
+    
     // Iniciar el componente después de que el DOM esté completamente cargado
-    document.addEventListener('DOMContentLoaded', (event) => {
-        console.log('DOM completamente cargado');
-        inicializar();
+    document.addEventListener('DOMContentLoaded', async (event) => {
+        console.log('DOM completamente cargado - Inicializando componente');
+        
+        try {
+            // Inicializar el componente
+            await inicializar();
+            
+            // Configurar manejadores de eventos
+            configurarManejadoresEventos();
+            
+            // Notificar al padre que el componente está listo
+            await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO, {
+                componente: COMPONENTE_ID,
+                modo: modoHandler.obtenerModoActual(),
+                timestamp: new Date().toISOString()
+            });
+            
+            console.log('Componente de botón de casa inicializado correctamente');
+            
+        } catch (error) {
+            console.error('Error durante la inicialización:', error);
+            mostrarEstadoCarga(false, 'Error al inicializar el componente', true);
+        }
     });
+    
+    // Función para manejar la visibilidad de la ventana de paradas
+    function toggleVentanaParadas() {
+        const ventana = document.getElementById('paradas-window');
+        if (ventana) {
+            ventana.style.display = ventana.style.display === 'none' ? 'flex' : 'none';
+        }
+    }
     </script>
 </head>
 <body>
@@ -926,9 +1060,6 @@
         <i class="fas fa-spinner fa-spin"></i> Cargando...
     </div>
     
-    <!-- Script para manejar la lógica del componente -->
-    <script>
-    // Aquí va el código JavaScript para manejar el componente
-    </script>
+    <!-- El script principal ya está en el head -->
 </body>
 </html>
