@@ -225,10 +225,31 @@ function _registrarControlador(tipo, manejador) {
  * @returns {Promise<Object>|undefined}
  */
 // Función interna para enviar mensajes
+/**
+ * Envía un mensaje a un destino específico
+ * @param {string} destino - ID del iframe destino o 'padre'/'todos'.
+ * @param {string} tipo - Tipo de mensaje (debe estar en TIPOS_MENSAJE_VALIDOS).
+ * @param {Object} [datos={}] - Datos adicionales del mensaje.
+ * @returns {Promise<Object|undefined>} - Promesa que se resuelve con la respuesta o undefined en caso de error.
+ * @throws {Error} Si los parámetros no son válidos.
+ */
 async function _enviarMensaje(destino, tipo, datos = {}) {
-    if (!destino || !tipo) {
-        logger.error('[Mensajeria] Falta destino o tipo en enviarMensaje', { destino, tipo, datos });
-        return;
+    // Validar parámetros de entrada
+    if (typeof destino !== 'string' || destino.trim() === '') {
+        const error = new Error('El parámetro "destino" es requerido y debe ser una cadena no vacía');
+        logger.error('[Mensajeria] Error en _enviarMensaje:', error.message, { destino, tipo });
+        throw error;
+    }
+    
+    if (typeof tipo !== 'string' || tipo.trim() === '') {
+        const error = new Error('El parámetro "tipo" es requerido y debe ser una cadena no vacía');
+        logger.error('[Mensajeria] Error en _enviarMensaje:', error.message, { destino, tipo });
+        throw error;
+    }
+    
+    // Validar tipo de mensaje contra la lista de tipos válidos
+    if (!TIPOS_MENSAJE_VALIDOS.includes(tipo)) {
+        console.warn(`⚠️ Advertencia: El tipo de mensaje '${tipo}' no está en la lista de tipos válidos`);
     }
     
     // Problema #9: Validar si estamos inicializados usando la nueva función
