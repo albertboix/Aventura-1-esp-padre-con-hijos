@@ -9,6 +9,60 @@ import { TIPOS_MENSAJE } from './constants.js';
 import { configurarUtils, crearObjetoError, generarIdUnico } from './utils.js';
 import logger from './logger.js';
 
+// Lista de tipos de mensajes válidos - Actualizada para incluir todos los tipos definidos en constants.js
+const TIPOS_MENSAJE_VALIDOS = [
+    // SISTEMA
+    'SISTEMA.INICIALIZACION',
+    'SISTEMA.INICIALIZACION_COMPLETADA',
+    'SISTEMA.ESTADO',
+    'SISTEMA.ERROR',
+    'SISTEMA.CAMBIO_MODO',
+    'SISTEMA.CONFIRMACION',
+    'SISTEMA.COMPONENTE_LISTO',
+    'SISTEMA.PING',
+    'SISTEMA.PONG',
+    'SISTEMA.LISTO',
+    'SISTEMA.COMPONENTE_INICIALIZADO',
+    'SISTEMA.INICIALIZACION_FINALIZADA',
+    
+    // CONTROL
+    'CONTROL.HABILITAR',
+    'CONTROL.DESHABILITAR',
+    'CONTROL.GPS',
+    'CONTROL.CAMBIAR_MODO',
+    
+    // NAVEGACION
+    'NAVEGACION.CAMBIO_PARADA',
+    'NAVEGACION.SOLICITAR_DESTINO',
+    'NAVEGACION.ESTABLECER_DESTINO',
+    'NAVEGACION.ACTUALIZAR_POSICION',
+    
+    // AUDIO
+    'AUDIO.REPRODUCIR',
+    'AUDIO.PAUSAR',
+    'AUDIO.FIN_REPRODUCCION',
+    'AUDIO.FINALIZADO',
+    
+    // RETO
+    'RETO.MOSTRAR',
+    'RETO.OCULTAR',
+    'RETO.COMPLETADO',
+    
+    // DATOS
+    'DATOS.SOLICITAR_PARADAS',
+    'DATOS.SOLICITAR_PARADA',
+    'DATOS.RESPUESTA_PARADAS',
+    'DATOS.RESPUESTA_PARADA',
+    
+    // UI
+    'UI.MODAL',
+    
+    // MEDIOS
+    'MEDIOS.EVENTO',
+    'MEDIOS.MOSTRAR',
+    'MEDIOS.OCULTAR'
+];
+
 // Función auxiliar para validar el formato del tipo de mensaje
 const validarFormatoTipoMensaje = (tipo) => {
     if (typeof tipo !== 'string') {
@@ -820,66 +874,6 @@ function cambiarModoEnHijo5Casa(modo) {
 export async function inicializarMensajeria(config) {
     return await _inicializarMensajeria(config);
 }
-
-
-// Lista de tipos de mensajes válidos - Actualizada para incluir todos los tipos definidos en constants.js
-const TIPOS_MENSAJE_VALIDOS = [
-    // SISTEMA
-    'SISTEMA.INICIALIZACION',
-    'SISTEMA.INICIALIZACION_COMPLETADA',
-    'SISTEMA.ESTADO',
-    'SISTEMA.ERROR',
-    'SISTEMA.CAMBIO_MODO',
-    'SISTEMA.CONFIRMACION',
-    'SISTEMA.COMPONENTE_LISTO',
-    'SISTEMA.PING',
-    'SISTEMA.PONG',
-    'SISTEMA.LISTO',
-    'SISTEMA.COMPONENTE_INICIALIZADO',
-    'SISTEMA.INICIALIZACION_FINALIZADA',
-    
-    // CONTROL
-    'CONTROL.HABILITAR',
-    'CONTROL.DESHABILITAR',
-    'CONTROL.GPS',
-    'CONTROL.CAMBIAR_MODO',
-    
-    // NAVEGACION
-    'NAVEGACION.CAMBIO_PARADA',
-    'NAVEGACION.SOLICITAR_DESTINO',
-    'NAVEGACION.ESTABLECER_DESTINO',
-    'NAVEGACION.ACTUALIZAR_POSICION',
-    'NAVEGACION.CENTRAR_EN_UBICACION',
-    'NAVEGACION.MOSTRAR_MAPA_COMPLETO',
-    'NAVEGACION.MOSTRAR_MAPA_JPG',
-    
-    // AUDIO
-    'AUDIO.REPRODUCIR',
-    'AUDIO.PAUSAR',
-    'AUDIO.FIN_REPRODUCCION',
-    'AUDIO.FINALIZADO',
-    
-    // RETO
-    'RETO.MOSTRAR',
-    'RETO.OCULTAR',
-    'RETO.COMPLETADO',
-    
-    // DATOS
-    'DATOS.SOLICITAR_PARADAS',
-    'DATOS.SOLICITAR_PARADA',
-    'DATOS.RESPUESTA_PARADAS',
-    'DATOS.RESPUESTA_PARADA',
-    
-    // UI
-    'UI.MODAL',
-    
-    // MEDIOS
-    'MEDIOS.EVENTO',
-    'MEDIOS.MOSTRAR',
-    'MEDIOS.OCULTAR'
-];
-
-
 
 export function registrarControlador(tipoMensaje, controlador) {
     // Validar que se hayan proporcionado los parámetros necesarios
