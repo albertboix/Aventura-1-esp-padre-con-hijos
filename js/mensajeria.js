@@ -778,20 +778,60 @@ export async function inicializarMensajeria(config) {
     return await _inicializarMensajeria(config);
 }
 
-export function registrarControlador(tipoMensaje, controlador) {
-    if (typeof tipoMensaje !== 'string' || typeof controlador !== 'function') {
-        console.error('❌ Error al registrar controlador: tipoMensaje o controlador inválido', {
-            tipoMensaje,
-            controlador
-        });
-        return;
-    }
+// Lista de tipos de mensajes válidos
+const TIPOS_MENSAJE_VALIDOS = [
+    'SISTEMA.PING',
+    'SISTEMA.CAMBIO_MODO',
+    'NAVEGACION.ACTUALIZAR_POSICION',
+    'AUDIO.FIN_REPRODUCCION',
+    'RETO.COMPLETADO',
+    'AUDIO.REPRODUCIR',
+    'DATOS.SOLICITAR_PARADA',
+    'CONTROL.CAMBIAR_MODO',
+    'CONTROL.HABILITAR',
+    'CONTROL.DESHABILITAR',
+    'RETO.MOSTRAR'
+];
 
-    if (!controladores[tipoMensaje]) {
-        controladores[tipoMensaje] = [];
+export function registrarControlador(tipoMensaje, controlador) {
+    try {
+        // Validar que el tipo de mensaje sea una cadena no vacía
+        if (typeof tipoMensaje !== 'string' || tipoMensaje.trim() === '') {
+            throw new Error('El tipo de mensaje debe ser una cadena no vacía');
+        }
+        
+        // Validar que el controlador sea una función
+        if (typeof controlador !== 'function') {
+            throw new Error('El controlador debe ser una función');
+        }
+        
+        // Verificar si el tipo de mensaje está en la lista de válidos
+        if (!TIPOS_MENSAJE_VALIDOS.includes(tipoMensaje)) {
+            console.warn(`⚠️ Advertencia: El tipo de mensaje '${tipoMensaje}' no está en la lista de tipos válidos`);
+        }
+        
+        // Inicializar el array de controladores para este tipo de mensaje si no existe
+        if (!controladores[tipoMensaje]) {
+            controladores[tipoMensaje] = [];
+        }
+        
+        // Evitar duplicados
+        const existeControlador = controladores[tipoMensaje].some(
+            c => c.toString() === controlador.toString()
+        );
+        
+        if (!existeControlador) {
+            controladores[tipoMensaje].push(controlador);
+            console.log(`✅ Controlador registrado para tipoMensaje: ${tipoMensaje}`);
+        } else {
+            console.log(`ℹ️ Controlador ya registrado para tipoMensaje: ${tipoMensaje}`);
+        }
+        
+        return true;
+    } catch (error) {
+        console.error(`❌ Error al registrar controlador para '${tipoMensaje}':`, error.message);
+        return false;
     }
-    controladores[tipoMensaje].push(controlador);
-    console.log(`✅ Controlador registrado para tipoMensaje: ${tipoMensaje}`);
 }
 
 export async function enviarMensaje(destino, tipo, datos = {}) {
