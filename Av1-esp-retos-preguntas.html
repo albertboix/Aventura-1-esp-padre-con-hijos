@@ -67,6 +67,7 @@
         } from './js/mensajeria.js';
         import { configurarUtils } from './js/utils.js';
         import logger from './js/logger.js';
+        import { modoHandler } from './js/modo-handler.js';
         
         // Configuración de mensajería
         const CONFIG_MENSAJERIA = {
@@ -103,8 +104,42 @@
         // Estado del componente
         const estado = {
             retoActualId: null,
-            inicializado: false
+            inicializado: false,
+            modoActual: 'aventura' // Valor por defecto
         };
+
+        // Función para actualizar la interfaz según el modo
+        function actualizarInterfazModo(modo) {
+            console.log(`[RETOS] Actualizando interfaz para modo: ${modo}`);
+            const body = document.body;
+            
+            // Actualizar estado local
+            estado.modoActual = modo;
+            
+            // Actualizar clases CSS
+            body.classList.remove('modo-casa', 'modo-aventura');
+            body.classList.add(`modo-${modo}`);
+            
+            // Ajustes específicos según el modo
+            const retoContainer = document.getElementById('reto-container');
+            if (retoContainer) {
+                retoContainer.dataset.modo = modo;
+                
+                // Ajustar estilos según el modo
+                if (modo === 'casa') {
+                    retoContainer.style.borderColor = '#3498db'; // Azul para modo casa
+                } else {
+                    retoContainer.style.borderColor = '#e67e22'; // Naranja para modo aventura
+                }
+            }
+            
+            // Si hay un reto abierto, actualizar su visualización
+            if (estado.retoActualId) {
+                // Aquí iría la lógica para actualizar la visualización del reto actual
+                // según el modo, si es necesario
+                console.log(`[RETOS] Se está mostrando el reto ${estado.retoActualId} en modo ${modo}`);
+            }
+        }
 
        // Cada objeto representa un reto. El campo 'tipo' puede ser 'opcion', 'opcion-multiple', 'texto' o 'puzzle'.
 // El campo 'correctas' contiene la(s) respuesta(s) correcta(s).
@@ -445,6 +480,22 @@ const retosAventura1Es = [
                     throw error;
                 }
 
+                // Suscribirse a cambios de modo
+                try {
+                    modoHandler.suscribir('retos', (nuevoModo) => {
+                        logger.info(`${logPrefix} Cambio de modo detectado: ${nuevoModo}`);
+                        actualizarInterfazModo(nuevoModo);
+                    });
+                    
+                    // Aplicar el modo actual
+                    const modoActual = modoHandler.obtenerModoActual();
+                    actualizarInterfazModo(modoActual);
+                    logger.info(`${logPrefix} Suscrito a cambios de modo. Modo actual: ${modoActual}`);
+                } catch (error) {
+                    logger.error(`${logPrefix} Error al suscribirse a cambios de modo:`, error);
+                    // No lanzamos el error para no interrumpir la inicialización
+                }
+                
                 // Configurar manejadores de eventos
                 document.getElementById('btn-completado').addEventListener('click', async () => {
                     if (estado.retoActualId) {
