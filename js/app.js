@@ -42,17 +42,29 @@ export async function inicializar() {
         logger.info('Inicializando aplicación...');
         
         // Inicializar el mapa si no está ya inicializado
-        if (!window.mapa) {
+        if (!window.mapa || !(window.mapa instanceof L.Map)) {
             try {
                 logger.info('Inicializando mapa...');
-                window.mapa = await inicializarMapa({
+                const mapInstance = await inicializarMapa({
                     containerId: 'mapa',
                     center: [39.4699, -0.3763], // Coordenadas de Valencia
                     zoom: 14,
                     minZoom: 10,
                     maxZoom: 18
                 });
-                logger.info('Mapa inicializado correctamente');
+                
+                // Asignar la instancia del mapa a window.mapa
+                window.mapa = mapInstance;
+                logger.info('Mapa inicializado correctamente', window.mapa);
+                
+                // Forzar actualización del tamaño después de un breve retraso
+                setTimeout(() => {
+                    if (window.mapa && typeof window.mapa.invalidateSize === 'function') {
+                        window.mapa.invalidateSize(true);
+                        logger.info('Tamaño del mapa actualizado');
+                    }
+                }, 100);
+                
             } catch (error) {
                 logger.error('Error al inicializar el mapa:', error);
                 throw new Error('No se pudo inicializar el mapa: ' + error.message);
