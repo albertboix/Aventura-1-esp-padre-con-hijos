@@ -678,8 +678,8 @@
         // Importar utilidades y mensajería
         import logger from './js/logger.js';
         import { inicializarMensajeria, registrarControlador, enviarMensaje } from './js/mensajeria.js';
-        // Fix import by getting TIPOS_MENSAJE from constants instead of mensajeria
         import { TIPOS_MENSAJE } from './js/constants.js';
+        import { modoHandler } from './js/modo-handler.js';
         
         const IFRAME_ID = 'hijo3';
 
@@ -864,21 +864,61 @@
             logger.info('Controles de audio deshabilitados por el padre');
         }
 
-        // --- INICIALIZACIÓN ---
-        async function inicializar() {
-            logger.configure({ iframeId: IFRAME_ID, debug: true });
-            await inicializarMensajeria({ iframeId: IFRAME_ID });
-
-            registrarControlador(TIPOS_MENSAJE.AUDIO.REPRODUCIR, manejarReproducirAudio);
-            registrarControlador(TIPOS_MENSAJE.CONTROL.HABILITAR, manejarHabilitarControles);
-            registrarControlador(TIPOS_MENSAJE.CONTROL.DESHABILITAR, manejarDeshabilitarControles);
-            registrarControlador(TIPOS_MENSAJE.SISTEMA.PING, manejarPing);
+        // Función para actualizar la interfaz según el modo
+        function actualizarInterfazModo(modo) {
+            console.log(`[AUDIO] Actualizando interfaz para modo: ${modo}`);
+            const body = document.body;
             
-            await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO, { componente: IFRAME_ID });
-            logger.info(`${IFRAME_ID} inicializado.`);
+            // Actualizar clases CSS
+            body.classList.remove('modo-casa', 'modo-aventura');
+            body.classList.add(`modo-${modo}`);
+            
+            // Ajustes específicos según el modo
+            const audioControls = document.querySelector('.audio-player-controls');
+            if (audioControls) {
+                audioControls.dataset.modo = modo;
+            }
+            
+            // Pausar la reproducción al cambiar de modo
+            if (audioPlayer && !audioPlayer.paused) {
+                audioPlayer.pause();
+                playPauseBtn.innerHTML = '<i class="fas fa-play icon-play"></i>';
+            }
         }
 
-        inicializar();
+        // --- INICIALIZACIÓN ---
+        async function inicializar() {
+            try {
+                logger.configure({ iframeId: IFRAME_ID, debug: true });
+                await inicializarMensajeria({ iframeId: IFRAME_ID });
+
+                registrarControlador(TIPOS_MENSAJE.AUDIO.REPRODUCIR, manejarReproducirAudio);
+                registrarControlador(TIPOS_MENSAJE.CONTROL.HABILITAR, manejarHabilitarControles);
+                registrarControlador(TIPOS_MENSAJE.CONTROL.DESHABILITAR, manejarDeshabilitarControles);
+                registrarControlador(TIPOS_MENSAJE.SISTEMA.PING, manejarPing);
+                
+                // Suscribirse a cambios de modo
+                modoHandler.suscribir('audio-player', (nuevoModo) => {
+                    actualizarInterfazModo(nuevoModo);
+                });
+                
+                // Aplicar el modo actual
+                actualizarInterfazModo(modoHandler.obtenerModoActual());
+                
+                await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO, { 
+                    componente: IFRAME_ID,
+                    modo: modoHandler.obtenerModoActual()
+                });
+                
+                logger.info(`${IFRAME_ID} inicializado en modo ${modoHandler.obtenerModoActual()}.`);
+            } catch (error) {
+                console.error('Error al inicializar el reproductor de audio:', error);
+                logger.error('Error al inicializar el reproductor de audio:', error);
+            }
+        }
+
+        // Inicializar cuando el DOM esté listo
+        document.addEventListener('DOMContentLoaded', inicializar);
 
         // Registrar controlador para solicitud de audio
         registrarControlador(TIPOS_MENSAJE.DATOS.SOLICITAR_PARADA, (mensaje) => {
