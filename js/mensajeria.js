@@ -751,6 +751,29 @@ if (typeof manejarPing === 'function') {
     logger.warn('[Mensajeria] No se pudo registrar manejador de ping: función no definida');
 }
 
+// Define el objeto controladores si no está definido
+const controladores = controladores || {};
+
+// Registrar controlador para TIPOS_MENSAJE.CONTROL.CAMBIAR_MODO
+registrarControlador(TIPOS_MENSAJE.CONTROL.CAMBIAR_MODO, (mensaje) => {
+    const { modo } = mensaje.datos || {};
+    if (!modo) {
+        console.warn('⚠️ No se especificó un modo en el mensaje TIPOS_MENSAJE.CONTROL.CAMBIAR_MODO.');
+        return;
+    }
+
+    console.log(`✅ Modo recibido en hijo5-casa: ${modo}`);
+    // Aquí puedes agregar la lógica para cambiar el modo en el iframe
+    cambiarModoEnHijo5Casa(modo);
+});
+
+// Función para cambiar el modo en el iframe hijo5-casa
+function cambiarModoEnHijo5Casa(modo) {
+    // Implementa la lógica específica para cambiar el modo en el iframe
+    console.log(`Cambiando el modo en hijo5-casa a: ${modo}`);
+    // Por ejemplo, actualizar el DOM o realizar alguna acción específica
+}
+
 // Exportar la API pública
 export async function inicializarMensajeria(config) {
     return await _inicializarMensajeria(config);
