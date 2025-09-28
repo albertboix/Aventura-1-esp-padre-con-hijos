@@ -257,6 +257,9 @@ function registrarManejadoresMensajes() {
     registrarControlador(TIPOS_MENSAJE.DATOS.RESPUESTA_PARADAS, manejarRecepcionParadas);
     registrarControlador(TIPOS_MENSAJE.SISTEMA.ESTADO, manejarEstadoSistema);
     
+    // Manejador para el estado del mapa que incluye datos de paradas
+    registrarControlador(TIPOS_MENSAJE.NAVEGACION.ESTADO_MAPA, manejarEstadoMapa);
+    
     // Añadir manejador para mostrar ruta (polyline)
     registrarControlador(TIPOS_MENSAJE.NAVEGACION.MOSTRAR_RUTA, manejarMostrarRuta);
     
@@ -279,6 +282,77 @@ function registrarManejadoresMensajes() {
     });
     
     logger.debug('Manejadores de mensajes del mapa registrados');
+}
+
+/**
+ * Maneja el mensaje de estado del mapa que incluye datos de paradas
+ * @param {Object} mensaje - Mensaje con el estado del mapa y datos de paradas
+ */
+function manejarEstadoMapa(mensaje) {
+    try {
+        const { datos } = mensaje;
+        if (!datos) {
+            console.warn('⚠️ [MAPA] Mensaje de estado del mapa sin datos');
+            return;
+        }
+
+        console.log('🔄 [MAPA] Recibido estado del mapa:', {
+            modo: datos.modo,
+            zoom: datos.zoom,
+            tieneParadas: datos.paradasTramos && datos.paradasTramos.length > 0
+        });
+
+        // Actualizar el modo del mapa si es necesario
+        if (datos.modo) {
+            actualizarModoMapa(datos.modo);
+        }
+
+        // Si hay datos de paradas, procesarlos
+        if (datos.paradasTramos && Array.isArray(datos.paradasTramos)) {
+            console.log(`📍 [MAPA] Procesando ${datos.paradasTramos.length} paradas/tramos del mensaje de estado`);
+            
+            // Procesar las paradas y tramos
+            const paradasProcesadas = [];
+            const tramosProcesados = [];
+            
+            datos.paradasTramos.forEach(item => {
+                if (item.tipo === 'parada' || item.tipo === 'inicio') {
+                    paradasProcesadas.push(item);
+                } else if (item.tipo === 'tramo') {
+                    tramosProcesados.push(item);
+                }
+            });
+
+            console.log(`   - Paradas: ${paradasProcesadas.length}, Tramos: ${tramosProcesados.length}`);
+            
+            // Actualizar las paradas locales
+            if (paradasProcesadas.length > 0) {
+                // Asignar las paradas procesadas a arrayParadasLocal
+                arrayParadasLocal = paradasProcesadas;
+                
+                // Mostrar las paradas en el mapa
+                mostrarTodasLasParadas(arrayParadasLocal);
+            }
+            
+            // Aquí podrías procesar los tramos si es necesario
+            if (tramosProcesados.length > 0) {
+                console.log(`   - Tramos recibidos:`, tramosProcesados);
+                // Aquí podrías llamar a una función para procesar los tramos
+                // Por ejemplo: procesarTramos(tramosProcesados);
+            }
+        }
+        
+        // Centrar el mapa si se proporcionan coordenadas
+        if (datos.centro) {
+            const { lat, lng } = datos.centro;
+            if (mapa && lat && lng) {
+                mapa.setView([lat, lng], datos.zoom || 15);
+            }
+        }
+        
+    } catch (error) {
+        console.error('❌ [MAPA] Error al procesar el estado del mapa:', error);
+    }
 }
 
 /**
@@ -387,18 +461,26 @@ export function mostrarTodasLasParadas(paradasExternas) {
         
         // Verificar que tengamos datos de paradas
         if (!arrayParadasLocal || arrayParadasLocal.length === 0) {
-            console.warn('⚠️ [MAPA] No hay datos de paradas para mostrar en el mapa');
+            console.warn('⚠️ [MAPA] No hay datos de paradas locales. Verificando si hay datos en el mensaje...');
             
-            // Intentar obtener las paradas del padre si no las tenemos
-            if (window.parent && window.parent !== window) {
+            // Si se proporcionan paradas externas, usarlas
+            if (paradasExternas && Array.isArray(paradasExternas) && paradasExternas.length > 0) {
+                console.log('🔄 [MAPA] Usando paradas proporcionadas externamente:', paradasExternas.length);
+                arrayParadasLocal = paradasExternas;
+            } 
+            // Si no hay paradas externas, solicitarlas al padre
+            else if (window.parent && window.parent !== window) {
                 console.log('🔄 [MAPA] Solicitando paradas al componente padre...');
                 window.parent.postMessage({
                     tipo: TIPOS_MENSAJE.NAVEGACION.SOLICITAR_ESTADO_MAPA,
                     origen: 'mapa',
                     timestamp: Date.now()
                 }, '*');
+                return; // Salir y esperar la respuesta
+            } else {
+                console.error('❌ [MAPA] No hay datos de paradas disponibles');
+                return;
             }
-            return;
         }
         
         console.log('📍 [MAPA] Mostrando paradas en el mapa. Total paradas:', arrayParadasLocal.length);
