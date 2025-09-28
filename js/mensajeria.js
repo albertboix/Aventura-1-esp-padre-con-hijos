@@ -400,130 +400,49 @@ async function _enviarMensaje(destino, tipo, datos = {}) {
     }
 }
 
-/**
- * Genera un hash simple del contenido para comparaciones rápidas
- * @param {string} tipo - Tipo de mensaje
- * @param {Object} datos - Datos del mensaje
- * @returns {string} Hash del contenido
- */
-function generarHashContenido(tipo, datos) {
-    try {
-        // Extraer solo propiedades relevantes según el tipo de mensaje para el hash
-        let contenidoRelevante = {};
-        
-        // Para mensajes de navegación, las propiedades relevantes dependen del subtipo
-        if (tipo.startsWith('NAVEGACION.')) {
-            if (datos.punto) {
-                // Para cambios de parada, el punto es lo relevante
-                contenidoRelevante = { 
-                    punto: datos.punto,
-                    timestamp: Math.floor(Date.now() / 10000) // Agrupar por bloques de 10s
-                };
-            } else if (datos.coordenadas) {
-                // Para actualizaciones de posición, redondear coordenadas para evitar microcambios
-                const { lat, lng } = datos.coordenadas;
-                contenidoRelevante = {
-                    lat: lat ? parseFloat(lat.toFixed(5)) : null,
-                    lng: lng ? parseFloat(lng.toFixed(5)) : null,
-                    timestamp: Math.floor(Date.now() / 10000) // Agrupar por bloques de 10s
-                };
-            }
-        } else {
-            // Para otros tipos, usar todo el objeto excepto campos que cambian constantemente
-            contenidoRelevante = { ...datos };
-            delete contenidoRelevante.timestamp; // Ignorar timestamp para comparación
-            delete contenidoRelevante.mensajeId; // Ignorar mensajeId para comparación
-        }
-        
-        // Convertir a string para hash
-        const str = JSON.stringify(contenidoRelevante);
-        
-        // Crear un hash simple para comparación rápida
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            hash = ((hash << 5) - hash) + str.charCodeAt(i);
-            hash |= 0; // Convertir a entero de 32 bits
-        }
-        
-        return hash.toString(36);
-    } catch (e) {
-        // En caso de error, devolver timestamp como fallback
-        return Date.now().toString(36);
-    }
-}
+// ...
 
 /**
- * Registra un mensaje en el log de manera segura, evitando problemas con referencias circulares
- * @param {string} texto - Texto descriptivo
- * @param {Object} objeto - Objeto a registrar
+ * Valida el formato de un mensaje recibido
+ * @param {Object} msg - El mensaje a validar
+ * @param {string} source - Origen del mensaje (opcional)
+ * @returns {boolean} - True si el mensaje es válido
  */
-// Problema #6: Implementar función para logging seguro de objetos
-function logMensajeSeguro(texto, objeto) {
-    try {
-        // Intentar usar el logger directamente para objetos simples
-        logger.debug(texto, objeto);
-    } catch (error) {
-        // Si hay error (posible referencia circular), usar un enfoque más seguro
-        try {
-            const objetoSimplificado = JSON.parse(JSON.stringify(objeto));
-            logger.debug(texto, objetoSimplificado);
-        } catch (e) {
-            // Si también falla, registrar solo información básica
-            logger.debug(`${texto} [Objeto complejo - no serializable]`, {
-                tipo: objeto?.tipo,
-                origen: objeto?.origen,
-                destino: objeto?.destino,
-                timestamp: objeto?.timestamp
-            });
-        }
+function validarMensaje(msg, source = 'desconocido') {
+    // Verificar que el mensaje es un objeto
+    if (!msg || typeof msg !== 'object') {
+        logger.warn(`[${source}] [Mensajeria] Mensaje no es un objeto`, { msg });
+        return false;
     }
-}
-
-// Función para filtrar mensajes externos (como Grammarly) que no siguen nuestro formato
-function esMensajeExterno(msg) {
-  // Detectar mensajes de Grammarly que contienen esta propiedad
-  if (msg && msg.__grammarly) {
-    console.debug('[Mensajería] Ignorando mensaje de Grammarly');
+    
+    // Filtrar mensajes de extensiones externas como Grammarly
+    if (esMensajeExterno(msg)) {
+        logger.debug(`[${source}] [Mensajeria] Mensaje externo ignorado`, { type: msg.type });
+        return false;
+    }
+    
+    // Verificar campos obligatorios
+    const requiredFields = ['tipo', 'origen'];
+    const missingFields = requiredFields.filter(field => !msg.hasOwnProperty(field));
+    
+    if (missingFields.length > 0) {
+        logger.warn(`[${source}] [Mensajeria] Mensaje inválido: faltan campos requeridos`, { 
+            missingFields, 
+            msg 
+        });
+        return false;
+    }
+    
+    // Verificar que el tipo de mensaje sea válido
+    if (TIPOS_MENSAJE_VALIDOS && !TIPOS_MENSAJE_VALIDOS.includes(msg.tipo)) {
+        logger.warn(`[${source}] [Mensajeria] Tipo de mensaje no válido`, { 
+            tipo: msg.tipo, 
+            tiposValidos: TIPOS_MENSAJE_VALIDOS 
+        });
+        return false;
+    }
+    
     return true;
-  }
-  
-  // Otras extensiones o herramientas externas que pueden enviar mensajes
-  if (msg && (
-    msg.hasOwnProperty('_grammarly') || 
-    msg.hasOwnProperty('grammarly_report') ||
-    msg.hasOwnProperty('ext_id') ||
-    msg.hasOwnProperty('extension_id')
-  )) {
-    console.debug('[Mensajería] Ignorando mensaje de extensión externa');
-    return true;
-  }
-  
-  return false;
-}
-
-// Función para validar el formato del mensaje
-function validarMensaje(msg, source) {
-  // Filtrar mensajes de extensiones externas como Grammarly
-  if (esMensajeExterno(msg)) {
-    return false;
-  }
-  
-  // Verificar que sea un objeto
-  if (!msg || typeof msg !== 'object') {
-    logger.warn(`[${source || 'desconocido'}] [Mensajeria] Mensaje inválido: no es un objeto`, msg);
-    return false;
-  }
-  
-  // Verificar campos requeridos
-  const requiredFields = ['tipo', 'datos'];
-  const missingFields = requiredFields.filter(field => !msg.hasOwnProperty(field));
-  
-  if (missingFields.length > 0) {
-    logger.warn(`[${source || 'desconocido'}] [Mensajeria] Mensaje inválido: faltan campos requeridos`, msg);
-    return false;
-  }
-  
-  return true;
 }
 
 /**
