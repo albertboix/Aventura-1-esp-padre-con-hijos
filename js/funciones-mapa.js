@@ -358,6 +358,7 @@ function manejarEstadoMapa(mensaje) {
 /**
  * Maneja la recepción de datos de paradas
  * @param {Object} mensaje - Mensaje recibido
+ * @returns {Array} Array de paradas procesadas
  */
 export function manejarRecepcionParadas(mensaje) {
     try {
@@ -371,65 +372,112 @@ export function manejarRecepcionParadas(mensaje) {
         
         // Procesar las paradas para asegurar que tengan el formato correcto
         const paradasProcesadas = datos.paradas.map(parada => {
+            // Crear una copia para no modificar el objeto original
+            const paradaProcesada = { ...parada };
+            
             // Asegurarse de que la parada tenga un ID
-            if (!parada.id) {
-                parada.id = `parada-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-                logger.warn(`Parada sin ID, asignado ID automático: ${parada.id}`);
+            if (!paradaProcesada.id) {
+                paradaProcesada.id = `parada-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+                logger.warn(`Parada sin ID, asignado ID automático: ${paradaProcesada.id}`);
             }
             
-            // Asegurarse de que tenga coordenadas
-            if (!parada.coordenadas) {
+            // Asegurarse de que la parada tenga coordenadas
+            if (!paradaProcesada.coordenadas) {
                 // Intentar obtener coordenadas de propiedades alternativas
-                if (parada.lat && parada.lng) {
-                    parada.coordenadas = {
-                        lat: parseFloat(parada.lat),
-                        lng: parseFloat(parada.lng)
+                if (paradaProcesada.lat && paradaProcesada.lng) {
+                    paradaProcesada.coordenadas = {
+                        lat: parseFloat(paradaProcesada.lat),
+                        lng: parseFloat(paradaProcesada.lng)
                     };
-                } else if (parada.latitud && parada.longitud) {
-                    parada.coordenadas = {
-                        lat: parseFloat(parada.latitud),
-                        lng: parseFloat(parada.longitud)
+                } else if (paradaProcesada.latitud && paradaProcesada.longitud) {
+                    paradaProcesada.coordenadas = {
+                        lat: parseFloat(paradaProcesada.latitud),
+                        lng: parseFloat(paradaProcesada.longitud)
                     };
-                } else {
-                    logger.warn(`Parada ${parada.id} no tiene coordenadas, se omitirá`);
-                    return null;
                 }
             }
             
-            return parada;
-        }).filter(Boolean); // Filtrar paradas nulas
-
-        // Establecer las paradas en el módulo
-        if (establecerDatosParadas(paradasProcesadas)) {
-            // Notificar al remitente que las paradas se recibieron correctamente
-            if (mensaje.origen) {
-                enviarMensaje(mensaje.origen, TIPOS_MENSAJE.NAVEGACION.PARADAS_RECIBIDAS, {
-                    total: paradasProcesadas.length,
-                    recibidas: paradasProcesadas.length,
-                    omitidas: datos.paradas.length - paradasProcesadas.length,
-                    timestamp: new Date().toISOString()
-                }).catch(error => {
-                    logger.error('Error al enviar confirmación de recepción:', error);
-                });
+            // Verificar que las coordenadas sean válidas
+            if (!paradaProcesada.coordenadas || 
+                isNaN(paradaProcesada.coordenadas.lat) || 
+                isNaN(paradaProcesada.coordenadas.lng)) {
+                logger.warn(`Parada ${paradaProcesada.id} no tiene coordenadas válidas`);
+                return null; // Omitir paradas sin coordenadas
             }
             
-            // Si el mapa ya está inicializado, mostrar las paradas
-            if (mapa) {
-                mostrarTodasLasParadas();
-            } else {
-                logger.info('ℹ️ Mapa aún no está listo, las paradas se mostrarán cuando se inicialice');
-            }
+            return paradaProcesada;
             
-            return true;
-        } else {
-            throw new Error('Error al establecer las paradas en el módulo');
+        }).filter(parada => parada !== null); // Filtrar paradas nulas
+        
+        // Actualizar el array de paradas local
+        arrayParadasLocal = paradasProcesadas;
+        
+        // Si hay un mapa, actualizar los marcadores
+        if (mapa) {
+            mostrarTodasLasParadas();
         }
+        
+        logger.info(`✅ ${paradasProcesadas.length} paradas procesadas correctamente`);
+        return paradasProcesadas;
+        
     } catch (error) {
-        logger.error('Error al procesar las paradas recibidas:', error);
+        logger.error('❌ Error al procesar paradas:', error);
+        throw error; // Relanzar el error para que el llamador lo maneje
+    }
+}
+
+/**
+ * Establece las paradas en el módulo y actualiza la interfaz
+ * @param {Array} paradas - Array de paradas a establecer
+ * @param {Object} [opciones] - Opciones adicionales
+ * @param {string} [opciones.origen] - Origen del mensaje para notificaciones
+ * @returns {boolean} - True si se establecieron las paradas correctamente
+ */
+function establecerDatosParadas(paradas, opciones = {}) {
+    try {
+        if (!Array.isArray(paradas)) {
+            throw new Error('El parámetro paradas debe ser un array');
+        }
+
+        // Filtrar paradas inválidas
+        const paradasValidas = paradas.filter(parada => {
+            return parada && 
+                   parada.id && 
+                   parada.coordenadas && 
+                   !isNaN(parada.coordenadas.lat) && 
+                   !isNaN(parada.coordenadas.lng);
+        });
+
+        // Actualizar el array local
+        arrayParadasLocal = paradasValidas;
+        
+        // Notificar al remitente que las paradas se recibieron correctamente
+        if (opciones.origen) {
+            enviarMensaje(opciones.origen, TIPOS_MENSAJE.NAVEGACION.PARADAS_RECIBIDAS, {
+                total: paradas.length,
+                recibidas: paradasValidas.length,
+                omitidas: paradas.length - paradasValidas.length,
+                timestamp: new Date().toISOString()
+            }).catch(error => {
+                logger.error('Error al enviar confirmación de recepción:', error);
+            });
+        }
+        
+        // Si el mapa ya está inicializado, mostrar las paradas
+        if (mapa) {
+            mostrarTodasLasParadas();
+        } else {
+            logger.info('ℹ️ Mapa aún no está listo, las paradas se mostrarán cuando se inicialice');
+        }
+        
+        return true;
+        
+    } catch (error) {
+        logger.error('Error al establecer las paradas:', error);
         
         // Notificar el error al remitente si es posible
-        if (mensaje?.origen) {
-            enviarMensaje(mensaje.origen, TIPOS_MENSAJE.SISTEMA.ERROR, {
+        if (opciones.origen) {
+            enviarMensaje(opciones.origen, TIPOS_MENSAJE.SISTEMA.ERROR, {
                 error: 'Error al procesar las paradas',
                 detalle: error.message,
                 timestamp: new Date().toISOString()
@@ -444,8 +492,9 @@ export function manejarRecepcionParadas(mensaje) {
 
 /**
  * Muestra todas las paradas en el mapa
+ * @param {Array} paradasExternas - Paradas proporcionadas externamente (opcional)
  */
-export function mostrarTodasLasParadas(paradasExternas) {
+export async function mostrarTodasLasParadas(paradasExternas) {
     try {
         // Si se proporcionan paradas externas, actualizar el array local
         if (paradasExternas && Array.isArray(paradasExternas) && paradasExternas.length > 0) {
@@ -461,24 +510,102 @@ export function mostrarTodasLasParadas(paradasExternas) {
         
         // Verificar que tengamos datos de paradas
         if (!arrayParadasLocal || arrayParadasLocal.length === 0) {
-            console.warn('⚠️ [MAPA] No hay datos de paradas locales. Verificando si hay datos en el mensaje...');
+            console.warn('⚠️ [MAPA] No hay datos de paradas locales. Solicitando datos...');
             
-            // Si se proporcionan paradas externas, usarlas
-            if (paradasExternas && Array.isArray(paradasExternas) && paradasExternas.length > 0) {
-                console.log('🔄 [MAPA] Usando paradas proporcionadas externamente:', paradasExternas.length);
-                arrayParadasLocal = paradasExternas;
-            } 
-            // Si no hay paradas externas, solicitarlas al padre
-            else if (window.parent && window.parent !== window) {
-                console.log('🔄 [MAPA] Solicitando paradas al componente padre...');
-                window.parent.postMessage({
-                    tipo: TIPOS_MENSAJE.NAVEGACION.SOLICITAR_ESTADO_MAPA,
-                    origen: 'mapa',
-                    timestamp: Date.now()
-                }, '*');
-                return; // Salir y esperar la respuesta
-            } else {
+            try {
+                // Si estamos en un iframe, solicitar paradas al padre
+                if (window.parent && window.parent !== window) {
+                    console.log('🔄 [MAPA] Solicitando paradas al componente padre...');
+                    
+                    // Función para verificar si el padre está listo
+                    const esperarPadreListo = () => {
+                        return new Promise((resolve) => {
+                            if (window.parent.mensajeriaInicializada) {
+                                return resolve(true);
+                            }
+                            
+                            // Esperar a que el padre notifique que está listo
+                            const onComponenteListo = (event) => {
+                                if (event.detail && event.detail.componente === 'padre') {
+                                    window.removeEventListener('componente-listo', onComponenteListo);
+                                    resolve(true);
+                                }
+                            };
+                            
+                            window.addEventListener('componente-listo', onComponenteListo);
+                            
+                            // Timeout por si algo falla
+                            setTimeout(() => {
+                                window.removeEventListener('componente-listo', onComponenteListo);
+                                console.warn('⚠️ [MAPA] Tiempo de espera agotado para la inicialización del padre');
+                                resolve(false);
+                            }, 5000);
+                        });
+                    };
+                    
+                    try {
+                        // Esperar a que el padre esté listo
+                        const padreListo = await esperarPadreListo();
+                        
+                        if (!padreListo) {
+                            console.warn('⚠️ [MAPA] No se pudo confirmar que el padre esté listo, intentando de todos modos...');
+                        }
+                        
+                        // Verificar que TIPOS_MENSAJE esté definido
+                        if (!TIPOS_MENSAJE || !TIPOS_MENSAJE.DATOS || !TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS) {
+                            console.error('❌ [MAPA] TIPOS_MENSAJE no está correctamente definido');
+                            console.log('TIPOS_MENSAJE:', TIPOS_MENSAJE);
+                            return;
+                        }
+                        
+                        console.log('🔄 [MAPA] Enviando mensaje de tipo:', TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS);
+                        
+                        // Usar la función de mensajería con un timeout
+                        const respuesta = await Promise.race([
+                            enviarMensaje(
+                                'padre', 
+                                TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS, 
+                                {
+                                    timestamp: Date.now(),
+                                    origen: 'mapa',
+                                    id: 'solicitud-paradas-' + Date.now()
+                                }
+                            ),
+                            new Promise((_, reject) => 
+                                setTimeout(() => reject(new Error('Tiempo de espera agotado')), 5000)
+                            )
+                        ]);
+                        
+                        console.log('📩 [MAPA] Respuesta recibida del padre:', respuesta);
+                        
+                        if (respuesta && respuesta.exito && respuesta.paradas) {
+                            console.log(`✅ [MAPA] Recibidas ${respuesta.paradas.length} paradas del padre`);
+                            establecerDatosParadas(respuesta.paradas);
+                            return;
+                        } else {
+                            const errorMsg = respuesta?.error || 'Respuesta inválida';
+                            console.error('❌ [MAPA] No se pudieron obtener las paradas del padre:', errorMsg);
+                            return;
+                        }
+                    } catch (error) {
+                        console.error('❌ [MAPA] Error al enviar mensaje al padre:', error);
+                        console.error('Detalles del error:', {
+                            message: error.message,
+                            stack: error.stack,
+                            tipoMensaje: TIPOS_MENSAJE?.DATOS?.SOLICITAR_PARADAS
+                        });
+                        return;
+                    }
+                } else {
+                    console.warn('⚠️ [MAPA] No se puede contactar al padre para obtener paradas');
+                }
+                
+                // Si llegamos aquí, no se pudieron obtener las paradas
                 console.error('❌ [MAPA] No hay datos de paradas disponibles');
+                return;
+                
+            } catch (error) {
+                console.error('❌ [MAPA] Error al solicitar paradas al padre:', error);
                 return;
             }
         }
