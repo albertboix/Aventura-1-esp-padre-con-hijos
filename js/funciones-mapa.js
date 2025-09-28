@@ -33,7 +33,8 @@ const estadoMapa = {
 };
 
 // Referencia local a los datos de paradas
-let arrayParadasLocal = []; // Añadido: Array inicializado vacío
+let arrayParadasLocal = []; // Array para almacenar las paradas
+let mapaListo = false; // Bandera para controlar si el mapa está listo
 
 // Estilos CSS para notificaciones de waypoint - PROBLEMA 16: Faltaban estilos CSS
 const WAYPOINT_STYLES = `
@@ -96,6 +97,14 @@ const WAYPOINT_STYLES = `
  */
 export async function inicializarMapa(config = {}) {
     logger.info('🗺️ Inicializando mapa...');
+    
+    // Marcar el mapa como listo
+    mapaListo = true;
+    
+    // Si ya hay paradas cargadas, mostrarlas
+    if (arrayParadasLocal.length > 0) {
+        mostrarTodasLasParadas();
+    }
     
     // PROBLEMA 17: Insertar estilos CSS para notificaciones
     if (!document.getElementById('waypoint-styles')) {
@@ -273,133 +282,136 @@ function registrarManejadoresMensajes() {
 }
 
 /**
- * Notifica un error al sistema
- * @param {string} codigo - Código de error
- * @param {Error} error - Objeto de error
- */
-async function notificarError(codigo, error) {
-    try {
-        await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
-            origen: 'mapa',
-            codigo,
-            mensaje: error.message,
-            stack: error.stack,
-            timestamp: new Date().toISOString()
-        });
-    } catch (e) {
-        logger.error('Error al notificar error:', e);
-    }
-}
-
-/**
- * Maneja el mensaje para establecer un destino en el mapa
+ * Maneja la recepción de datos de paradas
  * @param {Object} mensaje - Mensaje recibido
  */
-function manejarEstablecerDestino(mensaje) {
-    console.log('🗺️ [MAPA] manejarEstablecerDestino INVOCADO con:', mensaje);
-    console.log('📋 [MAPA] Datos del mensaje:', mensaje.datos);
-
-    const { punto } = mensaje.datos || {};
-    if (!punto) {
-        console.warn('⚠️ [MAPA] Mensaje de establecer destino sin punto');
-        return;
-    }
-
-    console.log('🎯 [MAPA] Estableciendo destino para punto:', punto);
-
+export function manejarRecepcionParadas(mensaje) {
     try {
-        // Buscar coordenadas según el tipo de punto
-        let coordenadas = null;
-        if (punto.parada_id) {
-            coordenadas = buscarCoordenadasParada(punto.parada_id);
-        } else if (punto.tramo_id) {
-            coordenadas = buscarCoordenadasTramo(punto.tramo_id)?.fin;
-        }
-
-        if (!coordenadas) {
-            console.warn(`❌ [MAPA] No se encontraron coordenadas para el punto: ${JSON.stringify(punto)}`);
-            return;
-        }
-
-        console.log('📍 [MAPA] Coordenadas encontradas:', coordenadas);
-
-        // Centrar mapa y actualizar marcador
-        console.log('🎯 [MAPA] Centrando mapa en:', coordenadas);
-        mapa.flyTo([coordenadas.lat, coordenadas.lng], 17);
-        actualizarMarcadorParada(coordenadas, obtenerNombreParada(punto));
-
-        console.log('✅ [MAPA] Destino establecido correctamente');
-
-    } catch (error) {
-        console.error('❌ [MAPA] Error al establecer destino:', error);
-    }
-}
-
-/**
- * Maneja el mensaje para actualizar la posición del usuario
- * @param {Object} mensaje - Mensaje recibido
- */
-function manejarActualizarPosicion(mensaje) {
-    const { coordenadas } = mensaje.datos || {};
-    if (!coordenadas || !coordenadas.lat || !coordenadas.lng) {
-        logger.warn('Mensaje de actualizar posición sin coordenadas válidas');
-        return;
-    }
-
-    try {
-        estadoMapa.posicionUsuario = coordenadas;
-        actualizarPuntoActual(coordenadas);
+        const { datos } = mensaje;
         
-        // PROBLEMA 19: Verificar proximidad a waypoints cuando hay seguimiento activo
-        if (estadoMapa.siguiendoRuta && estadoMapa.modo === 'aventura') {
-            verificarProximidadWaypoints(coordenadas);
+        if (!datos || !Array.isArray(datos.paradas)) {
+            throw new Error('Formato de datos de paradas inválido');
+        }
+
+        logger.info(`📩 Recibidas ${datos.paradas.length} paradas`);
+        
+        // Procesar las paradas para asegurar que tengan el formato correcto
+        const paradasProcesadas = datos.paradas.map(parada => {
+            // Asegurarse de que la parada tenga un ID
+            if (!parada.id) {
+                parada.id = `parada-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+                logger.warn(`Parada sin ID, asignado ID automático: ${parada.id}`);
+            }
+            
+            // Asegurarse de que tenga coordenadas
+            if (!parada.coordenadas) {
+                // Intentar obtener coordenadas de propiedades alternativas
+                if (parada.lat && parada.lng) {
+                    parada.coordenadas = {
+                        lat: parseFloat(parada.lat),
+                        lng: parseFloat(parada.lng)
+                    };
+                } else if (parada.latitud && parada.longitud) {
+                    parada.coordenadas = {
+                        lat: parseFloat(parada.latitud),
+                        lng: parseFloat(parada.longitud)
+                    };
+                } else {
+                    logger.warn(`Parada ${parada.id} no tiene coordenadas, se omitirá`);
+                    return null;
+                }
+            }
+            
+            return parada;
+        }).filter(Boolean); // Filtrar paradas nulas
+
+        // Establecer las paradas en el módulo
+        if (establecerDatosParadas(paradasProcesadas)) {
+            // Notificar al remitente que las paradas se recibieron correctamente
+            if (mensaje.origen) {
+                enviarMensaje(mensaje.origen, TIPOS_MENSAJE.NAVEGACION.PARADAS_RECIBIDAS, {
+                    total: paradasProcesadas.length,
+                    recibidas: paradasProcesadas.length,
+                    omitidas: datos.paradas.length - paradasProcesadas.length,
+                    timestamp: new Date().toISOString()
+                }).catch(error => {
+                    logger.error('Error al enviar confirmación de recepción:', error);
+                });
+            }
+            
+            // Si el mapa ya está inicializado, mostrar las paradas
+            if (mapa) {
+                mostrarTodasLasParadas();
+            } else {
+                logger.info('ℹ️ Mapa aún no está listo, las paradas se mostrarán cuando se inicialice');
+            }
+            
+            return true;
+        } else {
+            throw new Error('Error al establecer las paradas en el módulo');
         }
     } catch (error) {
-        logger.error('Error al actualizar posición:', error);
-    }
-}
-
-/**
- * Maneja el cambio de modo del mapa
- * @param {Object} mensaje - Mensaje recibido
- */
-function manejarCambioModoMapa(mensaje) {
-    const { modo } = mensaje.datos || {};
-    if (!modo) {
-        logger.warn('Mensaje de cambio de modo sin modo especificado');
-        return;
-    }
-
-    try {
-        actualizarModoMapa(modo);
-    } catch (error) {
-        logger.error('Error al cambiar modo del mapa:', error);
+        logger.error('Error al procesar las paradas recibidas:', error);
+        
+        // Notificar el error al remitente si es posible
+        if (mensaje?.origen) {
+            enviarMensaje(mensaje.origen, TIPOS_MENSAJE.SISTEMA.ERROR, {
+                error: 'Error al procesar las paradas',
+                detalle: error.message,
+                timestamp: new Date().toISOString()
+            }).catch(err => {
+                logger.error('Error al notificar error de procesamiento:', err);
+            });
+        }
+        
+        return false;
     }
 }
 
 /**
  * Muestra todas las paradas en el mapa
  */
-function mostrarTodasLasParadas() {
+export function mostrarTodasLasParadas(paradasExternas) {
     try {
-        logger.info('Mostrando todas las paradas en el mapa');
+        // Si se proporcionan paradas externas, actualizar el array local
+        if (paradasExternas && Array.isArray(paradasExternas) && paradasExternas.length > 0) {
+            establecerDatosParadas(paradasExternas);
+            return; // establecerDatosParadas llamará a mostrarTodasLasParadas sin argumentos
+        }
         
-        // Verificar que tengamos una instancia válida del mapa
+        // Verificar que el mapa esté inicializado
         if (!mapa) {
-            logger.error('No se pueden mostrar paradas: mapa no inicializado');
             console.error('❌ [MAPA] No se pueden mostrar paradas: mapa no inicializado');
             return;
         }
         
         // Verificar que tengamos datos de paradas
         if (!arrayParadasLocal || arrayParadasLocal.length === 0) {
-            logger.warn('No hay datos de paradas para mostrar en el mapa');
-            console.warn('⚠️ [MAPA] Array de paradas vacío o no inicializado');
+            console.warn('⚠️ [MAPA] No hay datos de paradas para mostrar en el mapa');
+            
+            // Intentar obtener las paradas del padre si no las tenemos
+            if (window.parent && window.parent !== window) {
+                console.log('🔄 [MAPA] Solicitando paradas al componente padre...');
+                window.parent.postMessage({
+                    tipo: TIPOS_MENSAJE.NAVEGACION.SOLICITAR_ESTADO_MAPA,
+                    origen: 'mapa',
+                    timestamp: Date.now()
+                }, '*');
+            }
             return;
         }
         
         console.log('📍 [MAPA] Mostrando paradas en el mapa. Total paradas:', arrayParadasLocal.length);
-        console.log('📍 [MAPA] Primera parada:', arrayParadasLocal[0]);
+        
+        // Validar que las paradas tengan coordenadas
+        const paradasValidas = arrayParadasLocal.filter(p => p.coordenadas && 
+                                                          p.coordenadas.lat && 
+                                                          p.coordenadas.lng);
+        
+        if (paradasValidas.length === 0) {
+            console.error('❌ [MAPA] No hay paradas con coordenadas válidas para mostrar');
+            return;
+        }
         
         // Limpiar marcadores previos antes de añadir nuevos
         marcadoresParadas.forEach((marcador) => {
@@ -408,6 +420,8 @@ function mostrarTodasLasParadas() {
             }
         });
         marcadoresParadas.clear();
+        
+        console.log(`📍 [MAPA] Se mostrarán ${paradasValidas.length} paradas con coordenadas válidas`);
         
         // Implementación básica - mostrar paradas en el mapa
         arrayParadasLocal.forEach((parada, index) => {
@@ -444,8 +458,7 @@ function mostrarTodasLasParadas() {
                 }
 
                 // Guardar referencia al marcador
-                marcadoresParadas.set(parada.parada_id || `parada-${index}`, marcador);
-                marcadoresParadas.set(parada.id || parada.parada_id || parada.tramo_id || `parada-${index}`, marcador);
+                marcadoresParadas.set(parada.id, marcador);
                 
                 console.log(`✅ [MAPA] Marcador añadido para ${parada.nombre || `Parada ${index}`} en ${lat}, ${lng}`);
             } else {
@@ -462,119 +475,11 @@ function mostrarTodasLasParadas() {
 }
 
 /**
- * Maneja la recepción de datos de paradas
- * @param {Object} mensaje - Mensaje recibido
- */
-function manejarRecepcionParadas(mensaje) {
-    try {
-        // Aceptar múltiples formatos de datos para mayor compatibilidad
-        const { paradas, aventuraParadas, puntos, puntosRuta } = mensaje.datos || {};
-        
-        // Encontrar el array de paradas válido (en orden de prioridad)
-        const paradasData = paradas || aventuraParadas || puntos || puntosRuta;
-        
-        if (!paradasData || !Array.isArray(paradasData) || paradasData.length === 0) {
-            logger.warn('Mensaje de paradas recibido sin datos válidos');
-            return { exito: false, error: 'Datos de paradas inválidos o vacíos' };
-        }
-        
-        logger.info(`Recibidas ${paradasData.length} paradas`);
-        console.log(`📦 [MAPA] Recibidas ${paradasData.length} paradas del padre`);
-        
-        // Actualizar el array local - usar copia profunda para evitar referencias
-        establecerDatosParadas(JSON.parse(JSON.stringify(paradasData)));
-        
-        // Solicitar detalles adicionales si es necesario
-        if (paradasData.length > 0 && !paradasData[0].coordenadas) {
-            logger.info('Paradas recibidas sin coordenadas, solicitando datos completos');
-            enviarMensaje('padre', TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS_COMPLETAS, {
-                timestamp: new Date().toISOString()
-            }).catch(err => logger.error('Error al solicitar paradas completas:', err));
-        }
-        
-        // Si estamos en modo casa, mostrar todas las paradas inmediatamente
-        if (estadoMapa.modo === 'casa') {
-            console.log('🏠 [MAPA] Modo casa detectado, mostrando todas las paradas');
-            // Pequeño delay para asegurar que el mapa esté listo
-            setTimeout(() => {
-                mostrarTodasLasParadas();
-            }, 100);
-        } else {
-            // En modo aventura, mostrar solo la parada actual y anteriores
-            console.log('🚶‍♂️ [MAPA] Modo aventura detectado, ocultando paradas futuras');
-            ocultarParadasFuturas();
-        }
-        
-        return {
-            exito: true,
-            paradasCargadas: paradasData.length
-        };
-    } catch (error) {
-        logger.error('Error al manejar recepción de paradas:', error);
-        return {
-            exito: false,
-            error: error.message
-        };
-    }
-}
-
-/**
- * Notifica al usuario que ha alcanzado un waypoint
- * @param {number} numero - Número del waypoint
- * @param {number} total - Total de waypoints
- */
-function notificarWaypointAlcanzado(numero, total) {
-    // Crear o actualizar elemento de notificación
-    let notifElement = document.getElementById('waypoint-notification');
-    if (!notifElement) {
-        notifElement = document.createElement('div');
-        notifElement.id = 'waypoint-notification';
-        notifElement.className = 'waypoint-notification';
-        document.body.appendChild(notifElement);
-    }
-    
-    // Actualizar contenido
-    notifElement.innerHTML = `
-        <div class="notif-icon">🏁</div>
-        <div class="notif-content">
-            <div class="notif-title">¡Punto ${numero} alcanzado!</div>
-            <div class="notif-subtitle">${numero} de ${total} puntos completados</div>
-            <div class="notif-progress">
-                <div class="notif-bar" style="width: ${(numero/total) * 100}%"></div>
-            </div>
-        </div>
-    `;
-    
-    // Mostrar la notificación
-    notifElement.classList.add('show');
-    
-    // Ocultar después de unos segundos
-    setTimeout(() => {
-        notifElement.classList.remove('show');
-    }, 3000);
-}
-
-/**
  * Establece los datos de paradas para el módulo
  * @param {Array} paradas - Array con datos de paradas
  * @returns {boolean} True si los datos se establecieron correctamente
  */
 export function establecerDatosParadas(paradas) {
-    if (!paradas || !Array.isArray(paradas)) {
-        logger.warn('Se intentó establecer un array de paradas inválido');
-        return false;
-    }
-    
-    arrayParadasLocal = [...paradas];
-    logger.info(`Datos de ${paradas.length} paradas establecidos en el módulo de mapa`);
-    console.log(`📦 [MAPA] Array local actualizado con ${paradas.length} paradas`);
-    
-    // Si el mapa ya está inicializado y estamos en modo casa, mostrar las paradas
-    if (mapa && estadoMapa.inicializado && estadoMapa.modo === 'casa') {
-        console.log('🏠 [MAPA] Modo casa activo, mostrando todas las paradas tras actualizar datos');
-        mostrarTodasLasParadas();
-    }
-    
     return true;
 }
 
