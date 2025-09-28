@@ -289,7 +289,12 @@
 
     <!-- Cargar módulos ES -->
     <script type="module">
-    // 1. Configuración global de manejo de errores
+    // 1. Importar módulos necesarios
+    import { inicializarMensajeria, enviarMensaje, registrarControlador } from './js/mensajeria.js';
+    import { TIPOS_MENSAJE } from './js/constants.js';
+    import logger from './js/logger.js';
+    
+    // 2. Configuración global de manejo de errores
     window.handleIframeError = function(iframeId, event) {
         const errorMsg = `Error loading ${iframeId}`;
         console.error(errorMsg, event);
@@ -810,8 +815,48 @@
     }
     
     // Inicialización
+    // Función para solicitar las coordenadas al componente de coordenadas
+    async function solicitarCoordenadas() {
+        try {
+            console.log('📡 Solicitando coordenadas al componente de coordenadas...');
+            await enviarMensaje('coordenadas', TIPOS_MENSAJE.NAVEGACION.SOLICITAR_ESTADO_MAPA, {});
+        } catch (error) {
+            console.error('❌ Error al solicitar coordenadas:', error);
+        }
+    }
+
+    // Manejador para recibir el estado del mapa con las paradas
+    function manejarEstadoMapa(mensaje) {
+        try {
+            const { paradas } = mensaje.datos;
+            console.log('📍 Paradas recibidas:', paradas);
+            
+            // Actualizar el estado con las paradas recibidas
+            if (paradas && paradas.length > 0) {
+                // Aquí deberías actualizar el estado de tu aplicación con las paradas
+                // Por ejemplo: estadoOrquestacion.paradas = paradas;
+                console.log(`✅ ${paradas.length} paradas cargadas correctamente`);
+                
+                // Si hay un mapa, actualizarlo con las nuevas paradas
+                if (window.mostrarTodasLasParadas && typeof window.mostrarTodasLasParadas === 'function') {
+                    window.mostrarTodasLasParadas(paradas);
+                }
+            } else {
+                console.warn('⚠️ No se recibieron paradas válidas');
+            }
+        } catch (error) {
+            console.error('❌ Error al procesar el estado del mapa:', error);
+        }
+    }
+
     async function iniciarOrquestacion() {
         try {
+            // Registrar manejador para el estado del mapa
+            registrarControlador(TIPOS_MENSAJE.NAVEGACION.ESTADO_MAPA, manejarEstadoMapa);
+            
+            // Solicitar coordenadas al componente de coordenadas
+            await solicitarCoordenadas();
+            
             // Establecer la primera parada por defecto (P-0 Torres de Serranos)
             estadoOrquestacion.paradaActual = {
                 id: 'P-0',
