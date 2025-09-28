@@ -467,7 +467,39 @@
     import { TIPOS_MENSAJE, MODOS } from './js/constants.js';
     import { inicializarMensajeria, registrarControlador, enviarMensaje } from './js/mensajeria.js';
     import { modoHandler } from './js/modo-handler.js';
+    import { inicializarMapa, actualizarModoMapa, estadoMapa } from './js/funciones-mapa.js';
     import logger from './js/logger.js';
+    
+    // Inicializar el mapa cuando el DOM esté listo
+    document.addEventListener('DOMContentLoaded', async () => {
+        try {
+            // Inicializar el mapa
+            await inicializarMapa({
+                containerId: 'mapa',
+                center: [39.4699, -0.3763], // Coordenadas de Valencia
+                zoom: 14,
+                minZoom: 12,
+                maxZoom: 18,
+                zoomControl: true
+            });
+            
+            // Actualizar el modo del mapa
+            actualizarModoMapa('casa');
+            
+            // Notificar que el mapa está listo
+            logger.info('Mapa inicializado correctamente');
+            
+            // Forzar una actualización del tamaño del mapa
+            if (window.mapa) {
+                setTimeout(() => {
+                    window.mapa.invalidateSize(true);
+                    logger.info('Tamaño del mapa actualizado forzosamente');
+                }, 500);
+            }
+        } catch (error) {
+            logger.error('Error al inicializar el mapa:', error);
+        }
+    });
     
     // Estado global de la orquestación
     let estadoOrquestacion = {
@@ -523,6 +555,25 @@
     }
     
     // Registrar manejadores para coordinar el flujo
+    
+    // Manejador para solicitudes de estado del mapa
+    registrarControlador('SOLICITAR_ESTADO_MAPA', (mensaje) => {
+        try {
+            if (window.mapa) {
+                enviarMensaje(mensaje.origen, 'ESTADO_MAPA', {
+                    centro: window.mapa.getCenter(),
+                    zoom: window.mapa.getZoom(),
+                    modo: modoHandler.obtenerModoActual(),
+                    estado: estadoMapa
+                });
+                logger.debug(`Estado del mapa enviado a ${mensaje.origen}`);
+            } else {
+                logger.warn('Se solicitó el estado del mapa pero el mapa no está inicializado');
+            }
+        } catch (error) {
+            logger.error('Error al enviar el estado del mapa:', error);
+        }
+    });
     
     // 1. Manejador para actualizaciones de posición del usuario
     registrarControlador(TIPOS_MENSAJE.NAVEGACION.ACTUALIZAR_POSICION, async (mensaje) => {
