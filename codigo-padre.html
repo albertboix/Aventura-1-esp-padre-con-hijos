@@ -850,10 +850,40 @@
                 throw new Error('No se encontró el iframe de coordenadas');
             }
             
+            // Verificar que TIPOS_MENSAJE esté definido
+            if (!window.TIPOS_MENSAJE) {
+                console.warn('⚠️ TIPOS_MENSAJE no está definido, importando...');
+                // Intentar importar si no está disponible
+                const { TIPOS_MENSAJE } = await import('./js/constants.js');
+                window.TIPOS_MENSAJE = TIPOS_MENSAJE;
+            }
+            
+            // Verificar que el tipo de mensaje exista
+            const tipoMensaje = window.TIPOS_MENSAJE?.NAVEGACION?.SOLICITAR_ESTADO_MAPA;
+            if (!tipoMensaje) {
+                throw new Error(`Tipo de mensaje no válido: ${tipoMensaje}`);
+            }
+            
+            console.log('📤 Enviando mensaje de tipo:', tipoMensaje);
+            
             // Usar el ID correcto para el destino (el ID del iframe)
-            await enviarMensaje('coordenadas-iframe', TIPOS_MENSAJE.NAVEGACION.SOLICITAR_ESTADO_MAPA, {});
+            await enviarMensaje('coordenadas-iframe', tipoMensaje, {
+                timestamp: Date.now(),
+                origen: 'orquestador'
+            });
+            
+            console.log('✅ Solicitud de coordenadas enviada correctamente');
         } catch (error) {
             console.error('❌ Error al solicitar coordenadas:', error);
+            // Mostrar más detalles del error
+            if (error.message.includes('tipo')) {
+                console.error('Detalles del error:', {
+                    TIPOS_MENSAJE: window.TIPOS_MENSAJE,
+                    NAVEGACION: window.TIPOS_MENSAJE?.NAVEGACION,
+                    error: error.stack
+                });
+            }
+            throw error; // Relanzar el error para que el llamador lo maneje
         }
     }
 
@@ -883,11 +913,33 @@
 
     async function iniciarOrquestacion() {
         try {
+            console.log('🚀 Iniciando orquestación...');
+            
+            // Asegurarse de que TIPOS_MENSAJE esté disponible
+            if (!window.TIPOS_MENSAJE) {
+                console.warn('⚠️ TIPOS_MENSAJE no está definido, importando...');
+                const { TIPOS_MENSAJE } = await import('./js/constants.js');
+                window.TIPOS_MENSAJE = TIPOS_MENSAJE;
+            }
+            
+            // Verificar que el tipo de mensaje exista
+            const tipoMensajeEstado = window.TIPOS_MENSAJE?.NAVEGACION?.ESTADO_MAPA;
+            if (!tipoMensajeEstado) {
+                throw new Error(`Tipo de mensaje no válido: ${tipoMensajeEstado}`);
+            }
+            
             // Registrar manejador para el estado del mapa
-            registrarControlador(TIPOS_MENSAJE.NAVEGACION.ESTADO_MAPA, manejarEstadoMapa);
+            console.log('📝 Registrando manejador para:', tipoMensajeEstado);
+            registrarControlador(tipoMensajeEstado, manejarEstadoMapa);
+            
+            // Esperar un momento para asegurar que el manejador esté registrado
+            await new Promise(resolve => setTimeout(resolve, 100));
             
             // Solicitar coordenadas al componente de coordenadas
+            console.log('📡 Solicitando coordenadas...');
             await solicitarCoordenadas();
+            
+            console.log('✅ Orquestación iniciada correctamente');
             
             // Establecer la primera parada por defecto (P-0 Torres de Serranos)
             estadoOrquestacion.paradaActual = {
@@ -1021,6 +1073,31 @@
 
 <!-- Definición del array de paradas -->
 <script type="module">
+    // Importar constantes necesarias
+    import { TIPOS_MENSAJE } from './js/constants.js';
+    import { registrarControlador, inicializarMensajeria } from './js/mensajeria.js';
+    import logger from './js/logger.js';
+    
+    // Inicializar mensajería
+    try {
+        console.log('🔄 [PADRE] Inicializando mensajería...');
+        await inicializarMensajeria({
+            iframeId: 'padre',
+            logLevel: 'debug'
+        });
+        
+        console.log('✅ [PADRE] Mensajería inicializada correctamente');
+        
+        // Notificar que el componente padre está listo
+        window.dispatchEvent(new CustomEvent('componente-listo', { 
+            detail: { componente: 'padre' } 
+        }));
+        
+    } catch (error) {
+        console.error('❌ [PADRE] Error al inicializar la mensajería:', error);
+        throw error; // Detener la ejecución si hay un error
+    }
+
     // Definición del array de paradas y tramos
     const AVENTURA_PARADAS = [
         { padreid: "padre-P-0", tipo: "inicio", parada_id: 'P-0', audio_id: "audio-P-0", reto_id: "R-2" },
@@ -1084,6 +1161,88 @@
         { padreid: "padre-TR-23", tipo: "tramo", tramo_id: 'TR-23', audio_id: "audio-TR-23" },
         { padreid: "padre-P-36", tipo: "parada", parada_id: 'P-36', audio_id: "audio-P-36" }
     ];
+
+    // Registrar manejador para solicitud de paradas
+    registrarControlador(TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS, async (mensaje) => {
+        try {
+            logger.info('[PADRE] Solicitadas paradas, enviando datos...');
+            
+            // Filtrar solo las paradas (excluir tramos)
+            const paradas = AVENTURA_PARADAS.filter(item => item.tipo === 'parada' || item.tipo === 'inicio');
+            
+            return {
+                exito: true,
+                paradas: paradas,
+                timestamp: new Date().toISOString()
+            };
+        } catch (error) {
+            logger.error('[PADRE] Error al procesar solicitud de paradas:', error);
+            return {
+                exito: false,
+                error: error.message
+            };
+        }
+    });
+
+    // Manejador para cambiar el modo de la aplicación (casa/aventura)
+    registrarControlador(TIPOS_MENSAJE.CONTROL.CAMBIAR_MODO, async (mensaje) => {
+        try {
+            const { modo } = mensaje.datos || {};
+            logger.info(`[PADRE] Solicitado cambio de modo a: ${modo}`);
+            
+            // Validar que el modo sea válido
+            if (modo !== 'casa' && modo !== 'aventura') {
+                logger.warn(`[PADRE] Intento de cambiar a modo no válido: ${modo}`);
+                return { exito: false, error: 'Modo no válido' };
+            }
+            
+            // Actualizar el estado de la aplicación
+            estadoOrquestacion.modo = modo;
+            
+            // Notificar a todos los componentes del cambio de modo
+            await enviarMensaje('todos', TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, {
+                modo,
+                timestamp: new Date().toISOString()
+            });
+            
+            logger.info(`[PADRE] Modo cambiado exitosamente a: ${modo}`);
+            return { exito: true, modo };
+            
+        } catch (error) {
+            logger.error('[PADRE] Error al cambiar el modo:', error);
+            return { 
+                exito: false, 
+                error: error.message,
+                stack: error.stack 
+            };
+        }
+    });
+    
+    // Registrar manejador para solicitud de estado del mapa
+    registrarControlador(TIPOS_MENSAJE.NAVEGACION.SOLICITAR_ESTADO_MAPA, async (mensaje) => {
+        try {
+            logger.info('[PADRE] Solicitado estado del mapa, enviando datos...');
+            
+            // Obtener el estado actual del mapa (si lo tienes)
+            const estadoMapa = window.estadoMapa || { 
+                modo: 'aventura', 
+                paradaActual: null,
+                // Agrega más propiedades de estado según sea necesario
+            };
+            
+            return {
+                exito: true,
+                estado: estadoMapa,
+                timestamp: new Date().toISOString()
+            };
+        } catch (error) {
+            logger.error('[PADRE] Error al procesar solicitud de estado del mapa:', error);
+            return {
+                exito: false,
+                error: error.message
+            };
+        }
+    });
 </script>
 </body>
 </html>
