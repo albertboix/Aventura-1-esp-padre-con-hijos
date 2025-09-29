@@ -961,6 +961,39 @@ export {
     limpiarMensajeria
 };
 
+/**
+ * Log seguro para mensajes grandes o complejos.
+ * Evita errores por objetos circulares y limita el tamaño del log.
+ * @param {string} mensaje - Mensaje a mostrar en el log.
+ * @param {*} objeto - Objeto a mostrar.
+ */
+function logMensajeSeguro(mensaje, objeto) {
+    try {
+        // Si el objeto es pequeño y no tiene referencias circulares, mostrarlo normalmente
+        if (typeof objeto === 'object' && objeto !== null) {
+            // Intentar serializar para detectar referencias circulares
+            let json = '';
+            try {
+                json = JSON.stringify(objeto);
+            } catch (e) {
+                json = '[Objeto con referencias circulares]';
+            }
+            if (json.length < 2000) {
+                console.log(mensaje, objeto);
+            } else {
+                // Si es muy grande, mostrar solo un resumen
+                console.log(mensaje, '[Objeto grande]', json.slice(0, 1000) + '...');
+            }
+        } else {
+            // Para tipos primitivos
+            console.log(mensaje, objeto);
+        }
+    } catch (e) {
+        // Si todo falla, mostrar solo el mensaje
+        console.log(mensaje, '[No se pudo mostrar el objeto]');
+    }
+}
+
 export default {
     inicializarMensajeria,
     registrarControlador,
