@@ -602,6 +602,17 @@ export async function mostrarTodasLasParadas(paradasExternas) {
                 
                 // Si llegamos aquí, no se pudieron obtener las paradas
                 console.error('❌ [MAPA] No hay datos de paradas disponibles');
+                // Fallback temporal para depuración: mostrar una parada de ejemplo si no hay ninguna
+                if (!arrayParadasLocal || arrayParadasLocal.length === 0) {
+                    arrayParadasLocal = [{
+                        id: 'P-0',
+                        nombre: 'Ejemplo Torres de Serranos',
+                        tipo: 'parada',
+                        coordenadas: { lat: 39.47876, lng: -0.37626 }
+                    }];
+                    logger.warn('Se ha cargado una parada de ejemplo para depuración');
+                    mostrarTodasLasParadas();
+                }
                 return;
                 
             } catch (error) {
