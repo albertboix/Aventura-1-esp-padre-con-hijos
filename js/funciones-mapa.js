@@ -102,8 +102,28 @@ export async function inicializarMapa(config = {}) {
     mapaListo = true;
     
     // Si ya hay paradas cargadas, mostrarlas
-    if (arrayParadasLocal.length > 0) {
+    if (arrayParadasLocal && arrayParadasLocal.length > 0) {
         mostrarTodasLasParadas();
+    } else {
+        // Si no hay paradas, intentar cargarlas
+        logger.info('No hay paradas cargadas, solicitando al sistema...');
+        try {
+            // Enviar solicitud para obtener las paradas
+            await enviarMensaje('padre', 'NAVEGACION.SOLICITAR_PARADAS', {});
+        } catch (error) {
+            logger.error('Error al solicitar paradas:', error);
+            // Cargar parada de ejemplo en caso de error
+            arrayParadasLocal = [{
+                id: 'P-0',
+                nombre: 'Ejemplo Torres de Serranos',
+                tipo: 'parada',
+                coordenadas: { lat: 39.47876, lng: -0.37626 }
+            }];
+            logger.warn('Se ha cargado una parada de ejemplo para depuración');
+            if (mapa) {
+                mostrarTodasLasParadas();
+            }
+        }
     }
     
     // PROBLEMA 17: Insertar estilos CSS para notificaciones
@@ -494,12 +514,23 @@ function establecerDatosParadas(paradas, opciones = {}) {
  * Muestra todas las paradas en el mapa
  * @param {Array} paradasExternas - Paradas proporcionadas externamente (opcional)
  */
-export async function mostrarTodasLasParadas(paradasExternas) {
+export async function mostrarTodasLasParadas(paradasExternas = null) {
     try {
         // Si se proporcionan paradas externas, actualizar el array local
         if (paradasExternas && Array.isArray(paradasExternas) && paradasExternas.length > 0) {
-            establecerDatosParadas(paradasExternas);
-            return; // establecerDatosParadas llamará a mostrarTodasLasParadas sin argumentos
+            return establecerDatosParadas(paradasExternas);
+        }
+        
+        // Verificar que el mapa esté inicializado
+        if (!mapa) {
+            logger.warn('El mapa no está inicializado, no se pueden mostrar las paradas');
+            return false;
+        }
+        
+        // Verificar que hay paradas para mostrar
+        if (!arrayParadasLocal || arrayParadasLocal.length === 0) {
+            logger.warn('No hay paradas para mostrar');
+            return false;
         }
         
         // Verificar que el mapa esté inicializado
