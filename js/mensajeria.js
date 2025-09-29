@@ -6,8 +6,38 @@
 
 // Importar dependencias
 import { TIPOS_MENSAJE } from './constants.js';
-import { configurarUtils, crearObjetoError, generarIdUnico } from './utils.js';
+import * as Utils from './utils.js';
 import logger from './logger.js';
+
+// Ensure generarHashContenido is available
+export const generarHashContenido = (tipo, datos = {}) => {
+    try {
+        // First try to use the imported function
+        if (typeof Utils.generarHashContenido === 'function') {
+            return Utils.generarHashContenido(tipo, datos);
+        }
+        // Then try default export
+        if (typeof Utils.default?.generarHashContenido === 'function') {
+            return Utils.default.generarHashContenido(tipo, datos);
+        }
+        
+        // Fallback implementation
+        const contenido = `${tipo}:${JSON.stringify(datos)}`;
+        let hash = 0;
+        for (let i = 0; i < contenido.length; i++) {
+            const char = contenido.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32-bit integer
+        }
+        return Math.abs(hash).toString(16);
+    } catch (error) {
+        console.error('Error in generarHashContenido fallback:', error);
+        return 'error-hash';
+    }
+};
+
+// Extraer las demás utilidades necesarias
+const { configurarUtils, crearObjetoError, generarIdUnico } = Utils;
 
 // Lista de tipos de mensajes válidos - Actualizada para incluir todos los tipos definidos en constants.js
 const TIPOS_MENSAJE_VALIDOS = [
@@ -18,6 +48,9 @@ const TIPOS_MENSAJE_VALIDOS = [
     TIPOS_MENSAJE.SISTEMA.ERROR,
     TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO,
     TIPOS_MENSAJE.SISTEMA.CONFIRMACION,
+    
+    // DATOS - Incluir todos los tipos de mensajes de DATOS
+    ...Object.values(TIPOS_MENSAJE.DATOS),
     TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO,
     TIPOS_MENSAJE.SISTEMA.PING,
     TIPOS_MENSAJE.SISTEMA.PONG,
