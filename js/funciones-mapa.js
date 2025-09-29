@@ -684,15 +684,6 @@ export async function mostrarTodasLasParadas(paradasExternas) {
 }
 
 /**
- * Establece los datos de paradas para el módulo
- * @param {Array} paradas - Array con datos de paradas
- * @returns {boolean} True si los datos se establecieron correctamente
- */
-export function establecerDatosParadas(paradas) {
-    return true;
-}
-
-/**
  * Maneja el estado del sistema
  * @param {Object} mensaje - Mensaje recibido
  * PROBLEMA 18: Implementación de función faltante
@@ -1376,5 +1367,6 @@ export {
     actualizarMarcadorParada,
     actualizarPuntoActual,
     limpiarRecursos,
-    cargarDatosParada
+    cargarDatosParada,
+    establecerDatosParadas
 };
