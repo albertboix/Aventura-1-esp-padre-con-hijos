@@ -433,7 +433,27 @@ async function _enviarMensaje(destino, tipo, datos = {}) {
     }
 }
 
-// ...
+/**
+ * Determina si un mensaje recibido es externo (por ejemplo, de extensiones como Grammarly)
+ * @param {Object} msg - Mensaje recibido
+ * @returns {boolean} True si es externo y debe ser ignorado
+ */
+function esMensajeExterno(msg) {
+    // Ignorar mensajes de extensiones conocidas (ejemplo: Grammarly, React DevTools, etc.)
+    if (!msg || typeof msg !== 'object') return true;
+    // Grammarly
+    if (msg.hasOwnProperty('isTrusted') && msg.hasOwnProperty('data') && typeof msg.data === 'string' && msg.data.startsWith('{"event":')) {
+        return true;
+    }
+    // React DevTools
+    if (msg.source === 'react-devtools-content-script') {
+        return true;
+    }
+    // Mensajes de postMessage sin los campos esperados
+    if (!msg.tipo && !msg.type) return true;
+    // Otros casos: puedes añadir más filtros aquí si aparecen más extensiones problemáticas
+    return false;
+}
 
 /**
  * Valida el formato de un mensaje recibido
