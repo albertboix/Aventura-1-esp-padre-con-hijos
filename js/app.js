@@ -41,6 +41,20 @@ export async function inicializar() {
     try {
         logger.info('Inicializando aplicación...');
         
+        // Esperar a que el DOM esté completamente cargado
+        if (document.readyState !== 'complete') {
+            await new Promise(resolve => window.addEventListener('load', resolve));
+        }
+        
+        // Asegurarse de que el contenedor del mapa esté visible
+        if (typeof document !== 'undefined') {
+            const mapaContainer = document.getElementById('mapa');
+            if (mapaContainer) {
+                mapaContainer.style.visibility = 'visible';
+                mapaContainer.style.opacity = '1';
+            }
+        }
+        
         // Inicializar el mapa si no está ya inicializado
         if (!window.mapa || !(window.mapa instanceof L.Map)) {
             try {
@@ -83,13 +97,17 @@ export async function inicializar() {
         }, 500);
         
         // Verificación visual del contenedor
-        const mapaContainer = document.getElementById('mapa');
-        if (mapaContainer) {
-            // Añadir un borde temporal para verificación visual
-            mapaContainer.style.border = '5px solid red';
-            setTimeout(() => {
-                mapaContainer.style.border = '1px solid #ccc';
-            }, 3000);
+        if (typeof document !== 'undefined') {
+            const mapaContainer = document.getElementById('mapa');
+            if (mapaContainer) {
+                // Añadir un borde temporal para verificación visual
+                mapaContainer.style.border = '5px solid red';
+                setTimeout(() => {
+                    if (mapaContainer) {
+                        mapaContainer.style.border = '1px solid #ccc';
+                    }
+                }, 3000);
+            }
         }
         
         // Marcar como inicializada
@@ -338,20 +356,16 @@ export async function probarOrquestacionParada(paradaId) {
         }
         
         // 2. Crear un mensaje similar al que enviaría hijo5-casa
-        const mensajeSimulado = {
-            origen: 'prueba',
-            tipo: 'NAVEGACION.CAMBIO_PARADA',
-            datos: {
-                punto: { parada_id: paradaId },
-                origen: 'prueba_orquestacion',
-                timestamp: Date.now()
-            }
+        const datosMensaje = {
+            punto: { parada_id: paradaId },
+            origen: 'prueba_orquestacion',
+            timestamp: Date.now()
         };
         
-        console.log('📤 Enviando mensaje simulado:', mensajeSimulado);
+        console.log('📤 Enviando mensaje con datos:', datosMensaje);
         
         // 3. Enviar el mensaje al padre
-        const respuesta = await enviarMensaje('padre', 'NAVEGACION.CAMBIO_PARADA', mensajeSimulado.datos);
+        const respuesta = await enviarMensaje('padre', 'NAVEGACION.CAMBIO_PARADA', datosMensaje);
         console.log('📥 Respuesta recibida:', respuesta);
         
         return {
