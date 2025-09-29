@@ -585,24 +585,56 @@ export async function mostrarTodasLasParadas(paradasExternas) {
                         } else {
                             const errorMsg = respuesta?.error || 'Respuesta inválida';
                             console.error('❌ [MAPA] No se pudieron obtener las paradas del padre:', errorMsg);
+                            // Fallback: cargar una parada de ejemplo si no hay ninguna
+                            if (!arrayParadasLocal || arrayParadasLocal.length === 0) {
+                                arrayParadasLocal = [{
+                                    id: 'P-0',
+                                    nombre: 'Ejemplo Torres de Serranos',
+                                    tipo: 'parada',
+                                    coordenadas: { lat: 39.47876, lng: -0.37626 }
+                                }];
+                                logger.warn('Se ha cargado una parada de ejemplo para depuración');
+                                mostrarTodasLasParadas();
+                            }
                             return;
                         }
                     } catch (error) {
                         console.error('❌ [MAPA] Error al enviar mensaje al padre:', error);
-                        console.error('Detalles del error:', {
-                            message: error.message,
-                            stack: error.stack,
-                            tipoMensaje: TIPOS_MENSAJE?.DATOS?.SOLICITAR_PARADAS
-                        });
+                        // Fallback: cargar una parada de ejemplo si no hay ninguna
+                        if (!arrayParadasLocal || arrayParadasLocal.length === 0) {
+                            arrayParadasLocal = [{
+                                id: 'P-0',
+                                nombre: 'Ejemplo Torres de Serranos',
+                                tipo: 'parada',
+                                coordenadas: { lat: 39.47876, lng: -0.37626 }
+                            }];
+                            logger.warn('Se ha cargado una parada de ejemplo para depuración');
+                            mostrarTodasLasParadas();
+                        }
                         return;
                     }
                 } else {
                     console.warn('⚠️ [MAPA] No se puede contactar al padre para obtener paradas');
+                    // Fallback: cargar una parada de ejemplo si no hay ninguna
+                    if (!arrayParadasLocal || arrayParadasLocal.length === 0) {
+                        arrayParadasLocal = [{
+                            id: 'P-0',
+                            nombre: 'Ejemplo Torres de Serranos',
+                            tipo: 'parada',
+                            coordenadas: { lat: 39.47876, lng: -0.37626 }
+                        }];
+                        logger.warn('Se ha cargado una parada de ejemplo para depuración');
+                        mostrarTodasLasParadas();
+                    }
                 }
                 
                 // Si llegamos aquí, no se pudieron obtener las paradas
                 console.error('❌ [MAPA] No hay datos de paradas disponibles');
-                // Fallback temporal para depuración: mostrar una parada de ejemplo si no hay ninguna
+                return;
+                
+            } catch (error) {
+                console.error('❌ [MAPA] Error al solicitar paradas al padre:', error);
+                // Fallback: cargar una parada de ejemplo si no hay ninguna
                 if (!arrayParadasLocal || arrayParadasLocal.length === 0) {
                     arrayParadasLocal = [{
                         id: 'P-0',
@@ -614,13 +646,9 @@ export async function mostrarTodasLasParadas(paradasExternas) {
                     mostrarTodasLasParadas();
                 }
                 return;
-                
-            } catch (error) {
-                console.error('❌ [MAPA] Error al solicitar paradas al padre:', error);
-                return;
             }
         }
-        
+
         console.log('📍 [MAPA] Mostrando paradas en el mapa. Total paradas:', arrayParadasLocal.length);
         
         // Validar que las paradas tengan coordenadas
