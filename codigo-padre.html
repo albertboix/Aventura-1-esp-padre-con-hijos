@@ -1244,5 +1244,53 @@
         }
     });
 </script>
+
+<script type="module">
+import { inicializarMensajeria, registrarControlador, enviarMensaje } from './js/mensajeria.js';
+import { TIPOS_MENSAJE } from './js/constants.js';
+import logger from './js/logger.js';
+
+// Inicializar mensajería del padre
+await inicializarMensajeria({ iframeId: 'padre', debug: true });
+
+// Orquestador para DATOS.SOLICITAR_PARADAS
+registrarControlador(TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS, async (mensaje) => {
+    try {
+        // Pedir a hijo2 las coordenadas, paradas y tramos
+        const promCoordenadas = enviarMensaje('hijo2', TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS, { origen: 'padre' });
+        // Pedir a hijo3 los audios asociados
+        const promAudios = enviarMensaje('hijo3', TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS, { origen: 'padre' });
+        // Pedir a hijo4 los retos asociados
+        const promRetos = enviarMensaje('hijo4', TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS, { origen: 'padre' });
+
+        // Esperar todas las respuestas
+        const [resCoordenadas, resAudios, resRetos] = await Promise.allSettled([promCoordenadas, promAudios, promRetos]);
+
+        // Unificar la información (ejemplo simple, debes adaptar según tu estructura real)
+        const paradas = (resCoordenadas.value?.paradas || []).map(parada => {
+            // Buscar audio y reto correspondiente por id
+            const audio = (resAudios.value?.paradas || []).find(a => a.id === parada.id);
+            const reto = (resRetos.value?.paradas || []).find(r => r.id === parada.id);
+            return {
+                ...parada,
+                audio: audio?.audio,
+                reto: reto?.reto
+            };
+        });
+
+        return {
+            exito: true,
+            paradas,
+            timestamp: new Date().toISOString()
+        };
+    } catch (error) {
+        logger.error('Error en orquestación de DATOS.SOLICITAR_PARADAS:', error);
+        return {
+            exito: false,
+            error: error.message
+        };
+    }
+});
+</script>
 </body>
 </html>
