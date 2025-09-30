@@ -941,6 +941,9 @@ export async function enviarMensaje(destino, tipo, datos = {}) {
     return await _enviarMensaje(destino, tipo, datos);
 }
 
+// Ensure TIPOS_MENSAJE is exported if needed
+export { TIPOS_MENSAJE };
+
 // Problema #11: Evitar re-exportar TIPOS_MENSAJE directamente para evitar dependencia circular
 // En lugar de re-exportar, exportamos solo las constantes que necesitamos
 export const TIPOS_MENSAJE_BASICOS = {
