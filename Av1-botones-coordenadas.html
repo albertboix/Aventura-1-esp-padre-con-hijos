@@ -328,20 +328,20 @@
         // 1. IMPORTACIONES Y CONFIGURACIÓN
         // =================================================================================
         import { 
-        inicializarMensajeria, 
-        registrarControlador, 
-        enviarMensaje 
-    } from './js/mensajeria.js';
-    import { TIPOS_MENSAJE } from './js/constants.js';
-    import { modoHandler } from './js/modo-handler.js';
-    import logger from './js/logger.js';
-    
-    const COMPONENTE_ID = 'BOTONES-COORDENADAS';
-    const IFRAME_ID = 'coordenadas-iframe'; // Debe coincidir con el ID del iframe en el padre
-    
-    // ================== COORDENADAS DE LAS PARADAS ==================
-    // Definir en el ámbito global para que sea accesible en todo el módulo
-    window.CoordenadasParadas = [
+            inicializarMensajeria, 
+            registrarControlador, 
+            enviarMensaje 
+        } from './js/mensajeria.js';
+        import { TIPOS_MENSAJE } from './js/constants.js';
+        import { modoHandler } from './js/modo-handler.js';
+        import logger from './js/logger.js';
+        
+        const COMPONENTE_ID = 'BOTONES-COORDENADAS';
+        const IFRAME_ID = 'coordenadas-iframe'; // Debe coincidir con el ID del iframe en el padre
+        
+        // ================== COORDENADAS DE LAS PARADAS ==================
+        // Definir en el ámbito del módulo
+        const CoordenadasParadas = [
     {
         id: 'P-0',
         tipo: "inicio",
@@ -1545,17 +1545,17 @@
 
         // Inicializar puntosRuta después de que el DOM esté listo
         function inicializarPuntosRuta() {
-            if (!window.puntosRuta && window.CoordenadasParadas) {
-                window.puntosRuta = window.CoordenadasParadas.map(p => ({
+            if (!window.puntosRuta && CoordenadasParadas) {
+                window.puntosRuta = CoordenadasParadas.map(p => ({
                     id: p.id,
                     tipo: p.tipo,
                     parada: p.parada,
-                    tramo: p.tramo,
+                    coordenadas: p.coordenadas,
                     nombre: p.nombre
                 }));
                 console.log('Puntos de ruta inicializados:', window.puntosRuta.length);
-            } else if (!window.CoordenadasParadas) {
-                console.error('Error: CoordenadasParadas no está definido');
+            } else if (!CoordenadasParadas) {
+                console.error('Error: No se encontraron coordenadas de paradas');
             }
         }
         
@@ -1715,15 +1715,31 @@
         // 5. INICIALIZACIÓN
         // =================================================================================
         
-        // Registrar manejador para la solicitud de estado del mapa
-        registrarControlador(TIPOS_MENSAJE.NAVEGACION.SOLICITAR_ESTADO_MAPA, manejarSolicitudEstadoMapa);
         // Inicializar el componente
         async function inicializar() {
             try {
                 console.log('🚀 Inicializando componente de botones-coordenadas...');
                 
-                // Inicializar manejadores de mensajes
+                // Configurar logger
+                logger.configure({ 
+                    iframeId: IFRAME_ID, 
+                    debug: true 
+                });
+
+                // Inicializar mensajería primero
+                await inicializarMensajeria({ 
+                    iframeId: IFRAME_ID,
+                    logLevel: 3,
+                    modoDebug: true
+                });
+                
+                console.log('✅ Mensajería inicializada en el componente de coordenadas');
+                
+                // Inicializar manejadores de mensajes después de la mensajería
                 await inicializarManejadoresMensajes();
+                
+                // Registrar manejador para la solicitud de estado del mapa
+                registrarControlador(TIPOS_MENSAJE.NAVEGACION.SOLICITAR_ESTADO_MAPA, manejarSolicitudEstadoMapa);
                 
                 // Notificar al padre que el componente está listo
                 await enviarMensaje('padre', 'SISTEMA.COMPONENTE_INICIALIZADO', {
@@ -1737,21 +1753,6 @@
                     componente: 'botones-coordenadas',
                     timestamp: new Date().toISOString()
                 });
-                
-                // Configurar logger
-                logger.configure({ 
-                    iframeId: IFRAME_ID, 
-                    debug: true 
-                });
-
-                // Inicializar mensajería
-                await inicializarMensajeria({ 
-                    iframeId: IFRAME_ID,
-                    logLevel: 3,
-                    modoDebug: true
-                });
-                
-                console.log('✅ Mensajería inicializada en el componente de coordenadas');
                 
                 // Notificar al padre que el componente está listo
                 await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO, {
