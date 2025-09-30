@@ -5,13 +5,7 @@
  */
 
 // Importar constantes directamente para evitar dependencias circulares
-const LOG_LEVELS = {
-  DEBUG: 0,
-  INFO: 1,
-  WARN: 2,
-  ERROR: 3,
-  NONE: 4
-};
+import { LOG_LEVELS } from './constants.js';
 
 // Safe console method fallback
 const safeConsoleMethod = (typeof console !== 'undefined' && console.log) 
@@ -359,12 +353,31 @@ if (typeof window !== 'undefined' && !window.Logger) {
   }
 }
 
-// Manejo global de errores
-window.addEventListener('error', (event) => {
-    console.error('Error global capturado:', event.message, event);
-    if (window.logger?.error) {
-        window.logger.error(event.message, event);
-    }
+// Configurar el manejador de errores global después de que el logger esté disponible
+const setupGlobalErrorHandler = () => {
+    // Verificar si estamos en un navegador
+    if (typeof window === 'undefined') return;
+
+    // Verificar si ya hay un manejador de errores global
+    if (window.__GLOBAL_ERROR_HANDLER_SETUP__) return;
+    window.__GLOBAL_ERROR_HANDLER__ = (event) => {
+        // Usar console.error como respaldo si el logger no está disponible
+        if (window.logger?.error) {
+            window.logger.error('Error global capturado:', event.message || event);
+        } else {
+            console.error('Error global capturado (logger no disponible):', event.message || event);
+        }
+    };
+
+    // Configurar el manejador de errores
+    window.addEventListener('error', window.__GLOBAL_ERROR_HANDLER__);
+    window.__GLOBAL_ERROR_HANDLER_SETUP__ = true;
+};
+
+// Configurar el manejador de errores global
+document.addEventListener('DOMContentLoaded', () => {
+    // Pequeño retraso para asegurar que el logger esté disponible
+    setTimeout(setupGlobalErrorHandler, 100);
 });
 
 export default logger;
