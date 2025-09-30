@@ -810,16 +810,37 @@ if (typeof manejarPing === 'function') {
 let controladores = {};
 
 // Registrar controlador para TIPOS_MENSAJE.CONTROL.CAMBIAR_MODO
-registrarControlador(TIPOS_MENSAJE.CONTROL.CAMBIAR_MODO, (mensaje) => {
-    const { modo } = mensaje.datos || {};
-    if (!modo) {
-        console.warn('⚠️ No se especificó un modo en el mensaje TIPOS_MENSAJE.CONTROL.CAMBIAR_MODO.');
-        return;
-    }
+if (typeof TIPOS_MENSAJE !== 'undefined' && TIPOS_MENSAJE.CONTROL && TIPOS_MENSAJE.CONTROL.CAMBIAR_MODO) {
+    registrarControlador(TIPOS_MENSAJE.CONTROL.CAMBIAR_MODO, (mensaje) => {
+        try {
+            const { modo, origen } = mensaje.datos || {};
+            if (!modo) {
+                logger.warn('[Mensajeria] No se especificó un modo en el mensaje CAMBIAR_MODO');
+                return;
+            }
 
-    console.log(`✅ Modo recibido: ${modo}`);
-    // Aquí puedes agregar la lógica para cambiar el modo
-});
+            logger.info(`[Mensajeria] Cambiando modo a: ${modo}${origen ? ` (solicitado por: ${origen})` : ''}`);
+            
+            // Aquí puedes agregar la lógica para cambiar el modo
+            // Por ejemplo, actualizar la interfaz de usuario, cambiar estilos, etc.
+            
+            // Si es necesario, notificar a otros componentes del cambio
+            if (origen !== 'PADRE') {
+                enviarMensaje('padre', TIPOS_MENSAJE.CONTROL.CAMBIAR_MODO, {
+                    modo: modo,
+                    origen: 'HIJO',
+                    timestamp: new Date().toISOString()
+                }).catch(error => {
+                    logger.error('[Mensajeria] Error al notificar cambio de modo:', error);
+                });
+            }
+        } catch (error) {
+            logger.error('[Mensajeria] Error en el manejador de CAMBIAR_MODO:', error);
+        }
+    });
+} else {
+    logger.warn('[Mensajeria] No se pudo registrar el controlador para CAMBIAR_MODO: TIPOS_MENSAJE no está definido correctamente');
+}
 
 // Función para cambiar el modo en el iframe hijo5-casa
 function cambiarModoEnHijo5Casa(modo) {
