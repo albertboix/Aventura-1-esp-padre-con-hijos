@@ -947,10 +947,76 @@
         coordenadas: { lat: 39.47773, lng: -0.37671 },
         imagen: 'fotos_Av1/00_torres_de_serranos_back.jpg',
     }
-];
+        ];
+        
+        // Hacer el array accesible globalmente
+        window.puntosRuta = puntosRuta;
+    </script>
+        
+        // =================================================================================
+        // 2. MANEJADORES DE MENSAJES
+        // =================================================================================
+        async function inicializarManejadoresMensajes() {
+            try {
+                // SISTEMA.PING - Responder con PONG
+                registrarControlador('SISTEMA.PING', (mensaje) => {
+                    console.log('🔔 Recibido PING, enviando PONG');
+                    return { timestamp: new Date().toISOString() };
+                });
+
+                // NAVEGACION.MOSTRAR_RUTA - Mostrar ruta en el mapa
+                registrarControlador('NAVEGACION.MOSTRAR_RUTA', (mensaje) => {
+                    const { ruta } = mensaje.datos;
+                    console.log('🛣️ Mostrando ruta:', ruta);
+                    // Implementar lógica para mostrar la ruta en el mapa
+                    return { estado: 'ok' };
+                });
+
+                // DATOS.COORDENADAS_PARADAS - Enviar coordenadas de las paradas
+                registrarControlador('DATOS.COORDENADAS_PARADAS', async () => {
+                    console.log('📍 Enviando coordenadas de paradas');
+                    // Obtener solo las paradas (no los tramos)
+                    const paradas = puntosRuta.filter(p => p.tipo === 'parada');
+                    return { 
+                        paradas: paradas.map(p => ({
+                            id: p.id,
+                            nombre: p.nombre,
+                            coordenadas: p.coordenadas
+                        }))
+                    };
+                });
+
+                // NAVEGACION.ACTUALIZAR_ESTADO - Actualizar estado de navegación
+                registrarControlador('NAVEGACION.ACTUALIZAR_ESTADO', (mensaje) => {
+                    const { estado: nuevoEstado } = mensaje.datos;
+                    console.log('🔄 Actualizando estado de navegación:', nuevoEstado);
+                    // Actualizar el estado local
+                    estadoComponente.estadoNavegacion = nuevoEstado;
+                    // Actualizar la UI según el nuevo estado
+                    actualizarEstadoBotones();
+                    return { estado: 'actualizado' };
+                });
+
+                // NAVEGACION.ESTABLECER_DESTINO - Establecer un destino en el mapa
+                registrarControlador('NAVEGACION.ESTABLECER_DESTINO', (mensaje) => {
+                    const { destino } = mensaje.datos;
+                    console.log('🎯 Estableciendo destino:', destino);
+                    // Implementar lógica para establecer el destino en el mapa
+                    return { 
+                        estado: 'ok',
+                        mensaje: `Destino establecido: ${destino.nombre || destino.id}`
+                    };
+                });
+
+                console.log('✅ Manejadores de mensajes registrados');
+            } catch (error) {
+                console.error('❌ Error al inicializar manejadores de mensajes:', error);
+                throw error;
+            }
+        }
 
         // =================================================================================
-        // 2. ESTADO DEL COMPONENTE
+        // 3. ESTADO DEL COMPONENTE
         // =================================================================================
         const estadoComponente = {
             modo: 'casa',
@@ -1479,16 +1545,16 @@
         // Exponer COORDENADAS_PARADAS al objeto window para que otros componentes puedan acceder a ellas
         window.COORDENADAS_PARADAS = COORDENADAS_PARADAS;
         
-        // También crear una versión simplificada sin coordenadas, imágenes ni videos
-        window.puntosRuta = COORDENADAS_PARADAS.map(p => {
-            return {
+        // Actualizar el array global de puntos de ruta si no está definido
+        if (!window.puntosRuta) {
+            window.puntosRuta = COORDENADAS_PARADAS.map(p => ({
                 id: p.id,
                 tipo: p.tipo,
                 parada: p.parada,
                 tramo: p.tramo,
                 nombre: p.nombre
-            };
-        });
+            }));
+        }
         
         // Manejar solicitudes de paradas de otros componentes
         function manejarSolicitudParadas(mensaje) {
@@ -1527,7 +1593,7 @@
                 puntoEncontrado: puntoEncontrado,
                 puntoId: puntoId,
                 timestamp: new Date().toISOString(),
-                total: window.puntosRuta.length
+                total: window.puntosRuta ? window.puntosRuta.length : 0
             };
         }
         
@@ -1641,17 +1707,33 @@
         
         // Registrar manejador para la solicitud de estado del mapa
         registrarControlador(TIPOS_MENSAJE.NAVEGACION.SOLICITAR_ESTADO_MAPA, manejarSolicitudEstadoMapa);
-        
+        // Inicializar el componente
         async function inicializar() {
             try {
-                console.log('🚀 Inicializando componente de coordenadas...');
+                console.log('🚀 Inicializando componente de botones-coordenadas...');
+                
+                // Inicializar manejadores de mensajes
+                await inicializarManejadoresMensajes();
+                
+                // Notificar al padre que el componente está listo
+                await enviarMensaje('padre', 'SISTEMA.COMPONENTE_INICIALIZADO', {
+                    componente: 'botones-coordenadas',
+                    estado: 'listo',
+                    timestamp: new Date().toISOString()
+                });
+                
+                // Notificar que la inicialización ha finalizado
+                await enviarMensaje('padre', 'SISTEMA.INICIALIZACION_FINALIZADA', {
+                    componente: 'botones-coordenadas',
+                    timestamp: new Date().toISOString()
+                });
                 
                 // Configurar logger
                 logger.configure({ 
                     iframeId: IFRAME_ID, 
                     debug: true 
                 });
-                
+{{ ... }}
                 // Inicializar mensajería
                 await inicializarMensajeria({ 
                     iframeId: IFRAME_ID,
@@ -1744,6 +1826,46 @@
         inicializar().catch(error => {
             actualizarStatus('Error al inicializar componente');
         });
+
+        // =================================================================================
+        // 6. MANEJO DE MENSAJES DEL PADRE
+        // =================================================================================
+        
+        window.addEventListener('message', (event) => {
+            const { tipo, datos } = event.data;
+
+            if (tipo === 'SISTEMA.PING') {
+                window.parent.postMessage({ tipo: 'SISTEMA.PONG', datos: { timestamp: Date.now() } }, '*');
+            }
+
+            if (tipo === 'NAVEGACION.MOSTRAR_RUTA') {
+                // Handle showing a route on the map
+                console.log('Mostrar ruta:', datos);
+            }
+
+            if (tipo === 'DATOS.COORDENADAS_PARADAS') {
+                // Send coordinates of stops
+                window.parent.postMessage({ tipo: 'DATOS.COORDENADAS_PARADAS', datos: { coordenadas: [] } }, '*');
+            }
+
+            if (tipo === 'NAVEGACION.ACTUALIZAR_ESTADO') {
+                // Update navigation state
+                console.log('Actualizar estado de navegación:', datos);
+            }
+
+            if (tipo === 'NAVEGACION.ESTABLECER_DESTINO') {
+                // Set a destination on the map
+                console.log('Establecer destino:', datos);
+            }
+
+            if (tipo === 'NAVEGACION.SOLICITAR_DESTINO') {
+                // Request a specific destination
+                window.parent.postMessage({ tipo: 'NAVEGACION.SOLICITAR_DESTINO', datos: { destino: 'Ejemplo' } }, '*');
+            }
+        });
+
+        window.parent.postMessage({ tipo: 'SISTEMA.INICIALIZACION_FINALIZADA', datos: { componente: 'Av1-botones-coordenadas' } }, '*');
+        window.parent.postMessage({ tipo: 'SISTEMA.COMPONENTE_INICIALIZADO', datos: { componente: 'Av1-botones-coordenadas' } }, '*');
     </script>
 </body>
 </html>
