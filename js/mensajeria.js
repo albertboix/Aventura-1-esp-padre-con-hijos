@@ -69,7 +69,7 @@ const TIPOS_MENSAJE_VALIDOS = [
     ...Object.values(TIPOS_MENSAJE.UI),
     
     // MEDIOS
-    ...Object.values(TIPOS_MENSAJE.MEDIOS)
+    ...Object.values(TIPOS_MENSAJE.MEDIOS),
     TIPOS_MENSAJE.DATOS.PUNTOS,
     TIPOS_MENSAJE.DATOS.PUNTOS_RUTA,
     
