@@ -146,8 +146,6 @@ function sendToParent(logEntry) {
  * @param {Object} logEntry - Entrada de log
  */
 function outputToConsole(logEntry) {
-  if (!config.debug) return;
-  
   try {
     const { level, message, data, timestamp, levelName } = logEntry;
     
@@ -222,7 +220,7 @@ function outputToConsole(logEntry) {
       safeConsoleMethod(`  at ${logEntry.location}`);
     }
   } catch (e) {
-    safeConsoleMethod('Error en outputToConsole:', e);
+    console.warn('Logger encountered an issue:', e);
   }
 }
 
