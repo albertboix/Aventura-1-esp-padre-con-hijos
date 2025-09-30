@@ -57,7 +57,8 @@
         import { 
             TIPOS_MENSAJE,
             MODOS,
-            LOG_LEVELS 
+            LOG_LEVELS,
+            ERRORES
         } from './js/constants.js';
         import { CONFIG } from './js/config.js';
         import { 
@@ -646,87 +647,15 @@ async function inicializarManejadoresMensajes() {
         console.error('❌ [RETOS] Error al inicializar manejadores de mensajes:', error);
         throw error;
     }
-}
 // =================================================================================
 // INICIALIZACIÓN
 // =================================================================================
-// Función de inicialización del componente
-async function inicializar() {
-    console.log('Inicializando componente de retos y preguntas...');
-    
-    try {
-        // Inicializar mensajería
-        await inicializarMensajeria(CONFIG_MENSAJERIA);
-        
-        // Inicializar manejadores de mensajes
-        await inicializarManejadoresMensajes();
-        
-        // Inicializar interfaz y eventos
-        inicializarInterfaz();
-        inicializarEventos();
-        
-        console.log('[RETOS] Componente de retos inicializado');
-        
-        // Configurar botones
-        const btnCompletado = document.getElementById('btn-completado');
-        const btnOcultar = document.getElementById('btn-ocultar');
-        
-        if (btnCompletado) {
-            btnCompletado.addEventListener('click', async () => {
-                await enviarMensaje('padre', 'RETO.COMPLETADO', {
-                    retoId: 'reto-actual', // Reemplazar con el ID real del reto
-                    timestamp: new Date().toISOString()
-                });
-                // Ocultar el contenedor después de marcar como completado
-                const container = document.getElementById('reto-container');
-                if (container) container.style.display = 'none';
-            });
-        }
-        
-        if (btnOcultar) {
-            btnOcultar.addEventListener('click', () => {
-                const container = document.getElementById('reto-container');
-                if (container) container.style.display = 'none';
-            });
-        }
-        
-        // Ocultar el contenedor por defecto
-        const container = document.getElementById('reto-container');
-        if (container) container.style.display = 'none';
-        
-        // Notificar al padre que el componente está listo
-        await enviarMensaje('padre', 'SISTEMA.COMPONENTE_INICIALIZADO', {
-            componente: 'retos-preguntas',
-            estado: 'listo',
-            timestamp: new Date().toISOString()
-        });
-        
-        // Notificar que la inicialización ha finalizado
-        await enviarMensaje('padre', 'SISTEMA.INICIALIZACION_FINALIZADA', {
-            componente: 'retos-preguntas',
-            timestamp: new Date().toISOString()
-        });
-        
-        console.log('Componente de retos y preguntas inicializado correctamente');
-    } catch (error) {
-        console.error('Error al inicializar el componente de retos y preguntas:', error);
-        // Notificar error al padre
-        await enviarMensaje('padre', 'SISTEMA.ERROR', {
-            componente: 'retos-preguntas',
-            error: error.message,
-            stack: error.stack,
-            timestamp: new Date().toISOString()
-        });
-    }
-}
-
-// Iniciar la inicialización cuando el DOM esté listo
-document.addEventListener('DOMContentLoaded', inicializar);
 
 // Registrar controlador para solicitud de reto/puzzle
 registrarControlador(TIPOS_MENSAJE.DATOS.SOLICITAR_PARADA, (mensaje) => {
     const { reto_id, puzzle_id } = mensaje.datos || {};
     let reto = null;
+    
     if (reto_id) {
         reto = retos.find(r => r.id === reto_id);
     } else if (puzzle_id) {
@@ -763,15 +692,25 @@ async function completarReto(exito = true) {
     }
 }
 
-// Añadir manejador para mostrar retos
-registrarControlador(TIPOS_MENSAJE.RETO.MOSTRAR, async (mensaje) => {
+/**
+ * Maneja la visualización de un reto
+ */
+async function manejarMostrarReto(mensaje) {
     const { reto, parada } = mensaje.datos || {};
     
     if (!reto) {
-        return { exito: false, error: 'No se proporcionó información del reto' };
+        const error = 'No se proporcionó información del reto';
+        logger.error(error);
+        return { 
+            exito: false, 
+            error,
+            codigo: ERRORES.VALIDACION.PARAMETROS_FALTANTES.codigo 
+        };
     }
     
     try {
+        logger.info(`Mostrando reto: ${reto.id || 'sin ID'}`);
+        
         // Guardar referencias
         retoActual = reto;
         paradaActual = parada;
@@ -780,60 +719,60 @@ registrarControlador(TIPOS_MENSAJE.RETO.MOSTRAR, async (mensaje) => {
         mostrarComponente();
         cargarReto(reto);
         
-        return { exito: true };
+        return { 
+            exito: true,
+            retoId: reto.id,
+            timestamp: new Date().toISOString()
+        };
     } catch (error) {
         logger.error('Error al mostrar reto:', error);
-        return { exito: false, error: error.message };
+        return { 
+            exito: false, 
+            error: error.message,
+            codigo: ERRORES.SISTEMA.ERROR_INTERNO.codigo
+        };
     }
-});
-
-// Función para inicializar manejadores de mensajes
-async function inicializarManejadoresMensajes() {
-    // Aquí iría la lógica para inicializar manejadores de mensajes
-    console.log('Manejadores de mensajes inicializados');
-    return true;
+}
 }
 
-// Función para inicializar la interfaz de usuario
-function inicializarInterfaz() {
-    // Inicialización de la interfaz
-    console.log('Interfaz de usuario inicializada');
-}
-
-// Función para inicializar eventos
-function inicializarEventos() {
-    // Inicialización de eventos
-    console.log('Eventos inicializados');
-}
-
-// Función para mostrar el componente
-function mostrarComponente() {
-    const container = document.getElementById('reto-container');
-    if (container) container.style.display = 'block';
-}
-
-// Función para ocultar el componente
-function ocultarComponente() {
-    const container = document.getElementById('reto-container');
-    if (container) container.style.display = 'none';
-}
-
-// Función para cargar un reto en la interfaz
-function cargarReto(reto) {
-    if (!reto) return;
-    
-    const titulo = document.getElementById('reto-titulo');
-    const pregunta = document.getElementById('reto-pregunta');
-    
-    if (titulo) titulo.textContent = reto.pregunta || 'Reto';
-    if (pregunta) pregunta.textContent = reto.pregunta || '';
-    
-    // Aquí puedes agregar más lógica para cargar el reto según su tipo
-}
+// Registrar manejador de mensajes
+registrarControlador(TIPOS_MENSAJE.RETO.MOSTRAR, manejarMostrarReto);
 
 // Variables de estado
 let retoActual = null;
 let paradaActual = null;
+
+/**
+ * Inicializa el componente de retos
+ */
+/**
+ * Inicializa el componente de retos
+ */
+async function inicializar() {
+    try {
+        // Configuración inicial
+        logger.info('Inicializando componente de retos...');
+        
+        // Aquí puedes agregar más lógica de inicialización
+        
+        // Notificar que el componente está listo
+        await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_INICIALIZADO, {
+            componente: 'retos',
+            estado: 'listo',
+            timestamp: new Date().toISOString()
+        });
+        
+        logger.info('Componente de retos inicializado correctamente');
+    } catch (error) {
+        logger.error('Error al inicializar el componente de retos', error);
+        await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
+            componente: 'retos',
+            error: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString()
+        });
+    }
+}
 
 // Inicializar cuando el DOM esté listo
 document.addEventListener('DOMContentLoaded', inicializar);
