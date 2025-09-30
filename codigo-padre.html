@@ -1286,6 +1286,562 @@ import logger from './js/logger.js';
 // Inicializar mensajería del padre
 await inicializarMensajeria({ iframeId: 'padre', debug: true });
 
+// Estado global para el componente padre
+const estadoGlobal = {
+    modo: 'aventura', // 'casa' o 'aventura'
+    componentes: {},
+    navegacion: {},
+    reproduccion: {},
+    retosCompletados: []
+};
+
+// =================================================================================
+// MANEJADORES DE MENSAJES CENTRALIZADOS
+// =================================================================================
+const manejadoresMensajes = {
+    // Manejar mensajes SISTEMA
+    SISTEMA: {
+        PING: async (mensaje) => {
+            console.log('🔔 [PADRE] Recibido PING de:', mensaje.origen);
+            await enviarMensaje(mensaje.origen, 'SISTEMA.PONG', {
+                timestamp: new Date().toISOString(),
+                origen: 'padre'
+            });
+        },
+        
+        PONG: (mensaje) => {
+            console.log('🏓 [PADRE] Recibido PONG de:', mensaje.origen, mensaje.datos);
+        },
+        
+        COMPONENTE_INICIALIZADO: (mensaje) => {
+            const { componente, estado, timestamp } = mensaje.datos;
+            console.log(`✅ [PADRE] Componente ${componente} inicializado:`, estado);
+            
+            // Actualizar estado del componente
+            if (!estadoGlobal.componentes[componente]) {
+                estadoGlobal.componentes[componente] = {};
+            }
+            estadoGlobal.componentes[componente].inicializado = true;
+            estadoGlobal.componentes[componente].ultimaActualizacion = timestamp;
+            
+            // Registrar en el logger
+            logger.info(`Componente ${componente} inicializado`, { estado, timestamp });
+        },
+        
+        INICIALIZACION_FINALIZADA: (mensaje) => {
+            const { componente, timestamp } = mensaje.datos;
+            console.log(`🚀 [PADRE] Inicialización completada para:`, componente);
+            
+            // Actualizar estado del componente
+            if (!estadoGlobal.componentes[componente]) {
+                estadoGlobal.componentes[componente] = {};
+            }
+            estadoGlobal.componentes[componente].inicializacionCompleta = true;
+            estadoGlobal.componentes[componente].ultimaActualizacion = timestamp;
+            
+            // Verificar si todos los componentes están listos
+            verificarInicializacionCompleta();
+            
+            // Registrar en el logger
+            logger.info(`Inicialización completada para ${componente}`, { timestamp });
+        },
+        
+        ERROR: (mensaje) => {
+            const { componente, error, stack, timestamp } = mensaje.datos;
+            console.error(`❌ [PADRE] Error en ${componente}:`, error);
+            
+            // Registrar el error en el logger
+            logger.error(`Error en ${componente}`, { 
+                error: error.message || error, 
+                stack: stack || new Error().stack,
+                timestamp: timestamp || new Date().toISOString()
+            });
+            
+            // Mostrar notificación de error al usuario
+            mostrarNotificacion(`Error en ${componente}: ${error}`, 'error');
+        }
+    },
+    
+    // Manejar mensajes de NAVEGACIÓN
+    NAVEGACION: {
+        SOLICITAR_DESTINO: async (mensaje) => {
+            console.log('🗺️ [PADRE] Solicitud de destino desde:', mensaje.origen);
+            // Aquí iría la lógica para manejar la solicitud de destino
+            // Por ejemplo, mostrar un selector de destinos
+            return {
+                estado: 'pendiente',
+                mensaje: 'Solicitud de destino recibida',
+                timestamp: new Date().toISOString()
+            };
+        },
+        
+        ACTUALIZAR_ESTADO: (mensaje) => {
+            const { estado } = mensaje.datos;
+            console.log('🔄 [PADRE] Estado de navegación actualizado:', estado);
+            
+            // Actualizar estado global de navegación
+            estadoGlobal.navegacion = { ...estadoGlobal.navegacion, ...estado };
+            
+            // Registrar en el logger
+            logger.info('Estado de navegación actualizado', { 
+                estado: estadoGlobal.navegacion,
+                timestamp: new Date().toISOString()
+            });
+            
+            return { estado: 'ok' };
+        }
+    },
+    
+    // Manejar mensajes de CONTROL
+    CONTROL: {
+        GPS: async (mensaje) => {
+            const { accion } = mensaje.datos || {};
+            console.log(`📍 [PADRE] Solicitud de control GPS: ${accion}`);
+            
+            // Validar la acción
+            if (!['activar', 'desactivar', 'alternar'].includes(accion)) {
+                return { 
+                    estado: 'error', 
+                    mensaje: 'Acción no válida. Use: activar, desactivar o alternar',
+                    timestamp: new Date().toISOString()
+                };
+            }
+            
+            // Reenviar el comando al componente de mapa si es necesario
+            await enviarMensaje('hijo2', 'CONTROL.GPS', { accion });
+            
+            // Registrar la acción
+            logger.info(`Control GPS: ${accion}`, { 
+                accion,
+                timestamp: new Date().toISOString()
+            });
+            
+            return { 
+                estado: 'ok', 
+                accionEjecutada: accion,
+                timestamp: new Date().toISOString()
+            };
+        }
+    },
+    
+    // Manejar mensajes de UI
+    UI: {
+        MODAL: async (mensaje) => {
+            const { accion, tipo, titulo, contenido } = mensaje.datos;
+            console.log(`🎨 [PADRE] Solicitud de modal: ${accion} - ${tipo || 'sin tipo'}`);
+            
+            // Validar la acción
+            if (!accion) {
+                return { 
+                    estado: 'error', 
+                    mensaje: 'Acción no especificada',
+                    timestamp: new Date().toISOString()
+                };
+            }
+            
+            // Implementar lógica para mostrar/ocultar modales en la interfaz del padre
+            const modal = document.getElementById('modal-global');
+            if (!modal) {
+                console.warn('Modal global no encontrado');
+                return { 
+                    estado: 'error', 
+                    mensaje: 'Modal no encontrado',
+                    timestamp: new Date().toISOString()
+                };
+            }
+            
+            if (accion === 'mostrar') {
+                // Configurar y mostrar el modal
+                if (titulo) {
+                    const tituloElement = modal.querySelector('.modal-title');
+                    if (tituloElement) tituloElement.textContent = titulo;
+                }
+                
+                if (contenido) {
+                    const cuerpoElement = modal.querySelector('.modal-body');
+                    if (cuerpoElement) cuerpoElement.innerHTML = contenido;
+                }
+                
+                modal.style.display = 'block';
+                
+                // Registrar la acción
+                logger.info('Modal mostrado', { 
+                    tipo,
+                    titulo,
+                    timestamp: new Date().toISOString()
+                });
+                
+                return { 
+                    estado: 'ok', 
+                    accion: 'modal_mostrado',
+                    timestamp: new Date().toISOString()
+                };
+            } 
+            else if (accion === 'ocultar') {
+                modal.style.display = 'none';
+                
+                // Registrar la acción
+                logger.info('Modal ocultado', { 
+                    timestamp: new Date().toISOString()
+                });
+                
+                return { 
+                    estado: 'ok', 
+                    accion: 'modal_ocultado',
+                    timestamp: new Date().toISOString()
+                };
+            }
+            
+            return { 
+                estado: 'error', 
+                mensaje: 'Acción de modal no soportada',
+                timestamp: new Date().toISOString()
+            };
+        }
+    },
+    
+    // Manejar mensajes de MEDIOS
+    MEDIOS: {
+        EVENTO: (mensaje) => {
+            const { tipo, datos } = mensaje.datos;
+            console.log(`🎵 [PADRE] Evento de medios: ${tipo}`, datos);
+            
+            // Manejar diferentes tipos de eventos de medios
+            switch(tipo) {
+                case 'reproduccion_iniciada':
+                case 'reproduccion_pausada':
+                case 'reproduccion_terminada':
+                    // Actualizar estado de reproducción
+                    estadoGlobal.reproduccion = {
+                        ...estadoGlobal.reproduccion,
+                        estado: tipo.replace('reproduccion_', ''),
+                        ultimoEvento: new Date().toISOString(),
+                        ...datos
+                    };
+                    break;
+                case 'error':
+                    console.error('Error en reproducción:', datos);
+                    // Registrar el error
+                    logger.error('Error en reproducción de medios', { 
+                        tipo,
+                        datos,
+                        timestamp: new Date().toISOString()
+                    });
+                    break;
+                default:
+                    console.log(`Evento de medios no manejado: ${tipo}`);
+            }
+            
+            return { 
+                estado: 'ok', 
+                eventoProcesado: tipo,
+                timestamp: new Date().toISOString()
+            };
+        },
+        
+        MOSTRAR: async (mensaje) => {
+            const { tipo, contenido } = mensaje.datos;
+            console.log(`🖼️ [PADRE] Mostrar medio: ${tipo}`);
+            
+            // Validar el tipo de medio
+            if (!tipo) {
+                return { 
+                    estado: 'error', 
+                    mensaje: 'Tipo de medio no especificado',
+                    timestamp: new Date().toISOString()
+                };
+            }
+            
+            // Reenviar al componente de medios si es necesario
+            await enviarMensaje('hijo3', 'MEDIOS.MOSTRAR', { tipo, contenido });
+            
+            // Registrar la acción
+            logger.info('Mostrar medio', { 
+                tipo,
+                timestamp: new Date().toISOString()
+            });
+            
+            return { 
+                estado: 'ok', 
+                accion: 'medio_mostrado',
+                timestamp: new Date().toISOString()
+            };
+        },
+        
+        OCULTAR: async (mensaje) => {
+            const { tipo } = mensaje.datos || {};
+            console.log(`👋 [PADRE] Ocultar medio: ${tipo || 'todos'}`);
+            
+            // Reenviar al componente de medios si es necesario
+            await enviarMensaje('hijo3', 'MEDIOS.OCULTAR', { tipo });
+            
+            // Registrar la acción
+            logger.info('Ocultar medio', { 
+                tipo: tipo || 'todos',
+                timestamp: new Date().toISOString()
+            });
+            
+            return { 
+                estado: 'ok', 
+                accion: 'medio_ocultado',
+                timestamp: new Date().toISOString()
+            };
+        }
+    },
+    
+    // Manejar mensajes de DATOS
+    DATOS: {
+        COORDENADAS_PARADAS: async (mensaje) => {
+            console.log('📍 [PADRE] Solicitadas coordenadas de paradas');
+            
+            try {
+                // Reenviar al componente de mapa
+                const respuesta = await enviarMensaje('hijo2', 'DATOS.COORDENADAS_PARADAS', {});
+                
+                // Registrar la acción
+                logger.info('Coordenadas de paradas solicitadas', { 
+                    totalParadas: respuesta?.paradas?.length || 0,
+                    timestamp: new Date().toISOString()
+                });
+                
+                return respuesta;
+            } catch (error) {
+                console.error('Error al obtener coordenadas de paradas:', error);
+                
+                // Registrar el error
+                logger.error('Error al obtener coordenadas de paradas', { 
+                    error: error.message,
+                    stack: error.stack,
+                    timestamp: new Date().toISOString()
+                });
+                
+                throw error;
+            }
+        },
+        
+        SOLICITAR_PARADA: async (mensaje) => {
+            const { reto_id, puzzle_id } = mensaje.datos;
+            console.log(`❓ [PADRE] Solicitados datos de ${reto_id ? 'reto' : 'puzzle'}:`, reto_id || puzzle_id);
+            
+            try {
+                // Reenviar al componente de retos
+                const respuesta = await enviarMensaje('hijo4', 'DATOS.SOLICITAR_PARADA', { 
+                    reto_id, 
+                    puzzle_id 
+                });
+                
+                // Registrar la acción
+                logger.info('Datos de parada solicitados', { 
+                    tipo: reto_id ? 'reto' : 'puzzle',
+                    id: reto_id || puzzle_id,
+                    timestamp: new Date().toISOString()
+                });
+                
+                return respuesta;
+            } catch (error) {
+                console.error('Error al obtener datos de parada:', error);
+                
+                // Registrar el error
+                logger.error('Error al obtener datos de parada', { 
+                    error: error.message,
+                    stack: error.stack,
+                    timestamp: new Date().toISOString(),
+                    id: reto_id || puzzle_id
+                });
+                
+                throw error;
+            }
+        }
+    },
+    
+    // Manejar mensajes de RETO
+    RETO: {
+        COMPLETADO: (mensaje) => {
+            const { retoId, timestamp } = mensaje.datos;
+            console.log(`🏆 [PADRE] Reto completado: ${retoId}`);
+            
+            // Validar el ID del reto
+            if (!retoId) {
+                return { 
+                    estado: 'error', 
+                    mensaje: 'ID de reto no especificado',
+                    timestamp: new Date().toISOString()
+                };
+            }
+            
+            // Actualizar estado global
+            if (!estadoGlobal.retosCompletados) {
+                estadoGlobal.retosCompletados = [];
+            }
+            
+            if (!estadoGlobal.retosCompletados.includes(retoId)) {
+                estadoGlobal.retosCompletados.push(retoId);
+            }
+            
+            // Mostrar notificación
+            mostrarNotificacion(`¡Reto ${retoId} completado!`, 'exito');
+            
+            // Registrar la acción
+            logger.info('Reto completado', { 
+                retoId,
+                totalCompletados: estadoGlobal.retosCompletados.length,
+                timestamp: timestamp || new Date().toISOString()
+            });
+            
+            return { 
+                estado: 'ok', 
+                retoId, 
+                timestamp: new Date().toISOString()
+            };
+        }
+    }
+};
+
+// Función para manejar mensajes entrantes
+async function manejarMensaje(mensaje) {
+    try {
+        const { tipo, datos } = mensaje;
+        if (!tipo) {
+            console.warn('Mensaje sin tipo:', mensaje);
+            return { 
+                estado: 'error', 
+                mensaje: 'Tipo de mensaje no especificado',
+                timestamp: new Date().toISOString()
+            };
+        }
+        
+        // Dividir el tipo en categoría y acción (ej: 'SISTEMA.PING' -> ['SISTEMA', 'PING'])
+        const [categoria, accion] = tipo.split('.');
+        
+        // Verificar si existe un manejador para este tipo de mensaje
+        if (manejadoresMensajes[categoria] && manejadoresMensajes[categoria][accion]) {
+            console.log(`📨 [PADRE] Procesando mensaje: ${tipo}`, datos || '');
+            return await manejadoresMensajes[categoria][accion](mensaje);
+        } else {
+            console.warn(`⚠️ [PADRE] No hay manejador para el mensaje: ${tipo}`);
+            return { 
+                estado: 'error', 
+                mensaje: `No hay manejador para el tipo de mensaje: ${tipo}`,
+                timestamp: new Date().toISOString()
+            };
+        }
+    } catch (error) {
+        console.error('❌ [PADRE] Error al procesar mensaje:', error);
+        
+        // Registrar el error
+        logger.error('Error al procesar mensaje', { 
+            mensaje,
+            error: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString()
+        });
+        
+        return { 
+            estado: 'error', 
+            mensaje: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString()
+        };
+    }
+}
+
+// Función para verificar si todos los componentes están inicializados
+function verificarInicializacionCompleta() {
+    const componentesRequeridos = ['hijo2', 'hijo3', 'hijo4', 'hijo5'];
+    const todosListos = componentesRequeridos.every(id => 
+        estadoGlobal.componentes[id]?.inicializacionCompleta
+    );
+    
+    if (todosListos) {
+        console.log('🚀 [PADRE] ¡Todos los componentes están listos!');
+        
+        // Registrar el evento
+        logger.info('Todos los componentes inicializados', { 
+            timestamp: new Date().toISOString()
+        });
+        
+        // Emitir evento global de inicialización completa
+        document.dispatchEvent(new CustomEvent('sistema:inicializado', {
+            detail: { 
+                timestamp: new Date().toISOString(),
+                estado: 'completo'
+            }
+        }));
+    }
+}
+
+// Función para mostrar notificaciones al usuario
+function mostrarNotificacion(mensaje, tipo = 'info') {
+    console.log(`💬 [NOTIFICACIÓN ${tipo.toUpperCase()}] ${mensaje}`);
+    
+    // Aquí iría la lógica para mostrar la notificación en la UI
+    // Por ejemplo, usando un sistema de notificaciones o un toast
+    
+    // Registrar la notificación
+    logger.info('Notificación mostrada', { 
+        mensaje,
+        tipo,
+        timestamp: new Date().toISOString()
+    });
+}
+
+// Función para inicializar el logger
+function inicializarLogger() {
+    // Configurar el logger si es necesario
+    logger.configure({
+        nivel: 'info',
+        mostrarEnConsola: true,
+        enviarAPadre: true
+    });
+    
+    console.log('📝 Logger inicializado');
+}
+
+// Inicializar el sistema
+async function inicializarSistema() {
+    try {
+        console.log('🚀 Inicializando sistema padre...');
+        
+        // Inicializar el logger
+        inicializarLogger();
+        
+        // Registrar manejador de mensajes global
+        registrarControlador('*', manejarMensaje);
+        
+        console.log('✅ Sistema padre inicializado correctamente');
+        
+        // Notificar que el sistema está listo
+        document.dispatchEvent(new CustomEvent('sistema:listo', {
+            detail: { timestamp: new Date().toISOString() }
+        }));
+        
+        return { estado: 'ok', timestamp: new Date().toISOString() };
+    } catch (error) {
+        console.error('❌ Error al inicializar el sistema padre:', error);
+        
+        // Registrar el error
+        logger.error('Error al inicializar el sistema padre', { 
+            error: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString()
+        });
+        
+        throw error;
+    }
+}
+
+// Iniciar la inicialización cuando el DOM esté listo
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        await inicializarSistema();
+    } catch (error) {
+        console.error('❌ Error crítico al iniciar la aplicación:', error);
+        
+        // Mostrar mensaje de error al usuario
+        mostrarNotificacion('Error crítico al iniciar la aplicación', 'error');
+    }
+});
+
 // Orquestador para DATOS.SOLICITAR_PARADAS
 registrarControlador(TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS, async (mensaje) => {
     try {
