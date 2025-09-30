@@ -340,8 +340,9 @@
         const IFRAME_ID = 'coordenadas-iframe'; // Debe coincidir con el ID del iframe en el padre
         
         // ================== COORDENADAS DE LAS PARADAS ==================
-        // Definir en el ámbito del módulo
-        const CoordenadasParadas = [
+        // Definir en el ámbito global
+        if (!window.CoordenadasParadas) {
+            window.CoordenadasParadas = [
     {
         id: 'P-0',
         tipo: "inicio",
@@ -958,10 +959,10 @@
     // 2. MANEJADORES DE MENSAJES
     // =================================================================================
     async function inicializarManejadoresMensajes() {
-            try {
-                // SISTEMA.PING - Responder con PONG
-                registrarControlador('SISTEMA.PING', (mensaje) => {
-                    console.log('🔔 Recibido PING, enviando PONG');
+        try {
+            // SISTEMA.PING - Responder con PONG
+            registrarControlador('SISTEMA.PING', (mensaje) => {
+                console.log('🔔 Recibido PING, enviando PONG');
                     return { timestamp: new Date().toISOString() };
                 });
 
@@ -1545,8 +1546,8 @@
 
         // Inicializar puntosRuta después de que el DOM esté listo
         function inicializarPuntosRuta() {
-            if (!window.puntosRuta && CoordenadasParadas) {
-                window.puntosRuta = CoordenadasParadas.map(p => ({
+            if (!window.puntosRuta && window.CoordenadasParadas) {
+                window.puntosRuta = window.CoordenadasParadas.map(p => ({
                     id: p.id,
                     tipo: p.tipo,
                     parada: p.parada,
@@ -1554,16 +1555,25 @@
                     nombre: p.nombre
                 }));
                 console.log('Puntos de ruta inicializados:', window.puntosRuta.length);
-            } else if (!CoordenadasParadas) {
+            } else if (!window.CoordenadasParadas) {
                 console.error('Error: No se encontraron coordenadas de paradas');
             }
         }
         
+        // Asegurarse de que las coordenadas estén disponibles antes de inicializar
+        function inicializarCuandoListo() {
+            if (window.CoordenadasParadas) {
+                inicializarPuntosRuta();
+            } else {
+                setTimeout(inicializarCuandoListo, 100);
+            }
+        }
+
         // Llamar a la inicialización cuando el DOM esté listo
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', inicializarPuntosRuta);
+            document.addEventListener('DOMContentLoaded', inicializarCuandoListo);
         } else {
-            inicializarPuntosRuta();
+            inicializarCuandoListo();
         }
         
         // Manejar solicitudes de paradas de otros componentes
@@ -1877,6 +1887,12 @@
 
         window.parent.postMessage({ tipo: 'SISTEMA.INICIALIZACION_FINALIZADA', datos: { componente: 'Av1-botones-coordenadas' } }, '*');
         window.parent.postMessage({ tipo: 'SISTEMA.COMPONENTE_INICIALIZADO', datos: { componente: 'Av1-botones-coordenadas' } }, '*');
+    } // Cierre de la función inicializarManejadoresMensajes
+    
+    // Inicializar manejadores de mensajes
+    inicializarManejadoresMensajes().catch(error => {
+        console.error('Error al inicializar manejadores de mensajes:', error);
+    });
     </script>
 </div>
 </body>
