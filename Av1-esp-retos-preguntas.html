@@ -584,6 +584,139 @@ const retosAventura1Es = [
         // Suponiendo que tienes un array local de retos y puzzles:
 const retos = retosAventura1Es;
 
+// =================================================================================
+// MANEJADORES DE MENSAJES
+// =================================================================================
+async function inicializarManejadoresMensajes() {
+    try {
+        // SISTEMA.PING - Responder con PONG
+        registrarControlador('SISTEMA.PING', (mensaje) => {
+            console.log('🔔 [RETOS] Recibido PING, enviando PONG');
+            return { 
+                timestamp: new Date().toISOString(),
+                componente: 'retos-preguntas'
+            };
+        });
+
+        // UI.MODAL - Manejar modales de la interfaz
+        registrarControlador('UI.MODAL', (mensaje) => {
+            const { accion, tipo, titulo, contenido, opciones } = mensaje.datos || {};
+            console.log(`🎨 [RETOS] Solicitud de modal: ${accion} - ${tipo || 'sin tipo'}`);
+            
+            // Implementar lógica para mostrar/ocultar modales
+            switch(accion) {
+                case 'mostrar':
+                    // Mostrar el contenedor de retos
+                    const container = document.getElementById('reto-container');
+                    if (container) {
+                        container.style.display = 'flex';
+                        // Actualizar contenido si se proporciona
+                        if (titulo) document.getElementById('reto-titulo').textContent = titulo;
+                        if (contenido) document.getElementById('reto-body').innerHTML = contenido;
+                    }
+                    return { 
+                        estado: 'ok', 
+                        accion: 'modal_mostrado',
+                        tipo,
+                        timestamp: new Date().toISOString()
+                    };
+                    
+                case 'ocultar':
+                    // Ocultar el contenedor de retos
+                    const retoContainer = document.getElementById('reto-container');
+                    if (retoContainer) {
+                        retoContainer.style.display = 'none';
+                    }
+                    return { 
+                        estado: 'ok', 
+                        accion: 'modal_ocultado',
+                        timestamp: new Date().toISOString()
+                    };
+                    
+                default:
+                    return {
+                        estado: 'error',
+                        mensaje: `Acción de modal no soportada: ${accion}`
+                    };
+            }
+        });
+
+        console.log('✅ [RETOS] Manejadores de mensajes registrados');
+    } catch (error) {
+        console.error('❌ [RETOS] Error al inicializar manejadores de mensajes:', error);
+        throw error;
+    }
+}
+
+// =================================================================================
+// INICIALIZACIÓN
+// =================================================================================
+async function inicializar() {
+    console.log('🎮 Inicializando componente de retos y preguntas...');
+    
+    try {
+        // Inicializar mensajería
+        await inicializarMensajeria(CONFIG_MENSAJERIA);
+        
+        // Inicializar manejadores de mensajes
+        await inicializarManejadoresMensajes();
+        
+        // Configurar botones
+        const btnCompletado = document.getElementById('btn-completado');
+        const btnOcultar = document.getElementById('btn-ocultar');
+        
+        if (btnCompletado) {
+            btnCompletado.addEventListener('click', async () => {
+                await enviarMensaje('padre', 'RETO.COMPLETADO', {
+                    retoId: 'reto-actual', // Reemplazar con el ID real del reto
+                    timestamp: new Date().toISOString()
+                });
+                // Ocultar el contenedor después de marcar como completado
+                const container = document.getElementById('reto-container');
+                if (container) container.style.display = 'none';
+            });
+        }
+        
+        if (btnOcultar) {
+            btnOcultar.addEventListener('click', () => {
+                const container = document.getElementById('reto-container');
+                if (container) container.style.display = 'none';
+            });
+        }
+        
+        // Ocultar el contenedor por defecto
+        const container = document.getElementById('reto-container');
+        if (container) container.style.display = 'none';
+        
+        // Notificar al padre que el componente está listo
+        await enviarMensaje('padre', 'SISTEMA.COMPONENTE_INICIALIZADO', {
+            componente: 'retos-preguntas',
+            estado: 'listo',
+            timestamp: new Date().toISOString()
+        });
+        
+        // Notificar que la inicialización ha finalizado
+        await enviarMensaje('padre', 'SISTEMA.INICIALIZACION_FINALIZADA', {
+            componente: 'retos-preguntas',
+            timestamp: new Date().toISOString()
+        });
+        
+        console.log('✅ Componente de retos y preguntas inicializado correctamente');
+    } catch (error) {
+        console.error('❌ Error al inicializar el componente de retos y preguntas:', error);
+        // Notificar error al padre
+        await enviarMensaje('padre', 'SISTEMA.ERROR', {
+            componente: 'retos-preguntas',
+            error: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString()
+        });
+    }
+}
+
+// Iniciar la inicialización cuando el DOM esté listo
+document.addEventListener('DOMContentLoaded', inicializar);
+
 // Registrar controlador para solicitud de reto/puzzle
 registrarControlador(TIPOS_MENSAJE.DATOS.SOLICITAR_PARADA, (mensaje) => {
     const { reto_id, puzzle_id } = mensaje.datos || {};
