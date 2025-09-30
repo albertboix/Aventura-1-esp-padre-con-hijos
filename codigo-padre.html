@@ -312,9 +312,19 @@
     <!-- Cargar módulos ES -->
     <script type="module">
     // 1. Importar módulos necesarios
-    import { inicializarMensajeria, enviarMensaje, registrarControlador } from './js/mensajeria.js';
-    import { TIPOS_MENSAJE } from './js/constants.js';
-    import logger from './js/logger.js';
+    try {
+        // Importar módulos con manejo de errores
+        const mensajeria = await import('./js/mensajeria.js');
+        const constants = await import('./js/constants.js');
+        const loggerModule = await import('./js/logger.js');
+        
+        // Asignar a variables locales
+        const { inicializarMensajeria, enviarMensaje, registrarControlador } = mensajeria;
+        const { TIPOS_MENSAJE } = constants;
+        const logger = loggerModule.default || loggerModule;
+        
+        // Hacer disponibles globalmente si es necesario
+        window.logger = logger;
     
     // 2. Configuración global de manejo de errores
     window.handleIframeError = function(iframeId, event) {
@@ -334,13 +344,28 @@
         }
     }
 
+    } catch (error) {
+        console.error('Error al cargar los módulos:', error);
+        // Mostrar mensaje de error en la interfaz
+        const errorDiv = document.createElement('div');
+        errorDiv.style.cssText = 'position:fixed;top:0;left:0;right:0;background:red;color:white;padding:10px;z-index:9999;';
+        errorDiv.textContent = `Error al cargar la aplicación: ${error.message}`;
+        document.body.appendChild(errorDiv);
+        throw error;
+    }
+
     // 2. Función de inicialización asíncrona
     async function initializeApp() {
         try {
             console.log('Iniciando aplicación...');
             
             // Importar dinámicamente la aplicación con ruta relativa
-            const { inicializar } = await import('./js/app.js');
+            const appModule = await import('./js/app.js');
+            const { inicializar } = appModule;
+            
+            if (typeof inicializar !== 'function') {
+                throw new Error('La función de inicialización no está disponible');
+            }
             
             // Inicializar la aplicación
             await inicializar();
@@ -1106,14 +1131,23 @@
 
 <!-- Definición del array de paradas -->
 <script type="module">
-    // Importar constantes necesarias
-    import { TIPOS_MENSAJE } from './js/constants.js';
-    import { registrarControlador, inicializarMensajeria } from './js/mensajeria.js';
-    import logger from './js/logger.js';
-    
-    // Inicializar mensajería
     try {
+        // Importar módulos necesarios
+        const constantsModule = await import('./js/constants.js');
+        const mensajeriaModule = await import('./js/mensajeria.js');
+        const loggerModule = await import('./js/logger.js');
+        
+        // Extraer las exportaciones necesarias
+        const { TIPOS_MENSAJE } = constantsModule;
+        const { registrarControlador, inicializarMensajeria } = mensajeriaModule;
+        const logger = loggerModule.default || loggerModule;
+        
+        // Hacer disponibles globalmente si es necesario
+        window.logger = logger;
+        
         console.log('🔄 [PADRE] Inicializando mensajería...');
+        
+        // Inicializar mensajería
         await inicializarMensajeria({
             iframeId: 'padre',
             logLevel: 'debug'
