@@ -70,6 +70,19 @@
         import logger from './js/logger.js';
         import { modoHandler } from './js/modo-handler.js';
         
+        // Funciones de inicialización globales
+        function inicializarInterfaz() {
+            console.log('Interfaz inicializada');
+            
+            // Inicializar elementos de la interfaz
+            const btnOcultar = document.getElementById('btn-ocultar');
+            if (btnOcultar) {
+                btnOcultar.addEventListener('click', () => {
+                    enviarMensaje('padre', 'RETO.OCULTAR', {});
+                });
+            }
+        }
+        
         // Configuración de mensajería
         const CONFIG_MENSAJERIA = {
             iframeId: CONFIG.HIJOS.RETOS.id || 'hijo4-retos',
@@ -440,6 +453,7 @@ const retosAventura1Es = [
             return { exito: true, retoMostrado: retoId };
         }
 
+
         // Inicializar el componente
         async function inicializar() {
             const logPrefix = '[RETOS]';
@@ -475,29 +489,30 @@ const retosAventura1Es = [
                 logger.info(`${logPrefix} Inicializando manejadores de mensajes...`);
                 await inicializarManejadoresMensajes();
                 
-                // Inicializar interfaz y eventos
+                // Inicializar interfaz
                 inicializarInterfaz();
-                inicializarEventos();
                 
-                // Configurar botones
+                // Inicializar eventos
+                console.log('Inicializando eventos del componente de retos');
                 const btnCompletado = document.getElementById('btn-completado');
-                const btnOcultar = document.getElementById('btn-ocultar');
-                
                 if (btnCompletado) {
                     btnCompletado.addEventListener('click', async () => {
-                        if (estado.retoActualId) {
-                            logger.info(`Enviando reto completado: ${estado.retoActualId}`);
+                        const retoId = window.retoActual?.id;
+                        if (retoId) {
                             try {
                                 await enviarMensaje('padre', 'RETO.COMPLETADO', {
-                                    retoId: estado.retoActualId,
+                                    retoId: retoId,
                                     timestamp: new Date().toISOString()
                                 });
                             } catch (error) {
-                                logger.error('Error al enviar mensaje de reto completado:', error);
+                                console.error('Error al marcar el reto como completado:', error);
                             }
                         }
                     });
                 }
+                
+                // Configurar botones
+                const btnOcultar = document.getElementById('btn-ocultar');
                 
                 if (btnOcultar) {
                     btnOcultar.addEventListener('click', async () => {
@@ -513,10 +528,27 @@ const retosAventura1Es = [
                 }
 
                 // Notificar que el componente está listo
-                await enviarMensaje('padre', TIPOS_MENSAJE?.SISTEMA?.INICIALIZACION_COMPLETADA || 'SISTEMA.INICIALIZACION_COMPLETADA', { 
-                    componente: CONFIG.IFRAME_ID || 'retos-preguntas',
-                    timestamp: new Date().toISOString()
-                });
+                try {
+                    // Asegurarse de que TIPOS_MENSAJE existe
+                    const tiposMensaje = typeof TIPOS_MENSAJE !== 'undefined' ? TIPOS_MENSAJE : {};
+                    
+                    // Obtener el tipo de mensaje de manera segura
+                    const mensajeTipo = tiposMensaje?.SISTEMA?.INICIALIZACION_COMPLETADA || 'SISTEMA.INICIALIZACION_COMPLETADA';
+                    
+                    // Obtener el ID del iframe de manera segura
+                    const componenteId = CONFIG?.IFRAME_ID || 'retos-preguntas';
+                    
+                    // Enviar mensaje de inicialización
+                    await enviarMensaje('padre', mensajeTipo, { 
+                        componente: componenteId,
+                        timestamp: new Date().toISOString()
+                    });
+                    
+                    console.log('✅ Notificación de inicialización enviada correctamente');
+                } catch (error) {
+                    console.error('❌ Error al notificar inicialización:', error);
+                    // Continuar con la inicialización a pesar del error
+                }
                 
                 estado.inicializado = true;
                 logger.info('Componente de retos inicializado correctamente');
@@ -554,9 +586,6 @@ const retosAventura1Es = [
             }
         }
 
-        function inicializarInterfaz() {
-            console.log('Interfaz inicializada');
-        }
 
         // Inicializar cuando el DOM esté listo
         if (document.readyState === 'loading') {
