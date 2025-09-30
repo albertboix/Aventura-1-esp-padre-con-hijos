@@ -313,10 +313,27 @@
     <script type="module">
     // 1. Importar módulos necesarios
     try {
+        // Función para verificar carga de módulos
+        async function loadModule(modulePath) {
+            console.log(`🔄 Intentando cargar: ${modulePath}`);
+            try {
+                const startTime = performance.now();
+                const module = await import(modulePath);
+                const loadTime = (performance.now() - startTime).toFixed(2);
+                console.log(`✅ Módulo cargado: ${modulePath} (${loadTime}ms)`);
+                return module;
+            } catch (error) {
+                console.error(`❌ Error al cargar ${modulePath}:`, error);
+                throw error;
+            }
+        }
+
         // Importar módulos con manejo de errores
-        const mensajeria = await import('./js/mensajeria.js');
-        const constants = await import('./js/constants.js');
-        const loggerModule = await import('./js/logger.js');
+        console.group('📦 Cargando módulos principales');
+        const mensajeria = await loadModule('./js/mensajeria.js');
+        const constants = await loadModule('./js/constants.js');
+        const loggerModule = await loadModule('./js/logger.js');
+        console.groupEnd();
         
         // Asignar a variables locales
         const { inicializarMensajeria, enviarMensaje, registrarControlador } = mensajeria;
@@ -357,20 +374,21 @@
     // 2. Función de inicialización asíncrona
     async function initializeApp() {
         try {
-            console.log('Iniciando aplicación...');
+            console.group('🚀 Iniciando aplicación...');
             
             // Importar dinámicamente la aplicación con ruta relativa
-            const appModule = await import('./js/app.js');
-            const { inicializar } = appModule;
+            console.log('📦 Cargando módulo principal de la aplicación...');
+            const appModule = await loadModule('./js/app.js');
             
-            if (typeof inicializar !== 'function') {
-                throw new Error('La función de inicialización no está disponible');
+            if (!appModule || typeof appModule.inicializar !== 'function') {
+                throw new Error('La función de inicialización no está disponible en el módulo de la aplicación');
             }
             
-            // Inicializar la aplicación
-            await inicializar();
+            console.log('⚙️ Inicializando aplicación...');
+            await appModule.inicializar();
             
-            console.log('Aplicación inicializada correctamente');
+            console.log('✅ Aplicación inicializada correctamente');
+            console.groupEnd();
             
         } catch (error) {
             console.error('Error crítico al inicializar la aplicación:', error);
@@ -1331,5 +1349,55 @@
 
     document.addEventListener("DOMContentLoaded", inicializarAplicacion);
 </script>
+    <!-- Script de inicialización del mapa -->
+    <script type="module">
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🔍 Verificando carga de Leaflet...');
+            
+            // Verificar si Leaflet está disponible
+            if (typeof L === 'undefined') {
+                console.error('❌ Leaflet no está disponible. Verifica que se haya cargado correctamente.');
+                return;
+            }
+            
+            console.log('✅ Leaflet está disponible. Versión:', L.version);
+            
+            // Verificar si el contenedor del mapa existe
+            const mapaContainer = document.getElementById('mapa');
+            if (!mapaContainer) {
+                console.error('❌ No se encontró el elemento con id="mapa"');
+                return;
+            }
+            
+            console.log('✅ Contenedor del mapa encontrado');
+            
+            // Crear un mapa de prueba
+            try {
+                console.log('🌍 Inicializando mapa de prueba...');
+                
+                // Establecer un tamaño mínimo para el contenedor
+                mapaContainer.style.minHeight = '400px';
+                
+                // Crear el mapa centrado en Valencia
+                const map = L.map('mapa').setView([39.4699, -0.3763], 13);
+                
+                // Añadir capa de OpenStreetMap
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors',
+                    maxZoom: 19
+                }).addTo(map);
+                
+                // Añadir un marcador de prueba
+                L.marker([39.4699, -0.3763]).addTo(map)
+                    .bindPopup('¡Hola! Este es un marcador de prueba en Valencia.')
+                    .openPopup();
+                
+                console.log('✅ Mapa de prueba inicializado correctamente');
+                
+            } catch (error) {
+                console.error('❌ Error al inicializar el mapa:', error);
+            }
+        });
+    </script>
 </body>
 </html>
