@@ -446,8 +446,12 @@ const retosAventura1Es = [
             // Estado del componente
             const estado = {
                 retoActualId: null,
+                inicializado: false,
                 // Agrega aquí cualquier otro estado necesario
             };
+            
+            console.log('🎮 Inicializando componente de retos y preguntas...');
+            
             try {
                 logger.info(`${logPrefix} Iniciando inicialización del componente...`);
                 
@@ -466,87 +470,83 @@ const retosAventura1Es = [
                     throw new Error('No se pudo inicializar la mensajería');
                 }
 
-                // Registrar manejadores de mensajes
-                logger.info(`${logPrefix} Registrando manejadores de mensajes...`);
-                try {
-                    if (typeof registrarControlador === 'function' && TIPOS_MENSAJE?.RETO?.MOSTRAR) {
-                        registrarControlador(TIPOS_MENSAJE.RETO.MOSTRAR, manejarMostrarReto);
-                        logger.info(`${logPrefix} Manejador de RETO.MOSTRAR registrado`);
-                    } else {
-                        throw new Error('Funciones de mensajería no disponibles');
-                    }
-                } catch (error) {
-                    logger.error(`${logPrefix} Error al registrar manejadores:`, error);
-                    throw error;
-                }
-
-                // Suscribirse a cambios de modo
-                try {
-                    modoHandler.suscribir('retos', (nuevoModo) => {
-                        logger.info(`${logPrefix} Cambio de modo detectado: ${nuevoModo}`);
-                        actualizarInterfazModo(nuevoModo);
+                // Inicializar manejadores de mensajes
+                logger.info(`${logPrefix} Inicializando manejadores de mensajes...`);
+                await inicializarManejadoresMensajes();
+                
+                // Inicializar interfaz y eventos
+                inicializarInterfaz();
+                inicializarEventos();
+                
+                // Configurar botones
+                const btnCompletado = document.getElementById('btn-completado');
+                const btnOcultar = document.getElementById('btn-ocultar');
+                
+                if (btnCompletado) {
+                    btnCompletado.addEventListener('click', async () => {
+                        if (estado.retoActualId) {
+                            logger.info(`Enviando reto completado: ${estado.retoActualId}`);
+                            try {
+                                await enviarMensaje('padre', 'RETO.COMPLETADO', {
+                                    retoId: estado.retoActualId,
+                                    timestamp: new Date().toISOString()
+                                });
+                            } catch (error) {
+                                logger.error('Error al enviar mensaje de reto completado:', error);
+                            }
+                        }
                     });
-                    
-                    // Aplicar el modo actual
-                    const modoActual = modoHandler.obtenerModoActual();
-                    actualizarInterfazModo(modoActual);
-                    logger.info(`${logPrefix} Suscrito a cambios de modo. Modo actual: ${modoActual}`);
-                } catch (error) {
-                    logger.error(`${logPrefix} Error al suscribirse a cambios de modo:`, error);
-                    // No lanzamos el error para no interrumpir la inicialización
                 }
                 
-                // Configurar manejadores de eventos
-                document.getElementById('btn-completado').addEventListener('click', async () => {
-                    if (estado.retoActualId) {
-                        logger.info(`Enviando reto completado: ${estado.retoActualId}`);
+                if (btnOcultar) {
+                    btnOcultar.addEventListener('click', async () => {
+                        logger.info('Solicitando ocultar reto.');
                         try {
-                            await enviarMensaje('padre', TIPOS_MENSAJE.RETO.COMPLETADO, { 
-                                retoId: estado.retoActualId,
+                            await enviarMensaje('padre', 'RETO.OCULTAR', {
                                 timestamp: new Date().toISOString()
                             });
                         } catch (error) {
-                            logger.error('Error al enviar mensaje de reto completado:', error);
+                            logger.error('Error al enviar mensaje para ocultar reto:', error);
                         }
-                    }
-                });
-
-                document.getElementById('btn-ocultar').addEventListener('click', async () => {
-                    logger.info('Solicitando ocultar reto.');
-                    try {
-                        await enviarMensaje('padre', TIPOS_MENSAJE.RETO.OCULTAR, {
-                            timestamp: new Date().toISOString()
-                        });
-                    } catch (error) {
-                        logger.error('Error al enviar mensaje para ocultar reto:', error);
-                    }
-                });
+                    });
+                }
 
                 // Notificar que el componente está listo
-                await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.INICIALIZACION_COMPLETADA, { 
-                    componente: CONFIG.IFRAME_ID,
+                await enviarMensaje('padre', TIPOS_MENSAJE?.SISTEMA?.INICIALIZACION_COMPLETADA || 'SISTEMA.INICIALIZACION_COMPLETADA', { 
+                    componente: CONFIG.IFRAME_ID || 'retos-preguntas',
                     timestamp: new Date().toISOString()
                 });
                 
                 estado.inicializado = true;
                 logger.info('Componente de retos inicializado correctamente');
+                console.log('✅ [RETOS] Componente de retos inicializado');
+                
+                return {
+                    componente: 'retos-preguntas',
+                    estado: 'inicializado',
+                    timestamp: new Date().toISOString()
+                };
                 
             } catch (error) {
-                logger.error('Error durante la inicialización del componente de retos:', error);
+                const errorMsg = `Error durante la inicialización del componente de retos: ${error.message}`;
+                console.error('❌', errorMsg, error);
+                logger.error(errorMsg, error);
+                
                 // Intentar notificar el error al padre
                 try {
-                    await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
+                    await enviarMensaje('padre', TIPOS_MENSAJE?.SISTEMA?.ERROR || 'SISTEMA.ERROR', {
                         tipo: 'inicializacion',
                         mensaje: error.message,
                         stack: error.stack,
-                        origen: CONFIG.IFRAME_ID,
+                        origen: CONFIG?.IFRAME_ID || 'retos-preguntas',
                         timestamp: new Date().toISOString()
                     });
                 } catch (e) {
+                    const fallbackMsg = 'No se pudo notificar el error al padre:';
                     if (window.logger) {
-                        logger.error('No se pudo notificar el error al padre:', e);
+                        logger.error(fallbackMsg, e);
                     } else {
-                        console.error('No se pudo notificar el error al padre:', e);
+                        console.error(fallbackMsg, e);
                     }
                 }
                 throw error;
