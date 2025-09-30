@@ -2,7 +2,7 @@
  * Manejador centralizado de cambios de modo
  * Mantiene el estado del modo y notifica a los componentes suscriptos
  */
-import logger from './js/logger.js';
+import logger from './logger.js';
 
 class ModoHandler {
     constructor() {
