@@ -7,21 +7,8 @@
 import { TIPOS_MENSAJE, MODOS } from './constants.js';
 import { enviarMensaje } from './mensajeria.js';
 import logger from './logger.js';
+import { CONFIG } from './config.js';
 import { inicializarMapa } from './funciones-mapa.js';
-
-// Configuración global
-export const CONFIG = {
-    DEBUG: true,
-    LOG_LEVEL: 1, // INFO
-    ID_PADRE: 'codigo-padre',
-    IFRAME_ID: 'padre',
-    HIJOS: {
-        CASA: { id: 'hijo5-casa', nombre: 'Botón Casa' },
-        COORDENADAS: { id: 'hijo2', nombre: 'Coordenadas' },
-        AUDIO: { id: 'hijo3', nombre: 'Audio' },
-        RETOS: { id: 'hijo4', nombre: 'Retos' }
-    }
-};
 
 // Estado global de la aplicación
 export const estado = {
