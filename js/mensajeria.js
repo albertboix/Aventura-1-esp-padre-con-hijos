@@ -9,6 +9,12 @@ import { TIPOS_MENSAJE } from './constants.js';
 import * as Utils from './utils.js';
 import logger from './logger.js';
 
+// Asegurarse de que las utilidades estén disponibles
+if (!Utils) {
+    console.error('Error: No se pudo cargar el módulo utils.js');
+}
+
+
 // Ensure generarHashContenido is available
 export const generarHashContenido = (tipo, datos = {}) => {
     try {
@@ -39,59 +45,31 @@ export const generarHashContenido = (tipo, datos = {}) => {
 // Extraer las demás utilidades necesarias
 const { configurarUtils, crearObjetoError, generarIdUnico } = Utils;
 
-// Lista de tipos de mensajes válidos - Actualizada para incluir todos los tipos definidos en constants.js
+// Lista de tipos de mensajes válidos - Usando las constantes estandarizadas
 const TIPOS_MENSAJE_VALIDOS = [
     // SISTEMA
-    TIPOS_MENSAJE.SISTEMA.INICIALIZACION,
-    TIPOS_MENSAJE.SISTEMA.INICIALIZACION_COMPLETADA,
-    TIPOS_MENSAJE.SISTEMA.ESTADO,
-    TIPOS_MENSAJE.SISTEMA.ERROR,
-    TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO,
-    TIPOS_MENSAJE.SISTEMA.CONFIRMACION,
-    
-    // DATOS - Incluir todos los tipos de mensajes de DATOS
-    ...Object.values(TIPOS_MENSAJE.DATOS),
-    TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO,
-    TIPOS_MENSAJE.SISTEMA.PING,
-    TIPOS_MENSAJE.SISTEMA.PONG,
-    TIPOS_MENSAJE.SISTEMA.LISTO,
-    TIPOS_MENSAJE.SISTEMA.COMPONENTE_INICIALIZADO,
-    TIPOS_MENSAJE.SISTEMA.INICIALIZACION_FINALIZADA,
+    ...Object.values(TIPOS_MENSAJE.SISTEMA),
     
     // CONTROL
-    TIPOS_MENSAJE.CONTROL.HABILITAR,
-    TIPOS_MENSAJE.CONTROL.DESHABILITAR,
-    TIPOS_MENSAJE.CONTROL.GPS,
-    TIPOS_MENSAJE.CONTROL.CAMBIAR_MODO,
-    
-    // NAVEGACION
-    TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA,
-    TIPOS_MENSAJE.NAVEGACION.SOLICITAR_DESTINO,
-    TIPOS_MENSAJE.NAVEGACION.ESTABLECER_DESTINO,
-    TIPOS_MENSAJE.NAVEGACION.ACTUALIZAR_POSICION,
-    TIPOS_MENSAJE.NAVEGACION.SOLICITAR_ESTADO_MAPA,
-    TIPOS_MENSAJE.NAVEGACION.ESTADO_MAPA,
-    TIPOS_MENSAJE.NAVEGACION.PARADAS,
-    TIPOS_MENSAJE.NAVEGACION.SOLICITAR_PARADAS, // Añadido
-    
-    // AUDIO
-    TIPOS_MENSAJE.AUDIO.REPRODUCIR,
-    TIPOS_MENSAJE.AUDIO.PAUSAR,
-    TIPOS_MENSAJE.AUDIO.FIN_REPRODUCCION,
-    TIPOS_MENSAJE.AUDIO.FINALIZADO,
-    
-    // RETO
-    TIPOS_MENSAJE.RETO.MOSTRAR,
-    TIPOS_MENSAJE.RETO.OCULTAR,
-    TIPOS_MENSAJE.RETO.COMPLETADO,
+    ...Object.values(TIPOS_MENSAJE.CONTROL),
     
     // DATOS
-    TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS,
-    TIPOS_MENSAJE.DATOS.SOLICITAR_PARADA,
-    TIPOS_MENSAJE.DATOS.RESPUESTA_PARADAS,
-    TIPOS_MENSAJE.DATOS.RESPUESTA_PARADA,
-    TIPOS_MENSAJE.DATOS.PARADAS,
-    TIPOS_MENSAJE.DATOS.COORDENADAS_PARADAS,
+    ...Object.values(TIPOS_MENSAJE.DATOS),
+    
+    // NAVEGACION
+    ...Object.values(TIPOS_MENSAJE.NAVEGACION),
+    
+    // AUDIO
+    ...Object.values(TIPOS_MENSAJE.AUDIO),
+    
+    // RETO
+    ...Object.values(TIPOS_MENSAJE.RETO),
+    
+    // UI
+    ...Object.values(TIPOS_MENSAJE.UI),
+    
+    // MEDIOS
+    ...Object.values(TIPOS_MENSAJE.MEDIOS)
     TIPOS_MENSAJE.DATOS.PUNTOS,
     TIPOS_MENSAJE.DATOS.PUNTOS_RUTA,
     
