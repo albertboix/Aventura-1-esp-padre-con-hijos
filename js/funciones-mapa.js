@@ -141,17 +141,27 @@ export async function inicializarMapa(config = {}) {
                 logger.info('✅ Contenedor del mapa creado dinámicamente');
             }
             
-            // Preparar el contenedor explícitamente
-            container.style.display = 'block';
-            container.style.visibility = 'visible';
-            container.style.opacity = '1';
-            container.style.width = '100%';
-            container.style.height = '100%';
-            container.style.position = 'fixed';
-            container.style.top = '0';
-            container.style.left = '0';
-            container.style.zIndex = '10';
-            container.style.backgroundColor = '#f5f5f5';
+            // Forzar estilos críticos para el contenedor
+            Object.assign(container.style, {
+                display: 'block',
+                visibility: 'visible',
+                opacity: '1',
+                width: '100vw',
+                height: '100vh',
+                position: 'fixed',
+                top: '0',
+                left: '0',
+                zIndex: '1000',
+                backgroundColor: '#f5f5f5',
+                margin: '0',
+                padding: '0',
+                overflow: 'hidden'
+            });
+            
+            // Asegurar que el body tenga dimensiones correctas
+            document.body.style.margin = '0';
+            document.body.style.padding = '0';
+            document.body.style.overflow = 'hidden';
             
             // Si ya existe un mapa, destruirlo para evitar problemas
             if (window.mapa && typeof window.mapa.remove === 'function') {
@@ -159,38 +169,82 @@ export async function inicializarMapa(config = {}) {
                 window.mapa = null;
             }
 
-            // Crear nueva instancia del mapa
+            // Crear nueva instancia del mapa con opciones mejoradas
             const mapInstance = L.map(containerId, {
                 center: mapConfig.center,
                 zoom: mapConfig.zoom,
                 minZoom: mapConfig.minZoom || 12,
                 maxZoom: mapConfig.maxZoom || 18,
                 zoomControl: mapConfig.zoomControl !== undefined ? mapConfig.zoomControl : true,
-                attributionControl: true
+                attributionControl: true,
+                preferCanvas: true, // Mejor rendimiento para muchos marcadores
+                fadeAnimation: true,
+                zoomAnimation: true,
+                markerZoomAnimation: true
             });
 
-            // Añadir capa base alternativa de OpenStreetMap
-            L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+            // Añadir capa base de OpenStreetMap con reintentos
+            const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
                 maxZoom: 19,
                 tileSize: 256,
+                detectRetina: true,
+                errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=' // Imagen en blanco para errores
+            }).on('tileerror', function() {
+                logger.warn('Error al cargar un tile del mapa');
+            });
+            
+            // Añadir capa alternativa
+            const hotLayer = L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles style by Humanitarian OpenStreetMap Team',
+                maxZoom: 19,
+                tileSize: 256,
                 detectRetina: true
-            }).addTo(mapInstance);
+            });
+            
+            // Añadir capa base por defecto
+            osmLayer.addTo(mapInstance);
+            
+            // Configurar capas base
+            const baseLayers = {
+                'OpenStreetMap': osmLayer,
+                'HOT (Humanitarian)': hotLayer
+            };
+            
+            // Añadir control de capas
+            L.control.layers(baseLayers).addTo(mapInstance);
 
             // Actualizar estado
             estadoMapa.inicializado = true;
             window.mapa = mapInstance; // Referencia global
-            mapa = mapInstance; // Guardar referencia local también (PROBLEMA 5: Faltaba asignar a variable local)
+            mapa = mapInstance;
+            
+            // Función para forzar la actualización del mapa
+            const forceMapUpdate = () => {
+                try {
+                    mapInstance.invalidateSize({ animate: true, duration: 0.5 });
+                    mapInstance.setView(mapConfig.center, mapConfig.zoom, { animate: false });
+                    logger.info('🔄 Mapa actualizado forzosamente');
+                } catch (e) {
+                    logger.error('Error al actualizar el mapa:', e);
+                }
+            };
+            
+            // Forzar actualización del tamaño después de un breve retraso
+            setTimeout(forceMapUpdate, 100);
             
             // Verificar que el mapa se inicializó correctamente
             if (typeof mapInstance.getCenter === 'function') {
                 logger.info('✅ Mapa inicializado correctamente en:', mapInstance.getCenter());
                 
-                // Forzar actualización del tamaño
-                setTimeout(() => {
-                    mapInstance.invalidateSize(true);
-                    logger.info('🔄 Tamaño del mapa actualizado forzosamente');
-                }, 300);
+                // Forzar actualización del tamaño después de que se carguen los estilos
+                window.addEventListener('load', forceMapUpdate);
+                
+                // Manejar redimensionamiento de ventana
+                window.addEventListener('resize', () => {
+                    clearTimeout(window.mapResizeTimer);
+                    window.mapResizeTimer = setTimeout(forceMapUpdate, 250);
+                });
                 
                 resolve(mapInstance);
             } else {
