@@ -1,178 +1,1183 @@
-/**
- * Utilidades generales para la aplicación
- * @module Utils
- */
-
-import logger from './logger.js';
-
-// Configuración por defecto
-let config = {
-    iframeId: 'unknown',
-    debug: false,
-    logLevel: 1
-};
-
-/**
- * Configura las utilidades
- * @param {Object} options - Opciones de configuración
- */
-export function configurarUtils(options = {}) {
-    // Actualizar configuración
-    config = { ...config, ...options };
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Panel de control de GPS para la ruta turística">
+    <title>Panel de Control GPS - Ruta Turística</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+    /* Contenedor principal */
+    #zona-boton-casa {
+        box-sizing: border-box;
+      position: relative;
+      width: 100%;
+      height: 60px;
+      display: flex;
+      flex-direction: row;
+      align-items: flex-start;
+      gap: 0;
+      justify-content: flex-start; /* Botón a la izquierda */
+      top: 2px; /* Baja los botones 2px */
+    }
     
-    // Configurar logger si está disponible
-    if (logger && typeof logger.configure === 'function') {
-        logger.configure({
-            iframeId: config.iframeId,
-            logLevel: config.logLevel,
-            debug: config.debug
+    /* Botón GPS: estilo actualizado with emoji de satélite y etiqueta ON/OFF */
+    #gps-casa-btn {
+      position: relative;
+      margin: 0 0 0 10px;
+      z-index: 2;
+      width: 50px;
+      height: 50px;
+      min-width: 50px;
+      min-height: 50px;
+      border-radius: 4px;
+      border: 1px solid #fff;
+      background-color: #f44336;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+      transition: all 0.3s ease;
+      padding: 0;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    
+    #gps-casa-btn.on {
+      background-color: #4CAF50 !important;
+      border: 1px solid #45a049 !important;
+    }
+    
+    #gps-casa-btn.off {
+      background-color: #f44336 !important;
+      border: 1px solid #d32f2f !important;
+    }
+    
+    #gps-casa-btn:hover {
+      opacity: 0.95;
+      transform: scale(1.05);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    }
+    
+    #gps-casa-btn:hover .satellite-emoji {
+      transform: rotate(15deg);
+    }
+    
+    #gps-casa-btn:active {
+      transform: scale(0.95);
+    }
+    
+    .button-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+      line-height: 1;
+      gap: 2px;
+    }
+    
+    .satellite-emoji {
+      font-size: 28px;
+      line-height: 1;
+      display: block;
+      transition: transform 0.3s ease;
+    }
+    
+    .gps-label {
+      font-size: 20px;
+      font-weight: bold;
+      line-height: 1;
+      margin: 0;
+      padding: 0;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    /* Ventana de paradas compacta y horizontal */
+    #paradas-window {
+      position: absolute;
+      top: 0;
+      left: 100px; /* Aumenta el desplazamiento para evitar solapamiento con el botón */
+      margin-left: 0;
+      z-index: 3; /* Por encima del botón */
+      background: rgba(255,255,255,0.95);
+      border-radius: 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      display: none;
+      flex-direction: column;
+      padding: 1px 2px 1px 2px; /* 1px arriba y abajo, 2px laterales */
+      border: 1px solid #e0e0e0;
+      width: auto;
+      min-width: 220px;
+      max-width: 340px;
+      height: 47px; /* 36px botón + 8px scroll + 1px arriba + 1px abajo + 1px entre = 47px */
+      overflow: hidden;
+    }
+    
+    /* Scroll horizontal dedicado a los botones */
+    #lista-paradas {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      padding: 0 2px 0 2px; /* Sin padding vertical, solo horizontal */
+      overflow-x: auto;
+      overflow-y: hidden;
+      gap: 1px; /* 1px entre botones */
+      align-items: center;
+      white-space: nowrap;
+      -webkit-overflow-scrolling: touch;
+      height: 36px; /* Altura exacta del botón */
+      min-height: 36px;
+      max-height: 36px;
+      scrollbar-width: thin;
+      scrollbar-color: #c1c1c1 #f1f1f1;
+    }
+    #lista-paradas::-webkit-scrollbar {
+      height: 9px; /* Barra de scroll de 8px */
+    }
+    #lista-paradas::-webkit-scrollbar-thumb {
+      background: #c1c1c1;
+      border-radius: 4px;
+    }
+    #lista-paradas::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 4px;
+    }
+    
+    /* Botones de parada y tramo */
+    .parada-tramo-btn {
+      background: white;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 4px 8px;
+      margin: 0;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+      flex: 0 0 auto;
+      font-size: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-width: 120px;
+      max-width: 180px;
+      min-height: 36px;
+      height: 36px;
+      gap: 4px;
+      overflow: hidden;
+    }
+    .parada-btn {
+      background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+      color: white;
+      border: none !important;
+    }
+    
+    .tramo-btn {
+      background: linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%);
+      color: white;
+      border: none !important;
+    }
+    
+    .inicio-btn {
+      background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%);
+      color: white;
+      border: none !important;
+    }
+    
+    .parada-tramo-btn.actual {
+      border: 2px solid #ffd700 !important;
+      box-shadow: 0 0 0 2px #ffd700, 0 0 15px rgba(255, 215, 0, 0.7) !important;
+      transform: scale(1.05);
+      font-weight: bold;
+      z-index: 2;
+      position: relative;
+    }
+    
+    .btn-row {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      gap: 4px;
+    }
+    .btn-icon {
+      font-size: 1.2em;
+      flex-shrink: 0;
+      margin-right: 2px;
+    }
+    .btn-title {
+      font-weight: 600;
+      white-space: nowrap;
+      font-size: 0.93em;
+      margin-bottom: 0;
+    }
+    .btn-desc {
+      font-size: 0.82em;
+      opacity: 0.9;
+      white-space: normal;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 90px;
+      font-weight: 500;
+      line-height: 1.1;
+      text-align: center;
+      max-height: 2.2em;
+      display: block;
+      margin-top: 2px;
+    }
+    
+    /* Modificar estas clases para usar con #lista-paradas */
+    #paradas-window.visible {
+        display: flex !important;
+        width: 90% !important;
+        max-width: 1000px !important;
+        opacity: 1 !important;
+        height: 47px !important; /* Ajusta para que no crezca verticalmente */
+    }
+    
+    #paradas-window.hidden {
+        display: none !important;
+    }
+    
+    /* Estilos para efectos visuales de selección */
+    .parada-tramo-btn.seleccionando {
+      transform: scale(0.95);
+      opacity: 0.8;
+      box-shadow: 0 0 5px rgba(0,0,0,0.3) !important;
+    }
+
+    .parada-tramo-btn.seleccionado {
+      animation: pulse 1s;
+    }
+
+    #gps-casa-btn.pulsando {
+      transform: scale(0.95);
+    }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.7); }
+      70% { box-shadow: 0 0 0 10px rgba(255, 215, 0, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0); }
+    }
+
+    /* Estilo para el feedback de error */
+    #gps-casa-btn.error {
+      animation: shake 0.5s;
+      background-color: #ff0000 !important;
+    }
+
+    @keyframes shake {
+      0% { transform: translateX(0); }
+      25% { transform: translateX(-5px); }
+      50% { transform: translateX(5px); }
+      75% { transform: translateX(-5px); }
+      100% { transform: translateX(0); }
+    }
+
+    #estado-carga {
+        display: none !important;
+    }
+
+    /* Responsividad móvil para la ventana de paradas y botones */
+    @media (max-width: 600px) {
+      #paradas-window {
+        left: 0 !important;
+        right: 0 !important;
+        min-width: 0 !important;
+        max-width: 100vw !important;
+        width: 100vw !important;
+        border-radius: 0 0 20px 20px !important;
+        height: 47px !important; /* Igual que en escritorio */
+        padding: 1px 0 !important;
+        top: 1px !important;
+      }
+      #lista-paradas {
+        min-width: 0 !important;
+        max-width: 100vw !important;
+        width: 100vw !important;
+        gap: 1px !important;
+        padding: 0 2px 0 2px !important;
+        height: 36px !important;
+        min-height: 36px !important;
+        max-height: 36px !important;
+      }
+      .parada-tramo-btn {
+        min-width: 90px !important;
+        max-width: 120px !important;
+        font-size: 11px !important;
+        padding: 2px 4px !important;
+        height: 36px !important;
+        min-height: 36px !important;
+        gap: 2px !important;
+      }
+      .btn-desc {
+        max-width: 60px !important;
+        font-size: 0.75em !important;
+      }
+    }
+    </style>
+    <script type="module">
+    // Importar módulos necesarios
+    import { inicializarMensajeria, enviarMensaje, registrarControlador } from './js/mensajeria.js';
+    import { modoHandler } from './js/modo-handler.js';
+    import { TIPOS_MENSAJE } from './js/constants.js';
+    import logger from './js/logger.js';
+    
+    const COMPONENTE_ID = 'BOTON-CASA';
+    const IFRAME_ID = 'hijo5-casa';
+    
+    // Estado del componente (se define más adelante)
+
+    // Configuración de mensajería
+    const CONFIG_MENSAJERIA = {
+        iframeId: 'hijo5-casa',
+        debug: true,
+        logLevel: 0, // DEBUG level for troubleshooting
+        reintentos: {
+            maximos: 3,
+            tiempoEspera: 1000,
+            factor: 2
+        }
+    };
+    
+    // Array definido de paradas y tramos con sus respectivos padreid
+    const puntosRuta = [
+      { tipo: "inicio", parada: 0, nombre: "Torres de Serranos (start)", padreid: "padre-P-0" },
+      { tipo: "tramo", tramo: 1, nombre: "Torres de Serranos → Plaza de la crida (Puente de Serranos)", padreid: "padre-TR-1" },
+      { tipo: "parada", parada: 1, nombre: "Plaza de la crida (Puente de Serranos)", padreid: "padre-P-1" },
+      { tipo: "tramo", tramo: 2, nombre: "Plaza de la crida → Calle Muro de Santa Ana", padreid: "padre-TR-2" },
+      { tipo: "parada", parada: 2, nombre: "Calle Muro de Santa Ana", padreid: "padre-P-2" },
+      { tipo: "tramo", tramo: 3, nombre: "Calle Muro de Santa Ana → Palacio de los Borgia", padreid: "padre-TR-3" },
+      { tipo: "parada", parada: 3, nombre: "Iglesia de San Lorenzo", padreid: "padre-P-3" },
+      { tipo: "tramo", tramo: 4, nombre: "Iglesia de San Lorenzo → Plaza de la Virgen", padreid: "padre-TR-4" },
+      { tipo: "parada", parada: 4, nombre: "Plaza de la Virgen Reto 6", padreid: "padre-P-4" },
+      { tipo: "parada", parada: 5, nombre: "Plaza de la Virgen Reto 7", padreid: "padre-P-5" },
+      { tipo: "tramo", tramo: 5, nombre: "Plaza de la Virgen → Plaza de la Almoína", padreid: "padre-TR-5" },
+      { tipo: "parada", parada: 6, nombre: "Panel cerámico muro Catedral", padreid: "padre-P-6" },
+      { tipo: "parada", parada: 7, nombre: "Capilla exterior catedral Reto 10", padreid: "padre-P-7" },
+      { tipo: "parada", parada: 8, nombre: "Capilla exterior catedral Reto 11", padreid: "padre-P-8" },
+      { tipo: "parada", parada: 9, nombre: "Arco Novo Catedral y Puerta Negra Basílica", padreid: "padre-P-9" },
+      { tipo: "parada", parada: 10, nombre: "Casa del Punt de Gantxo", padreid: "padre-P-10" },
+      { tipo: "tramo", tramo: 6, nombre: "Plaza de la Almoína → Plaza Decimo Junio Bruto (Museo Arqueológico de la Almoína)", padreid: "padre-TR-6" },
+      { tipo: "parada", parada: 11, nombre: "Museo arqueológico La Almoína", padreid: "padre-P-11" },
+      { tipo: "parada", parada: 12, nombre: "Museo arqueológico La Almoína", padreid: "padre-P-12" },
+      { tipo: "parada", parada: 13, nombre: "Vista de la Catedral, Cimborrio", padreid: "padre-P-13" },
+      { tipo: "tramo", tramo: 7, nombre: "Museo arqueológico La Almoína → Palacio Arzobispal", padreid: "padre-TR-7" },
+      { tipo: "parada", parada: 14, nombre: "Palacio Arzobispal y Puerta Románica de la Catedral", padreid: "padre-P-14" },
+      { tipo: "parada", parada: 15, nombre: "Puerta Románica de la Catedral", padreid: "padre-P-15" },
+      { tipo: "tramo", tramo: 8, nombre: "Puerta Románica de la Catedral → Plaza del Ayuntamiento", padreid: "padre-TR-8" },
+      { tipo: "parada", parada: 16, nombre: "Plaza del Ayuntamiento", padreid: "padre-P-16" },
+      { tipo: "tramo", tramo: 9, nombre: "Plaza del Ayuntamiento → Edificio del Ayuntamiento de València", padreid: "padre-TR-9" },
+      { tipo: "parada", parada: 17, nombre: "Edificio del Ayuntamiento", padreid: "padre-P-17" },
+      { tipo: "parada", parada: 18, nombre: "Edificio del Ayuntamiento", padreid: "padre-P-18" },
+      { tipo: "tramo", tramo: 10, nombre: "Edificio del Ayuntamiento → Estación del Norte", padreid: "padre-TR-10" },
+      { tipo: "parada", parada: 19, nombre: "Estación del Norte", padreid: "padre-P-19" },
+      { tipo: "tramo", tramo: 11, nombre: "Estación del Norte → Plaza de Toros de València", padreid: "padre-TR-11" },
+      { tipo: "tramo", tramo: 12, nombre: "Plaza de Toros → Casa estilo Árabe", padreid: "padre-TR-12" },
+      { tipo: "parada", parada: 20, nombre: "Casa estilo Árabe", padreid: "padre-P-20" },
+      { tipo: "parada", parada: 21, nombre: "Casa estilo Árabe, mitad Aventura", padreid: "padre-P-21" },
+      { tipo: "tramo", tramo: 13, nombre: "Casa estilo Árabe → Palacio de Comunicaciones (Correos)", padreid: "padre-TR-13" },
+      { tipo: "parada", parada: 22, nombre: "Palacio de Comunicaciones: Correos", padreid: "padre-P-22" },
+      { tipo: "parada", parada: 23, nombre: "Edificio Suay", padreid: "padre-P-23" },
+      { tipo: "tramo", tramo: 14, nombre: "Palacio de Comunicaciones → Banco de València", padreid: "padre-TR-14" },
+      { tipo: "parada", parada: 24, nombre: "Banco de Valencia", padreid: "padre-P-24" },
+      { tipo: "tramo", tramo: 15, nombre: "Banco de València → Palacio del Marqués de Dos Aguas (Museo Nacional de Cerámica)", padreid: "padre-TR-15" },
+      { tipo: "parada", parada: 25, nombre: "Palacio del Marqués de Dos Aguas (Museo Nacional de Cerámica)", padreid: "padre-P-25" },
+      { tipo: "tramo", tramo: 16, nombre: "Palacio del Marqués → Mercado Central", padreid: "padre-TR-16" },
+      { tipo: "parada", parada: 26, nombre: "Mercado central", padreid: "padre-P-26" },
+      { tipo: "tramo", tramo: 17, nombre: "Mercado Central → Lonja de la Seda", padreid: "padre-TR-17" },
+      { tipo: "parada", parada: 27, nombre: "Lonja de la Seda", padreid: "padre-P-27" },
+      { tipo: "tramo", tramo: 18, nombre: "Lonja de la Seda → Plaza Redonda", padreid: "padre-TR-18" },
+      { tipo: "parada", parada: 28, nombre: "Plaza Redonda", padreid: "padre-P-28" },
+      { tipo: "tramo", tramo: 19, nombre: "Plaza Redonda → Iglesia de los Santos Juanes", padreid: "padre-TR-19" },
+      { tipo: "parada", parada: 29, nombre: "Iglesia de los Santos Juanes", padreid: "padre-P-29" },
+      { tipo: "tramo", tramo: 20, nombre: "Iglesia de los Santos Juanes → Mercado Central", padreid: "padre-TR-20" },
+      { tipo: "tramo", tramo: 21, nombre: "Mercado Central → Palacio de la Generalitat", padreid: "padre-TR-21" },
+      { tipo: "parada", parada: 30, nombre: "Palau de la Generalitat", padreid: "padre-P-30" },
+      { tipo: "tramo", tramo: 22, nombre: "Palacio de la Generalitat → Torres de Serranos (Final)", padreid: "padre-TR-22" },
+      { tipo: "parada", parada: 31, nombre: "Torres de Serranos (Final)", padreid: "padre-P-31" }
+    ];
+    
+    // Exponer puntosRuta para que sea accesible desde el padre (solo una vez)
+    if (!window.puntosRuta) {
+        window.puntosRuta = puntosRuta;
+    }
+    
+    // Manejar errores globales
+    window.addEventListener('error', function(event) {
+        console.error('Error:', event.error);
+        // Aquí podrías agregar más lógica de manejo de errores
+    });
+    
+    // Estado del componente
+    const estado = {
+        inicializado: false,
+        inicializando: false,
+        modo: 'casa', // Default mode
+        gpsActivo: false,
+        error: null,
+        watchId: null,
+        paradaActual: -1,
+        tramoActual: -1,
+        paradas: puntosRuta, // Inicializamos con el array local como fallback
+        cargandoParadas: false,
+        intentosParadas: 0
+    };
+    
+    // Make available globally for debugging
+    window.estadoComponente = estado;
+    window.TIPOS_MENSAJE = TIPOS_MENSAJE;
+    
+    // Función para actualizar la interfaz según el modo
+    function actualizarInterfaz(modo) {
+        console.log(`Actualizando interfaz a modo: ${modo}`);
+        const botonCasa = document.getElementById('gps-casa-btn');
+        const label = botonCasa.querySelector('.gps-label');
+        const paradasWindow = document.getElementById('paradas-window');
+        
+        if (!botonCasa) {
+            console.warn('No se encontró el botón de casa');
+            return;
+        }
+        
+        const gpsActivo = modo === 'aventura';
+        
+        if (modo === 'casa') {
+            // Cambios visuales para modo casa (botón ROJO, mostrar paradas)
+            if (paradasWindow) paradasWindow.classList.remove('hidden');
+            if (paradasWindow) paradasWindow.classList.add('visible');
+            botonCasa.classList.remove('on');
+            botonCasa.classList.add('off');
+            botonCasa.title = 'Activar GPS (Cambiar a modo Aventura)';
+            label.textContent = 'OFF';
+            
+            // NUEVO: Renderizar la lista de paradas en modo casa
+            renderizarListaParadas();
+        } else {
+            // Cambios visuales para modo aventura (botón VERDE, ocultar paradas)
+            if (paradasWindow) paradasWindow.classList.remove('visible');
+            if (paradasWindow) paradasWindow.classList.add('hidden');
+            botonCasa.classList.remove('off');
+            botonCasa.classList.add('on');
+            botonCasa.title = 'Desactivar GPS (Cambiar a modo Casa)';
+            label.textContent = 'ON';
+        }
+        
+        estado.modo = modo;
+        estado.gpsActivo = gpsActivo;
+        console.log(`Interfaz actualizada. Modo: ${modo}, GPS: ${estado.gpsActivo ? 'ACTIVADO' : 'DESACTIVADO'}`);
+        
+        // ELIMINAR la llamada a manejarCambioGPS - ahora es responsabilidad de hijo2
+    }
+    
+    // Función para manejar el cambio de modo - DEFINICIÓN ÚNICA
+    async function manejarClickCambioModo() {
+        try {
+            // Toggle mode
+            const nuevoModo = estado.modo === 'casa' ? 'aventura' : 'casa';
+            console.log(`🔄 [CASA] Cambiando de modo ${estado.modo} a ${nuevoModo}`);
+            
+            // Actualizar la interfaz primero para feedback inmediato
+            actualizarInterfaz(nuevoModo);
+            
+            // Enviar el mensaje al padre con el formato exacto esperado
+            console.log(`📤 [CASA] Enviando mensaje SISTEMA.CAMBIO_MODO al padre...`);
+            try {
+                const tipoMensaje = TIPOS_MENSAJE?.SISTEMA?.CAMBIO_MODO;
+                if (!tipoMensaje) {
+                    throw new Error('Tipo de mensaje no definido: TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO');
+                }
+                await enviarMensaje('padre', tipoMensaje, { 
+                    modo: nuevoModo, 
+                    origen: 'hijo5-casa',
+                    timestamp: new Date().toISOString()
+                });
+                console.log('✅ Mensaje de cambio de modo enviado correctamente');
+            } catch (error) {
+                console.error('❌ Error al enviar mensaje de cambio de modo:', error);
+                throw error;
+            }
+            
+            console.log(`✅ [CASA] Mensaje de cambio a modo ${nuevoModo} enviado correctamente`);
+            
+            // Actualizar estado interno
+            estado.modo = nuevoModo;
+            
+            // Renderizar lista de paradas si estamos en modo casa
+            if (nuevoModo === 'casa') {
+                console.log('🏠 [CASA] Mostrando lista de paradas para exploración libre');
+                renderizarListaParadas();
+            } else {
+                console.log('🧭 [CASA] Ocultando lista de paradas en modo aventura');
+                // Ocultar la lista de paradas en modo aventura
+                const paradasWindow = document.getElementById('paradas-window');
+                if (paradasWindow) {
+                    paradasWindow.classList.remove('visible');
+                    paradasWindow.classList.add('hidden');
+                }
+            }
+        } catch (error) {
+            console.error('❌ [CASA] Error al cambiar el modo:', error);
+            // Feedback visual del error
+            const boton = document.getElementById('gps-casa-btn');
+            if (boton) {
+                boton.classList.add('error');
+                setTimeout(() => boton.classList.remove('error'), 500);
+            }
+            logger.error('[BOTON-CASA] No se pudo cambiar de modo');
+            alert('No se pudo cambiar de modo. Intente de nuevo.');
+        }
+    }
+    
+    // Exponer la función al objeto window
+    window.manejarClickCambioModo = manejarClickCambioModo;
+    logger.debug('[BOTON-CASA] Función manejarClickCambioModo expuesta al window');
+
+    // ========================================
+    // MANEJADORES DE MENSAJES
+    // ========================================
+
+    // Manejador para recibir cambios de modo
+    function manejarCambioModo(mensaje) {
+        try {
+            const { modo, origen } = mensaje.datos || {};
+            if (!modo) {
+                logger.warn(`[${COMPONENTE_ID}] Mensaje de cambio de modo sin datos`);
+                return;
+            }
+            
+            logger.info(`[${COMPONENTE_ID}] Cambio de modo solicitado por ${origen || 'origen desconocido'}: ${modo}`);
+            
+            // Validar que el modo sea válido
+            if (modo !== 'casa' && modo !== 'aventura') {
+                logger.warn(`[${COMPONENTE_ID}] Intento de cambiar a modo no válido: ${modo}`);
+                return;
+            }
+            
+            // Usar el modoHandler para manejar el cambio de modo
+            modoHandler.cambiarModo(modo, COMPONENTE_ID);
+            
+        } catch (error) {
+            logger.error(`[${COMPONENTE_ID}] Error en manejo de cambio de modo:`, error);
+            
+            // Notificar al padre en caso de error
+            if (window.parent !== window) {
+                enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
+                    tipo: 'CAMBIO_MODO',
+                    error: error.message,
+                    origen: COMPONENTE_ID,
+                    timestamp: new Date().toISOString()
+                });
+            }
+        }
+    
+    } // Cierre de manejarCambioModo
+    
+    // Función para actualizar la interfaz según el modo
+    function actualizarInterfazModo(modo) {
+        try {
+            logger.debug(`[${COMPONENTE_ID}] Actualizando interfaz para modo: ${modo}`);
+            
+            // Actualizar el estado local
+            if (estado) {
+                estado.modo = modo;
+            }
+            
+            // Aquí puedes añadir lógica específica para actualizar la interfaz
+            // Por ejemplo, cambiar clases CSS, mostrar/ocultar elementos, etc.
+            const body = document.body;
+            if (modo === 'aventura') {
+                body.classList.add('modo-aventura');
+                body.classList.remove('modo-casa');
+            } else {
+                body.classList.add('modo-casa');
+                body.classList.remove('modo-aventura');
+            }
+            
+            // Notificar que la interfaz se ha actualizado
+            logger.info(`[${COMPONENTE_ID}] Interfaz actualizada para modo: ${modo}`);
+            
+        } catch (error) {
+            logger.error(`[${COMPONENTE_ID}] Error al actualizar la interfaz:`, error);
+            
+            // Notificar al padre en caso de error
+            if (window.parent !== window) {
+                enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
+                    tipo: 'ACTUALIZACION_INTERFAZ',
+                    error: error.message,
+                    origen: COMPONENTE_ID,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            
+            throw error; // Relanzar para manejarlo en el manejador de errores
+        }
+    }
+    
+    /**
+     * Maneja la recepción de datos de paradas desde el padre
+     * @param {Object} mensaje - Mensaje con los datos de paradas
+     */
+    function manejarRecepcionParadas(mensaje) {
+        try {
+            console.log('Recibiendo datos de paradas:', mensaje);
+            const { aventuraParadas, paradas } = mensaje.datos || {};
+
+            // Soporta ambos formatos: aventuraParadas (preferido) o paradas
+            const nuevasParadas = Array.isArray(aventuraParadas) ? aventuraParadas
+                            : Array.isArray(paradas) ? paradas
+                            : null;
+
+            if (!nuevasParadas) {
+                console.warn('Mensaje de paradas recibido sin datos válidos');
+                return { exito: false, error: 'Formato de datos inválido' };
+            }
+
+            // Actualizar array de paradas local
+            estado.paradas = nuevasParadas;
+
+            // Actualizar UI con las nuevas paradas
+            renderizarListaParadas();
+
+            console.log(`Datos de ${nuevasParadas.length} paradas cargados correctamente`);
+            return {
+                exito: true,
+                paradasCargadas: nuevasParadas.length
+            };
+        } catch (error) {
+            console.error('Error al procesar datos de paradas:', error);
+            return {
+                exito: false,
+                error: error.message
+            };
+        }
+    }
+
+    // Función para renderizar la lista de paradas
+    function renderizarListaParadas() {
+        const listaParadasContainer = document.getElementById('lista-paradas');
+        if (!listaParadasContainer) return;
+
+        // Asegura que el contenedor tenga scroll horizontal y esté vacío antes de renderizar
+        listaParadasContainer.style.overflowX = 'auto';
+        listaParadasContainer.style.overflowY = 'hidden';
+        listaParadasContainer.innerHTML = '';
+
+        // Si ya estamos cargando paradas, no hacemos nada
+        if (estado.cargandoParadas) {
+            console.log('Ya hay una solicitud de paradas en curso');
+            return;
+        }
+        
+        // Usar paradas del estado si ya las tenemos y son válidas
+        if (estado.paradas && estado.paradas.length > 0) {
+            console.log('Usando paradas del estado interno', estado.paradas);
+            renderizarBotonesParadas(listaParadasContainer, estado.paradas);
+            return;
+        }
+        
+        // Usar el array local como fallback inmediato
+        estado.paradas = puntosRuta;
+        renderizarBotonesParadas(listaParadasContainer, puntosRuta);
+        
+        // Aun así, solicitar datos actualizados de paradas al padre
+        console.log('Solicitando paradas actualizadas al padre...');
+        
+        // Indicar que estamos cargando paradas
+        estado.cargandoParadas = true;
+        estado.intentosParadas++;
+        
+        // Solicitar paradas con timeout para evitar esperas infinitas
+        const timeout = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Timeout al solicitar paradas')), 5000);
+        });
+        
+        const tipoMensaje = TIPOS_MENSAJE?.DATOS?.SOLICITAR_PARADAS;
+        if (!tipoMensaje) {
+            throw new Error('Tipo de mensaje no definido: TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS');
+        }
+        
+        Promise.race([
+            enviarMensaje('padre', tipoMensaje, {
+                version: '1.0'
+            }),
+            timeout
+        ])
+        .then(response => {
+            estado.cargandoParadas = false;
+            console.log('Paradas recibidas:', response);
+            
+            // Si se recibió respuesta con paradas, guardarlas y renderizarlas
+            if (response && response.paradas && response.paradas.length > 0) {
+                estado.paradas = response.paradas; // Guardar en el estado
+                renderizarBotonesParadas(listaParadasContainer, estado.paradas);
+            }
+        })
+        .catch(err => {
+            estado.cargandoParadas = false;
+            console.error('Error al solicitar paradas:', err);
+            // Ya tenemos las paradas locales renderizadas, así que no hay problema
         });
     }
     
-    return config;
-}
+    // Nueva función para renderizar botones con mejor formato
+    function renderizarBotonesParadas(container, paradas) {
+        container.innerHTML = '';
+        paradas.forEach((p, idx) => {
+            // Determinar tipo y emoji
+            let emoji = '';
+            let tipoLabel = '';
+            if (p.tipo === 'inicio') {
+                emoji = '🏁';
+                tipoLabel = 'Inicio';
+            } else if (p.tipo === 'parada') {
+                emoji = '🅿️';
+                tipoLabel = `Parada ${p.parada !== undefined ? p.parada : ''}`;
+            } else if (p.tipo === 'tramo') {
+                emoji = '➡️';
+                tipoLabel = `Tramo ${p.tramo !== undefined ? p.tramo : ''}`;
+            } else {
+                emoji = '❓';
+                tipoLabel = p.tipo || '';
+            }
 
-/**
- * Crea un objeto de error para reportar al sistema
- * @param {string} codigo - Código de error
- * @param {string|Error} error - Mensaje o objeto de error
- * @param {Object} [datos] - Datos adicionales
- * @returns {Object} Objeto de error formateado
- */
-export function crearObjetoError(codigo, error, datos = {}) {
-    // Si es un string, convertir a objeto Error
-    const errorObj = typeof error === 'string' ? new Error(error) : error;
-    
-    return {
-        codigo,
-        mensaje: errorObj.message,
-        stack: errorObj.stack,
-        timestamp: new Date().toISOString(),
-        origen: config.iframeId,
-        datos,
-        nombre: errorObj.name || 'Error'
-    };
-}
+            // Crear botón
+            const btn = document.createElement('button');
+            btn.className = `parada-tramo-btn ${p.tipo === 'parada' ? 'parada-btn' : (p.tipo === 'tramo' ? 'tramo-btn' : '')}`;
+            btn.setAttribute('data-id', p.padreid || p.parada_id || p.tramo_id || '');
+            btn.setAttribute('type', 'button');
+            btn.setAttribute('tabindex', '0');
+            btn.setAttribute('aria-label', `${tipoLabel}: ${p.nombre || ''}`);
 
-/**
- * Valida un objeto para asegurar que tiene las propiedades requeridas
- * @param {Object} objeto - Objeto a validar
- * @param {string[]} propiedadesRequeridas - Lista de propiedades requeridas
- * @returns {boolean} True si el objeto es válido
- */
-export function validarObjeto(objeto, propiedadesRequeridas) {
-    if (!objeto || typeof objeto !== 'object') {
-        return false;
+            // Línea 1: emoji + tipo + número
+            const row1 = document.createElement('div');
+            row1.className = 'btn-row';
+            const iconSpan = document.createElement('span');
+            iconSpan.className = 'btn-icon';
+            iconSpan.textContent = emoji;
+            const titleSpan = document.createElement('span');
+            titleSpan.className = 'btn-title';
+            titleSpan.textContent = tipoLabel;
+            row1.appendChild(iconSpan);
+            row1.appendChild(titleSpan);
+
+            // Línea 2: nombre
+            const descSpan = document.createElement('span');
+            descSpan.className = 'btn-desc';
+            descSpan.textContent = p.nombre || '';
+
+            btn.appendChild(row1);
+            btn.appendChild(descSpan);
+
+            // Añadir evento click para enviar mensaje al padre cuando se selecciona una parada/tramo
+            btn.addEventListener('click', async () => {
+                try {
+                    const id = btn.getAttribute('data-id');
+                    const tipo = p.tipo;
+                    
+                    // Añadir clase visual para feedback al usuario
+                    btn.classList.add('seleccionando');
+                    
+                    // Preparar datos según el tipo (parada o tramo)
+                    const datos = {
+                        punto: {}
+                    };
+                    
+                    // Asignar el ID correcto según el tipo
+                    if (tipo === 'parada' || tipo === 'inicio') {
+                        datos.punto.parada_id = id;
+                    } else if (tipo === 'tramo') {
+                        datos.punto.tramo_id = id;
+                    }
+                    
+                    // Añadir información adicional
+                    datos.origen = 'hijo5-casa';
+                    datos.timestamp = Date.now();
+                    
+                    // Enviar mensaje al padre con la parada/tramo seleccionado
+                    logger.debug(`Enviando selección de ${tipo} con ID: ${id}`);
+                    const tipoMensaje = TIPOS_MENSAJE?.NAVEGACION?.CAMBIO_PARADA;
+                    if (!tipoMensaje) {
+                        throw new Error('Tipo de mensaje no definido: TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA');
+                    }
+                    await enviarMensaje('padre', tipoMensaje, datos);
+                    
+                    // Quitar clase de seleccionando y añadir clase seleccionado para animación
+                    btn.classList.remove('seleccionando');
+                    btn.classList.add('seleccionado');
+                    
+                    // Quitar la clase después de la animación
+                    setTimeout(() => btn.classList.remove('seleccionado'), 1000);
+                    
+                    logger.info(`Usuario seleccionó ${tipo}: ${id} - ${p.nombre || ''}`);
+                } catch (error) {
+                    console.error('Error al enviar selección de parada/tramo:', error);
+                    btn.classList.remove('seleccionando');
+                    btn.classList.add('error');
+                    setTimeout(() => btn.classList.remove('error'), 1000);
+                    
+                    logger.error(`Error al enviar selección de ${p.tipo}:`, error);
+                }
+            });
+
+            container.appendChild(btn);
+        });
     }
     
-    return propiedadesRequeridas.every(prop => 
-        Object.prototype.hasOwnProperty.call(objeto, prop) && 
-        objeto[prop] !== undefined && 
-        objeto[prop] !== null
-    );
-}
-
-/**
- * Genera un ID único
- * @returns {string} ID único
- */
-export function generarId() {
-    return `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-}
-
-/**
- * Genera un ID único con mayor entropía usando timestamp, aleatorio y prefijo opcional
- * @param {string} [prefix='msg'] - Prefijo opcional para el ID
- * @returns {string} ID único garantizado
- */
-export function generarIdUnico(prefix = 'msg') {
-    // Usar timestamp con milisegundos
-    const timestamp = Date.now();
-    // Generar componente aleatorio con mayor entropía
-    const random = Math.random().toString(36).substring(2, 10) + 
-                  Math.random().toString(36).substring(2, 10);
-    // Componente único del navegador (cuando esté disponible)
-    let uniqueComponent = '';
-    if (typeof window !== 'undefined') {
-        // Usar información de la sesión cuando esté disponible
-        uniqueComponent = window.name || window.sessionStorage?.getItem('session-id') || '';
-    }
-    
-    return `${prefix}-${timestamp}-${random}-${uniqueComponent}`;
-}
-
-/**
- * Debounce function
- * @param {Function} func - Función a ejecutar
- * @param {number} wait - Tiempo de espera en ms
- * @returns {Function} Función con debounce
- */
-export function debounce(func, wait = 300) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
-}
-
-/**
- * Throttle function
- * @param {Function} func - Función a ejecutar
- * @param {number} limit - Límite de tiempo en ms
- * @returns {Function} Función con throttle
- */
-export function throttle(func, limit = 300) {
-    let inThrottle;
-    return function executedFunction(...args) {
-        if (!inThrottle) {
-            func(...args);
-            inThrottle = true;
-            setTimeout(() => inThrottle = false, limit);
+    // Función para mostrar estado de carga
+    function mostrarEstadoCarga(cargando, mensaje = '', esError = false) {
+        // Si no existe, crear el elemento de estado
+        let estadoElement = document.getElementById('estado-carga');
+        if (!estadoElement) {
+            estadoElement = document.createElement('div');
+            estadoElement.id = 'estado-carga';
+            estadoElement.style.cssText = `
+                position: fixed; 
+                bottom: 10px; 
+                left: 50%; 
+                transform: translateX(-50%);
+                background: rgba(0,0,0,0.7);
+                color: white;
+                padding: 8px 15px;
+                border-radius: 20px;
+                font-size: 14px;
+                z-index: 10000;
+                display: none;
+            `;
+            document.body.appendChild(estadoElement);
         }
-    };
+        
+        if (cargando) {
+            estadoElement.textContent = mensaje || 'Cargando...';
+            estadoElement.style.display = 'block';
+            estadoElement.style.backgroundColor = 'rgba(0,0,0,0.7)';
+        } else if (mensaje) {
+            estadoElement.textContent = mensaje;
+            estadoElement.style.backgroundColor = esError ? 'rgba(220,53,69,0.9)' : 'rgba(40,167,69,0.9)';
+            estadoElement.style.display = 'block';
+            setTimeout(() => {
+                estadoElement.style.display = 'none';
+            }, 3000);
+        } else {
+            estadoElement.style.display = 'none';
+        }
+    }
+    
+    // Inicializa el componente
+    // =================================================================================
+    // MANEJADORES DE MENSAJES
+    // =================================================================================
+    async function inicializarManejadoresMensajes() {
+        try {
+            // SISTEMA.PING - Responder con PONG
+            registrarControlador('SISTEMA.PING', (mensaje) => {
+                console.log('🔔 [CASA] Recibido PING, enviando PONG');
+                return { timestamp: new Date().toISOString() };
+            });
+
+            // CONTROL.GPS - Manejar activación/desactivación del GPS
+            registrarControlador('CONTROL.GPS', (mensaje) => {
+                const { accion } = mensaje.datos || {};
+                console.log(`🎯 [CASA] Recibido CONTROL.GPS: ${accion}`);
+                
+                // Alternar estado del GPS
+                const gpsBtn = document.getElementById('gps-casa-btn');
+                if (gpsBtn) {
+                    if (accion === 'alternar' || accion === 'activar' || accion === 'desactivar') {
+                        if (accion === 'alternar' || (accion === 'activar' && !gpsBtn.classList.contains('on')) || 
+                            (accion === 'desactivar' && gpsBtn.classList.contains('on'))) {
+                            gpsBtn.click(); // Simular clic en el botón
+                        }
+                        return { estado: 'ok', gpsActivo: gpsBtn.classList.contains('on') };
+                    } else {
+                        return { estado: 'error', mensaje: 'Acción no válida. Use: alternar, activar o desactivar' };
+                    }
+                } else {
+                    return { estado: 'error', mensaje: 'No se encontró el botón de GPS' };
+                }
+            });
+
+            // UI.MODAL - Mostrar/ocultar modal
+            registrarControlador('UI.MODAL', (mensaje) => {
+                const { accion, titulo, contenido, tipo = 'info' } = mensaje.datos || {};
+                console.log(`🎨 [CASA] Recibido UI.MODAL: ${accion}`, { titulo, tipo });
+                
+                if (accion === 'mostrar') {
+                    // Implementar lógica para mostrar modal
+                    console.log(`📢 Mostrando modal: ${titulo}`, contenido);
+                    // Aquí iría la lógica para mostrar el modal
+                    return { estado: 'ok', accion: 'modal_mostrado' };
+                } else if (accion === 'ocultar') {
+                    // Implementar lógica para ocultar modal
+                    console.log('👋 Ocultando modal');
+                    // Aquí iría la lógica para ocultar el modal
+                    return { estado: 'ok', accion: 'modal_ocultado' };
+                } else {
+                    return { 
+                        estado: 'error', 
+                        mensaje: 'Acción no válida. Use: mostrar u ocultar' 
+                    };
+                }
+            });
+
+            console.log('✅ [CASA] Manejadores de mensajes registrados');
+        } catch (error) {
+            console.error('❌ [CASA] Error al inicializar manejadores de mensajes:', error);
+            throw error;
+        }
+    }
+
+    // Inicialización única del componente
+    let _initializationPromise = null;
+    
+    /**
+     * Inicializa el componente
+     * @returns {Promise<Object>} Datos de inicialización
+     * @throws {Error} Si falla la inicialización
+     */
+    async function inicializar() {
+        // Si ya se está inicializando, devolver la promesa existente
+        if (_initializationPromise) {
+            return _initializationPromise;
+        }
+        
+        if (estado.inicializado) {
+            const msg = 'El componente ya está inicializado';
+            console.warn(msg);
+            return Promise.resolve();
+        }
+        
+        _initializationPromise = (async () => {
+            estado.inicializando = true;
+            console.log('Inicializando componente boton-casa...');
+            
+            try {
+                // Intentar cargar estado guardado de localStorage
+                try {
+                    const savedState = localStorage.getItem('gpsState');
+                    if (savedState !== null) {
+                        estado.gpsActivo = JSON.parse(savedState);
+                        estado.modo = estado.gpsActivo ? 'aventura' : 'casa';
+                    }
+                } catch (e) {
+                    console.warn('Error al cargar estado desde localStorage:', e);
+                }
+            
+            // Mostrar indicador de carga
+            const loadingIndicator = document.getElementById('loading-indicator');
+            if (loadingIndicator) loadingIndicator.style.display = 'flex';
+            
+            // Inicializar mensajería
+            console.log('Inicializando mensajería...');
+            await inicializarMensajeria(CONFIG_MENSAJERIA);
+            console.log('Mensajería inicializada correctamente');
+            
+            // Inicializar el modoHandler
+            modoHandler.suscribir(COMPONENTE_ID, (nuevoModo) => {
+                logger.info(`[${COMPONENTE_ID}] Recibido cambio de modo a: ${nuevoModo}`);
+                actualizarInterfazModo(nuevoModo);
+            });
+            
+            // Registrar manejadores para los diferentes tipos de mensajes con manejo de errores
+            try {
+                // Verificar que TIPOS_MENSAJE esté disponible
+                if (!TIPOS_MENSAJE) {
+                    throw new Error('TIPOS_MENSAJE no está definido');
+                }
+                
+                // Registrar controlador para cambios de modo
+                if (TIPOS_MENSAJE?.SISTEMA?.CAMBIO_MODO) {
+                    registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejarCambioModo);
+                    logger.debug(`[${COMPONENTE_ID}] Registrado controlador para SISTEMA.CAMBIO_MODO`);
+                } else {
+                    logger.warn(`[${COMPONENTE_ID}] No se pudo registrar controlador: SISTEMA.CAMBIO_MODO no está definido`);
+                }
+                
+                // Registrar controladores para diferentes formatos de datos de paradas
+                const tiposMensajeParadas = [
+                    { tipo: TIPOS_MENSAJE?.DATOS?.ENVIAR_PARADAS, nombre: 'DATOS.ENVIAR_PARADAS' },
+                    { tipo: TIPOS_MENSAJE?.DATOS?.COORDENADAS_PARADAS, nombre: 'DATOS.COORDENADAS_PARADAS' },
+                    { tipo: TIPOS_MENSAJE?.DATOS?.PUNTOS, nombre: 'DATOS.PUNTOS' },
+                    { tipo: TIPOS_MENSAJE?.DATOS?.PUNTOS_RUTA, nombre: 'DATOS.PUNTOS_RUTA' },
+                    { tipo: TIPOS_MENSAJE?.NAVEGACION?.PARADAS, nombre: 'NAVEGACION.PARADAS' }
+                ].filter(item => {
+                    if (!item.tipo) {
+                        logger.warn(`[${COMPONENTE_ID}] El tipo de mensaje ${item.nombre} no está definido en TIPOS_MENSAJE`);
+                        return false;
+                    }
+                    return true;
+                });
+                
+                // Registrar solo los tipos que existen
+                tiposMensajeParadas.forEach(({ tipo, nombre }) => {
+                    try {
+                        registrarControlador(tipo, manejarRecepcionParadas);
+                        logger.debug(`[${COMPONENTE_ID}] Registrado controlador para ${nombre}`);
+                    } catch (error) {
+                        logger.error(`[${COMPONENTE_ID}] Error al registrar controlador para ${nombre}:`, error);
+                    }
+                });
+                
+                // Notificar que el componente está listo
+                enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO, {
+                    componente: COMPONENTE_ID,
+                    modo: modoHandler.obtenerModoActual(),
+                    timestamp: new Date().toISOString(),
+                    tiposMensajeRegistrados: tiposMensajeParadas
+                        .filter(({ tipo }) => tipo)
+                        .map(({ nombre }) => nombre)
+                });
+                
+                logger.info(`[${COMPONENTE_ID}] Componente inicializado correctamente con ${tiposMensajeParadas.filter(({ tipo }) => tipo).length} tipos de mensaje registrados`);
+                
+            } catch (error) {
+                logger.error(`[${COMPONENTE_ID}] Error durante el registro de controladores:`, error);
+                // Notificar el error al padre
+                enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
+                    componente: COMPONENTE_ID,
+                    error: `Error en inicialización: ${error.message}`,
+                    stack: error.stack,
+                    timestamp: new Date().toISOString()
+                });
+                throw error; // Relanzar para que se maneje en el catch exterior
+            }
+
+            // Registrar controlador para TIPOS_MENSAJE.CONTROL.CAMBIAR_MODO
+            registrarControlador('CONTROL.CAMBIAR_MODO', (mensaje) => {
+                const { modo } = mensaje.datos || {};
+                if (!modo) {
+                    console.warn('⚠️ No se especificó un modo en el mensaje CONTROL.CAMBIAR_MODO.');
+                    return;
+                }
+
+                console.log(`✅ Modo recibido en Av1-boton-casa: ${modo}`);
+                cambiarModo(modo);
+            });
+
+            // Función para cambiar el modo en el iframe
+            function cambiarModo(modo) {
+                // Implementa la lógica específica para cambiar el modo
+                console.log(`Cambiando el modo en Av1-boton-casa a: ${modo}`);
+                const body = document.body;
+                body.setAttribute('data-modo', modo); // Ejemplo: actualizar un atributo en el DOM
+            }
+
+            // Actualizar interfaz inicialmente según el estado
+            actualizarInterfaz(estado.modo);
+            
+            // Enviar mensaje inicial al padre para sincronizar estado
+            try {
+                console.log('Enviando mensaje de inicialización al padre');
+                const tipoMensaje = TIPOS_MENSAJE && TIPOS_MENSAJE.SISTEMA && TIPOS_MENSAJE.SISTEMA.INICIALIZACION;
+                if (!tipoMensaje) {
+                    throw new Error('Tipo de mensaje no definido: TIPOS_MENSAJE.SISTEMA.INICIALIZACION');
+                }
+                console.log('Tipo de mensaje:', tipoMensaje);
+                await enviarMensaje('padre', tipoMensaje, {
+                    origen: 'hijo5-casa',
+                    timestamp: new Date().toISOString()
+                });
+                console.log('Mensaje de inicialización enviado correctamente');
+            } catch (error) {
+                console.error('Error al enviar mensaje de inicialización:', error);
+                mostrarEstadoCarga(false, 'Error al enviar mensaje de inicialización', true);
+                throw error;
+            }
+            
+            return {
+                componente: COMPONENTE_ID,
+                modo: estado.modo,
+                timestamp: new Date().toISOString()
+            };
+        } catch (error) {
+            console.error('Error en la inicialización:', error);
+            mostrarEstadoCarga(false, 'Error en la inicialización', true);
+            throw error;
+        } finally {
+            estado.inicializado = true;
+            estado.inicializando = false;
+        }
+    })();
+    
+    return _initializationPromise;
 }
 
 /**
- * Genera un hash simple para el contenido de un mensaje
- * @param {string} tipo - Tipo de mensaje
- * @param {Object} datos - Datos del mensaje
- * @returns {string} Hash del contenido
- */
-function generarHashContenido(tipo, datos = {}) {
-    try {
-        // Crear una cadena con el tipo y los datos serializados
-        const contenido = `${tipo}:${JSON.stringify(datos)}`;
-        
-        // Algoritmo de hash simple (puedes reemplazarlo con uno más robusto si es necesario)
-        let hash = 0;
-        for (let i = 0; i < contenido.length; i++) {
-            const char = contenido.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash; // Convertir a número entero de 32 bits
+     * Configura los manejadores de eventos del componente
+     * @returns {Object} Datos de inicialización
+     * @throws {Error} Si no se pueden configurar los manejadores
+     */
+    function configurarManejadores() {
+        try {
+            // Configurar el manejador de clic para el botón de GPS
+            const gpsBtn = document.getElementById('gps-casa-btn');
+            if (gpsBtn) {
+                gpsBtn.addEventListener('click', manejarClickCambioModo);
+                console.log('Manejador de clic configurado para el botón de GPS');
+            } else {
+                console.warn('No se encontró el botón de GPS');
+            }
+            
+            // Devolver los datos de inicialización
+            return {
+                componente: COMPONENTE_ID,
+                modo: modoHandler.obtenerModoActual(),
+                timestamp: new Date().toISOString()
+            };
+        } catch (error) {
+            console.error('Error al configurar manejadores de eventos:', error);
+            mostrarEstadoCarga(false, 'Error en configuración de eventos', true);
+            throw error;
         }
-        
-        // Convertir a string hexadecimal
-        return Math.abs(hash).toString(16);
-    } catch (error) {
-        console.error('Error al generar hash de contenido:', error);
-        return 'error-hash';
     }
-}
-
-// Exportar como named export
-export { generarHashContenido };
-
-export default {
-    configurarUtils,
-    crearObjetoError,
-    validarObjeto,
-    generarHashContenido,
-    generarId,
-    generarIdUnico,
-    debounce,
-    throttle
-};
+            
+    /**
+     * Función para manejar la visibilidad de la ventana de paradas
+     */
+    function toggleVentanaParadas() {
+        const ventana = document.getElementById('paradas-window');
+        if (ventana) {
+            ventana.style.display = ventana.style.display === 'none' ? 'flex' : 'none';
+        }
+    }
+    
+    // Esperar a que el DOM esté completamente cargado
+    document.addEventListener('DOMContentLoaded', async () => {
+        try {
+            await inicializar();
+            console.log('Componente de botón de casa inicializado correctamente');
+        } catch (error) {
+            console.error('Error durante la inicialización:', error);
+            mostrarEstadoCarga(false, 'Error al inicializar el componente', true);
+        }
+    });
+    </script>
+</head>
+<body>
+    <!-- Contenedor principal para el botón de casa y la ventana de paradas -->
+    <div id="estado-carga" style="display: none; position: fixed; top: 10px; right: 10px; padding: 10px; background: rgba(0,0,0,0.8); color: white; border-radius: 5px; z-index: 9999;"></div>
+    <div id="zona-boton-casa">
+        <!-- Botón de GPS (Casa) -->
+        <div id="gps-casa-btn" class="off">
+            <div class="button-content">
+                <!-- Emoji de satélite -->
+                <div class="satellite-emoji">📡</div>
+                <!-- Etiqueta ON/OFF -->
+                <div class="gps-label">OFF</div>
+            </div>
+        </div>
+        
+        <!-- Ventana de paradas (inicialmente oculta) -->
+        <div id="paradas-window" class="hidden">
+            <!-- Lista de paradas (scroll horizontal) -->
+            <div id="lista-paradas"></div>
+        </div>
+    </div>
+</body>
+</html>
