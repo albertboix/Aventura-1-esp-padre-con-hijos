@@ -88,7 +88,10 @@ export const TIPOS_MENSAJE = {
         
         // Rutas
         MOSTRAR_RUTA: 'NAVEGACION.MOSTRAR_RUTA',
-        ACTUALIZAR_ESTADO: 'NAVEGACION.ACTUALIZAR_ESTADO'
+        ACTUALIZAR_ESTADO: 'NAVEGACION.ACTUALIZAR_ESTADO',
+        
+        // Gestión de paradas
+        PARADAS: 'NAVEGACION.PARADAS'
     },
     
     // Mensajes de audio
