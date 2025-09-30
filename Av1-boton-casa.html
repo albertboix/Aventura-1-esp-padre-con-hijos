@@ -3,11 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>hijo5-casa</title>
+    <meta name="description" content="Panel de control de GPS para la ruta turística">
+    <title>Panel de Control GPS - Ruta Turística</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
     /* Contenedor principal */
     #zona-boton-casa {
+        box-sizing: border-box;
       position: relative;
       width: 100%;
       height: 60px;
@@ -402,8 +404,16 @@
       { tipo: "parada", parada: 31, nombre: "Torres de Serranos (Final)", padreid: "padre-P-31" }
     ];
     
-    // Exponer puntosRuta para que sea accesible desde el padre
-    window.puntosRuta = puntosRuta;
+    // Exponer puntosRuta para que sea accesible desde el padre (solo una vez)
+    if (!window.puntosRuta) {
+        window.puntosRuta = puntosRuta;
+    }
+    
+    // Manejar errores globales
+    window.addEventListener('error', function(event) {
+        console.error('Error:', event.error);
+        // Aquí podrías agregar más lógica de manejo de errores
+    });
     
     // Estado del componente
     const estado = {
@@ -860,26 +870,104 @@
     }
     
     // Inicializa el componente
+    // =================================================================================
+    // MANEJADORES DE MENSAJES
+    // =================================================================================
+    async function inicializarManejadoresMensajes() {
+        try {
+            // SISTEMA.PING - Responder con PONG
+            registrarControlador('SISTEMA.PING', (mensaje) => {
+                console.log('🔔 [CASA] Recibido PING, enviando PONG');
+                return { timestamp: new Date().toISOString() };
+            });
+
+            // CONTROL.GPS - Manejar activación/desactivación del GPS
+            registrarControlador('CONTROL.GPS', (mensaje) => {
+                const { accion } = mensaje.datos || {};
+                console.log(`🎯 [CASA] Recibido CONTROL.GPS: ${accion}`);
+                
+                // Alternar estado del GPS
+                const gpsBtn = document.getElementById('gps-casa-btn');
+                if (gpsBtn) {
+                    if (accion === 'alternar' || accion === 'activar' || accion === 'desactivar') {
+                        if (accion === 'alternar' || (accion === 'activar' && !gpsBtn.classList.contains('on')) || 
+                            (accion === 'desactivar' && gpsBtn.classList.contains('on'))) {
+                            gpsBtn.click(); // Simular clic en el botón
+                        }
+                        return { estado: 'ok', gpsActivo: gpsBtn.classList.contains('on') };
+                    } else {
+                        return { estado: 'error', mensaje: 'Acción no válida. Use: alternar, activar o desactivar' };
+                    }
+                } else {
+                    return { estado: 'error', mensaje: 'No se encontró el botón de GPS' };
+                }
+            });
+
+            // UI.MODAL - Mostrar/ocultar modal
+            registrarControlador('UI.MODAL', (mensaje) => {
+                const { accion, titulo, contenido, tipo = 'info' } = mensaje.datos || {};
+                console.log(`🎨 [CASA] Recibido UI.MODAL: ${accion}`, { titulo, tipo });
+                
+                if (accion === 'mostrar') {
+                    // Implementar lógica para mostrar modal
+                    console.log(`📢 Mostrando modal: ${titulo}`, contenido);
+                    // Aquí iría la lógica para mostrar el modal
+                    return { estado: 'ok', accion: 'modal_mostrado' };
+                } else if (accion === 'ocultar') {
+                    // Implementar lógica para ocultar modal
+                    console.log('👋 Ocultando modal');
+                    // Aquí iría la lógica para ocultar el modal
+                    return { estado: 'ok', accion: 'modal_ocultado' };
+                } else {
+                    return { 
+                        estado: 'error', 
+                        mensaje: 'Acción no válida. Use: mostrar u ocultar' 
+                    };
+                }
+            });
+
+            console.log('✅ [CASA] Manejadores de mensajes registrados');
+        } catch (error) {
+            console.error('❌ [CASA] Error al inicializar manejadores de mensajes:', error);
+            throw error;
+        }
+    }
+
+    // Inicialización única del componente
+    let _initializationPromise = null;
+    
+    /**
+     * Inicializa el componente
+     * @returns {Promise<Object>} Datos de inicialización
+     * @throws {Error} Si falla la inicialización
+     */
     async function inicializar() {
-        if (estado.inicializado || estado.inicializando) {
-            console.log('El componente ya está inicializado o inicializándose');
-            return;
+        // Si ya se está inicializando, devolver la promesa existente
+        if (_initializationPromise) {
+            return _initializationPromise;
         }
         
-        estado.inicializando = true;
-        console.log('Inicializando componente boton-casa...');
+        if (estado.inicializado) {
+            const msg = 'El componente ya está inicializado';
+            console.warn(msg);
+            return Promise.resolve();
+        }
         
-        try {
-            // Intentar cargar estado guardado de localStorage
+        _initializationPromise = (async () => {
+            estado.inicializando = true;
+            console.log('Inicializando componente boton-casa...');
+            
             try {
-                const savedState = localStorage.getItem('gpsState');
-                if (savedState !== null) {
-                    estado.gpsActivo = JSON.parse(savedState);
-                    estado.modo = estado.gpsActivo ? 'aventura' : 'casa';
+                // Intentar cargar estado guardado de localStorage
+                try {
+                    const savedState = localStorage.getItem('gpsState');
+                    if (savedState !== null) {
+                        estado.gpsActivo = JSON.parse(savedState);
+                        estado.modo = estado.gpsActivo ? 'aventura' : 'casa';
+                    }
+                } catch (e) {
+                    console.warn('Error al cargar estado desde localStorage:', e);
                 }
-            } catch (e) {
-                console.warn('Error al cargar estado desde localStorage:', e);
-            }
             
             // Mostrar indicador de carga
             const loadingIndicator = document.getElementById('loading-indicator');
@@ -998,74 +1086,88 @@
                 console.log('Mensaje de inicialización enviado correctamente');
             } catch (error) {
                 console.error('Error al enviar mensaje de inicialización:', error);
-                throw error; // Re-lanzar para que sea manejado por el catch externo
+                mostrarEstadoCarga(false, 'Error al enviar mensaje de inicialización', true);
+                throw error;
             }
             
-            console.log('Componente inicializado correctamente');
+            return {
+                componente: COMPONENTE_ID,
+                modo: estado.modo,
+                timestamp: new Date().toISOString()
+            };
         } catch (error) {
-            console.error('Error durante la inicialización del componente:', error);
-            mostrarEstadoCarga(false);
+            console.error('Error en la inicialización:', error);
+            mostrarEstadoCarga(false, 'Error en la inicialización', true);
+            throw error;
         } finally {
             estado.inicializado = true;
             estado.inicializando = false;
         }
-    }
+    })();
     
-    // Función para configurar los manejadores de eventos
-    function configurarManejadoresEventos() {
-        // Configurar el manejador de clic para el botón de GPS
-        const gpsBtn = document.getElementById('gps-casa-btn');
-        if (gpsBtn) {
-            gpsBtn.addEventListener('click', manejarClickCambioModo);
-            console.log('Manejador de clic configurado para el botón de GPS');
-        } else {
-            console.error('No se encontró el botón de GPS');
-        }
-    }
-    
-    // Iniciar el componente después de que el DOM esté completamente cargado
-    document.addEventListener('DOMContentLoaded', async (event) => {
-        console.log('DOM completamente cargado - Inicializando componente');
-        
+    return _initializationPromise;
+}
+
+/**
+     * Configura los manejadores de eventos del componente
+     * @returns {Object} Datos de inicialización
+     * @throws {Error} Si no se pueden configurar los manejadores
+     */
+    function configurarManejadores() {
         try {
-            // Inicializar el componente
-            await inicializar();
+            // Configurar el manejador de clic para el botón de GPS
+            const gpsBtn = document.getElementById('gps-casa-btn');
+            if (gpsBtn) {
+                gpsBtn.addEventListener('click', manejarClickCambioModo);
+                console.log('Manejador de clic configurado para el botón de GPS');
+            } else {
+                console.warn('No se encontró el botón de GPS');
+            }
             
-            // Configurar manejadores de eventos
-            configurarManejadoresEventos();
-            
-            // Notificar al padre que el componente está listo
-            await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO, {
+            // Devolver los datos de inicialización
+            return {
                 componente: COMPONENTE_ID,
                 modo: modoHandler.obtenerModoActual(),
                 timestamp: new Date().toISOString()
-            });
-            
-            console.log('Componente de botón de casa inicializado correctamente');
-            
+            };
         } catch (error) {
-            console.error('Error durante la inicialización:', error);
-            mostrarEstadoCarga(false, 'Error al inicializar el componente', true);
+            console.error('Error al configurar manejadores de eventos:', error);
+            mostrarEstadoCarga(false, 'Error en configuración de eventos', true);
+            throw error;
         }
-    });
-    
-    // Función para manejar la visibilidad de la ventana de paradas
+    }
+            
+    /**
+     * Función para manejar la visibilidad de la ventana de paradas
+     */
     function toggleVentanaParadas() {
         const ventana = document.getElementById('paradas-window');
         if (ventana) {
             ventana.style.display = ventana.style.display === 'none' ? 'flex' : 'none';
         }
     }
+    
+    // Esperar a que el DOM esté completamente cargado
+    document.addEventListener('DOMContentLoaded', async () => {
+        try {
+            await inicializar();
+            console.log('Componente de botón de casa inicializado correctamente');
+        } catch (error) {
+            console.error('Error durante la inicialización:', error);
+            mostrarEstadoCarga(false, 'Error al inicializar el componente', true);
+        }
+    });
     </script>
 </head>
 <body>
     <!-- Contenedor principal para el botón de casa y la ventana de paradas -->
+    <div id="estado-carga" style="display: none; position: fixed; top: 10px; right: 10px; padding: 10px; background: rgba(0,0,0,0.8); color: white; border-radius: 5px; z-index: 9999;"></div>
     <div id="zona-boton-casa">
         <!-- Botón de GPS (Casa) -->
         <div id="gps-casa-btn" class="off">
             <div class="button-content">
                 <!-- Emoji de satélite -->
-                <div class="satellite-emoji">🛰️</div>
+                <div class="satellite-emoji">📡</div>
                 <!-- Etiqueta ON/OFF -->
                 <div class="gps-label">OFF</div>
             </div>
@@ -1077,12 +1179,5 @@
             <div id="lista-paradas"></div>
         </div>
     </div>
-    
-    <!-- Indicador de carga (spinner) - oculto por defecto -->
-    <div id="loading-indicator" style="display:none;">
-        <i class="fas fa-spinner fa-spin"></i> Cargando...
-    </div>
-    
-    <!-- El script principal ya está en el head -->
 </body>
 </html>
