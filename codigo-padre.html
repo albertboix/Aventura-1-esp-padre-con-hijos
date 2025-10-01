@@ -496,13 +496,26 @@
 
     document.addEventListener('DOMContentLoaded', async () => {
         try {
-            // Check if the map is already initialized
-            if (window.mapa && window.mapa instanceof L.Map) {
-                console.warn('⚠️ El mapa ya está inicializado.');
-                return;
+            // Check if the map is already initialized with detailed logging
+            console.log('🔍 [INICIALIZACIÓN] Verificando estado del mapa...');
+            console.log('- window.mapa existe:', !!window.mapa);
+            console.log('- Tipo de window.mapa:', typeof window.mapa);
+
+            if (window.mapa) {
+                if (window.mapa.length) {
+                    console.warn('⚠️ window.mapa es una colección:', window.mapa.length, 'elementos');
+                    console.log('Elementos:', Array.from(window.mapa));
+                } else if (typeof window.mapa.getCenter === 'function') {
+                    console.log('✅ Mapa ya inicializado en:', window.mapa.getCenter());
+                    return;
+                } else {
+                    console.warn('⚠️ window.mapa existe pero no parece ser un mapa válido');
+                    console.log('Tipo:', typeof window.mapa, 'Constructor:', window.mapa?.constructor?.name);
+                }
             }
 
             // Initialize the map
+            console.log('🚀 [INICIALIZACIÓN] Iniciando creación del mapa...');
             window.mapa = await inicializarMapa({
                 containerId: 'mapa',
                 center: [39.4699, -0.3763], // Coordenadas de Valencia
@@ -512,15 +525,21 @@
                 zoomControl: true
             });
 
-            console.log('✅ Mapa inicializado correctamente');
+            console.log('✅ [INICIALIZACIÓN] Mapa inicializado correctamente en:', window.mapa.getCenter());
         } catch (error) {
-            console.error('❌ Error al inicializar el mapa:', error);
+            console.error('❌ [INICIALIZACIÓN] Error al inicializar el mapa:', error);
+            console.error('Detalles del error:', {
+                mensaje: error.message,
+                stack: error.stack,
+                windowMapa: window.mapa,
+                tipoWindowMapa: typeof window.mapa
+            });
         }
     });
     </script>
 
     <!-- Contenedor del mapa -->
-    <div id="mapa"></div>    <!-- Contenedor del mapa (ahora se crea dinámicamente) -->
+    <!-- El contenedor del mapa se crea dinámicamente por inicializarMapa() -->
 
     <!-- IFrames de los Hijos -->
     <iframe id="hijo2" src="./Av1-botones-coordenadas.html"
@@ -1060,12 +1079,15 @@
         }
     });
 
-    // Diagnóstico para verificar la configuración del mapa
+    // Diagnóstico mejorado para verificar la configuración del mapa
     function diagnosticarMapa() {
+        console.log('🔍 [DIAGNÓSTICO] Iniciando diagnóstico del mapa...');
+
+        // 1. Verificar contenedor del mapa
         const mapaContainer = document.getElementById('mapa');
         if (!mapaContainer) {
             console.error('❌ El contenedor del mapa (#mapa) no existe en el DOM.');
-            return;
+            return { exito: false, error: 'contenedor_no_encontrado' };
         }
 
         console.log('✅ Contenedor del mapa encontrado:', mapaContainer);
@@ -1074,39 +1096,96 @@
         console.log('- Visibility:', window.getComputedStyle(mapaContainer).visibility);
         console.log('- Z-index:', window.getComputedStyle(mapaContainer).zIndex);
 
+        // 2. Verificar Leaflet
         if (typeof L === 'undefined') {
             console.error('❌ Leaflet no está cargado. Asegúrate de que el archivo JavaScript de Leaflet está incluido.');
-            return;
+            return { exito: false, error: 'leaflet_no_cargado' };
         }
 
         console.log('✅ Leaflet está cargado. Versión:', L.version);
 
+        // 3. Verificar window.mapa con diagnóstico mejorado
+        console.log('🔍 Verificando window.mapa...');
+        console.log('- window.mapa existe:', !!window.mapa);
+        console.log('- Tipo de window.mapa:', typeof window.mapa);
+
+        if (window.mapa) {
+            if (window.mapa.length) {
+                console.error('❌ window.mapa es una colección (IDs duplicados):', window.mapa.length, 'elementos');
+                console.log('Elementos encontrados:', Array.from(window.mapa));
+                // Tomar el primer elemento válido
+                const primerElemento = window.mapa[0];
+                if (primerElemento && primerElemento.tagName) {
+                    console.log('✅ Usando el primer elemento válido:', primerElemento);
+                    window.mapa = primerElemento;
+                } else {
+                    console.error('❌ Ningún elemento válido encontrado en la colección');
+                    return { exito: false, error: 'coleccion_sin_elementos_validos' };
+                }
+            } else {
+                console.log('✅ window.mapa es un elemento único (no colección)');
+            }
+        }
+
         if (!window.mapa) {
-            console.error('❌ La instancia del mapa (window.mapa) no está creada.');
-            return;
+            console.error('❌ La instancia del mapa (window.mapa) no está creada después del diagnóstico');
+            return { exito: false, error: 'mapa_no_creado' };
         }
 
-        // Usar detección por características en lugar de instanceof para evitar falsos negativos
-        const esMapaValido = (
-            typeof window.mapa?.getCenter === 'function' &&
-            typeof window.mapa?.getZoom === 'function' &&
-            typeof window.mapa?.invalidateSize === 'function'
-        );
+        // 4. Verificar funciones del mapa con diagnóstico detallado
+        const funcionesRequeridas = ['getCenter', 'getZoom', 'invalidateSize'];
+        const funcionesFaltantes = [];
 
-        if (!esMapaValido) {
-            console.error('❌ window.mapa no parece ser un mapa Leaflet válido. Tipo y constructor:', typeof window.mapa, window.mapa?.constructor?.name);
-            console.log('window.mapa (dump):', window.mapa);
-            return;
+        funcionesRequeridas.forEach(funcion => {
+            if (typeof window.mapa[funcion] === 'function') {
+                console.log(`✅ Función ${funcion} disponible`);
+            } else {
+                console.error(`❌ Función ${funcion} NO disponible`);
+                funcionesFaltantes.push(funcion);
+            }
+        });
+
+        if (funcionesFaltantes.length > 0) {
+            console.error('❌ window.mapa no parece ser un mapa Leaflet válido. Funciones faltantes:', funcionesFaltantes);
+            console.log('Tipo de objeto:', typeof window.mapa);
+            console.log('Constructor:', window.mapa?.constructor?.name);
+            console.log('Objeto completo (para depuración):', window.mapa);
+            return { exito: false, error: 'funciones_faltantes', funcionesFaltantes };
         }
 
-        console.log('✅ La instancia del mapa está creada correctamente.');
-        console.log('- Centro del mapa:', window.mapa.getCenter());
-        console.log('- Zoom del mapa:', window.mapa.getZoom());
+        // 5. Verificar estado del mapa
+        try {
+            const centro = window.mapa.getCenter();
+            const zoom = window.mapa.getZoom();
+            console.log('✅ La instancia del mapa está creada correctamente.');
+            console.log('- Centro del mapa:', centro);
+            console.log('- Zoom del mapa:', zoom);
+
+            // Verificar si hay capas cargadas
+            if (window.mapa._layers) {
+                const capas = Object.keys(window.mapa._layers).length;
+                console.log('- Número de capas:', capas);
+            }
+
+            return {
+                exito: true,
+                centro,
+                zoom,
+                capas: window.mapa._layers ? Object.keys(window.mapa._layers).length : 0
+            };
+
+        } catch (error) {
+            console.error('❌ Error al acceder a métodos del mapa:', error);
+            return { exito: false, error: 'error_metodos', detalle: error.message };
+        }
     }
 
     // Ejecutar el diagnóstico después de que el mapa esté inicializado
     window.addEventListener('load', () => {
-        setTimeout(diagnosticarMapa, 1000); // Esperar un segundo para asegurar que el mapa esté listo
+        setTimeout(async () => {
+            const resultado = await diagnosticarMapa();
+            console.log('📊 [DIAGNÓSTICO] Resultado final:', resultado);
+        }, 1000); // Esperar un segundo para asegurar que el mapa esté listo
     });
     
     // Observa cambios en el estado de la orquestación
