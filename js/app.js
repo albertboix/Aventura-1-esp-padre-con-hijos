@@ -8,7 +8,7 @@ import { TIPOS_MENSAJE, MODOS } from './constants.js';
 import { enviarMensaje } from './mensajeria.js';
 import logger from './logger.js';
 import { CONFIG } from './config.js';
-import { inicializarMapa } from './funciones-mapa.js';
+// Removido: import { inicializarMapa } from './funciones-mapa.js'; - Se maneja desde codigo-padre.html
 
 // Estado global de la aplicación
 export const estado = {
@@ -50,24 +50,29 @@ export async function inicializar() {
                 window.mapa.invalidateSize(true);
                 logger.info('Tamaño del mapa actualizado');
             }
-            diagnosticarMapa().then(result => {
-                console.log('Diagnóstico del mapa completado con resultado:', result);
-            });
+            // Solo ejecutar diagnóstico si el mapa está disponible
+            if (window.mapa) {
+                diagnosticarMapa().then(result => {
+                    console.log('Diagnóstico del mapa completado con resultado:', result);
+                });
+            } else {
+                console.log('⏳ Mapa aún no disponible, omitiendo diagnóstico desde app.js');
+            }
         }, 500);
         
-        // Verificación visual del contenedor
-        if (typeof document !== 'undefined') {
-            const mapaContainer = document.getElementById('mapa');
-            if (mapaContainer) {
-                // Añadir un borde temporal para verificación visual
-                mapaContainer.style.border = '5px solid red';
-                setTimeout(() => {
-                    if (mapaContainer) {
-                        mapaContainer.style.border = '1px solid #ccc';
-                    }
-                }, 3000);
-            }
-        }
+        // Verificación visual del contenedor (comentado para evitar interferencias)
+        // if (typeof document !== 'undefined') {
+        //     const mapaContainer = document.getElementById('mapa');
+        //     if (mapaContainer) {
+        //         // Añadir un borde temporal para verificación visual
+        //         mapaContainer.style.border = '5px solid red';
+        //         setTimeout(() => {
+        //             if (mapaContainer) {
+        //                 mapaContainer.style.border = '1px solid #ccc';
+        //             }
+        //         }, 3000);
+        //     }
+        // }
         
         // Marcar como inicializada
         logger.info('Aplicación inicializada correctamente');
@@ -168,31 +173,20 @@ export async function manejarCambioModo(mensaje) {
  */
 export async function diagnosticarMapa() {
     let mapa = document.getElementById('mapa');
+
+    // Solo proceder si el mapa ya existe (no crearlo desde aquí)
     if (!mapa) {
-        console.error('❌ El contenedor del mapa no existe en el DOM');
-        // Create the container if it doesn't exist
-        console.log('🔄 Creando el contenedor del mapa dinámicamente');
-        mapa = document.createElement('div');
-        mapa.id = 'mapa';
-        mapa.style.position = 'fixed';
-        mapa.style.top = '0';
-        mapa.style.left = '0';
-        mapa.style.width = '100vw';
-        mapa.style.height = '100vh';
-        mapa.style.zIndex = '10';
-        mapa.style.backgroundColor = '#f5f5f5';
-        document.body.prepend(mapa);
-        console.log('✅ Contenedor del mapa creado dinámicamente');
+        console.warn('⚠️ Contenedor del mapa no encontrado en app.js - esto es normal ya que se crea desde codigo-padre.html');
+        return false;
     }
 
-    console.log('DIAGNÓSTICO DEL MAPA:');
+    console.log('DIAGNÓSTICO DEL MAPA (desde app.js):');
     console.log('- Elemento mapa:', mapa);
     console.log('- Display:', window.getComputedStyle(mapa).display);
     console.log('- Visibility:', window.getComputedStyle(mapa).visibility);
     console.log('- Z-index:', window.getComputedStyle(mapa).zIndex);
     console.log('- Dimensiones:', mapa.offsetWidth + 'x' + mapa.offsetHeight);
     console.log('- Position:', window.getComputedStyle(mapa).position);
-    
     // Verificar si la instancia de Leaflet existe
     if (window.L) {
         console.log('- Leaflet está disponible (window.L):', window.L.version);
@@ -205,10 +199,10 @@ export async function diagnosticarMapa() {
         // Verificar si window.mapa es una instancia válida de Leaflet Map
         if (window.mapa instanceof window.L.Map) {
             try {
-                console.log('- Instancia de mapa existe y es válida (window.mapa)');
+                console.log('✅ Instancia de mapa existe y es válida (window.mapa)');
                 console.log('- Centro del mapa:', window.mapa.getCenter());
                 console.log('- Zoom del mapa:', window.mapa.getZoom());
-                
+
                 // Forzar actualización del mapa
                 window.mapa.invalidateSize(true);
                 console.log('✅ Mapa actualizado con invalidateSize()');
@@ -218,22 +212,23 @@ export async function diagnosticarMapa() {
             }
         } else {
             console.error('❌ window.mapa existe pero NO es una instancia válida de L.Map');
+            console.log('Tipo actual:', typeof window.mapa);
             return false;
         }
     } else {
-        console.error('❌ No hay instancia de mapa (window.mapa undefined)');
+        console.log('⏳ No hay instancia de mapa aún (window.mapa undefined)');
+        console.log('ℹ️ Esto es normal durante la inicialización - el mapa se crea desde codigo-padre.html');
         return false;
     }
-    
+
     // Verificar si hay capas
     if (window.mapa && window.mapa._layers) {
         console.log('- Número de capas del mapa:', Object.keys(window.mapa._layers).length);
     }
-    
     // Verificar si hay elementos de Leaflet en el DOM
     const leafletContainers = document.querySelectorAll('.leaflet-container, .leaflet-map-pane');
     console.log('- Elementos Leaflet en DOM:', leafletContainers.length);
-    
+
     return leafletContainers.length > 0 && window.mapa instanceof window.L.Map;
 }
 
@@ -339,6 +334,4 @@ export async function probarOrquestacionParada(paradaId) {
 }
 
 // Exportar funciones públicas para que puedan ser usadas por otros módulos
-export {
-    inicializarMapa
-};
+// Nota: inicializarMapa se maneja desde codigo-padre.html, no desde aquí
