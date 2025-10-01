@@ -335,6 +335,7 @@
         
         const COMPONENTE_ID = 'BOTONES-COORDENADAS';
         const IFRAME_ID = 'coordenadas-iframe'; // Debe coincidir con el ID del iframe en el padre
+        window.IFRAME_ID = IFRAME_ID; // Make it globally available
         
         // ================== COORDENADAS DE LAS PARADAS ==================
         // Definir en el ámbito global
@@ -947,14 +948,15 @@
         imagen: 'fotos_Av1/00_torres_de_serranos_back.jpg'
     }
 ];
-
-// Hacer el array accesible globalmente
-// window.puntosRuta = puntosRuta; // This line is incorrect, 'puntosRuta' is not defined yet
-
-} // <-- Add this closing brace to properly close the array/object definition
+        } // Cierre del if (!window.CoordenadasParadas)
 
     </script>
     <script type="module">
+    // Import required functions
+    import { registrarControlador, enviarMensaje, inicializarMensajeria } from './js/mensajeria.js';
+    import { TIPOS_MENSAJE } from './js/constants.js';
+    import logger from './js/logger.js';
+    
     // =================================================================================
     // 2. MANEJADORES DE MENSAJES
     // =================================================================================
@@ -978,7 +980,7 @@
             registrarControlador('DATOS.COORDENADAS_PARADAS', async () => {
                 console.log('📍 Enviando coordenadas de paradas');
                 // Obtener solo las paradas (no los tramos)
-                const paradas = puntosRuta.filter(p => p.tipo === 'parada');
+                const paradas = window.puntosRuta ? window.puntosRuta.filter(p => p.tipo === 'parada') : [];
                 return { 
                     paradas: paradas.map(p => ({
                         id: p.id,
@@ -1681,11 +1683,12 @@
             console.log('📩 Recibida solicitud de estado del mapa');
             
             try {
-                // Extraer las paradas del array AVENTURA_DATOS
+                // Extraer las paradas del array window.puntosRuta o window.CoordenadasParadas
                 const paradas = [];
+                const datosParadas = window.puntosRuta || window.CoordenadasParadas || [];
                 
                 // Filtrar solo los elementos que son paradas (tipo 'parada')
-                AVENTURA_DATOS.forEach(item => {
+                datosParadas.forEach(item => {
                     if (item.tipo === 'parada' && item.coordenadas) {
                         paradas.push({
                             id: item.id,
@@ -1732,13 +1735,13 @@
                 
                 // Configurar logger
                 logger.configure({ 
-                    iframeId: IFRAME_ID, 
+                    iframeId: window.IFRAME_ID, 
                     debug: true 
                 });
 
                 // Inicializar mensajería primero
                 await inicializarMensajeria({ 
-                    iframeId: IFRAME_ID,
+                    iframeId: window.IFRAME_ID,
                     logLevel: 3,
                     modoDebug: true
                 });
@@ -1806,7 +1809,7 @@
                 document.getElementById('btn-mapa-completo').addEventListener('click', manejarClickMapaCompleto);
 
                 // Notificar al padre que estamos listos
-                await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO, { componente: IFRAME_ID });
+                await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO, { componente: window.IFRAME_ID });
                 actualizarStatus('Listo para navegar');
                 logger.info('Componente de coordenadas inicializado con nuevo diseño.');
 
@@ -1824,6 +1827,7 @@
         registrarControlador(TIPOS_MENSAJE.DATOS.SOLICITAR_PARADA, (mensaje) => {
             const { parada_id, tramo_id } = mensaje.datos || {};
             let parada = null;
+            const paradas = window.puntosRuta || window.CoordenadasParadas || [];
 
             if (parada_id) {
                 parada = paradas.find(p => p.parada_id === parada_id || p.id === parada_id);
