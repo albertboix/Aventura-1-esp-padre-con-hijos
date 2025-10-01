@@ -116,20 +116,22 @@ export async function inicializarMapa(config = {}) {
     }
     
     return new Promise((resolve, reject) => {
+        let containerId, mapConfig; // Definir variables fuera del try para que estén disponibles en el catch
+
         try {
             if (typeof L === 'undefined') {
                 throw new Error("Leaflet (L) no está cargado.");
             }
 
             // Usar valores por defecto si no se proporcionan
-            const mapConfig = {
+            mapConfig = {
                 center: [39.4699, -0.3763], // Valencia
                 zoom: 16,
                 ...config
             };
             
             // Obtener el contenedor del mapa
-            const containerId = config.containerId || 'mapa';
+            containerId = config.containerId || 'mapa'; // Asignar aquí
             let container = document.getElementById(containerId);
             
             if (!container) {
@@ -287,8 +289,8 @@ export async function inicializarMapa(config = {}) {
             console.error('❌ [MAPA] Error crítico durante inicialización:', {
                 mensaje: error.message,
                 stack: error.stack,
-                containerId,
-                config: mapConfig,
+                containerId: containerId || 'no definido',
+                config: mapConfig || 'no definido',
                 windowMapa: window.mapa,
                 tipoWindowMapa: typeof window.mapa
             });
