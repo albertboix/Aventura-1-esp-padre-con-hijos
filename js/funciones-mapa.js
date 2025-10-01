@@ -163,8 +163,31 @@ export async function inicializarMapa(config = {}) {
             document.body.style.padding = '0';
             document.body.style.overflow = 'hidden';
             
-            // Si ya existe un mapa, destruirlo para evitar problemas
+            // Si ya existe un mapa válido, devolverlo directamente
+            if (window.mapa && typeof window.mapa.getCenter === 'function' && typeof window.mapa.getZoom === 'function') {
+                logger.info('Mapa ya inicializado, devolviendo instancia existente');
+                console.log('🔄 [MAPA] Mapa ya inicializado, devolviendo instancia existente:', window.mapa.getCenter());
+                resolve(window.mapa);
+                return;
+            }
+
+            // Si window.mapa es una colección (IDs duplicados), tomar el primer elemento válido
+            if (window.mapa && window.mapa.length) {
+                logger.warn('window.mapa es una colección, buscando elemento válido...');
+                const elementosValidos = Array.from(window.mapa).filter(el => el && el.tagName);
+                if (elementosValidos.length > 0) {
+                    logger.info(`Encontrados ${elementosValidos.length} elementos válidos, usando el primero`);
+                    window.mapa = elementosValidos[0];
+                } else {
+                    logger.error('No se encontraron elementos válidos en la colección window.mapa');
+                    reject(new Error('No se encontraron elementos válidos en window.mapa'));
+                    return;
+                }
+            }
+
+            // Si ya existe un mapa pero no es válido, destruirlo para evitar problemas
             if (window.mapa && typeof window.mapa.remove === 'function') {
+                logger.warn('Destruyendo mapa existente no válido...');
                 window.mapa.remove();
                 window.mapa = null;
             }
@@ -236,23 +259,39 @@ export async function inicializarMapa(config = {}) {
             // Verificar que el mapa se inicializó correctamente
             if (typeof mapInstance.getCenter === 'function') {
                 logger.info('✅ Mapa inicializado correctamente en:', mapInstance.getCenter());
-                
+                console.log('✅ [MAPA] Mapa creado exitosamente en coordenadas:', mapInstance.getCenter());
+
                 // Forzar actualización del tamaño después de que se carguen los estilos
                 window.addEventListener('load', forceMapUpdate);
-                
+
                 // Manejar redimensionamiento de ventana
                 window.addEventListener('resize', () => {
                     clearTimeout(window.mapResizeTimer);
                     window.mapResizeTimer = setTimeout(forceMapUpdate, 250);
                 });
-                
+
                 resolve(mapInstance);
             } else {
-                reject(new Error('El mapa no se inicializó correctamente'));
+                const errorMsg = 'El mapa no se inicializó correctamente - getCenter no disponible';
+                logger.error('❌ ' + errorMsg);
+                console.error('❌ [MAPA] ' + errorMsg, {
+                    mapInstance,
+                    tipo: typeof mapInstance,
+                    hasGetCenter: typeof mapInstance?.getCenter
+                });
+                reject(new Error(errorMsg));
             }
             
         } catch (error) {
             logger.error('❌ Error al inicializar mapa:', error);
+            console.error('❌ [MAPA] Error crítico durante inicialización:', {
+                mensaje: error.message,
+                stack: error.stack,
+                containerId,
+                config: mapConfig,
+                windowMapa: window.mapa,
+                tipoWindowMapa: typeof window.mapa
+            });
             reject(error);
         }
     });
