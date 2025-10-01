@@ -987,27 +987,39 @@
                 actualizarInterfazModo(nuevoModo);
             });
 
-            // CONTROL.CAMBIAR_MODO - Cambiar el modo del componente
-            registrarControlador('CONTROL.CAMBIAR_MODO', (mensaje) => {
-                const { modo } = mensaje.datos || {};
-                if (!modo) {
-                    logger.warn('[CASA] No se especificó un modo en el mensaje CONTROL.CAMBIAR_MODO.');
-                    return { estado: 'error', mensaje: 'Modo no especificado' };
-                }
-
-                logger.info(`[CASA] Cambiando modo a: ${modo}`);
-                modoHandler.cambiarModo(modo, COMPONENTE_ID);
-                actualizarInterfazModo(modo);
-                return { estado: 'ok', modo: modo };
-            });
-            
             // Registrar manejadores para los diferentes tipos de mensajes con manejo de errores
             try {
                 // Verificar que TIPOS_MENSAJE esté disponible
                 if (!TIPOS_MENSAJE) {
                     throw new Error('TIPOS_MENSAJE no está definido');
                 }
-                
+
+                // CONTROL.CAMBIAR_MODO - Cambiar el modo del componente
+                registrarControlador('CONTROL.CAMBIAR_MODO', (mensaje) => {
+                    const { modo } = mensaje.datos || {};
+                    if (!modo) {
+                        logger.warn('[CASA] No se especificó un modo en el mensaje CONTROL.CAMBIAR_MODO.');
+                        return { estado: 'error', mensaje: 'Modo no especificado' };
+                    }
+
+                    logger.info(`[CASA] Cambiando modo a: ${modo}`);
+                    modoHandler.cambiarModo(modo, COMPONENTE_ID);
+                    actualizarInterfazModo(modo);
+                    return { estado: 'ok', modo: modo };
+                });
+
+                // SISTEMA.ERROR - Manejar mensajes de error del sistema
+                registrarControlador(TIPOS_MENSAJE.SISTEMA.ERROR, (mensaje) => {
+                    logger.warn(`[${COMPONENTE_ID}] Recibido mensaje de error:`, mensaje.datos);
+
+                    // Mostrar el error en la interfaz si es necesario
+                    if (mensaje.datos?.mostrarEnInterfaz) {
+                        mostrarEstadoCarga(false, `Error del sistema: ${mensaje.datos.error}`, true);
+                    }
+
+                    return { estado: 'ok', procesado: true };
+                });
+
                 // Registrar controlador para cambios de modo
                 if (TIPOS_MENSAJE?.SISTEMA?.CAMBIO_MODO) {
                     registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejarCambioModo);
@@ -1053,6 +1065,33 @@
                 
                 logger.info(`[${COMPONENTE_ID}] Componente inicializado correctamente con ${tiposMensajeParadas.filter(({ tipo }) => tipo).length} tipos de mensaje registrados`);
                 
+                // Actualizar interfaz inicialmente según el estado
+                actualizarInterfaz(estado.modo);
+                
+                // Enviar mensaje inicial al padre para sincronizar estado
+                try {
+                    console.log('Enviando mensaje de inicialización al padre');
+                    const tipoMensaje = TIPOS_MENSAJE && TIPOS_MENSAJE.SISTEMA && TIPOS_MENSAJE.SISTEMA.INICIALIZACION;
+                    if (!tipoMensaje) {
+                        throw new Error('Tipo de mensaje no definido: TIPOS_MENSAJE.SISTEMA.INICIALIZACION');
+                    }
+                    console.log('Tipo de mensaje:', tipoMensaje);
+                    await enviarMensaje('padre', tipoMensaje, {
+                        origen: 'hijo5-casa',
+                        timestamp: new Date().toISOString()
+                    });
+                    console.log('Mensaje de inicialización enviado correctamente');
+                } catch (error) {
+                    console.error('Error al enviar mensaje de inicialización:', error);
+                    mostrarEstadoCarga(false, 'Error al enviar mensaje de inicialización', true);
+                    throw error;
+                }
+                
+                return {
+                    componente: COMPONENTE_ID,
+                    modo: estado.modo,
+                    timestamp: new Date().toISOString()
+                };
             } catch (error) {
                 logger.error(`[${COMPONENTE_ID}] Error durante el registro de controladores:`, error);
                 // Notificar el error al padre
@@ -1064,34 +1103,6 @@
                 });
                 throw error; // Relanzar para que se maneje en el catch exterior
             }
-
-            // Actualizar interfaz inicialmente según el estado
-            actualizarInterfaz(estado.modo);
-            
-            // Enviar mensaje inicial al padre para sincronizar estado
-            try {
-                console.log('Enviando mensaje de inicialización al padre');
-                const tipoMensaje = TIPOS_MENSAJE && TIPOS_MENSAJE.SISTEMA && TIPOS_MENSAJE.SISTEMA.INICIALIZACION;
-                if (!tipoMensaje) {
-                    throw new Error('Tipo de mensaje no definido: TIPOS_MENSAJE.SISTEMA.INICIALIZACION');
-                }
-                console.log('Tipo de mensaje:', tipoMensaje);
-                await enviarMensaje('padre', tipoMensaje, {
-                    origen: 'hijo5-casa',
-                    timestamp: new Date().toISOString()
-                });
-                console.log('Mensaje de inicialización enviado correctamente');
-            } catch (error) {
-                console.error('Error al enviar mensaje de inicialización:', error);
-                mostrarEstadoCarga(false, 'Error al enviar mensaje de inicialización', true);
-                throw error;
-            }
-            
-            return {
-                componente: COMPONENTE_ID,
-                modo: estado.modo,
-                timestamp: new Date().toISOString()
-            };
         } catch (error) {
             console.error('Error en la inicialización:', error);
             mostrarEstadoCarga(false, 'Error en la inicialización', true);
