@@ -131,24 +131,38 @@ export async function inicializarMapa(config = {}) {
             };
             
             // Obtener el contenedor del mapa
-            containerId = config.containerId || 'mapa'; // Asignar aquí
+            containerId = config.containerId || 'mapa';
             let container = document.getElementById(containerId);
             
-            if (!container) {
-                logger.warn(`Contenedor del mapa con ID "${containerId}" no encontrado. Creando uno nuevo...`);
-                // Crear el contenedor si no existe
-                container = document.createElement('div');
-                container.id = containerId;
-                document.body.prepend(container);
-                logger.info('✅ Contenedor del mapa creado dinámicamente');
+            // Verificar si el contenedor existe y es visible
+            if (!container || !document.body.contains(container)) {
+                logger.warn(`Contenedor del mapa con ID "${containerId}" no encontrado. Intentando crear uno...`);
+                
+                // Verificar si ya hay un contenedor con ese ID pero no está en el DOM
+                if (container) {
+                    // Si existe pero no está en el DOM, adjuntarlo al body
+                    document.body.prepend(container);
+                    logger.info('✅ Contenedor del mapa reubicado en el DOM');
+                } else {
+                    // Si no existe, crear uno nuevo
+                    container = document.createElement('div');
+                    container.id = containerId;
+                    document.body.prepend(container);
+                    logger.info('✅ Nuevo contenedor del mapa creado dinámicamente');
+                }
+                
+                // Asegurar que el body tenga las dimensiones correctas
+                document.body.style.margin = '0';
+                document.body.style.padding = '0';
+                document.body.style.overflow = 'hidden';
             }
             
-            // Forzar estilos críticos para el contenedor
-            Object.assign(container.style, {
+            // Aplicar estilos críticos para el contenedor
+            const containerStyles = {
                 display: 'block',
                 visibility: 'visible',
                 opacity: '1',
-                width: '100vw',
+                width: '100%',
                 height: '100vh',
                 position: 'fixed',
                 top: '0',
@@ -157,33 +171,68 @@ export async function inicializarMapa(config = {}) {
                 backgroundColor: '#f5f5f5',
                 margin: '0',
                 padding: '0',
-                overflow: 'hidden'
-            });
+                overflow: 'hidden',
+                boxSizing: 'border-box'
+            };
             
-            // Asegurar que el body tenga dimensiones correctas
-            document.body.style.margin = '0';
-            document.body.style.padding = '0';
-            document.body.style.overflow = 'hidden';
+            // Aplicar estilos al contenedor
+            Object.assign(container.style, containerStyles);
+            
+            // Forzar un reflow para asegurar que los estilos se apliquen
+            void container.offsetHeight;
+            
+            // Verificar que el contenedor sea visible y tenga dimensiones
+            const rect = container.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) {
+                console.warn('El contenedor del mapa no tiene dimensiones visibles, forzando redimensionamiento...');
+                container.style.width = '100%';
+                container.style.height = '100vh';
+                container.style.minHeight = '500px'; // Altura mínima para asegurar visibilidad
+            }
+            
+            // Verificar nuevamente que el contenedor esté en el DOM
+            if (!document.body.contains(container)) {
+                logger.warn('El contenedor del mapa no está en el DOM, intentando corregir...');
+                document.body.prepend(container);
+            }
             
             // Si ya existe un mapa válido, devolverlo directamente
             if (window.mapa && typeof window.mapa.getCenter === 'function' && typeof window.mapa.getZoom === 'function') {
-                logger.info('Mapa ya inicializado, devolviendo instancia existente');
-                console.log('🔄 [MAPA] Mapa ya inicializado, devolviendo instancia existente:', window.mapa.getCenter());
-                resolve(window.mapa);
-                return;
+                // Verificar que el mapa esté asociado a un elemento en el DOM
+                const mapContainer = window.mapa.getContainer();
+                if (mapContainer && document.body.contains(mapContainer)) {
+                    logger.info('Mapa ya inicializado y en el DOM, devolviendo instancia existente');
+                    resolve(window.mapa);
+                    return;
+                } else {
+                    logger.warn('Mapa existente no está en el DOM, limpiando para reiniciar...');
+                    if (window.mapa.remove) {
+                        window.mapa.remove();
+                    }
+                    window.mapa = null;
+                }
             }
 
             // Si window.mapa es una colección (IDs duplicados), tomar el primer elemento válido
             if (window.mapa && window.mapa.length) {
                 logger.warn('window.mapa es una colección, buscando elemento válido...');
-                const elementosValidos = Array.from(window.mapa).filter(el => el && el.tagName);
+                // Convertir a array y filtrar elementos válidos que estén en el DOM
+                const elementosValidos = Array.from(window.mapa).filter(el => {
+                    try {
+                        return el && el.getContainer && document.body.contains(el.getContainer());
+                    } catch (e) {
+                        return false;
+                    }
+                });
+                
                 if (elementosValidos.length > 0) {
                     logger.info(`Encontrados ${elementosValidos.length} elementos válidos, usando el primero`);
                     window.mapa = elementosValidos[0];
-                } else {
-                    logger.error('No se encontraron elementos válidos en la colección window.mapa');
-                    reject(new Error('No se encontraron elementos válidos en window.mapa'));
+                    resolve(window.mapa);
                     return;
+                } else {
+                    logger.warn('No se encontraron elementos válidos en la colección window.mapa, limpiando...');
+                    window.mapa = null;
                 }
             }
 
