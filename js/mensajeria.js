@@ -997,6 +997,21 @@ function logMensajeSeguro(mensaje, objeto) {
     }
 }
 
+// Función para sincronización periódica entre padre e hijos
+export function iniciarSincronizacionPeriodica(intervalo = 5000) {
+    setInterval(() => {
+        // Enviar mensaje de sincronización al padre
+        enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.SINCRONIZAR_ESTADO, {
+            estadoActual: estado
+        });
+
+        console.log('[Sincronización] Estado sincronizado con el padre:', estado);
+    }, intervalo);
+}
+
+// Llamar a esta función desde la inicialización del padre o hijos
+iniciarSincronizacionPeriodica();
+
 export default {
     inicializarMensajeria,
     registrarControlador,
