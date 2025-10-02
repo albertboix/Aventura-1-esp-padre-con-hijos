@@ -1426,21 +1426,107 @@
 
 <!-- Script de inicialización del mapa simplificado -->
 <script type="module">
+    console.log('🚀 [MAPA] Importando módulos...');
+    
+    // Importar módulos necesarios
+    import { verificarInicializado } from './js/mensajeria.js';
+    
+    // Función para esperar a que la mensajería esté lista
+    async function esperarMensajeriaLista() {
+        console.log('🔄 [MAPA] Esperando a que la mensajería esté lista...');
+        
+        // Esperar hasta que la mensajería esté lista (máximo 10 segundos)
+        const maxEspera = 10000; // 10 segundos
+        const inicio = Date.now();
+        
+        while (true) {
+            // Verificar si la mensajería está inicializada
+            const mensajeriaLista = verificarInicializado();
+            if (mensajeriaLista) {
+                console.log('✅ [MAPA] Mensajería lista después de', ((Date.now() - inicio) / 1000).toFixed(2), 'segundos');
+                return true;
+            }
+            
+            // Verificar tiempo máximo de espera
+            if ((Date.now() - inicio) > maxEspera) {
+                console.warn('⚠️ [MAPA] Tiempo de espera agotado para la mensajería');
+                return false;
+            }
+            
+            // Esperar un poco antes de volver a verificar
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+    }
+    
     console.log('🚀 [MAPA] Iniciando inicialización del mapa...');
 
+    // Función para mostrar errores en la interfaz
+    function mostrarErrorEnInterfaz(error, titulo = 'Error') {
+        console.error(`❌ [MAPA] ${titulo}:`, error);
+        
+        // Eliminar mensajes de error anteriores
+        const erroresAnteriores = document.querySelectorAll('.error-mapa');
+        erroresAnteriores.forEach(el => el.remove());
+        
+        // Crear y mostrar el mensaje de error
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error-mapa';
+        errorDiv.style.position = 'fixed';
+        errorDiv.style.top = '10px';
+        errorDiv.style.left = '10px';
+        errorDiv.style.zIndex = '9999';
+        errorDiv.style.backgroundColor = 'rgba(255, 0, 0, 0.8)';
+        errorDiv.style.color = 'white';
+        errorDiv.style.padding = '15px';
+        errorDiv.style.borderRadius = '5px';
+        errorDiv.style.maxWidth = '500px';
+        errorDiv.style.maxHeight = '80vh';
+        errorDiv.style.overflow = 'auto';
+        
+        // Construir el mensaje de error detallado
+        let mensajeError = `<h3 style="margin: 0 0 10px 0;">${titulo}</h3>`;
+        mensajeError += `<p><strong>${error.message || 'Error desconocido'}</strong></p>`;
+        
+        if (error.stack) {
+            mensajeError += '<details style="margin-top: 10px;">';
+            mensajeError += '<summary>Detalles técnicos</summary>';
+            mensajeError += `<pre style="white-space: pre-wrap; margin: 5px 0 0 0; font-size: 12px;">${error.stack}</pre>`;
+            mensajeError += '</details>';
+        }
+        
+        mensajeError += '<button onclick="this.parentNode.remove()" style="margin-top: 10px; padding: 5px 10px; cursor: pointer;">Cerrar</button>';
+        
+        errorDiv.innerHTML = mensajeError;
+        document.body.appendChild(errorDiv);
+        
+        return errorDiv;
+    }
+    
     async function initializeMap() {
         try {
             // 1. Esperar a que el DOM esté completamente cargado
             if (document.readyState !== 'complete') {
+                console.log('⏳ [MAPA] Esperando a que el DOM esté completamente cargado...');
                 await new Promise(resolve => {
                     if (document.readyState === 'complete') {
+                        console.log('✅ [MAPA] DOM ya está completamente cargado');
                         resolve();
                     } else {
+                        console.log('⏳ [MAPA] Esperando evento DOMContentLoaded...');
                         window.addEventListener('DOMContentLoaded', resolve, { once: true });
                         // Timeout de seguridad
-                        setTimeout(resolve, 5000);
+                        setTimeout(() => {
+                            console.log('⚠️ [MAPA] Timeout esperando por DOMContentLoaded');
+                            resolve();
+                        }, 5000);
                     }
                 });
+            }
+            
+            // 1.5 Esperar a que la mensajería esté lista
+            const mensajeriaLista = await esperarMensajeriaLista();
+            if (!mensajeriaLista) {
+                console.warn('⚠️ [MAPA] Continuando sin confirmación de mensajería lista');
             }
 
             // 2. Verificar que el contenedor del mapa existe
@@ -1530,18 +1616,11 @@
             return window.mapa;
             
         } catch (error) {
-            console.error('❌ [MAPA] Error al inicializar el mapa:', error);
+            // Mostrar el error en la interfaz
+            mostrarErrorEnInterfaz(error, 'Error al inicializar el mapa');
             
-            // Mostrar mensaje de error en la interfaz
-            const errorDiv = document.createElement('div');
-            errorDiv.style.position = 'fixed';
-            errorDiv.style.top = '10px';
-            errorDiv.style.left = '10px';
-            errorDiv.style.zIndex = '9999';
-            errorDiv.style.backgroundColor = 'rgba(255, 0, 0, 0.8)';
-            errorDiv.style.color = 'white';
-            errorDiv.style.padding = '15px';
-            errorDiv.style.borderRadius = '5px';
+            // Re-lanzar el error para que pueda ser manejado por el llamador
+            throw error;
             errorDiv.style.maxWidth = '500px';
             errorDiv.innerHTML = `
                 <h3>Error al inicializar el mapa</h3>
@@ -1554,11 +1633,22 @@
         }
     }
 
-    // Inicializar el mapa cuando el DOM esté listo
+    // Inicializar el mapa cuando todo esté listo
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initializeMap);
+        console.log('⏳ [MAPA] DOM aún no está listo, esperando...');
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('✅ [MAPA] DOM cargado, inicializando mapa...');
+            initializeMap().catch(error => {
+                console.error('❌ [MAPA] Error al inicializar el mapa:', error);
+            });
+        });
     } else {
-        setTimeout(initializeMap, 0);
+        console.log('✅ [MAPA] DOM ya está listo, inicializando mapa...');
+        setTimeout(() => {
+            initializeMap().catch(error => {
+                console.error('❌ [MAPA] Error al inicializar el mapa:', error);
+            });
+        }, 100); // Pequeño retraso para asegurar que todo esté listo
     }
 </script>
 </body>
