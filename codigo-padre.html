@@ -1633,22 +1633,121 @@
         }
     }
 
+    // Función para verificar que el contenedor del mapa existe
+    function verificarContenedorMapa() {
+        const mapaContainer = document.getElementById('mapa');
+        if (!mapaContainer) {
+            console.error('❌ [MAPA] No se encontró el contenedor del mapa');
+            return false;
+        }
+        
+        // Asegurarse de que el contenedor sea visible y tenga dimensiones
+        Object.assign(mapaContainer.style, {
+            display: 'block',
+            visibility: 'visible',
+            opacity: '1',
+            width: '100%',
+            height: '100vh',
+            position: 'fixed',
+            top: '0',
+            left: '0',
+            zIndex: '1',
+            backgroundColor: '#f5f5f5'
+        });
+        
+        return true;
+    }
+
+    // Función para inicializar el mapa con reintentos
+    async function inicializarMapaConReintentos(maxReintentos = 3, intervalo = 500) {
+        let intentos = 0;
+        
+        const intentarInicializacion = async () => {
+            try {
+                if (!verificarContenedorMapa()) {
+                    throw new Error('El contenedor del mapa no está disponible');
+                }
+                
+                console.log('✅ [MAPA] Inicializando mapa...');
+                await initializeMap();
+                console.log('✅ [MAPA] Mapa inicializado correctamente');
+                return true;
+            } catch (error) {
+                intentos++;
+                console.warn(`⚠️ [MAPA] Intento ${intentos}/${maxReintentos} fallido:`, error.message);
+                
+                if (intentos >= maxReintentos) {
+                    console.error(`❌ [MAPA] Se agotaron los ${maxReintentos} intentos de inicialización`);
+                    mostrarErrorEnInterfaz(error, 'Error al inicializar el mapa');
+                    return false;
+                }
+                
+                // Esperar antes de reintentar
+                await new Promise(resolve => setTimeout(resolve, intervalo));
+                return intentarInicializacion();
+            }
+        };
+        
+        return intentarInicializacion();
+    }
+
     // Inicializar el mapa cuando todo esté listo
+    function iniciarCargaDelMapa() {
+        console.log('🚀 [MAPA] Iniciando carga del mapa...');
+        
+        // Verificar si el contenedor ya está disponible
+        if (verificarContenedorMapa()) {
+            console.log('✅ [MAPA] Contenedor del mapa encontrado, procediendo con inicialización...');
+            inicializarMapaConReintentos().then(exitosa => {
+                if (exitosa) {
+                    console.log('✅ [MAPA] Mapa inicializado exitosamente');
+                }
+            });
+        } else {
+            console.log('⏳ [MAPA] Esperando a que el contenedor del mapa esté disponible...');
+            
+            // Usar MutationObserver para detectar cuando se añade el contenedor del mapa
+            const observer = new MutationObserver((mutations, obs) => {
+                if (verificarContenedorMapa()) {
+                    console.log('✅ [MAPA] Contenedor del mapa detectado, procediendo con inicialización...');
+                    obs.disconnect(); // Dejar de observar
+                    inicializarMapaConReintentos().then(exitosa => {
+                        if (exitosa) {
+                            console.log('✅ [MAPA] Mapa inicializado exitosamente después de esperar');
+                        }
+                    });
+                }
+            });
+            
+            // Comenzar a observar cambios en el documento
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+            
+            // Timeout de seguridad
+            setTimeout(() => {
+                observer.disconnect();
+                if (!document.getElementById('mapa')) {
+                    const error = new Error('No se pudo encontrar el contenedor del mapa después de esperar');
+                    console.error('❌ [MAPA]', error.message);
+                    mostrarErrorEnInterfaz(error, 'Error crítico');
+                }
+            }, 10000); // 10 segundos de timeout
+        }
+    }
+
+    // Iniciar la carga del mapa cuando el DOM esté listo
     if (document.readyState === 'loading') {
         console.log('⏳ [MAPA] DOM aún no está listo, esperando...');
         document.addEventListener('DOMContentLoaded', () => {
-            console.log('✅ [MAPA] DOM cargado, inicializando mapa...');
-            initializeMap().catch(error => {
-                console.error('❌ [MAPA] Error al inicializar el mapa:', error);
-            });
+            console.log('✅ [MAPA] DOM cargado, iniciando carga del mapa...');
+            iniciarCargaDelMapa();
         });
     } else {
-        console.log('✅ [MAPA] DOM ya está listo, inicializando mapa...');
-        setTimeout(() => {
-            initializeMap().catch(error => {
-                console.error('❌ [MAPA] Error al inicializar el mapa:', error);
-            });
-        }, 100); // Pequeño retraso para asegurar que todo esté listo
+        console.log('✅ [MAPA] DOM ya está listo, iniciando carga del mapa...');
+        // Pequeño retraso para asegurar que todo esté listo
+        setTimeout(iniciarCargaDelMapa, 100);
     }
 </script>
 </body>
