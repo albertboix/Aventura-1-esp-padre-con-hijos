@@ -153,9 +153,6 @@ export function generarHashContenido(tipo, datos = {}) {
     return Math.abs(hash).toString(16);
 }
 
-// Exportar como named export
-export { generarHashContenido };
-
 export default {
     configurarUtils,
     crearObjetoError,
