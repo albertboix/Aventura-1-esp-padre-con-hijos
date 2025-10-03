@@ -187,16 +187,16 @@ export async function diagnosticarMapa() {
     console.log('- Z-index:', window.getComputedStyle(mapa).zIndex);
     console.log('- Dimensiones:', mapa.offsetWidth + 'x' + mapa.offsetHeight);
     console.log('- Position:', window.getComputedStyle(mapa).position);
+
     // Verificar si la instancia de Leaflet existe
     if (window.L) {
         console.log('- Leaflet está disponible (window.L):', window.L.version);
     } else {
         console.error('❌ Leaflet NO está disponible (window.L undefined)');
     }
-    
+
     // Verificar si el mapa de Leaflet está instanciado
     if (window.mapa) {
-        // Verificar si window.mapa es una instancia válida de Leaflet Map
         if (window.mapa instanceof window.L.Map) {
             try {
                 console.log('✅ Instancia de mapa existe y es válida (window.mapa)');
@@ -206,6 +206,25 @@ export async function diagnosticarMapa() {
                 // Forzar actualización del mapa
                 window.mapa.invalidateSize(true);
                 console.log('✅ Mapa actualizado con invalidateSize()');
+
+                // Verificar capas base y superpuestas
+                const capas = Object.keys(window.mapa._layers);
+                console.log('- Número de capas del mapa:', capas.length);
+                if (capas.length === 0) {
+                    console.warn('⚠️ No hay capas cargadas en el mapa');
+                } else {
+                    console.log('✅ Capas cargadas:', capas);
+                }
+
+                // Validar eventos del mapa
+                const eventosRequeridos = ['click', 'moveend'];
+                eventosRequeridos.forEach(evento => {
+                    if (window.mapa.listens(evento)) {
+                        console.log(`✅ Evento '${evento}' está registrado en el mapa`);
+                    } else {
+                        console.warn(`⚠️ Evento '${evento}' NO está registrado en el mapa`);
+                    }
+                });
             } catch (e) {
                 console.error('❌ Error al acceder a métodos del mapa:', e);
                 return false;
@@ -221,10 +240,6 @@ export async function diagnosticarMapa() {
         return false;
     }
 
-    // Verificar si hay capas
-    if (window.mapa && window.mapa._layers) {
-        console.log('- Número de capas del mapa:', Object.keys(window.mapa._layers).length);
-    }
     // Verificar si hay elementos de Leaflet en el DOM
     const leafletContainers = document.querySelectorAll('.leaflet-container, .leaflet-map-pane');
     console.log('- Elementos Leaflet en DOM:', leafletContainers.length);
