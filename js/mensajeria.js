@@ -932,8 +932,7 @@ export {
     enviarConfirmacion,
     enviarError,
     verificarInicializado,
-    limpiarMensajeria,
-    iniciarSincronizacionPeriodica
+    limpiarMensajeria
 };
 
 /**
@@ -1018,7 +1017,6 @@ export default {
     enviarError,
     verificarInicializado,
     limpiarMensajeria,
-    iniciarSincronizacionPeriodica,
     // Exportar constantes útiles
     TIPOS_MENSAJE_BASICOS
 };
