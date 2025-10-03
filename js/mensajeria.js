@@ -8,7 +8,6 @@
 import { TIPOS_MENSAJE } from './constants.js';
 import * as Utils from './utils.js';
 import logger from './logger.js';
-import { generarHashContenido } from './utils.js';
 
 // Asegurarse de que las utilidades estén disponibles
 if (!Utils) {
@@ -16,15 +15,7 @@ if (!Utils) {
 }
 
 
-// Ensure generarHashContenido is available
-export const generarHashContenido = (tipo, datos = {}) => {
-    try {
-        return Utils.generarHashContenido(tipo, datos);
-    } catch (error) {
-        console.error('Error in generarHashContenido:', error);
-        return 'error-hash';
-    }
-};
+// Using generarHashContenido imported from utils.js
 
 // Extraer las demás utilidades necesarias
 const { configurarUtils, crearObjetoError, generarIdUnico } = Utils;
@@ -922,27 +913,27 @@ export async function enviarMensaje(destino, tipo, datos = {}) {
     return await _enviarMensaje(destino, tipo, datos);
 }
 
-// Ensure TIPOS_MENSAJE is exported if needed
-export { TIPOS_MENSAJE };
+// Evitamos re-exportar TIPOS_MENSAJE para prevenir dependencias circulares
+// Los módulos que necesiten TIPOS_MENSAJE deben importarlo directamente de constants.js
 
-// Problema #11: Evitar re-exportar TIPOS_MENSAJE directamente para evitar dependencia circular
-// En lugar de re-exportar, exportamos solo las constantes que necesitamos
 export const TIPOS_MENSAJE_BASICOS = {
     SISTEMA: {
         CONFIRMACION: 'SISTEMA.CONFIRMACION',
         ERROR: 'SISTEMA.ERROR',
         PING: 'SISTEMA.PING',
-        PONG: 'SISTEMA.PONG'
+        PONG: 'SISTEMA.PONG',
+        SINCRONIZAR_ESTADO: 'SISTEMA.SINCRONIZAR_ESTADO'
     }
 };
 
-// Exportar las nuevas funciones
+// Exportar las funciones públicas
 export {
     enviarMensajeConConfirmacion,
     enviarConfirmacion,
     enviarError,
     verificarInicializado,
-    limpiarMensajeria
+    limpiarMensajeria,
+    iniciarSincronizacionPeriodica
 };
 
 /**
@@ -978,21 +969,46 @@ function logMensajeSeguro(mensaje, objeto) {
     }
 }
 
-// Función para sincronización periódica entre padre e hijos
+/**
+ * Inicia la sincronización periódica del estado con el padre
+ * @param {number} [intervalo=5000] - Intervalo de sincronización en milisegundos
+ */
 export function iniciarSincronizacionPeriodica(intervalo = 5000) {
-    setInterval(() => {
-        // Enviar mensaje de sincronización al padre
-        enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.SINCRONIZAR_ESTADO, {
-            estadoActual: estado
-        });
+    // Verificar si la mensajería está inicializada
+    if (!verificarInicializado()) {
+        console.warn('[Mensajería] No se pudo iniciar sincronización: módulo no inicializado');
+        // Reintentar después de un segundo
+        setTimeout(() => iniciarSincronizacionPeriodica(intervalo), 1000);
+        return;
+    }
 
-        console.log('[Sincronización] Estado sincronizado con el padre:', estado);
+    // Usar setInterval para sincronización periódica
+    const intervalId = setInterval(() => {
+        try {
+            // Solo intentar sincronizar si estamos conectados
+            if (verificarInicializado()) {
+                enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.SINCRONIZAR_ESTADO, {
+                    estadoActual: estado,
+                    timestamp: Date.now()
+                });
+                
+                if (config.debug) {
+                    console.debug('[Sincronización] Estado sincronizado con el padre');
+                }
+            }
+        } catch (error) {
+            console.error('[Sincronización] Error al sincronizar estado:', error);
+            // En caso de error, intentar reiniciar la sincronización
+            clearInterval(intervalId);
+            iniciarSincronizacionPeriodica(intervalo);
+        }
     }, intervalo);
+
+    // Devolver función para detener la sincronización
+    return () => clearInterval(intervalId);
 }
 
-// Llamar a esta función desde la inicialización del padre o hijos
-iniciarSincronizacionPeriodica();
-
+// Exportar la API pública
 export default {
     inicializarMensajeria,
     registrarControlador,
@@ -1001,5 +1017,8 @@ export default {
     enviarConfirmacion,
     enviarError,
     verificarInicializado,
-    limpiarMensajeria
+    limpiarMensajeria,
+    iniciarSincronizacionPeriodica,
+    // Exportar constantes útiles
+    TIPOS_MENSAJE_BASICOS
 };
