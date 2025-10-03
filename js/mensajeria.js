@@ -8,6 +8,7 @@
 import { TIPOS_MENSAJE } from './constants.js';
 import * as Utils from './utils.js';
 import logger from './logger.js';
+import { generarHashContenido } from './utils.js';
 
 // Asegurarse de que las utilidades estén disponibles
 if (!Utils) {
@@ -18,26 +19,9 @@ if (!Utils) {
 // Ensure generarHashContenido is available
 export const generarHashContenido = (tipo, datos = {}) => {
     try {
-        // First try to use the imported function
-        if (typeof Utils.generarHashContenido === 'function') {
-            return Utils.generarHashContenido(tipo, datos);
-        }
-        // Then try default export
-        if (typeof Utils.default?.generarHashContenido === 'function') {
-            return Utils.default.generarHashContenido(tipo, datos);
-        }
-        
-        // Fallback implementation
-        const contenido = `${tipo}:${JSON.stringify(datos)}`;
-        let hash = 0;
-        for (let i = 0; i < contenido.length; i++) {
-            const char = contenido.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash; // Convert to 32-bit integer
-        }
-        return Math.abs(hash).toString(16);
+        return Utils.generarHashContenido(tipo, datos);
     } catch (error) {
-        console.error('Error in generarHashContenido fallback:', error);
+        console.error('Error in generarHashContenido:', error);
         return 'error-hash';
     }
 };
