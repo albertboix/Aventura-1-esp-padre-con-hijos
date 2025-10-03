@@ -142,25 +142,15 @@ export function throttle(func, limit = 300) {
  * @param {Object} datos - Datos del mensaje
  * @returns {string} Hash del contenido
  */
-function generarHashContenido(tipo, datos = {}) {
-    try {
-        // Crear una cadena con el tipo y los datos serializados
-        const contenido = `${tipo}:${JSON.stringify(datos)}`;
-        
-        // Algoritmo de hash simple (puedes reemplazarlo con uno más robusto si es necesario)
-        let hash = 0;
-        for (let i = 0; i < contenido.length; i++) {
-            const char = contenido.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash; // Convertir a número entero de 32 bits
-        }
-        
-        // Convertir a string hexadecimal
-        return Math.abs(hash).toString(16);
-    } catch (error) {
-        console.error('Error al generar hash de contenido:', error);
-        return 'error-hash';
+export function generarHashContenido(tipo, datos = {}) {
+    const contenido = `${tipo}:${JSON.stringify(datos)}`;
+    let hash = 0;
+    for (let i = 0; i < contenido.length; i++) {
+        const char = contenido.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convertir a entero de 32 bits
     }
+    return Math.abs(hash).toString(16);
 }
 
 // Exportar como named export
