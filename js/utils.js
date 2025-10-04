@@ -160,5 +160,6 @@ export default {
     generarId,
     generarIdUnico,
     debounce,
-    throttle
+    throttle,
+    generarHashContenido
 };
