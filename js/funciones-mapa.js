@@ -355,6 +355,50 @@ function buscarCoordenadasParada(paradaId) {
 }
 
 /**
+ * Carga los datos de una parada por su ID
+ * @param {string} paradaId - ID de la parada a cargar
+ * @returns {Promise<Object>} Objeto con los datos de la parada
+ */
+async function cargarDatosParada(paradaId) {
+    try {
+        if (!paradaId) {
+            throw new Error('No se proporcionó un ID de parada');
+        }
+        
+        logger.info(`Cargando datos para parada: ${paradaId}`);
+        
+        // Buscar la parada en los datos locales primero
+        const paradaLocal = arrayParadasLocal.find(p => p.id === paradaId || p.parada_id === paradaId);
+        
+        if (paradaLocal) {
+            logger.debug(`Parada encontrada localmente: ${paradaId}`);
+            return paradaLocal;
+        }
+        
+        // Si no está localmente, intentar cargarla del servidor
+        logger.debug(`Solicitando datos de parada al servidor: ${paradaId}`);
+        
+        // Usar el sistema de mensajería para solicitar los datos al servidor
+        const respuesta = await enviarMensaje('servidor', 'SOLICITAR_DATOS_PARADA', {
+            paradaId: paradaId,
+            timestamp: new Date().toISOString()
+        });
+        
+        if (respuesta && respuesta.datos) {
+            // Añadir la parada a los datos locales para futuras referencias
+            arrayParadasLocal.push(respuesta.datos);
+            return respuesta.datos;
+        }
+        
+        throw new Error(`No se encontraron datos para la parada: ${paradaId}`);
+        
+    } catch (error) {
+        logger.error(`Error al cargar datos de la parada ${paradaId}:`, error);
+        throw error; // Relanzar para que el llamador pueda manejarlo
+    }
+}
+
+/**
  * Busca las coordenadas de un tramo por su ID
  * @param {string} tramoId - ID del tramo a buscar
  * @returns {Object|null} Objeto con inicio, fin y waypoints, o null si no se encuentra
