@@ -13,10 +13,10 @@ const safeConsoleMethod = (typeof console !== 'undefined' && console.log)
   : () => {};
 
 // Nombres de niveles para mostrar
-const LEVEL_NAMES = ['DEBUG', 'INFO', 'WARN', 'ERROR', 'NONE'];
+export const LEVEL_NAMES = ['DEBUG', 'INFO', 'WARN', 'ERROR', 'NONE'];
 
 // Colores para la consola
-const DEFAULT_COLORS = {
+export const DEFAULT_COLORS = {
   DEBUG: '#9E9E9E',  // Gris
   INFO: '#2196F3',   // Azul
   WARN: '#FFC107',   // Amarillo
