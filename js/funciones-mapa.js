@@ -65,7 +65,25 @@ export async function inicializarMapa(config = {}) {
             maxZoom: 19
         }).addTo(mapa);
 
-        logger.info('Mapa inicializado correctamente');
+        // Añadir manejador de eventos de clic en el mapa
+        mapa.on('click', function(e) {
+            const { lat, lng } = e.latlng;
+            logger.info(`Clic en el mapa - Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`);
+            
+            // Actualizar la interfaz o realizar acciones adicionales
+            if (marcadorUsuario) {
+                // Mover el marcador de usuario a la posición del clic
+                marcadorUsuario.setLatLng([lat, lng]);
+            }
+            
+            // Opcional: Mostrar un popup en la posición del clic
+            L.popup()
+                .setLatLng([lat, lng])
+                .setContent(`Has hecho clic en:<br>Lat: ${lat.toFixed(6)}<br>Lng: ${lng.toFixed(6)}`)
+                .openOn(mapa);
+        });
+
+        logger.info('Mapa inicializado correctamente con manejador de clics');
         return mapa;
     } catch (error) {
         logger.error('❌ Error al inicializar mapa:', error);
