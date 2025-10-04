@@ -8,6 +8,7 @@
 import { TIPOS_MENSAJE } from './constants.js';
 import * as Utils from './utils.js';
 import logger from './logger.js';
+import { generarHashContenido } from './utils.js';
 
 // Asegurarse de que las utilidades estén disponibles
 if (!Utils) {
