@@ -289,6 +289,32 @@ function actualizarMarcadorParada(paradaId, coordenadas) {
     }
 }
 
+/**
+ * Actualiza el modo del mapa (casa o aventura).
+ * @param {string} nuevoModo - El nuevo modo ('casa' o 'aventura').
+ */
+function actualizarModoMapa(nuevoModo) {
+    try {
+        if (!mapa) {
+            throw new Error('Mapa no inicializado');
+        }
+
+        if (nuevoModo === 'casa') {
+            // Configuración específica para el modo casa
+            mapa.setZoom(13);
+            logger.info('Mapa actualizado al modo casa');
+        } else if (nuevoModo === 'aventura') {
+            // Configuración específica para el modo aventura
+            mapa.setZoom(16);
+            logger.info('Mapa actualizado al modo aventura');
+        } else {
+            throw new Error(`Modo no válido: ${nuevoModo}`);
+        }
+    } catch (error) {
+        logger.error('Error al actualizar el modo del mapa:', error);
+    }
+}
+
 // Exportar funciones públicas
 export {
     estadoMapa,
