@@ -336,6 +336,34 @@ function buscarCoordenadasParada(paradaId) {
     return parada.coordenadas || null;
 }
 
+/**
+ * Busca las coordenadas de un tramo por su ID
+ * @param {string} tramoId - ID del tramo a buscar
+ * @returns {Object|null} Objeto con inicio, fin y waypoints, o null si no se encuentra
+ */
+function buscarCoordenadasTramo(tramoId) {
+    if (!tramoId) {
+        logger.warn('No se proporcionó un ID de tramo');
+        return null;
+    }
+    
+    // Buscar en el array de paradas locales (que también puede contener tramos)
+    const tramo = arrayParadasLocal.find(t => t.id === tramoId || t.tramo_id === tramoId);
+    
+    if (!tramo) {
+        logger.warn(`No se encontró el tramo con ID: ${tramoId}`);
+        return null;
+    }
+    
+    // Devolver la estructura esperada para un tramo
+    return {
+        inicio: tramo.inicio || tramo.coordenadas, // Usar coordenadas como inicio si no hay inicio específico
+        fin: tramo.fin || tramo.coordenadas,       // Usar coordenadas como fin si no hay fin específico
+        waypoints: tramo.waypoints || [],          // Waypoints opcionales
+        nombre: tramo.nombre                        // Nombre opcional del tramo
+    };
+}
+
 // Exportar funciones públicas
 export {
     estadoMapa,
