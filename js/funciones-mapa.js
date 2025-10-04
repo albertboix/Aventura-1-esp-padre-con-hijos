@@ -315,6 +315,27 @@ function actualizarModoMapa(nuevoModo) {
     }
 }
 
+/**
+ * Busca las coordenadas de una parada por su ID
+ * @param {string} paradaId - ID de la parada a buscar
+ * @returns {Object|null} Objeto con lat y lng, o null si no se encuentra
+ */
+function buscarCoordenadasParada(paradaId) {
+    if (!paradaId) {
+        logger.warn('No se proporcionó un ID de parada');
+        return null;
+    }
+    
+    const parada = arrayParadasLocal.find(p => p.id === paradaId || p.parada_id === paradaId);
+    
+    if (!parada) {
+        logger.warn(`No se encontró la parada con ID: ${paradaId}`);
+        return null;
+    }
+    
+    return parada.coordenadas || null;
+}
+
 // Exportar funciones públicas
 export {
     estadoMapa,
