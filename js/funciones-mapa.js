@@ -266,6 +266,29 @@ function registrarManejadoresMensajes() {
     logger.debug('Manejadores de mensajes del mapa registrados');
 }
 
+/**
+ * Actualiza el marcador de una parada específica en el mapa.
+ * @param {string} paradaId - ID de la parada a actualizar.
+ * @param {Object} coordenadas - Nuevas coordenadas {lat, lng}.
+ */
+function actualizarMarcadorParada(paradaId, coordenadas) {
+    try {
+        if (!mapa) {
+            throw new Error('Mapa no inicializado');
+        }
+
+        const marcador = marcadoresParadas.get(paradaId);
+        if (marcador) {
+            marcador.setLatLng([coordenadas.lat, coordenadas.lng]);
+            logger.info(`Marcador de parada ${paradaId} actualizado`);
+        } else {
+            logger.warn(`No se encontró marcador para la parada ${paradaId}`);
+        }
+    } catch (error) {
+        logger.error('Error al actualizar marcador de parada:', error);
+    }
+}
+
 // Exportar funciones públicas
 export {
     estadoMapa,
