@@ -355,6 +355,69 @@ function buscarCoordenadasParada(paradaId) {
 }
 
 /**
+ * Establece los datos de las paradas y actualiza la visualización
+ * @param {Array} paradas - Array de objetos de paradas
+ * @param {Object} [opciones] - Opciones adicionales
+ * @param {boolean} [opciones.actualizarMapa=true] - Si se debe actualizar el mapa
+ * @returns {boolean} True si se establecieron los datos correctamente
+ */
+function establecerDatosParadas(paradas, opciones = {}) {
+    try {
+        if (!Array.isArray(paradas)) {
+            throw new Error('El parámetro paradas debe ser un array');
+        }
+
+        // Filtrar paradas inválidas
+        const paradasValidas = paradas.filter(parada => {
+            return parada && 
+                   (parada.id || parada.parada_id) && 
+                   parada.coordenadas && 
+                   !isNaN(parada.coordenadas.lat) && 
+                   !isNaN(parada.coordenadas.lng);
+        });
+
+        // Actualizar el array local
+        arrayParadasLocal = paradasValidas;
+        
+        // Notificar al remitente que las paradas se recibieron correctamente
+        if (opciones.origen) {
+            enviarMensaje(opciones.origen, 'PARADAS_ACTUALIZADAS', {
+                total: paradas.length,
+                recibidas: paradasValidas.length,
+                omitidas: paradas.length - paradasValidas.length,
+                timestamp: new Date().toISOString()
+            }).catch(error => {
+                logger.error('Error al enviar confirmación de recepción:', error);
+            });
+        }
+        
+        // Actualizar el mapa si está configurado para hacerlo
+        if (opciones.actualizarMapa !== false && mapa) {
+            mostrarTodasLasParadas();
+        }
+        
+        logger.info(`Datos de ${paradasValidas.length} paradas establecidos correctamente`);
+        return true;
+        
+    } catch (error) {
+        logger.error('Error al establecer las paradas:', error);
+        
+        // Notificar el error al remitente si es posible
+        if (opciones.origen) {
+            enviarMensaje(opciones.origen, 'ERROR_ACTUALIZACION_PARADAS', {
+                error: 'Error al procesar las paradas',
+                detalle: error.message,
+                timestamp: new Date().toISOString()
+            }).catch(err => {
+                logger.error('Error al notificar error de procesamiento:', err);
+            });
+        }
+        
+        return false;
+    }
+}
+
+/**
  * Carga los datos de una parada por su ID
  * @param {string} paradaId - ID de la parada a cargar
  * @returns {Promise<Object>} Objeto con los datos de la parada
