@@ -44,6 +44,14 @@ let mapaListo = false;
 export async function inicializarMapa(config = {}) {
     logger.info('🗺️ Inicializando mapa...');
     const containerId = config.containerId || 'mapa';
+    
+    // Asegurarse de que el contenedor del mapa existe
+    const container = document.getElementById(containerId);
+    if (!container) {
+        throw new Error(`No se encontró el contenedor del mapa con ID: ${containerId}`);
+    }
+    
+    // Configuración del mapa
     const mapConfig = {
         center: CONFIG.MAPA.CENTER,
         zoom: CONFIG.MAPA.ZOOM,
@@ -54,11 +62,19 @@ export async function inicializarMapa(config = {}) {
     };
 
     try {
+        // Verificar que Leaflet esté cargado
         if (typeof L === 'undefined') {
             throw new Error("Leaflet (L) no está cargado.");
         }
 
+        // Crear instancia del mapa
         mapa = L.map(containerId, mapConfig);
+        
+        // Asignar a window.mapa para compatibilidad
+        if (typeof window !== 'undefined') {
+            window.mapa = mapa;
+            logger.debug('Mapa asignado a window.mapa');
+        }
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors',
