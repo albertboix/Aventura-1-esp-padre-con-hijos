@@ -990,16 +990,32 @@
                     throw new Error('TIPOS_MENSAJE no está definido');
                 }
 
-                // Manejar cambios de modo para compatibilidad con ambos formatos
+                // Función para manejar cambios de modo
                 const manejarCambioDeModo = (mensaje) => {
-                    const { modo } = mensaje.datos || {};
-                    if (!modo) {
-                        logger.warn('[CASA] No se especificó un modo en el mensaje de cambio de modo');
-                        return { estado: 'error', mensaje: 'Modo no especificado' };
+                    try {
+                        const { modo } = mensaje.datos || {};
+                        if (!modo) {
+                            logger.warn('[CASA] No se especificó un modo en el mensaje de cambio de modo');
+                            return { estado: 'error', mensaje: 'Modo no especificado' };
+                        }
+                        
+                        logger.info(`[CASA] Cambiando a modo: ${modo} (mensaje recibido)`);
+                        
+                        // Actualizar el modo usando el modoHandler
+                        modoHandler.cambiarModo(modo, COMPONENTE_ID);
+                        
+                        // Actualizar la interfaz
+                        actualizarInterfazModo(modo);
+                        
+                        return { estado: 'ok', modo: modo };
+                    } catch (error) {
+                        logger.error('[CASA] Error al cambiar de modo:', error);
+                        return { 
+                            estado: 'error', 
+                            mensaje: 'Error al cambiar de modo',
+                            error: error.message 
+                        };
                     }
-                    
-                    logger.info(`[CASA] Cambiando a modo: ${modo} (mensaje recibido)`);
-                    return actualizarInterfazModo(modo);
                 };
                 
                 // Registrar controlador para el formato de mensaje directo
@@ -1010,12 +1026,6 @@
                     registrarControlador(TIPOS_MENSAJE.CONTROL.CAMBIAR_MODO, manejarCambioDeModo);
                     logger.debug(`[${COMPONENTE_ID}] Registrado controlador para CONTROL.CAMBIAR_MODO`);
                 }
-
-                    logger.info(`[CASA] Cambiando modo a: ${modo}`);
-                    modoHandler.cambiarModo(modo, COMPONENTE_ID);
-                    actualizarInterfazModo(modo);
-                    return { estado: 'ok', modo: modo };
-                });
 
                 // SISTEMA.ERROR - Manejar mensajes de error del sistema
                 registrarControlador(TIPOS_MENSAJE.SISTEMA.ERROR, (mensaje) => {
@@ -1133,10 +1143,30 @@
             // Configurar el manejador de clic para el botón de GPS
             const gpsBtn = document.getElementById('gps-casa-btn');
             if (gpsBtn) {
-                gpsBtn.addEventListener('click', manejarClickCambioModo);
-                console.log('Manejador de clic configurado para el botón de GPS');
+                // Primero, eliminar cualquier manejador existente para evitar duplicados
+                const newGpsBtn = gpsBtn.cloneNode(true);
+                gpsBtn.parentNode.replaceChild(newGpsBtn, gpsBtn);
+                
+                // Agregar el manejador de clic
+                newGpsBtn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    try {
+                        await manejarClickCambioModo();
+                        // Alternar la clase para el feedback visual
+                        const estaActivo = newGpsBtn.classList.contains('on');
+                        newGpsBtn.classList.toggle('on', !estaActivo);
+                        newGpsBtn.classList.toggle('off', estaActivo);
+                    } catch (error) {
+                        console.error('Error al cambiar el modo:', error);
+                        newGpsBtn.classList.add('error');
+                        setTimeout(() => newGpsBtn.classList.remove('error'), 500);
+                    }
+                });
+                
+                console.log('Manejador de clic configurado correctamente para el botón de GPS');
             } else {
-                console.warn('No se encontró el botón de GPS');
+                console.error('No se encontró el botón de GPS');
             }
             
             // Devolver los datos de inicialización
