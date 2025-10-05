@@ -3,16 +3,30 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Aventura 1 - Padre</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%3C/text%3E%3C/svg%3E">
-
-    <!-- Carga de Leaflet desde CDN con Integrity y Crossorigin -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
-          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
-          crossorigin="" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
-            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" 
+    <title>Valencia VGuides - Aventura 1</title>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/mZEZx5nXk6q4YfT4I="
+          crossorigin=""/>
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
             crossorigin=""></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/mZEZx5nXk6q4YfT4I="
+        crossorigin=""/>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%3C/text%3E%3C/svg%3E">
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
+    <style>
+        #mapa {
+            height: 100%;
+            min-height: 400px;
+            width: 100%;
+        }
+    </style>
 
     <style>
         /* Estilos globales */
@@ -317,9 +331,7 @@
         }
     </style>
 
-    <!-- Leaflet styles already loaded above -->
-
-    <!-- Script de Leaflet -->
+    <!-- Scripts de inicialización se cargarán al final del body -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
             crossorigin=""></script>
@@ -453,6 +465,9 @@
     <!-- Map Container -->
     <div id="mapa" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; background-color: #f5f5f5;">
         <!-- Map will be initialized here -->
+        <div id="map-loading" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; z-index: 10;">
+            <p>Cargando mapa...</p>
+        </div>
         <div style="position: absolute; top: 10px; left: 10px; z-index: 1000; background: white; padding: 10px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
             <p>Mapa de prueba</p>
         </div>
@@ -502,7 +517,19 @@
 
     <!-- Update the map initialization script -->
     <script type="module">
-    import * as Mapa from './js/funciones-mapa.js';
+    import { 
+        inicializarMapa,
+        actualizarModoMapa,
+        estadoMapa,
+        buscarCoordenadasParada,
+        buscarCoordenadasTramo,
+        obtenerNombreParada,
+        actualizarMarcadorParada,
+        actualizarPuntoActual,
+        limpiarRecursos,
+        cargarDatosParada,
+        establecerDatosParadas
+    } from './js/funciones-mapa.js';
     import logger from './js/logger.js';
     import { TIPOS_MENSAJE, MODOS } from './js/constants.js';
     import { inicializarMensajeria, registrarControlador, enviarMensaje } from './js/mensajeria.js';
@@ -526,7 +553,7 @@
             }
 
             console.log('🚀 [INICIALIZACIÓN] Iniciando creación del mapa...');
-            window.mapa = await Mapa.inicializarMapa({
+            window.mapa = await inicializarMapa({
                 containerId: 'mapa',
                 center: [39.4699, -0.3763],
                 zoom: 14,
@@ -743,7 +770,7 @@
                     centro: window.mapa.getCenter(),
                     zoom: window.mapa.getZoom(),
                     modo: modoHandler.obtenerModoActual(),
-                    estado: Mapa.estadoMapa,
+                    estado: estadoMapa,
                     paradasTramos: paradasTramos  // Incluir el array de paradas y tramos
                 });
                 
@@ -1771,7 +1798,6 @@
                 await initializeMap();
                 console.log('✅ [MAPA] Mapa inicializado correctamente');
                 return true;
-                return true;
             } catch (error) {
                 intentos++;
                 console.warn(`⚠️ [MAPA] Intento ${intentos}/${maxReintentos} fallido:`, error.message);
@@ -1792,45 +1818,70 @@
     }
 
     // Iniciar la carga del mapa cuando el DOM esté listo
-    function iniciarCargaDelMapa() {
+    async function iniciarCargaDelMapa() {
         console.log('🚀 [MAPA] Iniciando carga del mapa...');
         
-        // Verificar si el contenedor ya está disponible
-        if (verificarContenedorMapa()) {
-            console.log('✅ [MAPA] Contenedor del mapa encontrado, procediendo con inicialización...');;
-            Mapa.inicializarMapa({
-                containerId: 'mapa',
-                center: [39.4699, -0.3763],
-                zoom: 14
-            }).then(exitosa => {
-                if (exitosa) {
-                    console.log('✅ [MAPA] Mapa inicializado exitosamente');
-                }
-            });
-        } else {
-            console.log('⏳ [MAPA] Esperando a que el contenedor del mapa esté disponible...');
+        try {
+            // Inicializar el mapa con el sistema de reintentos
+            const exito = await inicializarMapaConReintentos(3, 1000);
             
-            // Usar MutationObserver para detectar cuando se añade el contenedor del mapa
+            if (exito) {
+                console.log('✅ [MAPA] Mapa inicializado exitosamente');
+            } else {
+                console.error('❌ [MAPA] No se pudo inicializar el mapa después de varios intentos');
+                mostrarErrorEnInterfaz(
+                    new Error('No se pudo inicializar el mapa'),
+                    'Error al cargar el mapa. Por favor, recarga la página.'
+                );
+            }
+        } catch (error) {
+            console.error('❌ [MAPA] Error al inicializar el mapa:', error);
+            mostrarErrorEnInterfaz(
+                error,
+                'Error al cargar el mapa. Por favor, recarga la página.'
+            );
+        }
+            // Configurar un observador para detectar cuando el contenedor del mapa esté disponible
             const observer = new MutationObserver((mutations, obs) => {
                 if (verificarContenedorMapa()) {
                     console.log('✅ [MAPA] Contenedor del mapa detectado, procediendo con inicialización...');
                     obs.disconnect(); // Dejar de observar
-                    Mapa.inicializarMapa({
-                containerId: 'mapa',
-                center: [39.4699, -0.3763],
-                zoom: 14
-            }).then(exitosa => {
-                        if (exitosa) {
-                            console.log('✅ [MAPA] Mapa inicializado exitosamente después de esperar');
-                    // Actualizar el modo del mapa según el estado actual
-                    if (modoHandler) {
-                        Mapa.actualizarModoMapa(modoHandler.obtenerModoActual());
-                    }
+                    
+                    // Usar la función de inicialización con reintentos
+                    inicializarMapaConReintentos(3, 1000).then(exito => {
+                        if (exito) {
+                            console.log('✅ [MAPA] Mapa inicializado exitosamente después de esperar al contenedor');
+                        } else {
+                            console.error('❌ [MAPA] No se pudo inicializar el mapa después de esperar al contenedor');
+                            mostrarErrorEnInterfaz(
+                                new Error('No se pudo inicializar el mapa'),
+                                'Error al cargar el mapa. Por favor, recarga la página.'
+                            );
                         }
                     });
                 }
             });
-            
+
+            // Comenzar a observar el documento para cambios
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+
+            // Establecer un tiempo máximo de espera
+            setTimeout(() => {
+                observer.disconnect();
+                console.log('⚠️ [MAPA] Tiempo de espera agotado para la carga del contenedor del mapa');
+            }, 10000); // 10 segundos de tiempo máximo de espera
+        // Función para actualizar el modo del mapa si es necesario
+        function actualizarModoMapaSiEsNecesario() {
+            if (typeof modoHandler !== 'undefined' && typeof actualizarModoMapa === 'function') {
+                actualizarModoMapa(modoHandler.obtenerModoActual());
+            }
+        }
+
+        // Llamar a la función de actualización después de la inicialización exitosa
+        actualizarModoMapaSiEsNecesario();
             // Comenzar a observar cambios en el documento
             observer.observe(document.body, {
                 childList: true,
@@ -1847,7 +1898,6 @@
                 }
             }, 10000); // 10 segundos de timeout
         }
-    }
 
     // Iniciar la carga del mapa cuando el DOM esté listo
     if (document.readyState === 'loading') {
@@ -1858,20 +1908,8 @@
         });
     } else {
         console.log('✅ [MAPA] DOM ya está listo, iniciando carga del mapa...');
-        // Pequeño retraso para asegurar que todo esté listo
-        setTimeout(iniciarCargaDelMapa, 100);
+        iniciarCargaDelMapa();
     }
-</script>
-<script>
-    // ...existing code...
-
-    // Replace 'unload' with 'beforeunload' for cleaning up resources
-    window.addEventListener('beforeunload', () => {
-        console.log('Cleaning up resources before unloading the page...');
-        // Add cleanup logic here
-    });
-
-    // ...existing code...
 </script>
 </body>
 </html>
