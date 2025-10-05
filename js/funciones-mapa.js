@@ -371,6 +371,28 @@ function buscarCoordenadasParada(paradaId) {
 }
 
 /**
+ * Obtiene el nombre de una parada por su ID
+ * @param {string} paradaId - ID de la parada
+ * @returns {string} Nombre de la parada o un valor por defecto si no se encuentra
+ */
+function obtenerNombreParada(paradaId) {
+    if (!paradaId) {
+        logger.warn('No se proporcionó un ID de parada');
+        return 'Parada desconocida';
+    }
+    
+    const parada = arrayParadasLocal.find(p => p.id === paradaId || p.parada_id === paradaId);
+    
+    if (!parada) {
+        logger.warn(`No se encontró la parada con ID: ${paradaId}`);
+        return `Parada ${paradaId}`; // Valor por defecto si no se encuentra
+    }
+    
+    // Devolver el nombre de la parada o un valor por defecto si no tiene
+    return parada.nombre || `Parada ${paradaId}`;
+}
+
+/**
  * Establece los datos de las paradas y actualiza la visualización
  * @param {Array} paradas - Array de objetos de paradas
  * @param {Object} [opciones] - Opciones adicionales
