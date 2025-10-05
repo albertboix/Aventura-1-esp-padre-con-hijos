@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -989,13 +990,26 @@
                     throw new Error('TIPOS_MENSAJE no está definido');
                 }
 
-                // CONTROL.CAMBIAR_MODO - Cambiar el modo del componente
-                registrarControlador('CONTROL.CAMBIAR_MODO', (mensaje) => {
+                // Manejar cambios de modo para compatibilidad con ambos formatos
+                const manejarCambioDeModo = (mensaje) => {
                     const { modo } = mensaje.datos || {};
                     if (!modo) {
-                        logger.warn('[CASA] No se especificó un modo en el mensaje CONTROL.CAMBIAR_MODO.');
+                        logger.warn('[CASA] No se especificó un modo en el mensaje de cambio de modo');
                         return { estado: 'error', mensaje: 'Modo no especificado' };
                     }
+                    
+                    logger.info(`[CASA] Cambiando a modo: ${modo} (mensaje recibido)`);
+                    return actualizarInterfazModo(modo);
+                };
+                
+                // Registrar controlador para el formato de mensaje directo
+                registrarControlador('CONTROL.CAMBIAR_MODO', manejarCambioDeModo);
+                
+                // Registrar también el controlador para el tipo de mensaje estándar si está disponible
+                if (TIPOS_MENSAJE?.CONTROL?.CAMBIAR_MODO) {
+                    registrarControlador(TIPOS_MENSAJE.CONTROL.CAMBIAR_MODO, manejarCambioDeModo);
+                    logger.debug(`[${COMPONENTE_ID}] Registrado controlador para CONTROL.CAMBIAR_MODO`);
+                }
 
                     logger.info(`[CASA] Cambiando modo a: ${modo}`);
                     modoHandler.cambiarModo(modo, COMPONENTE_ID);
@@ -1015,12 +1029,10 @@
                     return { estado: 'ok', procesado: true };
                 });
 
-                // Registrar controlador para cambios de modo
+                // Registrar controlador para cambios de modo (mantener compatibilidad con SISTEMA.CAMBIO_MODO)
                 if (TIPOS_MENSAJE?.SISTEMA?.CAMBIO_MODO) {
                     registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejarCambioModo);
                     logger.debug(`[${COMPONENTE_ID}] Registrado controlador para SISTEMA.CAMBIO_MODO`);
-                } else {
-                    logger.warn(`[${COMPONENTE_ID}] No se pudo registrar controlador: SISTEMA.CAMBIO_MODO no está definido`);
                 }
                 
                 // Registrar controladores para diferentes formatos de datos de paradas
