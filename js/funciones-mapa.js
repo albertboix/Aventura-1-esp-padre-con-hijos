@@ -1,542 +1,404 @@
 /**
- * Módulo que maneja la visualización del mapa y la interacción con las paradas
- * Se comunica con el padre a través del sistema de mensajería
+ * Módulo de logging centralizado para toda la aplicación.
+ * @module Logger
+ * @version 3.2.0
  */
 
-// Importar mensajería y configuración
-import { 
-    inicializarMensajeria, 
-    enviarMensaje, 
-    registrarControlador 
-} from './mensajeria.js';
-import { CONFIG } from './config.js';
-import { TIPOS_MENSAJE } from './constants.js';
-import logger from './logger.js';
+// Importar constantes directamente para evitar dependencias circulares
+import { LOG_LEVELS } from './constants.js';
 
-// Estado del módulo
-let mapa = null;
-const marcadoresParadas = new Map();
-let marcadorDestino = null;
-let rutasTramos = [];
-let rutasActivas = [];
-let marcadorUsuario = null;
+// Safe console method fallback
+const safeConsoleMethod = (typeof console !== 'undefined' && console.log) 
+  ? console.log.bind(console) 
+  : () => {};
 
-// Estado del mapa para seguimiento interno
-const estadoMapa = {
-    inicializado: false,
-    modo: 'casa',
-    paradaActual: 0,
-    tramoActual: null,
-    posicionUsuario: null,
-    watchId: null,
-    siguiendoRuta: false
+// Store original console.warn
+const originalWarn = (typeof console !== 'undefined' && console.warn) 
+  ? console.warn.bind(console) 
+  : () => {};
+
+// Override console.warn to filter out specific messages
+if (typeof console !== 'undefined' && console.warn) {
+  console.warn = function() {
+    // Check if the warning is about permissions policy violation
+    if (arguments.length > 0 && 
+        typeof arguments[0] === 'string' && 
+        arguments[0].includes('Permissions policy violation') && 
+        arguments[0].includes('unload is not allowed in this document')) {
+      // Skip logging this specific warning
+      return;
+    }
+    // Call the original warn method with all arguments
+    originalWarn.apply(console, arguments);
+  };
+}
+
+// Nombres de niveles para mostrar
+export const LEVEL_NAMES = ['DEBUG', 'INFO', 'WARN', 'ERROR', 'NONE'];
+
+// Colores para la consola
+export const DEFAULT_COLORS = {
+  DEBUG: '#9E9E9E',  // Gris
+  INFO: '#2196F3',   // Azul
+  WARN: '#FFC107',   // Amarillo
+  ERROR: '#F44336',  // Rojo
+  NONE: '#000000',   // Negro
+  timestamp: '#4CAF50',
+  reset: '%c'
 };
 
-// Referencia local a los datos de paradas
-let arrayParadasLocal = [];
-let mapaListo = false;
-
-/**
- * Inicializa el mapa y los manejadores de mensajes.
- * @param {object} config - Configuración del mapa.
- * @returns {Promise<L.Map>} La instancia del mapa de Leaflet.
- */
-export async function inicializarMapa(config = {}) {
-    logger.info('🗺️ Inicializando mapa...');
-    const containerId = config.containerId || 'mapa';
-    
-    // Asegurarse de que el contenedor del mapa existe
-    const container = document.getElementById(containerId);
-    if (!container) {
-        throw new Error(`No se encontró el contenedor del mapa con ID: ${containerId}`);
-    }
-    
-    // Configuración del mapa
-    const mapConfig = {
-        center: CONFIG.MAPA.CENTER,
-        zoom: CONFIG.MAPA.ZOOM,
-        minZoom: CONFIG.MAPA.MIN_ZOOM,
-        maxZoom: CONFIG.MAPA.MAX_ZOOM,
-        zoomControl: CONFIG.MAPA.ZOOM_CONTROL,
-        ...config
-    };
-
-    try {
-        // Verificar que Leaflet esté cargado
-        if (typeof L === 'undefined') {
-            throw new Error("Leaflet (L) no está cargado.");
-        }
-
-        // Crear instancia del mapa
-        mapa = L.map(containerId, mapConfig);
-        
-        // Asignar a window.mapa para compatibilidad
-        if (typeof window !== 'undefined') {
-            window.mapa = mapa;
-            logger.debug('Mapa asignado a window.mapa');
-        }
-
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors',
-            maxZoom: 19
-        }).addTo(mapa);
-
-        // Añadir manejador de eventos de clic en el mapa
-        mapa.on('click', function(e) {
-            const { lat, lng } = e.latlng;
-            logger.info(`Clic en el mapa - Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`);
-            
-            // Actualizar la interfaz o realizar acciones adicionales
-            if (marcadorUsuario) {
-                // Mover el marcador de usuario a la posición del clic
-                marcadorUsuario.setLatLng([lat, lng]);
-            }
-            
-            // Opcional: Mostrar un popup en la posición del clic
-            L.popup()
-                .setLatLng([lat, lng])
-                .setContent(`Has hecho clic en:<br>Lat: ${lat.toFixed(6)}<br>Lng: ${lng.toFixed(6)}`)
-                .openOn(mapa);
-        });
-
-        logger.info('Mapa inicializado correctamente con manejador de clics');
-        return mapa;
-    } catch (error) {
-        logger.error('❌ Error al inicializar mapa:', error);
-        throw error;
-    }
-}
-
-/**
- * Limpia los recursos del mapa.
- */
-function limpiarRecursos() {
-    try {
-        // Limpiar marcadores de usuario
-        if (marcadorUsuario) {
-            mapa.removeLayer(marcadorUsuario);
-            marcadorUsuario = null;
-        }
-
-        // Limpiar marcador de destino
-        if (marcadorDestino) {
-            mapa.removeLayer(marcadorDestino);
-            marcadorDestino = null;
-        }
-
-        // Limpiar marcadores de paradas
-        marcadoresParadas.forEach(marcador => mapa.removeLayer(marcador));
-        marcadoresParadas.clear();
-
-        // Limpiar rutas
-        rutasTramos.forEach(ruta => mapa.removeLayer(ruta));
-        rutasTramos = [];
-
-        rutasActivas.forEach(ruta => mapa.removeLayer(ruta));
-        rutasActivas = [];
-
-        logger.debug('Recursos del mapa limpiados');
-    } catch (error) {
-        logger.error('Error al limpiar recursos del mapa:', error);
-    }
-}
-
-/**
- * Muestra todas las paradas en el mapa.
- * @param {Array} paradasExternas - Paradas proporcionadas externamente (opcional).
- */
-export async function mostrarTodasLasParadas(paradasExternas) {
-    try {
-        if (paradasExternas) {
-            arrayParadasLocal = paradasExternas;
-        }
-
-        if (!mapa) {
-            throw new Error('Mapa no inicializado');
-        }
-
-        marcadoresParadas.forEach(marcador => mapa.removeLayer(marcador));
-        marcadoresParadas.clear();
-
-        arrayParadasLocal.forEach(parada => {
-            if (parada.coordenadas) {
-                const marcador = L.marker([parada.coordenadas.lat, parada.coordenadas.lng], {
-                    title: parada.nombre || `Parada ${parada.id}`
-                }).addTo(mapa);
-
-                marcadoresParadas.set(parada.id, marcador);
-            }
-        });
-
-        logger.info(`Se han añadido ${marcadoresParadas.size} marcadores al mapa`);
-    } catch (error) {
-        logger.error('Error al mostrar todas las paradas:', error);
-    }
-}
-
-/**
- * Actualiza el marcador de la posición actual del usuario en el mapa.
- * @param {Object} coordenadas - Coordenadas {lat, lng, accuracy}.
- */
-function actualizarPuntoActual(coordenadas) {
-    try {
-        if (!mapa) {
-            throw new Error('Mapa no inicializado');
-        }
-
-        if (marcadorUsuario) {
-            mapa.removeLayer(marcadorUsuario);
-        }
-
-        marcadorUsuario = L.circle([coordenadas.lat, coordenadas.lng], {
-            radius: coordenadas.accuracy || 10,
-            color: '#4285F4',
-            fillColor: '#4285F4',
-            fillOpacity: 0.5
-        }).addTo(mapa);
-
-        logger.info('Posición del usuario actualizada');
-    } catch (error) {
-        logger.error('Error al actualizar la posición del usuario:', error);
-    }
-}
-
-/**
- * Dibuja un tramo específico en el mapa.
- * @param {Object} tramo - Objeto tramo con inicio, fin y waypoints.
- * @param {boolean} destacado - Si es true, se muestra con énfasis.
- * @returns {L.Polyline} La polyline creada.
- */
-function dibujarTramo(tramo, destacado = false) {
-    try {
-        if (!tramo || !tramo.inicio || !tramo.fin) {
-            throw new Error('Datos del tramo incompletos');
-        }
-
-        const puntos = [tramo.inicio, ...(tramo.waypoints || []), tramo.fin].map(p => [p.lat, p.lng]);
-
-        const polyline = L.polyline(puntos, {
-            color: destacado ? '#ff4500' : '#3388ff',
-            weight: destacado ? 6 : 4,
-            opacity: destacado ? 0.9 : 0.7
-        }).addTo(mapa);
-
-        return polyline;
-    } catch (error) {
-        logger.error('Error al dibujar tramo:', error);
-        return null;
-    }
-}
-
-/**
- * Maneja el mensaje para mostrar una ruta entre dos puntos.
- * @param {Object} mensaje - Mensaje con origen, destino, color, grosor.
- */
-function manejarMostrarRuta(mensaje) {
-    try {
-        const { origen, destino, color, grosor } = mensaje.datos || {};
-
-        if (!origen || !destino) {
-            throw new Error('Coordenadas de origen o destino no válidas');
-        }
-
-        const polyline = L.polyline([origen, destino], {
-            color: color || '#0077ff',
-            weight: grosor || 6,
-            opacity: 0.8
-        }).addTo(mapa);
-
-        rutasActivas.push(polyline);
-        logger.info('Ruta mostrada en el mapa');
-    } catch (error) {
-        logger.error('Error al manejar mostrar ruta:', error);
-    }
-}
-
-/**
- * Inicializa el módulo de mapa.
- * @returns {Promise<boolean>} True si la inicialización fue exitosa.
- */
-export async function inicializarModuloMapa() {
-    if (estadoMapa.inicializado) {
-        logger.info('El módulo de mapa ya está inicializado');
-        return true;
-    }
-
-    try {
-        logger.info('Inicializando módulo de mapa...');
-        
-        if (typeof enviarMensaje !== 'function') {
-            throw new Error('La mensajería no está inicializada');
-        }
-        
-        registrarManejadoresMensajes();
-        await inicializarMapa();
-        await solicitarDatosParadas();
-        
-        estadoMapa.inicializado = true;
-        logger.info('Módulo de mapa inicializado correctamente');
-        return true;
-    } catch (error) {
-        logger.error('Error al inicializar el módulo de mapa:', error);
-        estadoMapa.inicializado = false;
-        throw error;
-    }
-}
-
-/**
- * Registra los manejadores de mensajes para el mapa.
- */
-function registrarManejadoresMensajes() {
-    registrarControlador(TIPOS_MENSAJE.NAVEGACION.ESTABLECER_DESTINO, manejarEstablecerDestino);
-    registrarControlador(TIPOS_MENSAJE.NAVEGACION.ACTUALIZAR_POSICION, manejarActualizarPosicion);
-    registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, manejarCambioModoMapa);
-    registrarControlador(TIPOS_MENSAJE.NAVEGACION.MOSTRAR_RUTA, manejarMostrarRuta);
-    registrarControlador(TIPOS_MENSAJE.DATOS.SOLICITAR_PARADAS, async () => ({
-        exito: true,
-        paradas: arrayParadasLocal,
-        timestamp: new Date().toISOString()
-    }));
-    logger.debug('Manejadores de mensajes del mapa registrados');
-}
-
-/**
- * Actualiza el marcador de una parada específica en el mapa.
- * @param {string} paradaId - ID de la parada a actualizar.
- * @param {Object} coordenadas - Nuevas coordenadas {lat, lng}.
- */
-function actualizarMarcadorParada(paradaId, coordenadas) {
-    try {
-        if (!mapa) {
-            throw new Error('Mapa no inicializado');
-        }
-
-        const marcador = marcadoresParadas.get(paradaId);
-        if (marcador) {
-            marcador.setLatLng([coordenadas.lat, coordenadas.lng]);
-            logger.info(`Marcador de parada ${paradaId} actualizado`);
-        } else {
-            logger.warn(`No se encontró marcador para la parada ${paradaId}`);
-        }
-    } catch (error) {
-        logger.error('Error al actualizar marcador de parada:', error);
-    }
-}
-
-/**
- * Actualiza el modo del mapa (casa o aventura).
- * @param {string} nuevoModo - El nuevo modo ('casa' o 'aventura').
- */
-function actualizarModoMapa(nuevoModo) {
-    try {
-        if (!mapa) {
-            throw new Error('Mapa no inicializado');
-        }
-
-        if (nuevoModo === 'casa') {
-            // Configuración específica para el modo casa
-            mapa.setZoom(13);
-            logger.info('Mapa actualizado al modo casa');
-        } else if (nuevoModo === 'aventura') {
-            // Configuración específica para el modo aventura
-            mapa.setZoom(16);
-            logger.info('Mapa actualizado al modo aventura');
-        } else {
-            throw new Error(`Modo no válido: ${nuevoModo}`);
-        }
-    } catch (error) {
-        logger.error('Error al actualizar el modo del mapa:', error);
-    }
-}
-
-/**
- * Busca las coordenadas de una parada por su ID
- * @param {string} paradaId - ID de la parada a buscar
- * @returns {Object|null} Objeto con lat y lng, o null si no se encuentra
- */
-function buscarCoordenadasParada(paradaId) {
-    if (!paradaId) {
-        logger.warn('No se proporcionó un ID de parada');
-        return null;
-    }
-    
-    const parada = arrayParadasLocal.find(p => p.id === paradaId || p.parada_id === paradaId);
-    
-    if (!parada) {
-        logger.warn(`No se encontró la parada con ID: ${paradaId}`);
-        return null;
-    }
-    
-    return parada.coordenadas || null;
-}
-
-/**
- * Obtiene el nombre de una parada por su ID
- * @param {string} paradaId - ID de la parada
- * @returns {string} Nombre de la parada o un valor por defecto si no se encuentra
- */
-function obtenerNombreParada(paradaId) {
-    if (!paradaId) {
-        logger.warn('No se proporcionó un ID de parada');
-        return 'Parada desconocida';
-    }
-    
-    const parada = arrayParadasLocal.find(p => p.id === paradaId || p.parada_id === paradaId);
-    
-    if (!parada) {
-        logger.warn(`No se encontró la parada con ID: ${paradaId}`);
-        return `Parada ${paradaId}`; // Valor por defecto si no se encuentra
-    }
-    
-    // Devolver el nombre de la parada o un valor por defecto si no tiene
-    return parada.nombre || `Parada ${paradaId}`;
-}
-
-/**
- * Establece los datos de las paradas y actualiza la visualización
- * @param {Array} paradas - Array de objetos de paradas
- * @param {Object} [opciones] - Opciones adicionales
- * @param {boolean} [opciones.actualizarMapa=true] - Si se debe actualizar el mapa
- * @returns {boolean} True si se establecieron los datos correctamente
- */
-function establecerDatosParadas(paradas, opciones = {}) {
-    try {
-        if (!Array.isArray(paradas)) {
-            throw new Error('El parámetro paradas debe ser un array');
-        }
-
-        // Filtrar paradas inválidas
-        const paradasValidas = paradas.filter(parada => {
-            return parada && 
-                   (parada.id || parada.parada_id) && 
-                   parada.coordenadas && 
-                   !isNaN(parada.coordenadas.lat) && 
-                   !isNaN(parada.coordenadas.lng);
-        });
-
-        // Actualizar el array local
-        arrayParadasLocal = paradasValidas;
-        
-        // Notificar al remitente que las paradas se recibieron correctamente
-        if (opciones.origen) {
-            enviarMensaje(opciones.origen, 'PARADAS_ACTUALIZADAS', {
-                total: paradas.length,
-                recibidas: paradasValidas.length,
-                omitidas: paradas.length - paradasValidas.length,
-                timestamp: new Date().toISOString()
-            }).catch(error => {
-                logger.error('Error al enviar confirmación de recepción:', error);
-            });
-        }
-        
-        // Actualizar el mapa si está configurado para hacerlo
-        if (opciones.actualizarMapa !== false && mapa) {
-            mostrarTodasLasParadas();
-        }
-        
-        logger.info(`Datos de ${paradasValidas.length} paradas establecidos correctamente`);
-        return true;
-        
-    } catch (error) {
-        logger.error('Error al establecer las paradas:', error);
-        
-        // Notificar el error al remitente si es posible
-        if (opciones.origen) {
-            enviarMensaje(opciones.origen, 'ERROR_ACTUALIZACION_PARADAS', {
-                error: 'Error al procesar las paradas',
-                detalle: error.message,
-                timestamp: new Date().toISOString()
-            }).catch(err => {
-                logger.error('Error al notificar error de procesamiento:', err);
-            });
-        }
-        
-        return false;
-    }
-}
-
-/**
- * Carga los datos de una parada por su ID
- * @param {string} paradaId - ID de la parada a cargar
- * @returns {Promise<Object>} Objeto con los datos de la parada
- */
-async function cargarDatosParada(paradaId) {
-    try {
-        if (!paradaId) {
-            throw new Error('No se proporcionó un ID de parada');
-        }
-        
-        logger.info(`Cargando datos para parada: ${paradaId}`);
-        
-        // Buscar la parada en los datos locales primero
-        const paradaLocal = arrayParadasLocal.find(p => p.id === paradaId || p.parada_id === paradaId);
-        
-        if (paradaLocal) {
-            logger.debug(`Parada encontrada localmente: ${paradaId}`);
-            return paradaLocal;
-        }
-        
-        // Si no está localmente, intentar cargarla del servidor
-        logger.debug(`Solicitando datos de parada al servidor: ${paradaId}`);
-        
-        // Usar el sistema de mensajería para solicitar los datos al servidor
-        const respuesta = await enviarMensaje('servidor', 'SOLICITAR_DATOS_PARADA', {
-            paradaId: paradaId,
-            timestamp: new Date().toISOString()
-        });
-        
-        if (respuesta && respuesta.datos) {
-            // Añadir la parada a los datos locales para futuras referencias
-            arrayParadasLocal.push(respuesta.datos);
-            return respuesta.datos;
-        }
-        
-        throw new Error(`No se encontraron datos para la parada: ${paradaId}`);
-        
-    } catch (error) {
-        logger.error(`Error al cargar datos de la parada ${paradaId}:`, error);
-        throw error; // Relanzar para que el llamador pueda manejarlo
-    }
-}
-
-/**
- * Busca las coordenadas de un tramo por su ID
- * @param {string} tramoId - ID del tramo a buscar
- * @returns {Object|null} Objeto con inicio, fin y waypoints, o null si no se encuentra
- */
-function buscarCoordenadasTramo(tramoId) {
-    if (!tramoId) {
-        logger.warn('No se proporcionó un ID de tramo');
-        return null;
-    }
-    
-    // Buscar en el array de paradas locales (que también puede contener tramos)
-    const tramo = arrayParadasLocal.find(t => t.id === tramoId || t.tramo_id === tramoId);
-    
-    if (!tramo) {
-        logger.warn(`No se encontró el tramo con ID: ${tramoId}`);
-        return null;
-    }
-    
-    // Devolver la estructura esperada para un tramo
-    return {
-        inicio: tramo.inicio || tramo.coordenadas, // Usar coordenadas como inicio si no hay inicio específico
-        fin: tramo.fin || tramo.coordenadas,       // Usar coordenadas como fin si no hay fin específico
-        waypoints: tramo.waypoints || [],          // Waypoints opcionales
-        nombre: tramo.nombre                        // Nombre opcional del tramo
-    };
-}
-
-// Exportar funciones públicas
-export {
-    estadoMapa,
-    actualizarModoMapa,
-    buscarCoordenadasParada,
-    buscarCoordenadasTramo,
-    obtenerNombreParada,
-    actualizarMarcadorParada,
-    actualizarPuntoActual,
-    limpiarRecursos,
-    cargarDatosParada,
-    establecerDatosParadas
+// Configuración por defecto
+let config = {
+  logLevel: LOG_LEVELS.INFO, // FIX 2: Default más seguro para producción
+  debug: false, // FIX 2: Default más seguro para producción
+  iframeId: 'unknown',
+  maxHistory: 200,
+  showTimestamp: true,
+  showLevel: true,
+  showIframeId: true,
+  colors: DEFAULT_COLORS
 };
+
+// Historial de logs en memoria
+let logHistory = [];
+
+/**
+ * Formatea la marca de tiempo actual
+ * @private
+ * @returns {string} Timestamp formateado (YYYY-MM-DD HH:MM:SS)
+ */
+function formatTimestamp() {
+  const now = new Date();
+  return now.toISOString().replace('T', ' ').replace(/\..+/, '');
+}
+
+/**
+ * Obtiene el nombre del nivel de log
+ * @private
+ * @param {number} level - Nivel de log
+ * @returns {string} Nombre del nivel
+ */
+function getLevelName(level) {
+  return LEVEL_NAMES[level] || 'UNKNOWN';
+}
+
+/**
+ * Obtiene información del llamador para depuración
+ * @private
+ * @returns {string} Información del llamador
+ */
+function getCallerInfo() {
+  try {
+    const error = new Error();
+    if (!error.stack) return '';
+    
+    // Obtener la línea del stack que no sea del logger
+    const stackLines = error.stack.split('\n').slice(2);
+    const callerLine = stackLines.find(line => 
+      !line.includes('logger.js') && 
+      !line.includes('node_modules')
+    );
+    
+    return callerLine ? callerLine.trim() : '';
+  } catch (e) {
+    return '';
+  }
+}
+
+/**
+ * Formatea un mensaje de log con metadatos
+ * @private
+ * @param {number} level - Nivel de log
+ * @param {string} message - Mensaje principal
+ * @param {*} [data] - Datos adicionales
+ * @returns {Object} Objeto de log formateado
+ */
+function formatLogEntry(level, message, data = null) {
+  const timestamp = formatTimestamp();
+  const levelName = getLevelName(level);
+  
+  return {
+    timestamp,
+    level,
+    levelName,
+    message,
+    data,
+    iframeId: config.iframeId,
+    // FIX 5: Obtener información del llamador solo para errores para mejorar el rendimiento.
+    location: level >= LOG_LEVELS.ERROR ? getCallerInfo() : undefined,
+    ...(data instanceof Error ? {
+      error: {
+        message: data.message,
+        stack: data.stack,
+        name: data.name
+      }
+    } : {})
+  };
+}
+
+/**
+ * Envía el log a la ventana padre si estamos en un iframe
+ * @private
+ * @param {Object} logEntry - Entrada de log
+ */
+function sendToParent(logEntry) {
+  if (typeof window === 'undefined' || window === window.parent) return;
+  
+  try {
+    window.parent.postMessage({
+      type: 'VGLOGGER_LOG_ENTRY', // Tipo único para evitar conflictos
+      payload: logEntry
+    }, '*');
+  } catch (error) {
+    const safeLog = (typeof console !== 'undefined' && console.log) ? console.log.bind(console) : () => {};
+    safeLog('Logger Error: No se pudo enviar el log al padre.', error);
+  }
+}
+
+/**
+ * Muestra el log en la consola con formato
+ * @private
+ * @param {Object} logEntry - Entrada de log
+ */
+function outputToConsole(logEntry) {
+  try {
+    const { level, message, data, timestamp, levelName } = logEntry;
+    
+    // Obtener el nombre del nivel
+    const levelNameStr = getLevelName(level) || levelName || 'LOG';
+    
+    // Determinar el método de consola a usar
+    const consoleMethod = 
+      level >= LOG_LEVELS.ERROR ? 'error' :
+      level >= LOG_LEVELS.WARN ? 'warn' :
+      level >= LOG_LEVELS.INFO ? 'info' : 'log';
+    
+    // Construir prefijo del mensaje
+    const prefixParts = [];
+    
+    if (config.showTimestamp) {
+      const timeStr = timestamp || formatTimestamp();
+      prefixParts.push(`[${timeStr}]`);
+    }
+    
+    if (config.showLevel) {
+      prefixParts.push(`[${levelNameStr}]`);
+    }
+    
+    if (config.showIframeId && config.iframeId && config.iframeId !== 'unknown') {
+      prefixParts.push(`[${config.iframeId}]`);
+    }
+    
+    const prefix = prefixParts.join(' ');
+    const fullMessage = `${prefix} ${message}`.trim();
+    
+    // Verificar si el método de consola existe
+    const safeConsoleMethod = typeof console[consoleMethod] === 'function' 
+      ? console[consoleMethod] 
+      : console.log;
+    
+    // Aplicar formato con colores si está habilitado
+    if (config.colors) {
+      const color = (config.colors[levelNameStr] || config.colors.INFO);
+      const styles = [
+        `color: ${color}`,
+        'font-weight: bold',
+        'font-family: monospace',
+        'background: #f5f5f5',
+        'padding: 2px 4px',
+        'border-radius: 3px'
+      ].join(';');
+      
+      safeConsoleMethod(`%c${fullMessage}`, styles);
+    } else {
+      safeConsoleMethod(fullMessage);
+    }
+    
+    // Mostrar datos adicionales si existen
+    if (data !== undefined && data !== null) {
+      try {
+        if (data instanceof Error) {
+          safeConsoleMethod(data);
+        } else {
+          // FIX 4: Hacer el log de objetos más seguro. Dejar que el navegador lo maneje.
+          // Evita errores con referencias circulares que rompen JSON.stringify.
+          safeConsoleMethod(data);
+        }
+      } catch (e) {
+        safeConsoleMethod('Error al formatear datos del log:', e);
+        safeConsoleMethod(data);
+      }
+    }
+    
+    // Mostrar ubicación del llamador en desarrollo
+    if (config.debug && logEntry.location) {
+      safeConsoleMethod(`  at ${logEntry.location}`);
+    }
+  } catch (e) {
+    console.warn('Logger encountered an issue:', e);
+  }
+}
+
+/**
+ * Función principal de logging
+ * @private
+ * @param {number} level - Nivel de log
+ * @param {string} message - Mensaje a registrar
+ * @param {*} [data] - Datos adicionales
+ */
+function log(level, message, data) {
+  if (level < config.logLevel) return;
+  
+  const logEntry = formatLogEntry(level, message, data);
+  
+  // Añadir al historial
+  logHistory.push(logEntry);
+  if (logHistory.length > config.maxHistory) {
+    logHistory.shift();
+  }
+  
+  // Enviar a la ventana padre si es necesario
+  if (config.iframeId !== 'unknown') {
+    sendToParent(logEntry);
+  }
+  
+  // Mostrar en consola si está habilitado
+  if (config.debug) {
+    outputToConsole(logEntry);
+  }
+}
+
+/**
+ * Configura el logger con nuevas opciones
+ * @param {Object} options - Opciones de configuración
+ * @param {string} [options.iframeId] - Identificador del iframe
+ * @param {number} [options.logLevel] - Nivel de log mínimo
+ * @param {boolean} [options.debug] - Habilita la salida por consola
+ * @param {number} [options.maxHistory] - Número máximo de entradas en el historial
+ * @param {boolean} [options.showTimestamp] - Mostrar marca de tiempo
+ * @param {boolean} [options.showLevel] - Mostrar nivel de log
+ * @param {boolean} [options.showIframeId] - Mostrar ID del iframe
+ * @param {boolean|Object} [options.colors] - Usar colores en la consola o configuración personalizada
+ * @returns {Object} Configuración actual
+ */
+function configureLogger(options = {}) {
+  // Actualizar configuración
+  Object.assign(config, options);
+  
+  // Manejar configuración de colores
+  if (options.colors && typeof options.colors === 'object') {
+    config.colors = { ...DEFAULT_COLORS, ...options.colors };
+  } else if (options.colors === false) {
+    config.colors = false;
+  }
+  
+  return { ...config };
+}
+
+/**
+ * Obtiene el historial de logs
+ * @param {number} [limit] - Número máximo de entradas a devolver
+ * @returns {Array} Historial de logs
+ */
+function getLogHistory(limit) {
+  return limit ? logHistory.slice(-limit) : [...logHistory];
+}
+
+/**
+ * Limpia el historial de logs
+ * @returns {number} Número de entradas eliminadas
+ */
+function clearLogHistory() {
+  const count = logHistory.length;
+  logHistory = [];
+  return count;
+}
+
+// API Pública del Logger
+const logger = {
+  /**
+   * Registra un mensaje de depuración
+   * @param {string} message - Mensaje a registrar
+   * @param {*} [data] - Datos adicionales
+   */
+  debug: (message, data) => log(LOG_LEVELS.DEBUG, message, data),
+  
+  /**
+   * Registra un mensaje informativo
+   * @param {string} message - Mensaje a registrar
+   * @param {*} [data] - Datos adicionales
+   */
+  info: (message, data) => log(LOG_LEVELS.INFO, message, data),
+  
+  /**
+   * Registra una advertencia
+   * @param {string} message - Mensaje a registrar
+   * @param {*} [data] - Datos adicionales
+   */
+  warn: (message, data) => log(LOG_LEVELS.WARN, message, data),
+  
+  /**
+   * Registra un error
+   * @param {string|Error} message - Mensaje o objeto de error
+   * @param {Error|*} [error] - Objeto de error o datos adicionales
+   */
+  error: (message, error) => {
+    if (message instanceof Error) {
+      log(LOG_LEVELS.ERROR, message.message, message);
+    } else if (error instanceof Error) {
+      log(LOG_LEVELS.ERROR, message, error);
+    } else {
+      log(LOG_LEVELS.ERROR, message, error);
+    }
+  },
+  
+  // Funciones de utilidad
+  configure: configureLogger,
+  getConfig: () => ({ ...config }),
+  getLogHistory,
+  clearLogHistory,
+  LOG_LEVELS
+};
+
+// Hacer disponible globalmente para compatibilidad, pero sin sobrescribir la consola
+if (typeof window !== 'undefined' && !window.Logger) {
+  window.Logger = logger;
+  window.LOG_LEVELS = LOG_LEVELS;
+  
+  // Configuración inicial si se ejecuta en un navegador
+  if (window.name) {
+    configureLogger({
+      iframeId: window.name,
+      debug: process.env.NODE_ENV !== 'production'
+    });
+  }
+}
+
+// Configurar el manejador de errores global después de que el logger esté disponible
+const setupGlobalErrorHandler = () => {
+    // Verificar si estamos en un navegador
+    if (typeof window === 'undefined') return;
+
+    // Verificar si ya hay un manejador de errores global
+    if (window.__GLOBAL_ERROR_HANDLER_SETUP__) return;
+    window.__GLOBAL_ERROR_HANDLER__ = (event) => {
+        // Usar console.error como respaldo si el logger no está disponible
+        if (window.logger?.error) {
+            window.logger.error('Error global capturado:', event.message || event);
+        } else {
+            console.error('Error global capturado (logger no disponible):', event.message || event);
+        }
+    };
+
+    // Configurar el manejador de errores
+    window.addEventListener('error', window.__GLOBAL_ERROR_HANDLER__);
+    window.__GLOBAL_ERROR_HANDLER_SETUP__ = true;
+};
+
+// Configurar el manejador de errores global
+document.addEventListener('DOMContentLoaded', () => {
+    // Pequeño retraso para asegurar que el logger esté disponible
+    setTimeout(setupGlobalErrorHandler, 100);
+});
+
+export default logger;
