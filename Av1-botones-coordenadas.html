@@ -281,14 +281,19 @@
                 <i class="fas fa-satellite-dish icon-gps"></i>
             </button>
             
+            <!-- Botón Ruta con ícono de ruta -->
+            <button id="btn-ruta" class="boton" title="Mostrar ruta a la siguiente parada">
+                <i class="fas fa-route"></i>
+            </button>
+            
             <!-- Botón para mostrar imagen -->
             <button id="btn-imagen" class="boton" title="Mostrar imagen de la parada">
-                <i class="fas fa-image icon-imagen"></i>
+                📸
             </button>
             
             <!-- Botón para mostrar video -->
             <button id="btn-video" class="boton" title="Mostrar video del recorrido">
-                <i class="fas fa-video icon-video"></i>
+                📽️
             </button>
         </div>
 
@@ -305,8 +310,8 @@
             </button>
             
             <!-- Botón para mapa en JPG -->
-            <button id="btn-mapa-jpg" class="boton" title="Ver mapa en imagen JPG">
-                <span class="icon-mapa-jpg">📷</span>
+            <button id="btn-mapa-jpg" class="boton" title="Abrir mapa JPG en una pestaña nueva">
+                <i class="fas fa-registered"></i>
             </button>
         </div>
 
@@ -1027,7 +1032,7 @@
             gpsActivo: false,
             watchId: null,
             ultimaActualizacionGPS: 0,
-            intervaloMinimo: 5000, // 5 segundos entre actualizaciones para ahorrar batería
+            intervaloMinimo: 2000, // 2 segundos entre actualizaciones para mejor precisión
             posicionUsuario: null,
             paradaActual: null,
             distanciaAlDestino: null,
@@ -1042,7 +1047,16 @@
                 ubicacion: false,
                 mapaCompleto: true, // Siempre activo
                 mapaJpg: true       // Siempre activo
-            }
+            },
+            // Nuevas propiedades para el seguimiento de ruta
+            rutaActual: null,
+            marcadorDestino: null,
+            polyline: null,
+            polylineDecorator: null,
+            secuenciaPuntos: [], // Secuencia de puntos de la ruta
+            puntoActualIndex: -1, // Índice del punto actual en la secuencia
+            distanciaUmbral: 20, // 20 metros de umbral de distancia
+            marcadorUsuario: null
         };
 
         // =================================================================================
@@ -1270,6 +1284,7 @@
                 desactivarGPS();
             }
             
+            console.log('🔵 Activando GPS...');
             estadoComponente.gpsActivo = true;
             
             // Activar estilo del botón GPS
@@ -1278,26 +1293,56 @@
                 botonGPS.classList.add('activo');
             }
             
-            // Verificar permisos cada vez que se activa
-            verificarPermisosGPS();
+            // Configurar opciones de geolocalización
+            const opcionesGPS = {
+                enableHighAccuracy: true,  // Usar GPS si está disponible
+                timeout: 10000,           // Tiempo máximo de espera (10 segundos)
+                maximumAge: 0             // No usar posiciones en caché
+            };
+            
+            // Iniciar el seguimiento de la posición
+            if (navigator.geolocation) {
+                estadoComponente.watchId = navigator.geolocation.watchPosition(
+                    handlePosicionGPS,
+                    handleErrorGPS,
+                    opcionesGPS
+                );
+                console.log('✅ Seguimiento GPS iniciado con ID:', estadoComponente.watchId);
+                
+                // Si ya tenemos un punto actual, dibujar la ruta
+                if (estadoComponente.puntoActual) {
+                    dibujarRutaHaciaPunto(estadoComponente.puntoActual.coordenadas);
+                }
+            } else {
+                console.error('❌ Geolocalización no soportada por el navegador');
+                actualizarEstado('Error: Geolocalización no soportada', 'error');
+            }
         }
 
         // Función para desactivar el GPS
         function desactivarGPS() {
+            console.log('🔴 Desactivando GPS...');
+            
+            // Detener el seguimiento de la posición
             if (estadoComponente.watchId !== null) {
                 navigator.geolocation.clearWatch(estadoComponente.watchId);
                 estadoComponente.watchId = null;
             }
             
+            // Limpiar el estado
             estadoComponente.gpsActivo = false;
             
-            // Desactivar estilo del botón GPS
+            // Limpiar la ruta y marcadores
+            limpiarRuta();
+            
+            // Actualizar la interfaz
             const botonGPS = document.getElementById('btn-gps');
             if (botonGPS) {
                 botonGPS.classList.remove('activo');
             }
             
-            actualizarStatus('GPS desactivado', false);
+            console.log('✅ GPS desactivado');
+            actualizarEstado('GPS desactivado', 'info');
             
             console.log('[COORDENADAS] GPS desactivado');
         }
@@ -1432,47 +1477,94 @@
             console.log('[COORDENADAS] GPS activado con watchPosition');
         }
 
-        // Manejar posición recibida del GPS with throttling para ahorrar batería
+        // Manejar posición recibida del GPS con throttling para ahorrar batería
         function handlePosicionGPS(position) {
             const ahora = Date.now();
+            
+            // Actualizar la posición del usuario
+            const coords = {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude,
+                accuracy: position.coords.accuracy,
+                heading: position.coords.heading || 0,
+                speed: position.coords.speed || 0,
+                timestamp: position.timestamp || Date.now()
+            };
+            
+            // Actualizar la posición del usuario en el estado
+            estadoComponente.posicionUsuario = coords;
+            
+            // Actualizar o crear el marcador de posición del usuario
+            if (window.L) {  // Verificar que Leaflet esté cargado
+                // Crear o actualizar el icono del usuario
+                if (!estadoComponente.marcadorUsuario) {
+                    const iconoUsuario = L.icon({
+                        iconUrl: 'https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
+                        iconSize: [25, 41],
+                        iconAnchor: [12, 41],
+                        popupAnchor: [1, -34],
+                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+                        shadowSize: [41, 41]
+                    });
+                    
+                    estadoComponente.marcadorUsuario = L.marker(
+                        [coords.lat, coords.lng],
+                        { 
+                            icon: iconoUsuario,
+                            zIndexOffset: 1000  // Asegurar que esté por encima de otros marcadores
+                        }
+                    ).addTo(window.mapa)
+                    .bindPopup('<b>Tu ubicación</b><br>Precisión: ' + coords.accuracy.toFixed(1) + 'm')
+                    .openPopup();
+                } else {
+                    // Actualizar la posición del marcador existente
+                    estadoComponente.marcadorUsuario
+                        .setLatLng([coords.lat, coords.lng])
+                        .getPopup()
+                        .setContent('<b>Tu ubicación</b><br>Precisión: ' + coords.accuracy.toFixed(1) + 'm');
+                }
+                
+                // Si hay un punto de destino, actualizar la ruta
+                if (estadoComponente.puntoActual && estadoComponente.puntoActual.coordenadas) {
+                    // Redibujar la ruta desde la nueva posición
+                    dibujarRutaHaciaPunto(estadoComponente.puntoActual.coordenadas);
+                    
+                    // Verificar proximidad al destino
+                    verificarProximidadDestino(coords, estadoComponente.puntoActual.coordenadas);
+                }
+                
+                // Centrar el mapa en la posición del usuario (solo la primera vez)
+                if (!estadoComponente.mapaCentrado && window.mapa) {
+                    window.mapa.setView([coords.lat, coords.lng], 17);
+                    estadoComponente.mapaCentrado = true;
+                }
+            }
+            
+            // Actualizar la última vez que se actualizó la posición
+            estadoComponente.ultimaActualizacionGPS = ahora;
             
             // Limitar la frecuencia de actualizaciones
             if (ahora - estadoComponente.ultimaActualizacionGPS >= estadoComponente.intervaloMinimo) {
                 estadoComponente.ultimaActualizacionGPS = ahora;
-                
-                const coords = {
-                    lat: position.coords.latitude,
-                    lng: position.coords.longitude,
-                    accuracy: position.coords.accuracy
-                };
-                
-                estadoComponente.posicionUsuario = coords;
                 
                 // Actualizar interfaz
                 actualizarStatus(`Posición: ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}`, false);
                 
                 // Notificar al padre
                 console.log('Enviando actualización de posición al padre');
-                enviarMensaje('padre', TIPOS_MENSAJE.NAVEGACION.ACTUALIZAR_POSICION, {
+                enviarMensaje('padre', 'NAVEGACION.ACTUALIZAR_POSICION', {
                     coordenadas: coords,
                     timestamp: new Date().toISOString(),
                     origen: 'hijo2'
                 }).catch(err => console.error('Error al enviar posición:', err));
                 
-                // Actualizar distancia al destino y estado de botones
-                actualizarDistanciaDestino();
-            } else {
-                // Si no ha pasado suficiente tiempo, solo actualizamos la posición sin enviar mensajes
-                estadoComponente.posicionUsuario = {
-                    lat: position.coords.latitude,
-                    lng: position.coords.longitude,
-                    accuracy: position.coords.accuracy
-                };
-                
-                // Actualizar sólo el texto sin animación
-                const statusElement = document.getElementById('status');
-                if (statusElement) {
-                    statusElement.textContent = `Posición: ${position.coords.latitude.toFixed(5)}, ${position.coords.longitude.toFixed(5)}`;
+                // Si estamos en modo navegación, actualizar la ruta
+                if (estadoComponente.gpsActivo && estadoComponente.puntoActual) {
+                    // Redibujar la ruta desde la nueva posición
+                    dibujarRutaHaciaPunto(estadoComponente.puntoActual.coordenadas);
+                    
+                    // Verificar proximidad al destino
+                    verificarProximidadDestino(coords, estadoComponente.puntoActual.coordenadas);
                 }
             }
         }
@@ -1634,35 +1726,55 @@
         
         function manejarClickGps() {
             console.log('📍 Botón GPS clickeado');
+            
+            // No hacer nada si estamos en modo casa
+            if (estadoComponente.modo === 'casa') {
+                console.log('El GPS está deshabilitado en modo casa');
+                actualizarEstado('GPS deshabilitado en modo casa', 'advertencia');
+                return;
+            }
+            
             const gpsBtn = document.getElementById('btn-gps');
-            if (gpsBtn) {
-                gpsBtn.classList.toggle('activo');
-                const isActive = gpsBtn.classList.contains('activo');
-                console.log(`GPS ${isActive ? 'activado' : 'desactivado'}`);
-                
-                if (isActive) {
-                    // Activar el seguimiento GPS
-                    activarGPS();
+            if (!gpsBtn) return;
+            
+            // Si ya está activo, desactivar
+            if (estadoComponente.gpsActivo) {
+                desactivarGPS();
+                return;
+            }
+            
+            // Activar GPS
+            gpsBtn.classList.add('activo');
+            console.log('GPS activado');
+            
+            // Iniciar la navegación al siguiente punto
+            if (estadoComponente.secuenciaPuntos.length > 0) {
+                const siguientePunto = estadoComponente.secuenciaPuntos[estadoComponente.puntoActualIndex + 1];
+                if (siguientePunto) {
+                    iniciarNavegacionHaciaPunto(siguientePunto);
                 } else {
-                    // Desactivar el seguimiento GPS
+                    console.log('¡Has llegado al final de la ruta!');
+                    actualizarEstado('¡Ruta completada!', 'exito');
                     desactivarGPS();
                 }
-                
-                // Actualizar el estado del botón
-                const status = document.getElementById('status');
-                if (status) {
-                    status.textContent = isActive ? 'GPS activado' : 'GPS desactivado';
-                    status.className = 'status ' + (isActive ? 'gps-activo' : 'gps-inactivo');
-                }
+            } else {
+                console.error('No hay puntos en la secuencia de navegación');
+                actualizarEstado('Error: Sin puntos de navegación', 'error');
             }
-            }
+            
+            // Activar el seguimiento GPS
+            activarGPS();
+            
+            // Actualizar la interfaz de usuario
+            actualizarEstadoUI();
+        }
         
         function manejarClickMapaCompleto() {
-            console.log('📍 Botón de mapa completo clickeado');
-            // Aquí puedes agregar la lógica para manejar el clic en el botón de mapa completo
-            // Por ejemplo, mostrar el mapa completo o cambiar la vista
+            console.log('📍 Abriendo mapa completo en una pestaña nueva');
+            // Abrir el mapa completo en una pestaña nueva
+            window.open('Av1_mapa_completo.html', '_blank');
             
-            // Notificar al padre que se hizo clic en el botón de mapa completo
+            // Notificar al padre que se abrió el mapa completo
             enviarMensaje('padre', 'NAVEGACION.MOSTRAR_MAPA_COMPLETO', {
                 origen: 'hijo2',
                 timestamp: new Date().toISOString()
@@ -1670,11 +1782,11 @@
         }
         
         function manejarClickMapaJPG() {
-            console.log('📍 Botón de mapa JPG clickeado');
-            // Aquí puedes agregar la lógica para manejar el clic en el botón de mapa JPG
-            // Por ejemplo, mostrar el mapa JPG o cambiar la vista
+            console.log('📍 Abriendo mapa JPG en una pestaña nueva');
+            // Abrir el mapa JPG en una pestaña nueva
+            window.open('mapas/Av1_mapa.jpg', '_blank');
             
-            // Notificar al padre que se hizo clic en el botón de mapa JPG
+            // Notificar al padre que se abrió el mapa JPG
             enviarMensaje('padre', 'NAVEGACION.MOSTRAR_MAPA_JPG', {
                 origen: 'hijo2',
                 timestamp: new Date().toISOString()
@@ -1764,6 +1876,302 @@
         }
         
         // =================================================================================
+        // 4. FUNCIONALIDAD DE RUTA Y GPS
+        // =================================================================================
+
+        // Inicializar la secuencia de puntos de la ruta
+        function inicializarSecuenciaPuntos() {
+            // Aquí deberías cargar la secuencia de puntos desde tu configuración
+            // Por ejemplo: P-0, TR-1, P-1, TR-2, P-2, etc.
+            // Esto es un ejemplo, ajusta según tu estructura de datos
+            estadoComponente.secuenciaPuntos = [
+                { id: 'P-0', tipo: 'parada', nombre: 'Punto de inicio', coordenadas: { lat: 39.4699, lng: -0.3763 } },
+                { id: 'TR-1', tipo: 'tramo', nombre: 'Tramo 1', coordenadas: { lat: 39.4705, lng: -0.3758 } },
+                { id: 'P-1', tipo: 'parada', nombre: 'Parada 1', coordenadas: { lat: 39.4710, lng: -0.3750 } },
+                // Añade más puntos según sea necesario
+            ];
+            
+            // Iniciar en el primer punto
+            estadoComponente.puntoActualIndex = 0;
+            estadoComponente.puntoActual = estadoComponente.secuenciaPuntos[0];
+            
+            console.log('Secuencia de puntos inicializada:', estadoComponente.secuenciaPuntos);
+        }
+        
+        // Iniciar navegación hacia un punto específico
+        function iniciarNavegacionHaciaPunto(punto) {
+            if (!punto || !punto.coordenadas) {
+                console.error('Punto inválido para navegación:', punto);
+                return;
+            }
+            
+            console.log(`Iniciando navegación hacia ${punto.id}: ${punto.nombre}`, punto.coordenadas);
+            estadoComponente.puntoActual = punto;
+            
+            // Notificar al padre que estamos navegando a un nuevo punto
+            enviarMensaje('padre', 'NAVEGACION.INICIAR_NAVEGACION', {
+                puntoId: punto.id,
+                tipo: punto.tipo,
+                coordenadas: punto.coordenadas,
+                origen: 'hijo2',
+                timestamp: new Date().toISOString()
+            });
+            
+            // Actualizar la interfaz de usuario
+            actualizarEstadoUI();
+            
+            // Si tenemos posición del usuario, dibujar la ruta
+            if (estadoComponente.posicionUsuario) {
+                dibujarRutaHaciaPunto(punto.coordenadas);
+            }
+        }
+        
+        // Dibujar ruta desde la posición actual hasta el punto de destino
+        function dibujarRutaHaciaPunto(destino) {
+            if (!estadoComponente.posicionUsuario || !destino) return;
+            
+            // Limpiar ruta anterior si existe
+            limpiarRuta();
+            
+            // Crear puntos de la ruta (aquí podrías usar un servicio de enrutamiento)
+            const puntosRuta = [
+                [estadoComponente.posicionUsuario.lat, estadoComponente.posicionUsuario.lng],
+                [destino.lat, destino.lng]
+            ];
+            
+            // Dibujar la línea de ruta
+            estadoComponente.polyline = L.polyline(puntosRuta, {
+                color: '#0078ff',
+                weight: 6,
+                opacity: 0.8,
+                lineJoin: 'round'
+            }).addTo(window.mapa);
+            
+            // Añadir flecha de dirección
+            estadoComponente.polylineDecorator = L.polylineDecorator(estadoComponente.polyline, {
+                patterns: [
+                    {
+                        offset: '100%',
+                        repeat: 0,
+                        symbol: L.Symbol.arrowHead({
+                            pixelSize: 15,
+                            pathOptions: {
+                                fillOpacity: 1,
+                                weight: 0,
+                                color: '#ff0000'
+                            }
+                        })
+                    }
+                ]
+            }).addTo(window.mapa);
+            
+            // Añadir marcador de destino si no existe
+            if (!estadoComponente.marcadorDestino) {
+                const iconoDestino = L.icon({
+                    iconUrl: 'https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41],
+                    popupAnchor: [1, -34],
+                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+                    shadowSize: [41, 41]
+                });
+                
+                estadoComponente.marcadorDestino = L.marker(
+                    [destino.lat, destino.lng],
+                    { icon: iconoDestino }
+                ).addTo(window.mapa)
+                .bindPopup(`<b>Destino:</b> ${estadoComponente.puntoActual.nombre}`)
+                .openPopup();
+            }
+            
+            // Ajustar la vista del mapa para mostrar la ruta completa
+            if (window.mapa && window.mapa.fitBounds) {
+                window.mapa.fitBounds(estadoComponente.polyline.getBounds(), {
+                    padding: [50, 50],
+                    maxZoom: 18
+                });
+            }
+        }
+        
+        // Limpiar la ruta actual
+        function limpiarRuta() {
+            if (estadoComponente.polyline) {
+                window.mapa.removeLayer(estadoComponente.polyline);
+                estadoComponente.polyline = null;
+            }
+            
+            if (estadoComponente.polylineDecorator) {
+                window.mapa.removeLayer(estadoComponente.polylineDecorator);
+                estadoComponente.polylineDecorator = null;
+            }
+            
+            if (estadoComponente.marcadorDestino) {
+                window.mapa.removeLayer(estadoComponente.marcadorDestino);
+                estadoComponente.marcadorDestino = null;
+            }
+            
+            if (estadoComponente.marcadorUsuario) {
+                window.mapa.removeLayer(estadoComponente.marcadorUsuario);
+                estadoComponente.marcadorUsuario = null;
+            }
+        }
+        
+        // Actualizar la interfaz de usuario según el estado actual
+        function actualizarEstadoUI() {
+            const gpsBtn = document.getElementById('btn-gps');
+            const rutaBtn = document.getElementById('btn-ruta');
+            const status = document.getElementById('status');
+            
+            if (!gpsBtn || !rutaBtn || !status) return;
+            
+            // Actualizar estado de los botones en modo casa
+            if (estadoComponente.modo === 'casa') {
+                gpsBtn.disabled = true;
+                gpsBtn.classList.remove('activo');
+                rutaBtn.disabled = true;
+                rutaBtn.classList.remove('activo');
+                status.textContent = 'Funciones de navegación deshabilitadas en modo casa';
+                status.className = 'status gps-inactivo';
+                return;
+            }
+            
+            // Verificar si hay un siguiente punto disponible
+            const haySiguientePunto = estadoComponente.secuenciaPuntos && 
+                                    estadoComponente.secuenciaPuntos.length > 0 && 
+                                    estadoComponente.puntoActualIndex < estadoComponente.secuenciaPuntos.length - 1;
+            
+            // Actualizar estado del botón GPS
+            gpsBtn.disabled = !haySiguientePunto;
+            gpsBtn.classList.toggle('activo', estadoComponente.gpsActivo);
+            
+            // Actualizar estado del botón Ruta
+            rutaBtn.disabled = !haySiguientePunto || estadoComponente.gpsActivo;
+            rutaBtn.classList.toggle('activo', false); // Nunca mostrar el botón Ruta como activo
+            
+            // Actualizar tooltips
+            if (!haySiguientePunto) {
+                rutaBtn.title = 'No hay más puntos en la ruta';
+                gpsBtn.title = 'No hay más puntos en la ruta';
+            } else {
+                rutaBtn.title = 'Mostrar ruta a la siguiente parada';
+                gpsBtn.title = estadoComponente.gpsActivo ? 'Navegación GPS activa' : 'Activar navegación GPS';
+            }
+            
+            // Actualizar estado del GPS si está activo
+            if (estadoComponente.gpsActivo) {
+                status.textContent = `Navegando a ${estadoComponente.puntoActual?.nombre || 'siguiente punto'}`;
+                status.className = 'status gps-activo';
+            } else {
+                status.textContent = 'Listo para navegar';
+                status.className = 'status gps-inactivo';
+            }
+            
+            // Actualizar botones de imagen y video según el tipo de punto actual
+            const btnImagen = document.getElementById('btn-imagen');
+            const btnVideo = document.getElementById('btn-video');
+            
+            if (btnImagen) {
+                btnImagen.disabled = !estadoComponente.puntoActual || estadoComponente.puntoActual.tipo !== 'parada';
+            }
+            
+            if (btnVideo) {
+                btnVideo.disabled = !estadoComponente.puntoActual || estadoComponente.puntoActual.tipo !== 'tramo';
+            }
+        }
+        
+        // Actualizar el estado con un mensaje
+        function actualizarEstado(mensaje, tipo = 'info') {
+            const status = document.getElementById('status');
+            if (!status) return;
+            
+            status.textContent = mensaje;
+            status.className = `status estado-${tipo}`;
+            
+            // Si es un mensaje de éxito, ocultarlo después de 3 segundos
+            if (tipo === 'exito' || tipo === 'error') {
+                setTimeout(() => {
+                    if (status.textContent === mensaje) {
+                        actualizarEstadoUI();
+                    }
+                }, 3000);
+            }
+        }
+        
+        // Verificar proximidad al destino
+        function verificarProximidadDestino(posicionUsuario, destino) {
+            if (!posicionUsuario || !destino) return;
+            
+            const distancia = calcularDistancia(
+                { lat: posicionUsuario.lat, lng: posicionUsuario.lng },
+                { lat: destino.lat, lng: destino.lng }
+            );
+            
+            console.log(`Distancia al destino: ${distancia.toFixed(2)} metros`);
+            
+            // Si estamos dentro del umbral, avanzar al siguiente punto
+            if (distancia <= estadoComponente.distanciaUmbral) {
+                console.log(`¡Has llegado a ${estadoComponente.puntoActual?.nombre || 'el destino'}!`);
+                
+                // Notificar al padre que hemos llegado al punto
+                enviarMensaje('padre', 'NAVEGACION.PUNTO_ALCANZADO', {
+                    puntoId: estadoComponente.puntoActual?.id,
+                    tipo: estadoComponente.puntoActual?.tipo,
+                    coordenadas: estadoComponente.puntoActual?.coordenadas,
+                    origen: 'hijo2',
+                    timestamp: new Date().toISOString()
+                });
+                
+                // Avanzar al siguiente punto
+                avanzarSiguientePunto();
+            }
+        }
+        
+        // Calcular distancia entre dos puntos en metros (fórmula del semiverseno)
+        function calcularDistancia(punto1, punto2) {
+            const R = 6371e3; // Radio de la Tierra en metros
+            const φ1 = punto1.lat * Math.PI / 180;
+            const φ2 = punto2.lat * Math.PI / 180;
+            const Δφ = (punto2.lat - punto1.lat) * Math.PI / 180;
+            const Δλ = (punto2.lng - punto1.lng) * Math.PI / 180;
+            
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            
+            return R * c;
+        }
+        
+        // Avanzar al siguiente punto en la secuencia
+        function avanzarSiguientePunto() {
+            if (estadoComponente.puntoActualIndex < estadoComponente.secuenciaPuntos.length - 1) {
+                estadoComponente.puntoActualIndex++;
+                const siguientePunto = estadoComponente.secuenciaPuntos[estadoComponente.puntoActualIndex];
+                
+                // Actualizar el punto actual
+                estadoComponente.puntoActual = siguientePunto;
+                
+                // Mostrar notificación
+                actualizarEstado(`¡Siguiente punto: ${siguientePunto.nombre}!`, 'exito');
+                
+                // Si el GPS está activo, actualizar la ruta
+                if (estadoComponente.gpsActivo) {
+                    dibujarRutaHaciaPunto(siguientePunto.coordenadas);
+                }
+                
+                // Actualizar la interfaz
+                actualizarEstadoUI();
+                
+                return true;
+            } else {
+                // Fin de la ruta
+                actualizarEstado('¡Has completado la ruta!', 'exito');
+                desactivarGPS();
+                return false;
+            }
+        }
+
+        // =================================================================================
         // 5. INICIALIZACIÓN
         // =================================================================================
         
@@ -1816,6 +2224,7 @@
                 // Guardar referencias a elementos DOM
                 estadoComponente.elementosDOM = {
                     btnGps: document.getElementById('btn-gps'),
+                    btnRuta: document.getElementById('btn-ruta'),
                     btnImagen: document.getElementById('btn-imagen'),
                     btnVideo: document.getElementById('btn-video'),
                     btnUbicacion: document.getElementById('btn-ubicacion'),
@@ -1826,6 +2235,9 @@
                 // Configurar eventos de botones
                 if (estadoComponente.elementosDOM.btnGps) {
                     estadoComponente.elementosDOM.btnGps.addEventListener('click', manejarClickGps);
+                }
+                if (estadoComponente.elementosDOM.btnRuta) {
+                    estadoComponente.elementosDOM.btnRuta.addEventListener('click', manejarClickRuta);
                 }
                 if (estadoComponente.elementosDOM.btnImagen) {
                     estadoComponente.elementosDOM.btnImagen.addEventListener('click', () => mostrarMedio('imagen'));
@@ -1886,6 +2298,144 @@
             console.log('Cambio de modo recibido:', mensaje.datos);
             enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.CONFIRMACION, { estado: 'recibido', origen: 'hijo2' });
         });
+
+        // Función para manejar el clic en el botón de ruta
+        async function manejarClickRuta() {
+            console.log('📍 Botón Ruta clickeado');
+            
+            // No hacer nada si estamos en modo casa
+            if (estadoComponente.modo === 'casa') {
+                console.log('La función de ruta está deshabilitada en modo casa');
+                actualizarEstado('Ruta deshabilitada en modo casa', 'advertencia');
+                return;
+            }
+            
+            // No hacer nada si el GPS está activo
+            if (estadoComponente.gpsActivo) {
+                console.log('La función de ruta está deshabilitada cuando el GPS está activo');
+                actualizarEstado('Desactiva el GPS para usar la función de ruta', 'advertencia');
+                return;
+            }
+            
+            try {
+                // Obtener la próxima parada o tramo no completado
+                const siguientePunto = await obtenerSiguientePunto();
+                
+                if (!siguientePunto) {
+                    console.log('No hay más puntos en la ruta');
+                    actualizarEstado('No hay más puntos en la ruta', 'info');
+                    return;
+                }
+                
+                console.log(`Mostrando ruta a ${siguientePunto.nombre || siguientePunto.id} (${siguientePunto.id})`);
+                actualizarEstado(`Ruta a: ${siguientePunto.nombre || siguientePunto.id}`, 'info');
+                
+                // Si tenemos posición del usuario, dibujar la ruta
+                if (estadoComponente.posicionUsuario) {
+                    await dibujarRutaHaciaPunto(siguientePunto);
+                    return;
+                }
+                
+                // Si no tenemos posición, intentar obtenerla
+                actualizarEstado('Obteniendo tu ubicación...', 'info');
+                
+                navigator.geolocation.getCurrentPosition(
+                    async (position) => {
+                        // Guardar la posición del usuario
+                        estadoComponente.posicionUsuario = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude,
+                            accuracy: position.coords.accuracy,
+                            timestamp: position.timestamp || Date.now()
+                        };
+                        
+                        // Dibujar la ruta
+                        await dibujarRutaHaciaPunto(siguientePunto);
+                    },
+                    (error) => {
+                        console.error('Error al obtener la ubicación:', error);
+                        actualizarEstado('No se pudo obtener tu ubicación', 'error');
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 0
+                    }
+                );
+            } catch (error) {
+                console.error('Error en manejarClickRuta:', error);
+                actualizarEstado('Error al mostrar la ruta', 'error');
+            }
+        }
+
+        // Obtener el siguiente punto no completado en la ruta
+        async function obtenerSiguientePunto() {
+            try {
+                // Si no hay secuencia de puntos, inicializarla
+                if (!estadoComponente.secuenciaPuntos || estadoComponente.secuenciaPuntos.length === 0) {
+                    await inicializarSecuenciaPuntos();
+                }
+                
+                // Si aún no hay secuencia, devolver la primera parada (P-0)
+                if (!estadoComponente.secuenciaPuntos || estadoComponente.secuenciaPuntos.length === 0) {
+                    const primeraParada = COORDENADAS_PARADAS.find(p => p.id === 'P-0');
+                    if (primeraParada) {
+                        estadoComponente.puntoActual = primeraParada;
+                        estadoComponente.puntoActualIndex = 0;
+                        return primeraParada;
+                    }
+                    return null;
+                }
+                
+                // Si no hay punto actual, devolver el primero
+                if (estadoComponente.puntoActualIndex === -1 || !estadoComponente.puntoActual) {
+                    estadoComponente.puntoActual = estadoComponente.secuenciaPuntos[0];
+                    estadoComponente.puntoActualIndex = 0;
+                    return estadoComponente.secuenciaPuntos[0];
+                }
+                
+                // Si estamos en el último punto, no hay siguiente
+                if (estadoComponente.puntoActualIndex >= estadoComponente.secuenciaPuntos.length - 1) {
+                    return null;
+                }
+                
+                // Devolver el siguiente punto
+                const siguienteIndice = estadoComponente.puntoActualIndex + 1;
+                estadoComponente.puntoActual = estadoComponente.secuenciaPuntos[siguienteIndice];
+                estadoComponente.puntoActualIndex = siguienteIndice;
+                return estadoComponente.secuenciaPuntos[siguienteIndice];
+            } catch (error) {
+                console.error('Error en obtenerSiguientePunto:', error);
+                return null;
+            }
+        }
+
+        // Actualizar el estado del botón de ruta
+        function actualizarEstadoBotonRuta() {
+            const btnRuta = document.getElementById('btn-ruta');
+            if (!btnRuta) return;
+            
+            // Deshabilitar en modo casa o si el GPS está activo
+            if (estadoComponente.modo === 'casa' || estadoComponente.gpsActivo) {
+                btnRuta.disabled = true;
+                btnRuta.classList.remove('activo');
+                return;
+            }
+            
+            // Verificar si hay un siguiente punto disponible
+            const haySiguientePunto = estadoComponente.secuenciaPuntos && 
+                                    estadoComponente.secuenciaPuntos.length > 0 && 
+                                    estadoComponente.puntoActualIndex < estadoComponente.secuenciaPuntos.length - 1;
+            
+            btnRuta.disabled = !haySiguientePunto;
+            
+            // Actualizar tooltip
+            if (!haySiguientePunto) {
+                btnRuta.title = 'No hay más puntos en la ruta';
+            } else {
+                btnRuta.title = 'Mostrar ruta a la siguiente parada';
+            }
+        }
 
         inicializar().catch(error => {
             actualizarStatus('Error al inicializar componente');
