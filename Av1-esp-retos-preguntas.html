@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Retos - Aventura 1 (hijo4)</title>
+    <title>Retos y Preguntas</title>
     <style>
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
@@ -37,37 +37,17 @@
         .btn-completado { background-color: #27ae60; }
         .btn-ocultar { background-color: #7f8c8d; }
     </style>
-</head>
-<body>
-    <div id="reto-container" class="reto-container">
-        <div class="reto-header">
-            <h2 id="reto-titulo">Título del Reto</h2>
-        </div>
-        <div id="reto-body" class="reto-body">
-            <p>Aquí va la descripción del reto...</p>
-        </div>
-        <div class="reto-footer">
-            <button id="btn-completado" class="btn btn-completado">¡Reto Completado!</button>
-            <button id="btn-ocultar" class="btn btn-ocultar">Ocultar</button>
-        </div>
-    </div>
-
+    
+    <!-- Import CONFIG and other required modules -->
     <script type="module">
-        import { 
-            TIPOS_MENSAJE,
-            MODOS,
-            LOG_LEVELS,
-            ERRORES
-        } from './js/constants.js';
+        // Import required modules
         import { CONFIG } from './js/config.js';
-        import { 
-            inicializarMensajeria,
-            registrarControlador,
-            enviarMensaje
-        } from './js/mensajeria.js';
-        import { configurarUtils } from './js/utils.js';
+        import { TIPOS_MENSAJE } from './js/constants.js';
+        import { inicializarMensajeria, enviarMensaje, registrarControlador } from './js/mensajeria.js';
         import logger from './js/logger.js';
-        import { modoHandler } from './js/modo-handler.js';
+        
+        // Make CONFIG available globally for legacy code
+        window.CONFIG = CONFIG;
         
         // Funciones de inicialización globales
         function inicializarInterfaz() {
@@ -92,12 +72,6 @@
         
         // Configurar logger
         try {
-            configurarUtils({
-                iframeId: CONFIG_MENSAJERIA.iframeId,
-                debug: CONFIG.DEBUG,
-                logLevel: CONFIG.LOG_LEVEL
-            });
-            
             // Log successful initialization
             logger.info(`Inicializando ${CONFIG_MENSAJERIA.iframeId}`, { 
                 debug: CONFIG.DEBUG,
@@ -610,9 +584,135 @@ const retosAventura1Es = [
 
         // Exponer funciones de mensajería al ámbito global
         window.registrarControlador = registrarControlador;
+        window.enviarMensajeConACK = enviarMensajeConACK;
+        
+        // Manejar mensajes globales
+        window.addEventListener('message', async (event) => {
+            if (!event.data || !event.data.tipo || !event.data.datos) return;
+            
+            const { tipo, datos } = event.data;
+            
+            // Manejar ACK/NACK
+            if ((tipo === 'SISTEMA.ACK' || tipo === 'SISTEMA.NACK') && datos.solicitudId) {
+                console.log(`📩 [${CONFIG.IFRAME_ID}] ${tipo} recibido para solicitud ${datos.solicitudId}`);
+                return;
+            }
+            
+            // Manejar PING
+            if (tipo === 'SISTEMA.PING') {
+                console.log(`🔔 [${CONFIG.IFRAME_ID}] PING recibido, respondiendo PONG`);
+                try {
+                    await enviarACK(event.source, 'PONG', { 
+                        timestamp: new Date().toISOString(),
+                        origen: CONFIG.IFRAME_ID
+                    }, event.origin);
+                } catch (error) {
+                    console.error(`❌ [${CONFIG.IFRAME_ID}] Error al responder PING:`, error);
+                }
+                return;
+            }
+        });
 
         // Suponiendo que tienes un array local de retos y puzzles:
-const retos = retosAventura1Esretos_con_puzzles_Av1_es.html;
+const retos = retosAventura1Es;
+
+// =================================================================================
+// FUNCIONES DE MENSAJERÍA MEJORADAS
+// =================================================================================
+
+/**
+ * Envía un mensaje con confirmación ACK/NACK
+ * @param {string} destino - Destino del mensaje ('padre' o ID de iframe)
+ * @param {string} tipo - Tipo de mensaje
+ * @param {Object} datos - Datos del mensaje
+ * @param {Object} opciones - Opciones de envío
+ * @returns {Promise<Object>} Respuesta del destinatario
+ */
+async function enviarMensajeConACK(destino, tipo, datos, opciones = {}) {
+    const config = {
+        timeout: opciones.timeout || CONFIG.REINTENTOS.TIEMPO_ESPERA,
+        reintentos: opciones.reintentos || CONFIG.REINTENTOS.MAXIMOS,
+        silencioso: opciones.silencioso || false,
+        ...opciones
+    };
+
+    if (!destino || !tipo) {
+        throw new Error('Se requieren destino y tipo de mensaje');
+    }
+
+    const solicitudId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const mensaje = {
+        tipo,
+        datos: {
+            ...datos,
+            solicitudId,
+            timestamp: new Date().toISOString(),
+            origen: CONFIG.IFRAME_ID
+        }
+    };
+
+    let ultimoError = null;
+
+    for (let intento = 1; intento <= config.reintentos; intento++) {
+        try {
+            console.log(`📤 [${CONFIG.IFRAME_ID}] Enviando mensaje (${solicitudId}) [${intento}/${config.reintentos}]:`, { tipo, destino });
+
+            const respuesta = await new Promise((resolve, reject) => {
+                const timeoutId = setTimeout(() => {
+                    reject(new Error(`Tiempo de espera agotado (${config.timeout}ms)`));
+                }, config.timeout);
+
+                const manejarRespuesta = (event) => {
+                    if (event.data?.tipo === 'SISTEMA.ACK' &&
+                        event.data?.datos?.solicitudId === solicitudId) {
+                        clearTimeout(timeoutId);
+                        window.removeEventListener('message', manejarRespuesta);
+                        resolve(event.data);
+                    } else if (event.data?.tipo === 'SISTEMA.NACK' &&
+                             event.data?.datos?.solicitudId === solicitudId) {
+                        clearTimeout(timeoutId);
+                        window.removeEventListener('message', manejarRespuesta);
+                        const error = new Error(event.data.datos.mensaje || 'Error en el servidor');
+                        error.codigo = event.data.datos.codigo || 'NACK_RECIBIDO';
+                        error.detalles = event.data.datos.detalles;
+                        reject(error);
+                    }
+                };
+
+                window.addEventListener('message', manejarRespuesta, false);
+
+                try {
+                    window.parent.postMessage(mensaje, '*');
+                } catch (error) {
+                    clearTimeout(timeoutId);
+                    window.removeEventListener('message', manejarRespuesta);
+                    reject(new Error(`Error al enviar mensaje: ${error.message}`));
+                }
+            });
+
+            console.log(`✅ [${CONFIG.IFRAME_ID}] ACK recibido para ${solicitudId}`, respuesta);
+            return respuesta.datos;
+
+        } catch (error) {
+            ultimoError = error;
+            if (config.onRetry && intento < config.reintentos) {
+                config.onRetry(intento, config.reintentos);
+            }
+            if (intento < config.reintentos) {
+                const delay = Math.min(1000 * Math.pow(2, intento - 1), 10000);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+    }
+
+    if (!config.silencioso) {
+        console.error(`❌ [${CONFIG.IFRAME_ID}] No se pudo enviar el mensaje después de ${config.reintentos} intentos`);
+        if (ultimoError) {
+            console.error('Último error:', ultimoError);
+        }
+    }
+    throw ultimoError || new Error('Error desconocido al enviar mensaje');
+}
 
 // =================================================================================
 // MANEJADORES DE MENSAJES
@@ -620,18 +720,69 @@ const retos = retosAventura1Esretos_con_puzzles_Av1_es.html;
 async function inicializarManejadoresMensajes() {
     try {
         // SISTEMA.PING - Responder con PONG
-        registrarControlador('SISTEMA.PING', (mensaje) => {
-            console.log('🔔 [RETOS] Recibido PING, enviando PONG');
+        registrarControlador('SISTEMA.PING', async (mensaje) => {
+            const { solicitudId } = mensaje.datos || {};
+            console.log(`🔔 [${CONFIG.IFRAME_ID}] PING recibido, respondiendo PONG`);
+            
+            if (solicitudId) {
+                try {
+                    await enviarACK(mensaje.origen, 'PONG', {
+                        timestamp: new Date().toISOString(),
+                        componente: 'retos-preguntas',
+                        origen: CONFIG.IFRAME_ID
+                    });
+                } catch (error) {
+                    console.error(`❌ [${CONFIG.IFRAME_ID}] Error al responder PING:`, error);
+                    throw error;
+                }
+            }
+            
             return { 
                 timestamp: new Date().toISOString(),
-                componente: 'retos-preguntas'
+                componente: 'retos-preguntas',
+                origen
             };
         });
 
         // UI.MODAL - Manejar modales de la interfaz
-        registrarControlador('UI.MODAL', (mensaje) => {
-            const { accion, tipo, titulo, contenido, opciones } = mensaje.datos || {};
-            console.log(`🎨 [RETOS] Solicitud de modal: ${accion} - ${tipo || 'sin tipo'}`);
+        registrarControlador('UI.MODAL', async (mensaje) => {
+            const { accion, tipo, titulo, contenido, opciones, solicitudId } = mensaje.datos || {};
+            console.log(`🎨 [${CONFIG.IFRAME_ID}] Solicitud de modal: ${accion} - ${tipo || 'sin tipo'}`);
+            
+            // Función para enviar respuesta con ACK si es necesario
+            const enviarRespuesta = async (resultado) => {
+                if (solicitudId) {
+                    try {
+                        await enviarACK(mensaje.origen, 'UI.MODAL.RESPUESTA', {
+                            ...resultado,
+                            origen: CONFIG.IFRAME_ID,
+                            solicitudId
+                        });
+                    } catch (error) {
+                        console.error(`❌ [${CONFIG.IFRAME_ID}] Error al enviar ACK de UI.MODAL:`, error);
+                        throw error;
+                    }
+                }
+                return resultado;
+            };
+            
+            // Función para manejar errores
+            const manejarError = async (error) => {
+                console.error(`❌ [${CONFIG.IFRAME_ID}] Error en UI.MODAL:`, error);
+                if (solicitudId) {
+                    try {
+                        await enviarNACK(mensaje.origen, 'ERROR_UI_MODAL', {
+                            mensaje: error.message,
+                            solicitudId,
+                            origen: CONFIG.IFRAME_ID,
+                            detalles: error.stack
+                        });
+                    } catch (nackError) {
+                        console.error(`❌ [${CONFIG.IFRAME_ID}] Error al enviar NACK:`, nackError);
+                    }
+                }
+                throw error;
+            };
             
             // Implementar lógica para mostrar/ocultar modales
             switch(accion) {
@@ -700,6 +851,26 @@ registrarControlador(TIPOS_MENSAJE.DATOS.SOLICITAR_PARADA, (mensaje) => {
 });
 
     </script>
+    
+    <!-- For non-module scripts that need CONFIG -->
+    <script>
+        // This script will have access to CONFIG via window.CONFIG after the module script runs
+        // ... existing script code ...
+    </script>
+</head>
+<body>
+    <div id="reto-container" class="reto-container">
+        <div class="reto-header">
+            <h2 id="reto-titulo">Título del Reto</h2>
+        </div>
+        <div id="reto-body" class="reto-body">
+            <p>Aquí va la descripción del reto...</p>
+        </div>
+        <div class="reto-footer">
+            <button id="btn-completado" class="btn btn-completado">¡Reto Completado!</button>
+            <button id="btn-ocultar" class="btn btn-ocultar">Ocultar</button>
+        </div>
+    </div>
 
     <script>
     // Define the variable if missing
