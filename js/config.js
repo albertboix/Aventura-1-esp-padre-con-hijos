@@ -5,14 +5,25 @@
 
 import { LOG_LEVELS } from './constants.js';
 
+// Helper function for environment detection in browsers
+function isDevelopmentMode() {
+    // Browser environment check instead of process.env
+    if (typeof window !== 'undefined') {
+        return window.__DEV__ === true || 
+               window.location.hostname === 'localhost' || 
+               window.location.hostname === '127.0.0.1';
+    }
+    return false;
+}
+
 /**
  * Configuración de la aplicación
  */
 export const CONFIG = {
     // Configuración general
-    DEBUG: true,
-    LOG_LEVEL: LOG_LEVELS.DEBUG,
-    ID_PADRE: 'codigo-padre',
+    DEBUG: isDevelopmentMode(),
+    LOG_LEVEL: isDevelopmentMode() ? LOG_LEVELS.DEBUG : LOG_LEVELS.INFO,
+    ID_PADRE: 'codigo-padre', // Confirmado: ID coincide con el iframe real del padre
     IFRAME_ID: 'padre',
     
     // Configuración de iframes
@@ -20,7 +31,7 @@ export const CONFIG = {
         CASA: { id: 'hijo5-casa', nombre: 'Botón Casa' },
         COORDENADAS: { id: 'hijo2', nombre: 'Coordenadas' },
         AUDIO: { id: 'hijo3', nombre: 'Audio' },
-        RETOS: { id: 'hijo4', nombre: 'Retos' }  // ← Corregido: coincide con el ID real en HTML
+        RETOS: { id: 'hijo4', nombre: 'Retos' } // Confirmado: ID coincide con el iframe real
     },
     
     // Configuración de reintentos
@@ -43,7 +54,9 @@ export const CONFIG = {
 // Export LOG_LEVELS to fix dependency issues
 export { LOG_LEVELS };
 
-export default {
-    CONFIG,
-    LOG_LEVELS
-};
+// Cambiar las exportaciones para usar CommonJS si ES6 no es compatible
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { CONFIG, LOG_LEVELS };
+} else {
+    window.Config = { CONFIG, LOG_LEVELS };
+}
