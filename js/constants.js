@@ -27,99 +27,32 @@ export const MODOS = {
  * Organizados por categorías para mejor mantenimiento
  */
 export const TIPOS_MENSAJE = {
-    // Mensajes del sistema
     SISTEMA: {
-        // Inicialización
         INICIALIZACION: 'SISTEMA.INICIALIZACION',
-        INICIALIZACION_COMPLETADA: 'SISTEMA.INICIALIZACION_COMPLETADA',
-        COMPONENTE_INICIALIZADO: 'SISTEMA.COMPONENTE_INICIALIZADO',
-        INICIALIZACION_FINALIZADA: 'SISTEMA.INICIALIZACION_FINALIZADA',
-        
-        // Estado y control
         ESTADO: 'SISTEMA.ESTADO',
         CAMBIO_MODO: 'SISTEMA.CAMBIO_MODO',
-        
-        // Comunicación
-        PING: 'SISTEMA.PING',
-        PONG: 'SISTEMA.PONG',
-        LISTO: 'SISTEMA.LISTO',
-        CONFIRMACION: 'SISTEMA.CONFIRMACION',
-        COMPONENTE_LISTO: 'SISTEMA.COMPONENTE_LISTO',
-        
-        // Errores
+        COMPONENTE_LISTO: 'SISTEMA.COMPONENTE_LISTO', // Agregado
+        ACK: 'SISTEMA.ACK',
         ERROR: 'SISTEMA.ERROR'
     },
-    
-    // Mensajes de control
-    CONTROL: {
-        HABILITAR: 'CONTROL.HABILITAR',
-        DESHABILITAR: 'CONTROL.DESHABILITAR',
-        GPS: 'CONTROL.GPS',
-        CAMBIAR_MODO: 'CONTROL.CAMBIAR_MODO'
-    },
-    
-    // Mensajes de datos
-    DATOS: {
-        // Paradas
-        SOLICITAR_PARADA: 'DATOS.SOLICITAR_PARADA',
-        SOLICITAR_PARADAS: 'DATOS.SOLICITAR_PARADAS',
-        ENVIAR_PARADAS: 'DATOS.ENVIAR_PARADAS',
-        RESPUESTA_PARADA: 'DATOS.RESPUESTA_PARADA',
-        RESPUESTA_PARADAS: 'DATOS.RESPUESTA_PARADAS',
-        COORDENADAS_PARADAS: 'DATOS.COORDENADAS_PARADAS',
-        
-        // Puntos de ruta
-        PUNTOS: 'DATOS.PUNTOS',
-        PUNTOS_RUTA: 'DATOS.PUNTOS_RUTA',
-        PARADAS: 'DATOS.PARADAS'
-    },
-    
-    // Mensajes de navegación
     NAVEGACION: {
-        // Control de navegación
         CAMBIO_PARADA: 'NAVEGACION.CAMBIO_PARADA',
-        SOLICITAR_DESTINO: 'NAVEGACION.SOLICITAR_DESTINO',
         ESTABLECER_DESTINO: 'NAVEGACION.ESTABLECER_DESTINO',
-        ACTUALIZAR_POSICION: 'NAVEGACION.ACTUALIZAR_POSICION',
-        
-        // Estado del mapa
-        SOLICITAR_ESTADO_MAPA: 'NAVEGACION.SOLICITAR_ESTADO_MAPA',
-        ESTADO_MAPA: 'NAVEGACION.ESTADO_MAPA',
-        
-        // Rutas
-        MOSTRAR_RUTA: 'NAVEGACION.MOSTRAR_RUTA',
-        ACTUALIZAR_ESTADO: 'NAVEGACION.ACTUALIZAR_ESTADO',
-        
-        // Gestión de paradas
-        PARADAS: 'NAVEGACION.PARADAS'
+        ACTUALIZAR_POSICION: 'NAVEGACION.ACTUALIZAR_POSICION'
     },
-    
-    // Mensajes de audio
+    DATOS: {
+        SOLICITAR_PARADAS: 'DATOS.SOLICITAR_PARADAS',
+        RESPUESTA_PARADAS: 'DATOS.RESPUESTA_PARADAS'
+    },
     AUDIO: {
-        REPRODUCIR: 'AUDIO.REPRODUCIR',
-        PAUSAR: 'AUDIO.PAUSAR',
-        FIN_REPRODUCCION: 'AUDIO.FIN_REPRODUCCION',
-        FINALIZADO: 'AUDIO.FINALIZADO'
+        REPRODUCIR: 'AUDIO.REPRODUCIR'
     },
-    
-    // Mensajes de retos
     RETO: {
-        MOSTRAR: 'RETO.MOSTRAR',
-        OCULTAR: 'RETO.OCULTAR',
-        COMPLETADO: 'RETO.COMPLETADO'
+        MOSTRAR: 'RETO.MOSTRAR'
     },
-    
-    // Interfaz de usuario
-    UI: {
-        MODAL: 'UI.MODAL',
-        NOTIFICACION: 'UI.NOTIFICACION'
-    },
-    
-    // Medios y multimedia
-    MEDIOS: {
-        EVENTO: 'MEDIOS.EVENTO',
-        MOSTRAR: 'MEDIOS.MOSTRAR',
-        OCULTAR: 'MEDIOS.OCULTAR'
+    MONITOREO: {
+        EVENTO: 'MONITOREO.EVENTO',
+        METRICA: 'MONITOREO.METRICA'
     }
 };
 
@@ -192,11 +125,58 @@ export const ESTADOS = {
 /**
  * Códigos de error
  */
+/**
+ * Niveles de severidad para eventos de monitoreo
+ */
+export const NIVELES_SEVERIDAD = {
+    DEBUG: 'debug',
+    INFO: 'info',
+    WARN: 'warn',
+    ERROR: 'error',
+    CRITICO: 'critico'
+};
+
+/**
+ * Tipos de métricas de rendimiento
+ */
+export const TIPOS_METRICAS = {
+    TIEMPO_RESPUESTA: 'tiempo_respuesta',
+    USO_MEMORIA: 'uso_memoria',
+    TIEMPO_CARGA: 'tiempo_carga',
+    ERRORES: 'errores',
+    MENSAJES: 'mensajes'
+};
+
+/**
+ * Categorías de eventos de monitoreo
+ */
+export const CATEGORIAS_EVENTOS = {
+    SISTEMA: 'sistema',
+    RED: 'red',
+    RENDIMIENTO: 'rendimiento',
+    ERROR: 'error',
+    SEGURIDAD: 'seguridad',
+    NEGOCIO: 'negocio'
+};
+
 export const CODIGOS_ERROR = {
+    // Errores existentes
     INICIALIZACION: 'ERROR_INICIALIZACION',
     MENSAJERIA: 'ERROR_MENSAJERIA',
     MAPA: 'ERROR_MAPA',
     AUDIO: 'ERROR_AUDIO',
+    
+    // Nuevos códigos de error para monitoreo
+    MONITOREO: {
+        INICIALIZACION: 'ERROR_MONITOREO_INICIALIZACION',
+        EVENTO_INVALIDO: 'ERROR_EVENTO_INVALIDO',
+        METRICA_INVALIDA: 'ERROR_METRICA_INVALIDA',
+        INFORME_FALLIDO: 'ERROR_INFORME_FALLIDO',
+        DIAGNOSTICO_FALLIDO: 'ERROR_DIAGNOSTICO_FALLIDO',
+        ALTA_LATENCIA: 'ADVERTENCIA_ALTA_LATENCIA',
+        ALTA_MEMORIA: 'ADVERTENCIA_ALTA_MEMORIA',
+        TASA_ERROR_ELEVADA: 'ADVERTENCIA_TASA_ERROR_ELEVADA'
+    },
     RETO: 'ERROR_RETO',
     NAVEGACION: 'ERROR_NAVEGACION'
 };
