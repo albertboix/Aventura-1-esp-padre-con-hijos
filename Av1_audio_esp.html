@@ -684,11 +684,131 @@
     <script type="module">
         // Importar utilidades y mensajería
         import logger from './js/logger.js';
-        import { inicializarMensajeria, registrarControlador, enviarMensaje } from './js/mensajeria.js';
+        import { 
+            inicializarMensajeria, 
+            registrarControlador, 
+            enviarMensaje,
+            enviarACK,
+            enviarNACK
+        } from './js/mensajeria.js';
         import { TIPOS_MENSAJE } from './js/constants.js';
         import { modoHandler } from './js/modo-handler.js';
         
-        const IFRAME_ID = 'hijo3';
+        // =================================================================================
+        // CONFIGURACIÓN
+        // =================================================================================
+        const CONFIG = {
+            IFRAME_ID: 'hijo3',
+            COMPONENTE_ID: 'AUDIO_PLAYER',
+            DEBUG: true,
+            LOG_LEVEL: 1, // 0: debug, 1: info, 2: warn, 3: error, 4: none
+            REINTENTOS: {
+                MAXIMOS: 3,
+                TIEMPO_ESPERA: 2000,
+                FACTOR: 2
+            }
+        };
+        
+        // Alias para compatibilidad
+        const IFRAME_ID = CONFIG.IFRAME_ID;
+        
+        // =================================================================================
+        // FUNCIONES DE MENSAJERÍA MEJORADAS
+        // =================================================================================
+        
+        /**
+         * Envía un mensaje con confirmación ACK/NACK
+         * @param {string} destino - Destino del mensaje ('padre' o ID de iframe)
+         * @param {string} tipo - Tipo de mensaje
+         * @param {Object} datos - Datos del mensaje
+         * @param {Object} opciones - Opciones de envío
+         * @returns {Promise<Object>} Respuesta del destinatario
+         */
+        async function enviarMensajeConACK(destino, tipo, datos, opciones = {}) {
+            const config = {
+                timeout: opciones.timeout || CONFIG.REINTENTOS.TIEMPO_ESPERA,
+                reintentos: opciones.reintentos || CONFIG.REINTENTOS.MAXIMOS,
+                silencioso: opciones.silencioso || false,
+                ...opciones
+            };
+
+            if (!destino || !tipo) {
+                throw new Error('Se requieren destino y tipo de mensaje');
+            }
+
+            const solicitudId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const mensaje = {
+                tipo,
+                datos: {
+                    ...datos,
+                    solicitudId,
+                    timestamp: new Date().toISOString(),
+                    origen: CONFIG.IFRAME_ID
+                }
+            };
+
+            let ultimoError = null;
+
+            for (let intento = 1; intento <= config.reintentos; intento++) {
+                try {
+                    console.log(`📤 [${CONFIG.IFRAME_ID}] Enviando mensaje (${solicitudId}) [${intento}/${config.reintentos}]:`, { tipo, destino });
+
+                    const respuesta = await new Promise((resolve, reject) => {
+                        const timeoutId = setTimeout(() => {
+                            reject(new Error(`Tiempo de espera agotado (${config.timeout}ms)`));
+                        }, config.timeout);
+
+                        const manejarRespuesta = (event) => {
+                            if (event.data?.tipo === 'SISTEMA.ACK' &&
+                                event.data?.datos?.solicitudId === solicitudId) {
+                                clearTimeout(timeoutId);
+                                window.removeEventListener('message', manejarRespuesta);
+                                resolve(event.data);
+                            } else if (event.data?.tipo === 'SISTEMA.NACK' &&
+                                     event.data?.datos?.solicitudId === solicitudId) {
+                                clearTimeout(timeoutId);
+                                window.removeEventListener('message', manejarRespuesta);
+                                const error = new Error(event.data.datos.mensaje || 'Error en el servidor');
+                                error.codigo = event.data.datos.codigo || 'NACK_RECIBIDO';
+                                error.detalles = event.data.datos.detalles;
+                                reject(error);
+                            }
+                        };
+
+                        window.addEventListener('message', manejarRespuesta, false);
+
+                        try {
+                            window.parent.postMessage(mensaje, '*');
+                        } catch (error) {
+                            clearTimeout(timeoutId);
+                            window.removeEventListener('message', manejarRespuesta);
+                            reject(new Error(`Error al enviar mensaje: ${error.message}`));
+                        }
+                    });
+
+                    console.log(`✅ [${CONFIG.IFRAME_ID}] ACK recibido para ${solicitudId}`, respuesta);
+                    return respuesta.datos;
+
+                } catch (error) {
+                    ultimoError = error;
+                    if (config.onRetry && intento < config.reintentos) {
+                        config.onRetry(intento, config.reintentos);
+                    }
+                    if (intento < config.reintentos) {
+                        const delay = Math.min(1000 * Math.pow(2, intento - 1), 10000);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    }
+                }
+            }
+
+            if (!config.silencioso) {
+                console.error(`❌ [${CONFIG.IFRAME_ID}] No se pudo enviar el mensaje después de ${config.reintentos} intentos`);
+                if (ultimoError) {
+                    console.error('Último error:', ultimoError);
+                }
+            }
+            throw ultimoError || new Error('Error desconocido al enviar mensaje');
+        }
 
         // Elementos del DOM
         const audioPlayer = document.getElementById('audioPlayer');
@@ -731,22 +851,107 @@
         audioPlayer.addEventListener('play', async () => {
             updateUI();
             
-            // Notificar al padre que se inició la reproducción
-            await enviarMensaje('padre', TIPOS_MENSAJE.AUDIO.REPRODUCIR, { 
-                audioId: currentAudioId,
-                timestamp: Date.now()
-            });
+            // Notificar al padre que se inició la reproducción con ACK
+            if (currentAudioId) {
+                try {
+                    await enviarMensajeConACK('padre', TIPOS_MENSAJE.AUDIO.REPRODUCIR, { 
+                        audioId: currentAudioId,
+                        timestamp: new Date().toISOString(),
+                        origen: CONFIG.IFRAME_ID,
+                        duracion: audioPlayer.duration || 0,
+                        tiempoActual: audioPlayer.currentTime || 0
+                    }, {
+                        reintentos: 3,
+                        timeout: 3000,
+                        onRetry: (intento, total) => {
+                            console.log(`🔄 [${CONFIG.IFRAME_ID}] Reintentando notificación de reproducción (${intento}/${total})...`);
+                        }
+                    });
+                    console.log(`▶️ [${CONFIG.IFRAME_ID}] Notificación de reproducción confirmada`);
+                } catch (error) {
+                    console.error(`❌ [${CONFIG.IFRAME_ID}] Error al notificar reproducción:`, error);
+                    // No detenemos la reproducción por un error de notificación
+                }
+            }
         });
 
-        audioPlayer.addEventListener('pause', updateUI);
+        audioPlayer.addEventListener('pause', async () => {
+            updateUI();
+            
+            // Notificar al padre que se pausó la reproducción
+            if (currentAudioId) {
+                try {
+                    await enviarMensajeConACK('padre', TIPOS_MENSAJE.AUDIO.PAUSA, { 
+                        audioId: currentAudioId,
+                        timestamp: new Date().toISOString(),
+                        origen: CONFIG.IFRAME_ID,
+                        tiempoActual: audioPlayer.currentTime || 0
+                    }, {
+                        reintentos: 2,
+                        timeout: 2000,
+                        silencioso: true
+                    });
+                    console.log(`⏸️ [${CONFIG.IFRAME_ID}] Notificación de pausa confirmada`);
+                } catch (error) {
+                    console.error(`❌ [${CONFIG.IFRAME_ID}] Error al notificar pausa:`, error);
+                }
+            }
+        });
 
         audioPlayer.addEventListener('ended', async () => {
-            // Notificar al padre que terminó el audio
-            await enviarMensaje('padre', TIPOS_MENSAJE.AUDIO.FIN_REPRODUCCION, { 
-                audioId: currentAudioId,
-                timestamp: Date.now()
-            });
+            // Notificar al padre que terminó el audio con ACK
+            if (currentAudioId) {
+                try {
+                    await enviarMensajeConACK('padre', TIPOS_MENSAJE.AUDIO.FIN_REPRODUCCION, { 
+                        audioId: currentAudioId,
+                        timestamp: new Date().toISOString(),
+                        origen: CONFIG.IFRAME_ID,
+                        duracion: audioPlayer.duration || 0,
+                        tiempoFinal: audioPlayer.currentTime || 0
+                    }, {
+                        reintentos: 3,
+                        timeout: 3000,
+                        silencioso: true // No mostrar errores de reintentos
+                    });
+                    console.log(`⏹️ [${CONFIG.IFRAME_ID}] Notificación de fin de reproducción confirmada`);
+                } catch (error) {
+                    console.error(`❌ [${CONFIG.IFRAME_ID}] Error al notificar fin de reproducción:`, error);
+                }
+            }
             updateUI();
+        });
+        
+        // Manejar errores de reproducción
+        audioPlayer.addEventListener('error', async () => {
+            const errorDetails = {
+                code: audioPlayer.error ? audioPlayer.error.code : 'UNKNOWN_ERROR',
+                message: audioPlayer.error ? audioPlayer.error.message : 'Error desconocido',
+                currentSrc: audioPlayer.currentSrc,
+                currentTime: audioPlayer.currentTime,
+                duration: audioPlayer.duration,
+                audioId: currentAudioId,
+                timestamp: new Date().toISOString(),
+                origen: CONFIG.IFRAME_ID
+            };
+            
+            logger.error('Error en reproductor de audio', errorDetails);
+            console.error(`❌ [${CONFIG.IFRAME_ID}] Error en el reproductor de audio:`, errorDetails);
+            
+            // Notificar al padre del error
+            try {
+                await enviarMensajeConACK('padre', TIPOS_MENSAJE.AUDIO.ERROR, errorDetails, {
+                    reintentos: 2,
+                    timeout: 3000,
+                    silencioso: false
+                });
+            } catch (error) {
+                logger.error('Error al notificar error de audio al padre', { 
+                    error: error.message,
+                    stack: error.stack,
+                    timestamp: new Date().toISOString()
+                });
+                console.error(`❌ [${CONFIG.IFRAME_ID}] No se pudo notificar el error al padre:`, error);
+            }
         });
 
         playPauseBtn.addEventListener('click', () => {
@@ -765,22 +970,6 @@
         // --- MANEJADORES DE MENSAJES ---
 
         // Manejadores para mensajes
-        async function manejarPing(mensaje) {
-            console.log('🔔 [AUDIO] Recibido PING, enviando PONG');
-            return { 
-                timestamp: new Date().toISOString(),
-                origen: IFRAME_ID
-            };
-        }
-
-        async function manejarPong(mensaje) {
-            console.log('🏓 [AUDIO] Recibido PONG:', mensaje);
-            return { 
-                timestamp: new Date().toISOString(),
-                origen: IFRAME_ID
-            };
-        }
-
         async function manejarConfirmacion(mensaje) {
             console.log('✅ [AUDIO] Recibida confirmación:', mensaje);
             return { 
@@ -790,256 +979,4 @@
             };
         }
 
-        // Manejadores para mensajes
-        async function manejarReproducirAudio(mensaje) {
-            console.log('🎵 [AUDIO] manejarReproducirAudio INVOCADO con:', mensaje);
-            console.log('📋 [AUDIO] Datos del mensaje:', mensaje.datos);
-
-            const { audioId, src } = mensaje.datos;
-            console.log('🎵 [AUDIO] Recibido para reproducir:', audioId, 'con src:', src);
-
-            try {
-                if (src) {
-                    currentAudioId = audioId;
-                    console.log('🎵 [AUDIO] Configurando src del audio:', src);
-                    audioPlayer.src = src;
-                    console.log('🎵 [AUDIO] Iniciando reproducción...');
-                    
-                    // Intento de reproducción que puede fallar si el usuario no ha interactuado
-                    try {
-                        await audioPlayer.play();
-                        console.log('✅ [AUDIO] Reproducción iniciada correctamente');
-                        
-                        // Devolver confirmación exitosa
-                        return {
-                            exito: true,
-                            mensaje: `Reproducción de ${audioId} iniciada`,
-                            timestamp: Date.now()
-                        };
-                    } catch (playError) {
-                        console.error('❌ [AUDIO] Error al reproducir:', playError);
-                        
-                        // Devolver error específico
-                        return {
-                            exito: false,
-                            error: `Error al reproducir: ${playError.message}`,
-                            codigo: 'ERROR_REPRODUCCION',
-                            timestamp: Date.now()
-                        };
-                    }
-                } else {
-                    // Buscar el archivo en nuestro array local
-                    const matchingAudio = audioFiles.find(audio => audio.id === audioId);
-                    
-                    if (matchingAudio) {
-                        // Si encontramos el audio, configuramos el src y reproducimos
-                        currentAudioId = matchingAudio.id;
-                        audioPlayer.src = matchingAudio.file;
-                        audioPlayer.play();
-                        
-                        console.log('🎵 [AUDIO] Audio encontrado localmente y reproducción iniciada:', matchingAudio);
-                        
-                        // Devolver resultado exitoso
-                        return {
-                            exito: true,
-                            mensaje: `Reproducción de ${audioId} iniciada desde fuente local`,
-                            timestamp: Date.now()
-                        };
-                    } else {
-                        console.warn('⚠️ [AUDIO] Audio no encontrado en la fuente proporcionada ni en la lista local:', audioId);
-                        
-                        // Devolver error de audio no encontrado
-                        return {
-                            exito: false,
-                            error: 'Audio no encontrado',
-                            codigo: 'AUDIO_NO_ENCONTRADO',
-                            timestamp: Date.now()
-                        };
-                    }
-                }
-            } catch (error) {
-                console.error('❌ [AUDIO] Error general al manejar audio:', error);
-                
-                // Devolver error general
-                return {
-                    exito: false,
-                    error: `Error al manejar audio: ${error.message}`,
-                    timestamp: Date.now()
-                };
-            }
-        }
-
-        // Manejador para mensajes de PING (diagnóstico)
-        // Manejado por la función manejarPing declarada anteriormente
-
-        // Manejadores para mensajes de control
-        function manejarHabilitarControles(mensaje) {
-            console.log('[AUDIO] Recibido CONTROL.HABILITAR:', mensaje.datos);
-            // Habilitar botones del reproductor de audio
-            playPauseBtn.disabled = false;
-            retosBtn.disabled = false;
-            logger.info('Controles de audio habilitados por el padre');
-        }
-
-        function manejarDeshabilitarControles(mensaje) {
-            console.log('[AUDIO] Recibido CONTROL.DESHABILITAR:', mensaje.datos);
-            // Deshabilitar botones del reproductor de audio
-            playPauseBtn.disabled = true;
-            retosBtn.disabled = true;
-            logger.info('Controles de audio deshabilitados por el padre');
-        }
-
-        // Función para actualizar la interfaz según el modo
-        function actualizarInterfazModo(modo) {
-            console.log(`[AUDIO] Actualizando interfaz para modo: ${modo}`);
-            const body = document.body;
-            
-            // Actualizar clases CSS
-            body.classList.remove('modo-casa', 'modo-aventura');
-            body.classList.add(`modo-${modo}`);
-            
-            // Ajustes específicos según el modo
-            const audioControls = document.querySelector('.audio-player-controls');
-            if (audioControls) {
-                audioControls.dataset.modo = modo;
-            }
-            
-            // Pausar la reproducción al cambiar de modo
-            if (audioPlayer && !audioPlayer.paused) {
-                audioPlayer.pause();
-                playPauseBtn.innerHTML = '<i class="fas fa-play icon-play"></i>';
-            }
-        }
-
-        // --- INICIALIZACIÓN ---
-        async function inicializar() {
-            console.log('🚀 [AUDIO] Iniciando inicialización del reproductor de audio...');
-            
-            try {
-                // Configurar logger
-                console.log('📝 [AUDIO] Configurando logger...');
-                logger.configure({ iframeId: IFRAME_ID, debug: true });
-                
-                // Inicializar mensajería
-                console.log('📩 [AUDIO] Inicializando mensajería...');
-                await inicializarMensajeria({ iframeId: IFRAME_ID });
-                console.log('✅ [AUDIO] Mensajería inicializada correctamente');
-
-                registrarControlador(TIPOS_MENSAJE.AUDIO.REPRODUCIR, manejarReproducirAudio);
-                registrarControlador(TIPOS_MENSAJE.CONTROL.HABILITAR, manejarHabilitarControles);
-                registrarControlador(TIPOS_MENSAJE.CONTROL.DESHABILITAR, manejarDeshabilitarControles);
-                // Registrar manejadores de sistema
-                registrarControlador(TIPOS_MENSAJE.SISTEMA.PING, manejarPing);
-                registrarControlador(TIPOS_MENSAJE.SISTEMA.PONG, manejarPong);
-                registrarControlador(TIPOS_MENSAJE.SISTEMA.CONFIRMACION, manejarConfirmacion);
-                
-                // Suscribirse a cambios de modo
-                console.log('🔄 [AUDIO] Suscribiéndose a cambios de modo...');
-                modoHandler.suscribir('audio-player', (nuevoModo) => {
-                    console.log(`🔄 [AUDIO] Cambio de modo detectado: ${nuevoModo}`);
-                    actualizarInterfazModo(nuevoModo);
-                });
-                
-                // Aplicar el modo actual
-                const modoActual = modoHandler.obtenerModoActual();
-                console.log(`🎨 [AUDIO] Aplicando modo actual: ${modoActual}`);
-                actualizarInterfazModo(modoActual);
-                
-                // Notificar al padre que el componente está listo
-                console.log('📤 [AUDIO] Notificando al padre que el componente está listo...');
-                await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_LISTO, { 
-                    componente: IFRAME_ID,
-                    modo: modoActual,
-                    timestamp: new Date().toISOString(),
-                    version: '1.0.0',
-                    features: ['audio', 'controles', 'cambio_modo']
-                });
-                
-                console.log(`✅ [AUDIO] ${IFRAME_ID} inicializado correctamente en modo ${modoActual}`);
-                
-                // Notificar inicialización completada
-                await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.INICIALIZACION_FINALIZADA, {
-                    componente: IFRAME_ID,
-                    timestamp: new Date().toISOString(),
-                    estado: 'listo',
-                    modo: modoActual
-                });
-                
-                // Notificar que el componente está inicializado
-                await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_INICIALIZADO, {
-                    componente: IFRAME_ID,
-                    timestamp: new Date().toISOString(),
-                    estado: 'activo',
-                    modo: modoActual
-                });
-                
-                // Forzar visibilidad después de la inicialización
-                const container = document.querySelector('.audio-player-controls');
-                if (container) {
-                    container.style.display = 'flex';
-                    container.style.visibility = 'visible';
-                    container.style.opacity = '1';
-                    console.log('👁️ [AUDIO] Visibilidad forzada después de la inicialización');
-                }
-            } catch (error) {
-                console.error('Error al inicializar el reproductor de audio:', error);
-                logger.error('Error al inicializar el reproductor de audio:', error);
-            }
-        }
-
-        // Inicializar cuando el DOM esté listo
-        document.addEventListener('DOMContentLoaded', () => {
-            console.log('🔄 [AUDIO] DOM cargado, iniciando inicialización...');
-            
-            // Forzar visibilidad del contenedor principal
-            const container = document.querySelector('.audio-player-controls');
-            if (container) {
-                container.style.display = 'flex';
-                container.style.visibility = 'visible';
-                container.style.opacity = '1';
-                console.log('👁️ [AUDIO] Contenedor de controles de audio forzado a visible');
-            } else {
-                console.error('❌ [AUDIO] No se encontró el contenedor de controles de audio');
-            }
-            
-            // Inicializar el componente
-            inicializar().catch(error => {
-                console.error('❌ [AUDIO] Error durante la inicialización:', error);
-                // Intentar notificar al padre del error
-                try {
-                    enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
-                        componente: IFRAME_ID,
-                        error: `Error de inicialización: ${error.message}`,
-                        stack: error.stack,
-                        timestamp: new Date().toISOString()
-                    });
-                } catch (e) {
-                    console.error('❌ [AUDIO] No se pudo notificar el error al padre:', e);
-                }
-            });
-        });
-
-        // Registrar controlador para solicitud de audio
-        registrarControlador(TIPOS_MENSAJE.DATOS.SOLICITAR_PARADA, (mensaje) => {
-            const { audio_id } = mensaje.datos || {};
-            const audio = audioFiles.find(a => a.id === audio_id);
-            if (audio) {
-                enviarMensaje(mensaje.origen, TIPOS_MENSAJE.DATOS.RESPUESTA_PARADA, { audio });
-            } else {
-                enviarMensaje(mensaje.origen, TIPOS_MENSAJE.DATOS.RESPUESTA_PARADA, { error: 'No encontrado', audio_id });
-            }
-        });
-
-        // Centralizar manejo de errores
-        window.addEventListener('error', (event) => {
-            enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
-                mensaje: event.message,
-                archivo: event.filename,
-                linea: event.lineno,
-                columna: event.colno,
-                origen: 'hijo3'
-            });
-        });
-    </script>
-</body>
-</html>
+        // Using the imported manejarPing from mensajeria.js instead of redefini
