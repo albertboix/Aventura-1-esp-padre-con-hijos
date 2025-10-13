@@ -1,165 +1,188 @@
 /**
  * Utilidades generales para la aplicación
  * @module Utils
+ * @version 1.2.0
  */
 
 import logger from './logger.js';
 
-// Configuración por defecto
-let config = {
-    iframeId: 'unknown',
-    debug: false,
-    logLevel: 1
-};
+/**
+ * Genera un ID único utilizando caracteres aleatorios
+ * @param {string} [prefix=''] - Prefijo opcional para el ID
+ * @returns {string} ID único generado
+ */
+export function generarIdUnico(prefix = '') {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 15);
+    return `${prefix ? prefix + '-' : ''}${timestamp}-${random}`;
+}
 
 /**
- * Configura las utilidades
+ * Genera un hash simple para el contenido proporcionado
+ * @param {string} tipo - Tipo de mensaje
+ * @param {Object} datos - Datos del mensaje
+ * @returns {string} Hash generado
+ */
+export function generarHashContenido(tipo, datos) {
+    try {
+        // Serialize data to JSON, keeping only essential properties for comparison
+        const serialized = JSON.stringify({
+            tipo,
+            // For position data, round coordinates to reduce noise
+            lat: datos.lat ? Math.round(datos.lat * 10000) / 10000 : undefined,
+            lng: datos.lng ? Math.round(datos.lng * 10000) / 10000 : undefined,
+            // Other essential properties depending on the type
+            ...(datos.parada_id ? { parada_id: datos.parada_id } : {}),
+            ...(datos.tramo_id ? { tramo_id: datos.tramo_id } : {})
+        });
+        
+        // Simple hash function for strings
+        let hash = 0;
+        for (let i = 0; i < serialized.length; i++) {
+            const char = serialized.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32bit integer
+        }
+        
+        // Convert to hexadecimal string and ensure positive value
+        return (hash >>> 0).toString(16);
+    } catch (error) {
+        logger.error('Error al generar hash de contenido:', error);
+        return `error-${Date.now()}`;
+    }
+}
+
+/**
+ * Wrapper for async functions to handle errors consistently
+ * @param {Function} fn - The async function to wrap
+ * @returns {Function} Wrapped function with error handling
+ */
+export function asyncHandler(fn) {
+    return async function(...args) {
+        try {
+            return await fn(...args);
+        } catch (error) {
+            logger.error(`Error en ${fn.name || 'función asíncrona'}:`, error);
+            
+            // Add additional context to the error
+            const contextualizedError = new Error(`Error en ${fn.name || 'función asíncrona'}: ${error.message}`);
+            contextualizedError.originalError = error;
+            contextualizedError.args = args;
+            
+            // Re-throw the error with added context
+            throw contextualizedError;
+        }
+    };
+}
+
+/**
+ * Validates the parameters against a schema
+ * @param {Object} params - The parameters to validate
+ * @param {Object} schema - The schema to validate against
+ * @param {string} [context] - The context for error messages
+ * @returns {Object} - Validation result with valido and error properties
+ */
+export function validarParametros(params, schema, context = '') {
+    try {
+        // Handle null or undefined params
+        if (params === null || params === undefined) {
+            return {
+                valido: false,
+                error: `${context ? context + ': ' : ''}Los parámetros no pueden ser null o undefined`
+            };
+        }
+        
+        // Validate each parameter against the schema
+        for (const key in schema) {
+            const fieldSchema = schema[key];
+            let value = params[key];
+            
+            // If the field is required and missing
+            if (fieldSchema.requerido && (value === undefined || value === null)) {
+                return {
+                    valido: false,
+                    error: `${context ? context + ': ' : ''}Parámetro requerido faltante: ${key}`
+                };
+            }
+            
+            // If field is not required and missing, use default value if available
+            if ((value === undefined || value === null) && !fieldSchema.requerido) {
+                if ('valorPorDefecto' in fieldSchema) {
+                    value = fieldSchema.valorPorDefecto;
+                    params[key] = value; // Update the params object with the default value
+                }
+                continue; // Skip further validation for this field
+            }
+            
+            // Check type if the value is defined
+            if (value !== undefined && value !== null) {
+                // Type validation
+                const expectedType = fieldSchema.tipo;
+                let actualType = typeof value;
+                
+                // Special handling for arrays
+                if (Array.isArray(value)) {
+                    actualType = 'array';
+                }
+                
+                if (expectedType && actualType !== expectedType && 
+                    !(expectedType === 'array' && Array.isArray(value))) {
+                    return {
+                        valido: false,
+                        error: `${context ? context + ': ' : ''}Tipo inválido para ${key}, se esperaba ${expectedType} pero se recibió ${actualType}`
+                    };
+                }
+                
+                // Custom validation function
+                if (fieldSchema.validar && typeof fieldSchema.validar === 'function') {
+                    if (!fieldSchema.validar(value)) {
+                        return {
+                            valido: false,
+                            error: `${context ? context + ': ' : ''}Validación personalizada fallida para ${key}`
+                        };
+                    }
+                }
+            }
+        }
+        
+        return { valido: true };
+    } catch (error) {
+        return {
+            valido: false,
+            error: `${context ? context + ': ' : ''}Error durante la validación: ${error.message}`
+        };
+    }
+}
+
+/**
+ * Configura las funciones utilitarias con los ajustes de la aplicación
  * @param {Object} options - Opciones de configuración
  */
 export function configurarUtils(options = {}) {
-    // Actualizar configuración
-    config = { ...config, ...options };
+    // Almacena la configuración para las utilidades
+    const config = {
+        debug: options.debug || false,
+        logLevel: options.logLevel || 1,
+        ...options
+    };
     
-    // Configurar logger si está disponible
-    if (logger && typeof logger.configure === 'function') {
-        logger.configure({
-            iframeId: config.iframeId,
-            logLevel: config.logLevel,
-            debug: config.debug
+    // Aplica la configuración a las funciones utilitarias existentes
+    if (options.logger && typeof options.logger.configure === 'function') {
+        options.logger.configure({
+            debug: config.debug,
+            logLevel: config.logLevel
         });
     }
     
     return config;
 }
 
-/**
- * Crea un objeto de error para reportar al sistema
- * @param {string} codigo - Código de error
- * @param {string|Error} error - Mensaje o objeto de error
- * @param {Object} [datos] - Datos adicionales
- * @returns {Object} Objeto de error formateado
- */
-export function crearObjetoError(codigo, error, datos = {}) {
-    // Si es un string, convertir a objeto Error
-    const errorObj = typeof error === 'string' ? new Error(error) : error;
-    
-    return {
-        codigo,
-        mensaje: errorObj.message,
-        stack: errorObj.stack,
-        timestamp: new Date().toISOString(),
-        origen: config.iframeId,
-        datos,
-        nombre: errorObj.name || 'Error'
-    };
-}
-
-/**
- * Valida un objeto para asegurar que tiene las propiedades requeridas
- * @param {Object} objeto - Objeto a validar
- * @param {string[]} propiedadesRequeridas - Lista de propiedades requeridas
- * @returns {boolean} True si el objeto es válido
- */
-export function validarObjeto(objeto, propiedadesRequeridas) {
-    if (!objeto || typeof objeto !== 'object') {
-        return false;
-    }
-    
-    return propiedadesRequeridas.every(prop => 
-        Object.prototype.hasOwnProperty.call(objeto, prop) && 
-        objeto[prop] !== undefined && 
-        objeto[prop] !== null
-    );
-}
-
-/**
- * Genera un ID único
- * @returns {string} ID único
- */
-export function generarId() {
-    return `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-}
-
-/**
- * Genera un ID único con mayor entropía usando timestamp, aleatorio y prefijo opcional
- * @param {string} [prefix='msg'] - Prefijo opcional para el ID
- * @returns {string} ID único garantizado
- */
-export function generarIdUnico(prefix = 'msg') {
-    // Usar timestamp con milisegundos
-    const timestamp = Date.now();
-    // Generar componente aleatorio con mayor entropía
-    const random = Math.random().toString(36).substring(2, 10) + 
-                  Math.random().toString(36).substring(2, 10);
-    // Componente único del navegador (cuando esté disponible)
-    let uniqueComponent = '';
-    if (typeof window !== 'undefined') {
-        // Usar información de la sesión cuando esté disponible
-        uniqueComponent = window.name || window.sessionStorage?.getItem('session-id') || '';
-    }
-    
-    return `${prefix}-${timestamp}-${random}-${uniqueComponent}`;
-}
-
-/**
- * Debounce function
- * @param {Function} func - Función a ejecutar
- * @param {number} wait - Tiempo de espera en ms
- * @returns {Function} Función con debounce
- */
-export function debounce(func, wait = 300) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
-}
-
-/**
- * Throttle function
- * @param {Function} func - Función a ejecutar
- * @param {number} limit - Límite de tiempo en ms
- * @returns {Function} Función con throttle
- */
-export function throttle(func, limit = 300) {
-    let inThrottle;
-    return function executedFunction(...args) {
-        if (!inThrottle) {
-            func(...args);
-            inThrottle = true;
-            setTimeout(() => inThrottle = false, limit);
-        }
-    };
-}
-
-/**
- * Genera un hash simple para el contenido de un mensaje
- * @param {string} tipo - Tipo de mensaje
- * @param {Object} datos - Datos del mensaje
- * @returns {string} Hash del contenido
- */
-export function generarHashContenido(tipo, datos = {}) {
-    const contenido = `${tipo}:${JSON.stringify(datos)}`;
-    let hash = 0;
-    for (let i = 0; i < contenido.length; i++) {
-        const char = contenido.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash = hash & hash; // Convertir a entero de 32 bits
-    }
-    return Math.abs(hash).toString(16);
-}
+// Additional utility functions could be added here...
 
 export default {
-    configurarUtils,
-    crearObjetoError,
-    validarObjeto,
-    generarId,
     generarIdUnico,
-    debounce,
-    throttle,
-    generarHashContenido
+    generarHashContenido,
+    asyncHandler,
+    validarParametros,
+    configurarUtils
 };
