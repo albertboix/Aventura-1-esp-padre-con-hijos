@@ -626,37 +626,5 @@ config.logLevel = getCurrentLogLevel();
 if (isDevelopmentMode()) {
   config.debug = true;
 }
-/**
- * Returns the current log level, with browser compatibility
- * @returns {number} Current log level
- */
-function getCurrentLogLevel() {
-  if (typeof window !== 'undefined') {
-    if (window.__DEV__ === true) return LOG_LEVELS.DEBUG;
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      return LOG_LEVELS.DEBUG;
-    }
-  }
-  return LOG_LEVELS.INFO; // Default for production
-}
-
-/**
- * Checks if we're in development mode, with browser compatibility
- * @returns {boolean} True if in development mode
- */
-function isDevelopmentMode() {
-  if (typeof window !== 'undefined') {
-    return window.__DEV__ === true ||
-         window.location.hostname === 'localhost' ||
-         window.location.hostname === '127.0.0.1';
-  }
-  return false;
-}
-
-// Use browser-compatible log level and debug detection
-config.logLevel = getCurrentLogLevel();
-if (isDevelopmentMode()) {
-  config.debug = true;
-}
 
 export default logger;
