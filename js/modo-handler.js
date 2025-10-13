@@ -1,165 +1,140 @@
 /**
- * Manejador centralizado de cambios de modo
- * Mantiene el estado del modo y notifica a los componentes suscriptos
+ * Módulo para gestionar el modo de la aplicación (casa/aventura)
+ * Coordina los cambios de modo entre diferentes componentes
  */
+
+import { MODOS } from './constants.js';
 import logger from './logger.js';
 
+/**
+ * Clase ModoHandler para gestionar el modo de la aplicación
+ */
 class ModoHandler {
+    #modoActual;
+    #suscriptores;
+    #ultimoCambio;
+
     constructor() {
-        this.modoActual = 'casa'; // Valor por defecto
-        this.suscriptores = new Map(); // Mapa de suscriptores por componente
-        this.modosValidos = new Set(['casa', 'aventura']);
+        this.#modoActual = MODOS.CASA; // Default: casa
+        this.#suscriptores = new Map();
+        this.#ultimoCambio = Date.now();
+
+        // Create a safer public getter/setter for modoActual
+        Object.defineProperty(this, 'modoActual', {
+            get: () => this.#modoActual,
+            configurable: false,
+            enumerable: true
+        });
+    }
+
+    /**
+     * Obtiene el modo actual
+     * @returns {string} Modo actual ('casa' o 'aventura')
+     */
+    obtenerModoActual() {
+        return this.#modoActual;
+    }
+
+    /**
+     * Suscribe un componente para recibir notificaciones de cambio de modo
+     * @param {string} componenteId - ID del componente
+     * @param {Function} callback - Función a llamar cuando cambie el modo
+     */
+    suscribir(componenteId, callback) {
+        if (!componenteId || typeof callback !== 'function') {
+            logger.warn('ModoHandler: Intento de suscripción inválido');
+            return false;
+        }
+
+        this.#suscriptores.set(componenteId, callback);
+        logger.debug(`ModoHandler: ${componenteId} suscrito a cambios de modo`);
+        return true;
     }
 
     /**
      * Cambia el modo actual y notifica a los suscriptores
      * @param {string} nuevoModo - Nuevo modo ('casa' o 'aventura')
-     * @param {string} [origen='sistema'] - Nombre del componente que originó el cambio
-     * @returns {boolean} - true si el cambio fue exitoso, false en caso contrario
-     * @throws {Error} Si el modo no es válido
+     * @param {string} [origen='sistema'] - Origen del cambio
+     * @returns {Promise<boolean>} True si el cambio fue exitoso
      */
-    cambiarModo(nuevoModo, origen = 'sistema') {
-        // Validar que el modo sea válido
-        if (!this.modosValidos.has(nuevoModo)) {
-            const errorMsg = `Modo no válido: ${nuevoModo}. Modos válidos: ${Array.from(this.modosValidos).join(', ')}`;
-            logger.warn(errorMsg, { modulo: 'ModoHandler', accion: 'validarModo' });
+    async cambiarModo(nuevoModo, origen = 'sistema') {
+        try {
+            // Validar el nuevo modo
+            if (nuevoModo !== MODOS.CASA && nuevoModo !== MODOS.AVENTURA) {
+                logger.warn(`ModoHandler: Modo inválido: ${nuevoModo}`);
+                return false;
+            }
+
+            // Si ya estamos en ese modo, no hacer nada
+            if (nuevoModo === this.#modoActual) {
+                logger.info(`ModoHandler: Ya estamos en modo ${nuevoModo}`);
+                return true;
+            }
+
+            const modoAnterior = this.#modoActual;
+            
+            // FIX: Instead of assigning to this.modoActual, use the private field
+            this.#modoActual = nuevoModo;
+            this.#ultimoCambio = Date.now();
+
+            logger.info({
+                modulo: 'ModoHandler',
+                accion: 'cambiarModo',
+                origen,
+                modoAnterior,
+                nuevoModo
+            });
+
+            // Notificar a los suscriptores
+            for (const [id, callback] of this.#suscriptores.entries()) {
+                try {
+                    await Promise.resolve(callback(nuevoModo, modoAnterior));
+                } catch (error) {
+                    logger.error(`ModoHandler: Error al notificar a ${id}:`, error);
+                }
+            }
+
+            return true;
+        } catch (error) {
+            logger.error('ModoHandler: Error al cambiar modo:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Desuscribe un componente
+     * @param {string} componenteId - ID del componente
+     * @returns {boolean} True si se desuscribió correctamente
+     */
+    desuscribir(componenteId) {
+        if (!componenteId || !this.#suscriptores.has(componenteId)) {
             return false;
         }
 
-        // No hacer nada si el modo no cambia
-        if (this.modoActual === nuevoModo) {
-            logger.debug(`El modo ya está establecido a: ${nuevoModo}`, { modulo: 'ModoHandler', accion: 'cambiarModo' });
-            return true;
-        }
-
-        logger.info(`Cambiando a modo: ${nuevoModo}`, { 
-            modulo: 'ModoHandler', 
-            accion: 'cambiarModo',
-            origen,
-            modoAnterior: this.modoActual,
-            nuevoModo 
-        });
-        const modoAnterior = this.modoActual;
-        this.modoActual = nuevoModo;
-        
-        // Notificar a todos los suscriptores
-        this.notificarSuscriptores(nuevoModo, modoAnterior);
-        
+        this.#suscriptores.delete(componenteId);
+        logger.debug(`ModoHandler: ${componenteId} desuscrito de cambios de modo`);
         return true;
     }
 
     /**
-     * Registra un componente para recibir notificaciones de cambio de modo
-     * @param {string} componente - Nombre único del componente
-     * @param {Function} callback - Función a ejecutar cuando cambie el modo
+     * Obtiene estadísticas del gestor de modos
+     * @returns {Object} Estadísticas
      */
-    suscribir(componente, callback) {
-        if (typeof callback === 'function') {
-            this.suscriptores.set(componente, callback);
-            logger.debug(`${componente} se ha suscrito a cambios de modo`, { 
-                modulo: 'ModoHandler', 
-                accion: 'suscripcion',
-                componente,
-                modoActual: this.modoActual
-            });
-            
-            // Notificar inmediatamente con el modo actual
-            callback(this.modoActual);
-        }
-    }
-
-    /**
-     * Elimina un componente de los suscriptores
-     * @param {string} componente - Nombre del componente a dar de baja
-     */
-    desuscribir(componente) {
-        this.suscriptores.delete(componente);
-        logger.debug(`${componente} se ha dado de baja de cambios de modo`, { 
-            modulo: 'ModoHandler', 
-            accion: 'desuscripcion',
-            componente
-        });
-    }
-
-    /**
-     * Notifica a todos los suscriptores del cambio de modo
-     * @param {string} nuevoModo - Nuevo modo
-     * @param {string} [modoAnterior] - Modo anterior (opcional)
-     */
-    notificarSuscriptores(nuevoModo, modoAnterior) {
-        const notificacion = {
-            modo: nuevoModo,
-            modoAnterior: modoAnterior || this.obtenerModoActual(),
-            timestamp: new Date().toISOString()
+    obtenerEstadisticas() {
+        return {
+            modoActual: this.#modoActual,
+            suscriptores: Array.from(this.#suscriptores.keys()),
+            ultimoCambio: new Date(this.#ultimoCambio).toISOString(),
+            totalSuscriptores: this.#suscriptores.size
         };
-
-        this.suscriptores.forEach((callback, componente) => {
-            try {
-                callback(notificacion);
-            } catch (error) {
-                logger.error(`Error al notificar a ${componente}`, { 
-                    modulo: 'ModoHandler', 
-                    accion: 'notificarSuscriptores',
-                    componente,
-                    error: error.message,
-                    stack: error.stack
-                });
-                // Opcional: Desuscribir el componente problemático
-                // this.desuscribir(componente);
-            }
-        });
-    }
-
-    /**
-     * Verifica si el modo actual coincide con el especificado
-     * @param {string} modo - Modo a verificar
-     * @returns {boolean} - true si el modo actual coincide
-     */
-    esModo(modo) {
-        if (!this.modosValidos.has(modo)) {
-            logger.warn(`Modo no válido para verificación: ${modo}`, { 
-                modulo: 'ModoHandler', 
-                accion: 'esModo',
-                modo,
-                modosValidos: Array.from(this.modosValidos)
-            });
-            return false;
-        }
-        return this.modoActual === modo;
-    }
-
-    /**
-     * Obtiene el modo actual
-     * @returns {string} Modo actual
-     */
-    obtenerModoActual() {
-        return this.modoActual;
-    }
-    
-    /**
-     * Obtiene la lista de modos válidos
-     * @returns {string[]} Array de modos válidos
-     */
-    obtenerModosValidos() {
-        return Array.from(this.modosValidos);
     }
 }
 
-// Implementación del patrón Singleton
-let instancia = null;
+// Crear una instancia única
+export const modoHandler = new ModoHandler();
 
-/**
- * Obtiene la instancia única del manejador de modos
- * @returns {ModoHandler} Instancia única
- */
-function obtenerInstancia() {
-    if (!instancia) {
-        instancia = new ModoHandler();
-        // Hacer que la instancia sea inmutable
-        Object.freeze(instancia);
-    }
-    return instancia;
-}
+// Exportar tipos para mejor documentación
+export const TIPO_MODOS = MODOS;
 
-// Exportar la instancia única
-export const modoHandler = obtenerInstancia();
+// Exportar la instancia por defecto
+export default modoHandler;
