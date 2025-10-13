@@ -1,5 +1,18 @@
 # Comunicación entre componentes
 
+## Cambios recientes
+
+- **Centralización de la lógica del mapa:** Toda la lógica de inicialización y verificación del contenedor del mapa se ha centralizado en `funciones-mapa.js`.
+- **Centralización de confirmaciones (ACK/NACK):** Toda la lógica de confirmaciones se ha centralizado en `mensajeria.js`.
+
+## Nuevos flujos
+
+- **Validación de mensajes:** Antes de procesar cualquier mensaje, se valida su estructura y contenido.
+- **Notificación de errores:** Todos los errores críticos son registrados y notificados al sistema de monitoreo.
+- **Confirmaciones (ACK/NACK):** Los mensajes enviados incluyen un identificador único (`mensajeId`). El receptor responde con un ACK o NACK, que es manejado automáticamente en `mensajeria.js`.
+
+---
+
 Este documento describe el flujo de mensajes y la arquitectura de comunicación entre los distintos componentes (padre e iframes hijos) de la aplicación Valencia VGuides.
 
 ---
@@ -13,93 +26,131 @@ Este documento describe el flujo de mensajes y la arquitectura de comunicación 
 
 ---
 
-## 2. Patrón Async/Await para envío de mensajes
+## 2. Listado detallado de flujos de comunicación
 
-```javascript
-// ❌ INCORRECTO - No se puede usar await en función no async
-button.addEventListener('click', () => {
-    await enviarMensaje('padre', TIPO_MENSAJE, datos);
-});
-
-// ✅ CORRECTO - Función anónima declarada como async
-button.addEventListener('click', async () => {
-    await enviarMensaje('padre', TIPO_MENSAJE, datos);
-});
-```
-
-Lo mismo aplica para funciones nombradas:
-
-```javascript
-// ❌ INCORRECTO
-function enviarDatos() {
-    await enviarMensaje('padre', TIPO_MENSAJE, datos);
-}
-
-// ✅ CORRECTO
-async function enviarDatos() {
-    await enviarMensaje('padre', TIPO_MENSAJE, datos);
-}
-```
+### 2.1 Inicialización de componentes
+- **Emisor:** Cada hijo (por ejemplo, `hijo5-casa`, `hijo3`, etc.).
+- **Mensaje enviado:** `SISTEMA.COMPONENTE_LISTO`.
+- **Receptor:** Padre (`app.js`).
+- **Flujo:**
+  1. El hijo llama a `enviarMensaje` desde `mensajeria.js` con el tipo `SISTEMA.COMPONENTE_LISTO`.
+  2. El mensaje es recibido por el padre, que registra al hijo como inicializado en `estado.hijosInicializados`.
+  3. El padre puede responder con `SISTEMA.ESTADO` para sincronizar el estado global.
 
 ---
 
-## 3. Flujo de comunicación entre componentes
-
-### 3.1 Inicialización
-
-1. Cada hijo llama a `inicializarMensajeria({ iframeId })` al arrancar.
-2. Cuando está listo, envía `SISTEMA.COMPONENTE_LISTO` al padre.
-3. El padre recibe el mensaje, registra el hijo como inicializado y puede responder con el estado global (`SISTEMA.ESTADO`).
-
-### 3.2 Cambio de modo (Casa/Aventura)
-
-1. Un hijo (normalmente hijo5-casa) solicita el cambio de modo con `SISTEMA.CAMBIO_MODO`.
-2. El padre procesa el cambio, actualiza su estado y notifica a todos los hijos el nuevo modo.
-3. Cada hijo actualiza su interfaz y lógica según el modo recibido.
-
-### 3.3 Navegación entre paradas y tramos
-
-1. El usuario selecciona una parada o tramo en hijo5-casa.
-2. Se envía `NAVEGACION.CAMBIO_PARADA` al padre con el identificador único (`parada_id` o `tramo_id`).
-3. El padre orquesta la actualización:
-    - Actualiza el mapa (hijo1) con la nueva posición.
-    - Actualiza el componente de coordenadas (hijo2).
-    - Reproduce el audio correspondiente (hijo3).
-    - Muestra el reto si corresponde (hijo4).
-
-### 3.4 Solicitud y respuesta de datos
-
-- Para obtener datos de paradas, tramos, retos, etc., los hijos envían mensajes como `DATOS.SOLICITAR_PARADAS` o `DATOS.SOLICITAR_PARADA`.
-- El padre responde con `DATOS.RESPUESTA_PARADAS` o `DATOS.RESPUESTA_PARADA` según corresponda.
-
-### 3.5 Retos y preguntas
-
-1. El padre envía `RETO.MOSTRAR` a hijo4 para mostrar un reto.
-2. hijo4 muestra la interfaz del reto.
-3. Al completar, hijo4 envía `RETO.COMPLETADO` al padre.
-4. El padre registra el progreso y puede coordinar el avance de la aventura.
+### 2.2 Sincronización del estado global
+- **Emisor:** Padre (`app.js`).
+- **Mensaje enviado:** `SISTEMA.ESTADO`.
+- **Receptor:** Todos los hijos inicializados.
+- **Flujo:**
+  1. El padre llama a `enviarEstadoGlobal` en `app.js`, que utiliza `enviarMensaje` para enviar el estado global a cada hijo en `estado.hijosInicializados`.
+  2. Cada hijo recibe el mensaje y actualiza su estado local en `mensajeria.js`.
 
 ---
 
-## 4. Ejemplo de flujo completo
-
-**Cambio de parada desde hijo5-casa:**
-
-1. Usuario pulsa un botón de parada/tramo en hijo5-casa.
-2. hijo5-casa envía:
-   ```js
-   await enviarMensaje('padre', TIPOS_MENSAJE.NAVEGACION.CAMBIO_PARADA, { punto: { parada_id, tramo_id } });
-   ```
-3. El padre recibe el mensaje y:
-   - Actualiza el estado global.
-   - Envía a hijo2 (coordenadas): `NAVEGACION.CAMBIO_PARADA` con el nuevo punto.
-   - Envía a hijo3 (audio): `AUDIO.REPRODUCIR` con el audio correspondiente.
-   - Envía a hijo4 (retos): `RETO.MOSTRAR` si hay reto asociado.
-   - Actualiza el mapa con la nueva posición.
+### 2.3 Cambio de modo (Casa/Aventura)
+- **Emisor:** Un hijo (normalmente `hijo5-casa`).
+- **Mensaje enviado:** `SISTEMA.CAMBIO_MODO`.
+- **Receptor:** Padre (`app.js`).
+- **Flujo:**
+  1. El hijo llama a `enviarMensaje` desde `mensajeria.js` con el tipo `SISTEMA.CAMBIO_MODO`.
+  2. El padre recibe el mensaje, actualiza su estado global (`estado.modo`) y llama a `enviarEstadoGlobal` para notificar a todos los hijos del cambio de modo.
 
 ---
 
-## 5. Resumen de tipos de mensajes principales
+### 2.4 Cambio de parada o tramo
+- **Emisor:** `hijo5-casa`.
+- **Mensaje enviado:** `NAVEGACION.CAMBIO_PARADA`.
+- **Receptor:** Padre (`app.js`).
+- **Flujo:**
+  1. El hijo llama a `enviarMensaje` desde `mensajeria.js` con el tipo `NAVEGACION.CAMBIO_PARADA` y los datos del punto (parada o tramo).
+  2. El padre recibe el mensaje y:
+     - Actualiza el mapa (`hijo1`) con `NAVEGACION.ESTABLECER_DESTINO`.
+     - Actualiza las coordenadas (`hijo2`) with `NAVEGACION.ACTUALIZAR_POSICION`.
+     - Reproduce el audio correspondiente (`hijo3`) con `AUDIO.REPRODUCIR`.
+     - Muestra el reto asociado (`hijo4`) with `RETO.MOSTRAR`.
+
+---
+
+### 2.5 Reproducción de audio
+- **Emisor:** Padre (`app.js`).
+- **Mensaje enviado:** `AUDIO.REPRODUCIR`.
+- **Receptor:** `hijo3`.
+- **Flujo:**
+  1. El padre llama a `enviarMensaje` desde `mensajeria.js` con el tipo `AUDIO.REPRODUCIR` y los datos del audio.
+  2. `hijo3` recibe el mensaje y reproduce el audio correspondiente.
+
+---
+
+### 2.6 Mostrar reto
+- **Emisor:** Padre (`app.js`).
+- **Mensaje enviado:** `RETO.MOSTRAR`.
+- **Receptor:** `hijo4`.
+- **Flujo:**
+  1. El padre llama a `enviarMensaje` desde `mensajeria.js` con el tipo `RETO.MOSTRAR` y los datos del reto.
+  2. `hijo4` recibe el mensaje y muestra la interfaz del reto.
+
+---
+
+### 2.7 Solicitud de datos de paradas
+- **Emisor:** Un hijo (por ejemplo, `hijo2`).
+- **Mensaje enviado:** `DATOS.SOLICITAR_PARADAS`.
+- **Receptor:** Padre (`app.js`).
+- **Flujo:**
+  1. El hijo llama a `enviarMensaje` desde `mensajeria.js` with el tipo `DATOS.SOLICITAR_PARADAS`.
+  2. El padre recibe el mensaje, obtiene los datos de las paradas y responde con `DATOS.RESPUESTA_PARADAS`.
+
+---
+
+### 2.8 Confirmaciones (ACK)
+- **Emisor:** Cualquier hijo o el padre.
+- **Mensaje enviado:** `SISTEMA.ACK`.
+- **Receptor:** El origen del mensaje inicial.
+- **Flujo:**
+  1. Al recibir un mensaje, el receptor llama a `enviarMensaje` desde `mensajeria.js` con el tipo `SISTEMA.ACK` y el `mensajeId` del mensaje original.
+  2. El emisor original recibe el `ACK` y resuelve la promesa asociada a los mensajes pendientes.
+
+---
+
+### 2.9 Errores no capturados
+- **Emisor:** Navegador (eventos `error` y `unhandledrejection`).
+- **Mensaje enviado:** `SISTEMA.ERROR`.
+- **Receptor:** Padre (`app.js`).
+- **Flujo:**
+  1. Los eventos `error` y `unhandledrejection` son capturados en `app.js`.
+  2. Se llama a `notificarError` para enviar un mensaje `SISTEMA.ERROR` al padre con los detalles del error.
+
+---
+
+### 2.10 Diagnóstico del mapa
+- **Emisor:** Padre (`app.js`).
+- **Mensaje enviado:** `NAVEGACION.SOLICITAR_ESTADO_MAPA`.
+- **Receptor:** `hijo1`.
+- **Flujo:**
+  1. El padre llama a `enviarMensaje` desde `mensajeria.js` con el tipo `NAVEGACION.SOLICITAR_ESTADO_MAPA`.
+  2. `hijo1` recibe el mensaje, realiza el diagnóstico y responde con `NAVEGACION.ESTADO_MAPA`.
+
+---
+
+### 2.11 Eventos personalizados
+- **Emisor:** Cualquier componente.
+- **Mensaje enviado:** `UI.NOTIFICACION` (u otro tipo definido en `TIPOS_MENSAJE`).
+- **Receptor:** Cualquier componente interesado.
+- **Flujo:**
+  1. El emisor llama a `enviarMensaje` desde `mensajeria.js` con el tipo de evento y los datos.
+  2. Los receptores registrados para ese tipo de mensaje procesan el evento.
+
+---
+
+## Eliminación de `fix-mapas-duplicados.js`
+
+- La lógica de inicialización y corrección de mapas duplicados ha sido centralizada en `funciones-mapa.js`.
+- El archivo `fix-mapas-duplicados.js` ha sido eliminado para evitar duplicación de lógica.
+
+---
+
+## 3. Resumen de tipos de mensajes principales
 
 - `SISTEMA.COMPONENTE_LISTO`: Un hijo notifica que está listo.
 - `SISTEMA.CAMBIO_MODO`: Solicitud o notificación de cambio de modo.
@@ -112,74 +163,4 @@ async function enviarDatos() {
 
 ---
 
-## 6. Buenas prácticas
-
-- **Siempre usar await** al enviar mensajes si esperas respuesta.
-- **Registrar controladores** para cada tipo de mensaje relevante en cada componente.
-- **Sincronizar el estado**: los hijos deben actualizar su UI al recibir mensajes de estado o cambio de modo.
-- **Evitar duplicados**: cada mensaje debe tener un identificador único (`mensajeId`) y hash de contenido para evitar procesar dos veces el mismo mensaje.
-- **Implementar throttling**: limitar la frecuencia de mensajes de alta frecuencia como actualizaciones GPS.
-- **Responsividad**: los hijos deben adaptar su UI a móvil y escritorio.
-
-## 7. Control de duplicados mejorado
-
-El sistema implementa dos niveles de control de duplicados:
-
-1. **Control por ID único**: Cada mensaje tiene un `mensajeId` único generado con alta entropía.
-   ```javascript
-   const mensajeId = generarIdUnico('navegacion');
-   ```
-
-2. **Control por contenido**: Para mensajes de navegación (especialmente GPS), se genera un hash del contenido relevante.
-   ```javascript
-   const contentHash = generarHashContenido(tipo, datos);
-   ```
-
-Este enfoque evita que mensajes duplicados (por ejemplo, actualizaciones GPS frecuentes) saturen el sistema cuando no hay cambios significativos.
-
-## 8. Optimización para actualizaciones GPS
-
-Las actualizaciones GPS implementan un throttling inteligente:
-- Intervalo base de 10 segundos entre actualizaciones
-- Envío inmediato cuando hay movimiento significativo (>5-10m)
-- Control de duplicados basado en contenido para mensajes similares
-
-Esto reduce significativamente:
-- El consumo de batería
-- El tráfico de mensajes
-- La carga de procesamiento
-
----
-
-## 9. Diagrama de comunicación (simplificado)
-
-```mermaid
-sequenceDiagram
-    participant Casa as hijo5-casa
-    participant Padre as padre
-    participant Coord as hijo2
-    participant Audio as hijo3
-    participant Retos as hijo4
-
-    Casa->>Padre: NAVEGACION.CAMBIO_PARADA
-    Padre->>Coord: NAVEGACION.CAMBIO_PARADA
-    Padre->>Audio: AUDIO.REPRODUCIR
-    Padre->>Retos: RETO.MOSTRAR
-    Padre->>Casa: SISTEMA.ESTADO
-    Coord->>Padre: DATOS.SOLICITAR_PARADAS
-    Padre->>Coord: DATOS.RESPUESTA_PARADAS
-```
-
----
-
-## 10. Referencias
-
-- [js/constants.js](./constants.js)
-- [js/mensajeria.js](./mensajeria.js)
-- [js/app.js](./app.js)
-- [js/funciones-mapa.js](./funciones-mapa.js)
-- [js/logger.js](./logger.js)
-
----
-
-**Este documento es la referencia para entender y depurar la comunicación entre los componentes de la app.**
+Este listado actualizado asegura que todos los flujos de comunicación están documentados y centralizados.
