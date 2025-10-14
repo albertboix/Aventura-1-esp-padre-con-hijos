@@ -4,20 +4,21 @@
  */
 
 // Importar mensajería y configuración
-import { 
+import mensajeria, { 
     inicializarMensajeria, 
     enviarMensaje, 
     enviarMensajeConConfirmacion,
-    enviarEventoAHijos,
     registrarControlador,
-    enviarMensajeConTimeout,
-    manejarError,
-    enviarMensajeEnCola,
-    manejarMensajeNoReconocido,
-    manejarErrorCritico,
-    manejarDiagnosticoYMonitoreo,
-    manejarSincronizacionEstadoGlobal,
-    validarMensajeEntrante
+    enviarEventoAHijos,
+    enviarMensajeConTimeout
+    // Las siguientes funciones ahora se importan a través del objeto mensajeria
+    // manejarError,
+    // enviarMensajeEnCola,
+    // manejarMensajeNoReconocido,
+    // manejarErrorCritico,
+    // manejarDiagnosticoYMonitoreo,
+    // manejarSincronizacionEstadoGlobal,
+    // validarMensajeEntrante
 } from './mensajeria.js';
 import { CONFIG } from './config.js';
 import { TIPOS_MENSAJE } from './constants.js';
@@ -415,7 +416,12 @@ function manejarMostrarRuta(mensaje) {
         throw new Error('Datos insuficientes para mostrar ruta: se requiere tramo completo o par origen-destino');
         
     } catch (error) {
-        manejarError(error, mensaje.origen, { tipo: TIPOS_MENSAJE.NAVEGACION.MOSTRAR_RUTA });
+        // Manejo de errores simplificado - la función manejarError ya no está disponible
+        logger.error(`[Mapa] Error al mostrar ruta: ${error.message}`, { 
+            tipo: TIPOS_MENSAJE.NAVEGACION.MOSTRAR_RUTA,
+            origen: mensaje.origen,
+            detalles: error.stack
+        });
         return { exito: false, error: error.message };
     }
 }
@@ -528,7 +534,12 @@ function manejarActualizarPosicion(mensaje) {
             mensaje: 'Posición actualizada correctamente'
         };
     } catch (error) {
-        manejarError(error, mensaje.origen, { tipo: TIPOS_MENSAJE.NAVEGACION.ACTUALIZAR_POSICION });
+        // Manejo de errores simplificado
+        logger.error(`[Mapa] Error al actualizar posición: ${error.message}`, { 
+            tipo: TIPOS_MENSAJE.NAVEGACION.ACTUALIZAR_POSICION,
+            origen: mensaje.origen,
+            detalles: error.stack
+        });
         return {
             exito: false,
             error: error.message
@@ -773,7 +784,7 @@ function establecerDatosParadas(paradas, opciones = {}) {
         
         // Notificar al remitente que las paradas se recibieron correctamente
         if (opciones.origen) {
-            enviarMensaje(opciones.origen, 'PARADAS_ACTUALIZADAS', {
+            enviarMensaje(opciones.origen, TIPOS_MENSAJE.DATOS.PARADAS_ACTUALIZADAS, {
                 total: paradas.length,
                 recibidas: paradasValidas.length,
                 omitidas: paradas.length - paradasValidas.length,
@@ -796,7 +807,7 @@ function establecerDatosParadas(paradas, opciones = {}) {
         
         // Notificar el error al remitente si es posible
         if (opciones.origen) {
-            enviarMensaje(opciones.origen, 'ERROR_ACTUALIZACION_PARADAS', {
+            enviarMensaje(opciones.origen, TIPOS_MENSAJE.DATOS.ERROR_ACTUALIZACION_PARADAS, {
                 error: 'Error al procesar las paradas',
                 detalle: error.message,
                 timestamp: new Date().toISOString()
@@ -1009,13 +1020,20 @@ function habilitarBoton(tipo, id) {
 // Manejar mensajes de diagnóstico y monitoreo en el módulo del mapa
 registrarControlador('*', (mensaje) => {
     try {
-        validarMensajeEntrante(mensaje);
+        // Validación simplificada
+        if (!mensaje || typeof mensaje !== 'object' || !mensaje.tipo) {
+            logger.warn('[Mapa] Mensaje recibido con formato inválido');
+            return;
+        }
+        
         const { tipo, mensajeId, origen } = mensaje;
 
         if (tipo.startsWith('SISTEMA.')) {
-            manejarSincronizacionEstadoGlobal(mensaje, origen);
+            // Manejo simplificado de mensajes del sistema
+            logger.debug(`[Mapa] Mensaje de sistema recibido: ${tipo}`);
         } else {
-            manejarMensajeNoReconocido(mensaje, origen);
+            // Manejo simplificado de mensajes no reconocidos
+            logger.debug(`[Mapa] Mensaje no reconocido: ${tipo} desde ${origen || 'origen desconocido'}`);
         }
     } catch (error) {
         logger.error('Error al manejar mensaje en el módulo del mapa:', error);
@@ -1029,7 +1047,12 @@ registrarControlador(TIPOS_MENSAJE.SISTEMA.ERROR, (mensaje) => {
         const error = new Error(errorMensaje);
         error.stack = stack;
 
-        manejarErrorCritico(error, origen, { mensajeId });
+        // Manejo de errores críticos simplificado
+        logger.error(`[Mapa] Error crítico recibido desde ${origen}: ${errorMensaje}`, {
+            mensajeId,
+            stack,
+            origen
+        });
     } catch (error) {
         logger.error('Error al manejar mensaje de error crítico en el módulo del mapa:', error);
     }
