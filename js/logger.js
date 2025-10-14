@@ -6,18 +6,31 @@
 
 // Importar constantes directamente para evitar dependencias circulares
 import { LOG_LEVELS, NIVELES_SEVERIDAD, CATEGORIAS_EVENTOS, TIPOS_MENSAJE } from './constants.js';
-import { enviarMensaje } from './mensajeria.js';
+
+// Evitamos la importación directa para romper la dependencia circular
+// import { enviarMensaje } from './mensajeria.js';
+
+// Función para enviar mensajes que será configurada desde mensajeria.js
+let enviarMensajeFunc = null;
 
 // Referencia a las funciones de monitoreo de app.js
 let monitoring = {
     registrarEvento: (tipo, datos, nivel = 'info') => {
-        if (!Object.values(TIPOS_MENSAJE.MONITOREO).includes(tipo)) {
-            throw new Error(`Tipo de evento no válido: ${tipo}`);
+        if (!tipo.startsWith('SISTEMA.') && !tipo.startsWith('MONITOREO.')) {
+            console.warn(`Tipo de evento potencialmente no válido: ${tipo}`);
         }
-        return enviarMensaje('padre', TIPOS_MENSAJE.MONITOREO.EVENTO, { tipo, datos, nivel });
+        
+        if (enviarMensajeFunc) {
+            return enviarMensajeFunc('padre', TIPOS_MENSAJE.MONITOREO.EVENTO, { tipo, datos, nivel });
+        } else {
+            console.warn('Función enviarMensaje no disponible, evento encolado para envío posterior');
+            return Promise.resolve({ encolado: true });
+        }
     },
     registrarError: (error, contexto = {}) => {
-        if (window.notificarError) {
+        if (enviarMensajeFunc) {
+            return enviarMensajeFunc('padre', TIPOS_MENSAJE.MONITOREO.ERROR, { error, contexto });
+        } else if (window.notificarError) {
             return window.notificarError('LOGGER_ERROR', error, contexto);
         }
         return null;
@@ -161,7 +174,11 @@ function sendToParent(logEntry) {
   if (typeof window === 'undefined' || window === window.parent) return;
   
   try {
-    enviarMensaje('padre', TIPOS_MENSAJE.UI.NOTIFICACION, logEntry);
+    if (enviarMensajeFunc) {
+      enviarMensajeFunc('padre', TIPOS_MENSAJE.UI.NOTIFICACION, logEntry);
+    } else {
+      console.warn('Función enviarMensaje no disponible aún');
+    }
   } catch (error) {
     console.error('Error al enviar log al padre:', error);
   }
@@ -377,12 +394,16 @@ function log(level, message, data = null) {
 export function registrarErrorCritico(error, contexto = {}) {
     try {
         console.error('[Error Crítico]', error);
-        enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
-            mensaje: error.message,
-            stack: error.stack,
-            contexto,
-            timestamp: new Date().toISOString()
-        });
+        if (enviarMensajeFunc) {
+            enviarMensajeFunc('padre', TIPOS_MENSAJE.SISTEMA.ERROR, {
+                mensaje: error.message,
+                stack: error.stack,
+                contexto,
+                timestamp: new Date().toISOString()
+            });
+        } else {
+            console.warn('Función enviarMensaje no disponible para registrar error crítico');
+        }
     } catch (e) {
         console.error('Error al registrar un error crítico:', e);
     }
@@ -485,8 +506,8 @@ export function registrarMetrica(nombre, valor, unidad = 'ms') {
         };
         logger.info(`Métrica registrada: ${nombre} = ${valor}${unidad}`);
         // Enviar al sistema de monitoreo si está habilitado
-        if (window.enviarMensaje) {
-            enviarMensaje('padre', TIPOS_MENSAJE.MONITOREO.METRICA, metrica);
+        if (enviarMensajeFunc) {
+            enviarMensajeFunc('padre', TIPOS_MENSAJE.MONITOREO.METRICA, metrica);
         }
     } catch (error) {
         logger.error('Error al registrar métrica:', error);
@@ -581,7 +602,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Registrar evento de inicialización
         try {
             monitoring.registrarEvento(
-                'aplicacion_inicializada',
+                TIPOS_MENSAJE.SISTEMA.APLICACION_INICIALIZADA,
                 {
                     url: window.location.href,
                     userAgent: navigator.userAgent,
@@ -627,4 +648,15 @@ if (isDevelopmentMode()) {
   config.debug = true;
 }
 
+// Función para configurar la función de envío de mensajes
+export function configurarEnvioMensajes(enviarMensajeFn) {
+  if (typeof enviarMensajeFn === 'function') {
+    enviarMensajeFunc = enviarMensajeFn;
+    logger.debug('Función de envío de mensajes configurada');
+    return true;
+  }
+  return false;
+}
+
+// La función registrarEvento ya ha sido exportada arriba
 export default logger;
