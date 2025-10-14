@@ -1,6 +1,14 @@
 /**
  * Constantes utilizadas en toda la aplicación
  * @module Constants
+ * @version 3.0.0
+ * @description
+ * Este módulo contiene todas las constantes utilizadas en la aplicación Valencia Tour,
+ * incluyendo los tipos de mensajes estandarizados para la comunicación entre componentes,
+ * niveles de log, modos de aplicación y códigos de error.
+ * 
+ * Los tipos de mensajes siguen el formato estandarizado CATEGORIA.ACCION y están agrupados
+ * por categoría para mejor organización y mantenimiento.
  */
 
 /**
@@ -25,36 +33,149 @@ export const MODOS = {
 /**
  * Tipos de mensajes para la comunicación entre iframes
  * Organizados por categorías para mejor mantenimiento
+ * 
+ * Todos los tipos de mensajes siguen el formato CATEGORIA.ACCION
+ * donde CATEGORIA define el ámbito o subsistema y ACCION define la operación específica
+ * 
+ * Ejemplos:
+ * - SISTEMA.INICIALIZACION: Mensaje de inicialización del sistema
+ * - NAVEGACION.CAMBIO_PARADA: Mensaje para cambiar a una parada específica
+ * - AUDIO.REPRODUCIR: Mensaje para reproducir un audio
  */
 export const TIPOS_MENSAJE = {
     SISTEMA: {
         INICIALIZACION: 'SISTEMA.INICIALIZACION',
         ESTADO: 'SISTEMA.ESTADO',
         CAMBIO_MODO: 'SISTEMA.CAMBIO_MODO',
-        COMPONENTE_LISTO: 'SISTEMA.COMPONENTE_LISTO', // Agregado
-        ACK: 'SISTEMA.ACK',
-        ERROR: 'SISTEMA.ERROR'
+        COMPONENTE_LISTO: 'SISTEMA.COMPONENTE_LISTO',
+        APLICACION_INICIALIZADA: 'SISTEMA.APLICACION_INICIALIZADA',
+        COMPONENTE_INICIALIZADO: 'SISTEMA.COMPONENTE_INICIALIZADO', // Nuevo tipo detectado en uso
+        INICIALIZACION_FINALIZADA: 'SISTEMA.INICIALIZACION_FINALIZADA', // Nuevo tipo detectado en uso
+        SINCRONIZAR_ESTADO: 'SISTEMA.SINCRONIZAR_ESTADO', // Nuevo tipo detectado en uso
+        PING: 'SISTEMA.PING', // Para verificar conectividad entre componentes
+        PONG: 'SISTEMA.PONG', // Respuesta a un ping
+        ACK: 'SISTEMA.ACK', // Confirmación positiva
+        NACK: 'SISTEMA.NACK', // Confirmación negativa
+        CONFIRMACION: 'SISTEMA.CONFIRMACION', // Tipo general de confirmación
+        ERROR: 'SISTEMA.ERROR',
+        DIAGNOSTICO: 'SISTEMA.DIAGNOSTICO' // Información de diagnóstico
     },
     NAVEGACION: {
         CAMBIO_PARADA: 'NAVEGACION.CAMBIO_PARADA',
         ESTABLECER_DESTINO: 'NAVEGACION.ESTABLECER_DESTINO',
-        ACTUALIZAR_POSICION: 'NAVEGACION.ACTUALIZAR_POSICION'
+        ACTUALIZAR_POSICION: 'NAVEGACION.ACTUALIZAR_POSICION',
+        PARADAS: 'NAVEGACION.PARADAS', // Lista completa de paradas
+        SIGUIENTE_PARADA: 'NAVEGACION.SIGUIENTE_PARADA', // Avanzar a siguiente parada
+        PARADA_ANTERIOR: 'NAVEGACION.PARADA_ANTERIOR', // Volver a parada anterior
+        CENTRAR_EN_UBICACION: 'NAVEGACION.CENTRAR_EN_UBICACION', // Centrar mapa en la ubicación actual
+        MOSTRAR_MAPA_COMPLETO: 'NAVEGACION.MOSTRAR_MAPA_COMPLETO', // Mostrar vista completa del mapa
+        MOSTRAR_MAPA_JPG: 'NAVEGACION.MOSTRAR_MAPA_JPG', // Mostrar imagen JPG del mapa
+        ESTADO_MAPA: 'NAVEGACION.ESTADO_MAPA' // Informar sobre estado del mapa
     },
     DATOS: {
         SOLICITAR_PARADAS: 'DATOS.SOLICITAR_PARADAS',
-        RESPUESTA_PARADAS: 'DATOS.RESPUESTA_PARADAS'
+        RESPUESTA_PARADAS: 'DATOS.RESPUESTA_PARADAS',
+        ENVIAR_PARADAS: 'DATOS.ENVIAR_PARADAS',
+        COORDENADAS_PARADAS: 'DATOS.COORDENADAS_PARADAS',
+        PUNTOS: 'DATOS.PUNTOS',
+        PUNTOS_RUTA: 'DATOS.PUNTOS_RUTA',
+        PARADAS_ACTUALIZADAS: 'DATOS.PARADAS_ACTUALIZADAS', // Paradas actualizadas correctamente
+        ERROR_ACTUALIZACION_PARADAS: 'DATOS.ERROR_ACTUALIZACION_PARADAS', // Error al actualizar paradas
+        RESPUESTA_PARADA: 'DATOS.RESPUESTA_PARADA', // Respuesta a solicitud de parada específica
+        ERROR: 'DATOS.ERROR' // Error general de datos
     },
     AUDIO: {
-        REPRODUCIR: 'AUDIO.REPRODUCIR'
+        REPRODUCIR: 'AUDIO.REPRODUCIR', // Iniciar reproducción
+        CONTROL: 'AUDIO.CONTROL', // Comando general de control de audio
+        PAUSAR: 'AUDIO.PAUSAR', // Pausar reproducción
+        DETENER: 'AUDIO.DETENER', // Detener reproducción
+        FIN_REPRODUCCION: 'AUDIO.FIN_REPRODUCCION', // Audio ha terminado
+        ERROR: 'AUDIO.ERROR' // Error en reproducción
+    },
+    CONTROL: {
+        MENU: 'CONTROL.MENU', // Control de menús
+        CAMBIAR_MODO: 'CONTROL.CAMBIAR_MODO', // Cambio de modo
+        CERRAR_TODOS: 'CONTROL.CERRAR_TODOS' // Cerrar todos los componentes
     },
     RETO: {
-        MOSTRAR: 'RETO.MOSTRAR'
+        MOSTRAR: 'RETO.MOSTRAR', // Mostrar un reto
+        OCULTAR: 'RETO.OCULTAR', // Ocultar un reto
+        COMPLETADO: 'RETO.COMPLETADO', // Reto completado
+        FALLIDO: 'RETO.FALLIDO', // Reto fallido
+        RESPUESTA: 'RETO.RESPUESTA', // Respuesta a un reto
+        ACTIVAR: 'RETO.ACTIVAR' // Activar un reto específico
+    },
+    UI: {
+        MODAL: 'UI.MODAL', // Mostrar/ocultar ventana modal
+        NOTIFICACION: 'UI.NOTIFICACION', // Mostrar notificación
+        ACTUALIZAR_VISTA: 'UI.ACTUALIZAR_VISTA', // Actualizar vista de un componente
+        ACTUALIZACION: 'UI.ACTUALIZACION' // Actualización general de UI
     },
     MONITOREO: {
         EVENTO: 'MONITOREO.EVENTO',
-        METRICA: 'MONITOREO.METRICA'
+        METRICA: 'MONITOREO.METRICA',
+        LOG: 'MONITOREO.LOG'
+    },
+    // Nuevos tipos detectados en uso pero no definidos previamente
+    USUARIO: {
+        ACCION: 'USUARIO.ACCION',
+        PREFERENCIAS: 'USUARIO.PREFERENCIAS',
+        AUTENTICACION: 'USUARIO.AUTENTICACION'
+    },
+    // Añadir categoría MEDIOS que se usa en el código pero no estaba definida
+    MEDIOS: {
+        EVENTO: 'MEDIOS.EVENTO',
+        MOSTRAR: 'MEDIOS.MOSTRAR',
+        OCULTAR: 'MEDIOS.OCULTAR'
     }
 };
+
+/**
+ * Lista de tipos de mensajes críticos que siempre deben usar el sistema ACK/NACK
+ */
+export const MENSAJES_CRITICOS = [
+    // Mensajes del sistema
+    'SISTEMA.INICIALIZACION',
+    'SISTEMA.COMPONENTE_LISTO',
+    'SISTEMA.PING',
+    'SISTEMA.CAMBIO_MODO',
+    
+    // Mensajes de navegación
+    'NAVEGACION.CAMBIO_PARADA',
+    'NAVEGACION.ESTABLECER_DESTINO',
+    
+    // Mensajes de datos
+    'DATOS.SOLICITAR_PARADAS',
+    'DATOS.ENVIAR_PARADAS',
+    
+    // Mensajes de audio
+    'AUDIO.CONTROL',
+    'AUDIO.REPRODUCIR',
+    'AUDIO.ERROR',
+    
+    // Mensajes de retos
+    'RETO.MOSTRAR',
+    'RETO.COMPLETADO',
+    'RETO.RESPUESTA',
+    
+    // Mensajes de UI
+    'UI.MODAL',
+    'UI.NOTIFICACION',
+    
+    // Mensajes de control
+    'CONTROL.MENU',
+    'CONTROL.CAMBIAR_MODO',
+    
+    // Mensajes de usuario
+    'USUARIO.ACCION',
+    'USUARIO.PREFERENCIAS',
+    'USUARIO.AUTENTICACION',
+    
+    // Mensajes de medios
+    'MEDIOS.EVENTO',
+    'MEDIOS.MOSTRAR',
+    'MEDIOS.OCULTAR'
+];
 
 /**
  * Códigos de error estandarizados
