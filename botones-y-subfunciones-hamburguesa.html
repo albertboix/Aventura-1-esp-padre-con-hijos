@@ -6,28 +6,56 @@
   <title>Botón Hamburguesa Centrado</title>
   <style>
     html, body {
-      margin: 0; padding: 0; width: 100vw; height: 100vh; background: transparent;
-      position: relative; overflow: hidden;
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      background: transparent;
+      position: relative;
+      overflow: hidden;
     }
+    
     .boton-flotante {
       position: absolute;
-      left: 50%; top: 50%;
+      left: 50%;
+      top: 50%;
       transform: translate(-50%, -50%);
-      width: 60px; height: 60px;
-      background: #007acc; color: white; border-radius: 50%;
-      font-size: 2rem; display: flex; align-items: center; justify-content: center;
-      border: none; outline: none; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-      cursor: pointer; z-index: 1300;
+      width: 60px;
+      height: 60px;
+      background: #007acc;
+      color: white;
+      border-radius: 50%;
+      font-size: 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      outline: none;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      cursor: pointer;
+      z-index: 1300;
     }
+    
     .icono-flotante {
       position: absolute;
       left: 50%;
       transform: translateX(-50%);
-      width: 48px; height: 48px;
-      background: #007acc; color: white; border-radius: 50%;
-      font-size: 1.5rem; display: none; align-items: center; justify-content: center;
-      border: none; outline: none; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-      cursor: pointer; z-index: 1300; opacity: 0; transition: opacity 0.3s;
+      width: 48px;
+      height: 48px;
+      background: #007acc;
+      color: white;
+      border-radius: 50%;
+      font-size: 1.5rem;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      outline: none;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      cursor: pointer;
+      z-index: 1300;
+      opacity: 0;
+      transition: opacity 0.3s;
     }
   </style>
 </head>
@@ -37,7 +65,23 @@
   <button class="icono-flotante" id="icono-gastronomia">🍽️</button>
   <button class="icono-flotante" id="icono-informacion">🌐</button>
   <button class="icono-flotante" id="icono-historia">🏛️</button>
-  <script>
+  <script type="module">
+    // Importar módulos necesarios
+    import { CONFIG } from './js/config.js';
+    import { TIPOS_MENSAJE } from './js/constants.js';
+    import { inicializarMensajeria, enviarMensaje, registrarControlador, enviarACK, enviarNACK } from './js/mensajeria.js';
+    
+    // Inicializar mensajería
+    const IFRAME_ID = 'menu-hamburguesa';
+    
+    // Inicializar el sistema de mensajería
+    await inicializarMensajeria({
+      ...CONFIG.MENSAJERIA,
+      iframeId: IFRAME_ID
+    });
+    
+    console.log(`[${IFRAME_ID}] Sistema de mensajería inicializado`);
+    
     // Configuración
     const SEPARACION = 8; // px entre iconos
     const ALTURA_BOTON = 60;
@@ -84,35 +128,102 @@
       abierto = true;
     }
 
-    document.getElementById('hamburguesa').onclick = () => {
-      // Avisar al padre para cerrar otros menús
-      window.parent.postMessage({ type: 'closeOtherMenus', except: 'hamburguesa' }, '*');
-      if (abierto) {
-        ocultarTodos();
-      } else {
-        ocultarTodos();
-        mostrarIconos();
+    document.getElementById('hamburguesa').onclick = async () => {
+      try {
+        // Avisar al padre para cerrar otros menús usando el sistema de mensajería
+        await enviarMensaje('padre', 'CONTROL.MENU', {
+          accion: 'cerrar_otros',
+          except: 'hamburguesa',
+          origen: IFRAME_ID
+        });
+        
+        if (abierto) {
+          ocultarTodos();
+        } else {
+          ocultarTodos();
+          mostrarIconos();
+        }
+        
+        // Pausar audio usando el sistema de mensajería
+        await enviarMensaje('padre', 'AUDIO.CONTROL', {
+          accion: 'pausar',
+          origen: IFRAME_ID
+        });
+        
+        // Para compatibilidad con código antiguo
+        window.parent.postMessage({ type: 'closeOtherMenus', except: 'hamburguesa' }, '*');
+        window.parent.postMessage({ type: 'pauseAudioFromBoton' }, '*');
+      } catch (error) {
+        console.error(`[${IFRAME_ID}] Error al manejar click en botón hamburguesa:`, error);
       }
-      window.parent.postMessage({ type: 'pauseAudioFromBoton' }, '*');
     };
 
-    // Permitir que el padre cierre este menú si otro se abre
-    window.addEventListener('message', (e) => {
-      // Si el padre pide cerrar todos menos este y este no es el except, ciérrate
-      if (e.data && e.data.type === 'closeOtherMenus' && e.data.except !== 'hamburguesa') {
-        ocultarTodos();
-      }
-      // También puedes escuchar por un mensaje específico si lo necesitas
-      if (e.data && e.data.type === 'closeMenu' && e.data.menu !== 'hamburguesa') {
-        ocultarTodos();
-      }
-    });
+    // Configurar manejadores de mensajes usando el sistema centralizado
+    function inicializarManejadoresMensajes() {
+      // Manejar mensajes del sistema
+      registrarControlador('PING', async (mensaje) => {
+        console.log(`[${IFRAME_ID}] Recibido PING, respondiendo...`);
+        try {
+          await enviarACK(mensaje, {
+            timestamp: new Date().toISOString(),
+            componente: IFRAME_ID,
+            responseType: 'PONG'
+          });
+        } catch (error) {
+          console.error(`[${IFRAME_ID}] Error al responder PING:`, error);
+        }
+      });
+      
+      // Manejar mensajes para cerrar menús
+      registrarControlador('CONTROL.MENU', async (mensaje) => {
+        const { accion, menuId, except } = mensaje.datos || {};
+        
+        if (accion === 'cerrar_otros' && except !== 'hamburguesa') {
+          ocultarTodos();
+          await enviarACK(mensaje, { estado: 'menu_cerrado' });
+        } else if (accion === 'cerrar' && menuId !== 'hamburguesa') {
+          ocultarTodos();
+          await enviarACK(mensaje, { estado: 'menu_cerrado' });
+        } else if (accion === 'mostrar' && menuId === 'hamburguesa') {
+          mostrarIconos();
+          await enviarACK(mensaje, { estado: 'menu_mostrado' });
+        }
+      });
+      
+      // Compatibilidad con el sistema anterior de mensajes
+      window.addEventListener('message', (e) => {
+        // Si el padre pide cerrar todos menos este y este no es el except, ciérrate
+        if (e.data && e.data.type === 'closeOtherMenus' && e.data.except !== 'hamburguesa') {
+          ocultarTodos();
+        }
+        // También puedes escuchar por un mensaje específico si lo necesitas
+        if (e.data && e.data.type === 'closeMenu' && e.data.menu !== 'hamburguesa') {
+          ocultarTodos();
+        }
+      });
+    }
+    
+    // Inicializar los manejadores
+    inicializarManejadoresMensajes();
 
     [...iconosArriba, ...iconosAbajo].forEach(icono => {
       const el = document.getElementById(icono.id);
-      el.onclick = () => {
-        window.parent.postMessage({ type: 'pauseAudioFromBoton' }, '*');
-        if (icono.url) window.open(icono.url, '_blank');
+      el.onclick = async () => {
+        try {
+          // Pausar audio usando el sistema de mensajería
+          await enviarMensaje('padre', 'AUDIO.CONTROL', {
+            accion: 'pausar',
+            origen: IFRAME_ID,
+            motivo: `Click en ${icono.id}`
+          });
+          
+          // Para compatibilidad con código antiguo
+          window.parent.postMessage({ type: 'pauseAudioFromBoton' }, '*');
+          
+          if (icono.url) window.open(icono.url, '_blank');
+        } catch (error) {
+          console.error(`[${IFRAME_ID}] Error al manejar click en icono ${icono.id}:`, error);
+        }
       };
     });
 
