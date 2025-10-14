@@ -43,7 +43,7 @@
         // Import required modules
         import { CONFIG } from './js/config.js';
         import { TIPOS_MENSAJE } from './js/constants.js';
-        import { inicializarMensajeria, enviarMensaje, registrarControlador } from './js/mensajeria.js';
+        import { inicializarMensajeria, enviarMensaje, registrarControlador, enviarACK, enviarNACK } from './js/mensajeria.js';
         import logger from './js/logger.js';
         
         // Make CONFIG available globally for legacy code
@@ -57,17 +57,15 @@
             const btnOcultar = document.getElementById('btn-ocultar');
             if (btnOcultar) {
                 btnOcultar.addEventListener('click', () => {
-                    enviarMensaje('padre', 'RETO.OCULTAR', {});
+                    enviarMensaje('padre', TIPOS_MENSAJE.RETO.OCULTAR, {});
                 });
             }
         }
         
         // Configuración de mensajería
         const CONFIG_MENSAJERIA = {
-            iframeId: CONFIG.HIJOS.RETOS.id || 'hijo4-retos',
-            debug: CONFIG.DEBUG,
-            logLevel: CONFIG.LOG_LEVEL,
-            reintentos: CONFIG.REINTENTOS
+            ...CONFIG.MENSAJERIA,
+            iframeId: CONFIG.HIJOS.RETOS.id || 'hijo4-retos'
         };
         
         // Configurar logger
@@ -359,377 +357,60 @@ const retosAventura1Es = [
     id: "R-28",
     tipo: "opcion-multiple",
     pregunta: "28. Un árbol muerto: símbolo del Pecado, se ve entre las dos hojas de la puerta y cumple la función de parteluz.",
-    opciones: ["Observe en la copa del árbol como 4 hombres desnudos se azotan entre si."],
-    correctas: ["Observe en la copa del árbol como 4 hombres desnudos se azotan entre si."],
+    opciones: ["Observe en la copa del árbol una figura con forma de cabeza humana."],
+    correctas: ["Observe en la copa del árbol una figura con forma de cabeza humana."],
     multiple: true
-  },
-  {
-    reto: 29,
-    id: "R-29",
-    tipo: "opcion-multiple",
-    pregunta: "29. A la derecha, un ángel que muestra su pene y...",
-    opciones: ["se dispone a introducirlo en un jarrón que sostiene con la otra mano. Algo extraño e inusual ¿no le parece?"],
-    correctas: ["se dispone a introducirlo en un jarrón que sostiene con la otra mano. Algo extraño e inusual ¿no le parece?"],
-    multiple: true
-  },
-  {
-    reto: 30,
-    id: "R-30",
-    tipo: "opcion-multiple",
-    pregunta: "30. En el centro El barbudo y el león:",
-    opciones: ["Original y contradictoria escena en la cual el manso es precisamente el león y no el anciano barbudo."],
-    correctas: ["Original y contradictoria escena en la cual el manso es precisamente el león y no el anciano barbudo."],
-    multiple: true
-  },
-  {
-    reto: 31,
-    id: "R-31",
-    tipo: "opcion-multiple",
-    pregunta: "31. ¡Aquí va un reto extra! ¡Busque al fornicador de la lonja!",
-    opciones: ["En una de sus ventanas, hallará a un hombre tallado, no se le advierte su cabeza, pero sí sus genitales, Y muy claramente."],
-    correctas: ["En una de sus ventanas, hallará a un hombre tallado, no se le advierte su cabeza, pero sí sus genitales, Y muy claramente."],
-    multiple: true
-  },
-  {
-    reto: 32,
-    id: "R-32",
-    tipo: "opcion",
-    pregunta: "32. ¿Qué sostiene el niño en sus manos?",
-    opciones: ["Una paloma", "Una Concha", "Alimentos"],
-    correctas: ["Una Concha"],
-    multiple: false
   }
 ];
 
-
-        // Manejador para mostrar un reto
-        async function manejarMostrarReto(mensaje) {
-            logger.info('Recibido mensaje para mostrar reto:', mensaje);
-            const { retoId, titulo, descripcion } = mensaje.datos || {};
-            
-            if (!retoId) {
-                logger.warn('Mensaje de mostrar reto sin ID');
-                return { exito: false, error: 'ID de reto no proporcionado' };
-            }
-            
-            estado.retoActualId = retoId;
-            const tituloElement = document.getElementById('reto-titulo');
-            const cuerpoElement = document.getElementById('reto-body');
-            
-            if (tituloElement) tituloElement.textContent = titulo || 'Nuevo Reto';
-            if (cuerpoElement) cuerpoElement.innerHTML = descripcion || '<p>Completa la tarea indicada.</p>';
-            
-            // Mostrar el contenedor si está oculto
-            const contenedor = document.getElementById('reto-container');
-            if (contenedor) contenedor.style.display = 'flex';
-            
-            return { exito: true, retoMostrado: retoId };
-        }
-
-
-        // Inicializar el componente
-        async function inicializar() {
-            const logPrefix = '[RETOS]';
-            
-            // Estado del componente
-            const estado = {
-                retoActualId: null,
-                inicializado: false,
-                // Agrega aquí cualquier otro estado necesario
-            };
-            
-            console.log('🎮 Inicializando componente de retos y preguntas...');
-            
-            try {
-                logger.info(`${logPrefix} Iniciando inicialización del componente...`);
-                
-                // Verificar configuración
-                if (!CONFIG || !CONFIG.IFRAME_ID) {
-                    throw new Error('Configuración no válida: IFRAME_ID es requerido');
-                }
-                
-                // Inicializar mensajería
-                logger.info(`${logPrefix} Inicializando mensajería...`);
-                try {
-                    await inicializarMensajeria(CONFIG_MENSAJERIA);
-                    logger.info(`${logPrefix} Mensajería inicializada correctamente`);
-                } catch (error) {
-                    logger.error(`${logPrefix} Error al inicializar mensajería:`, error);
-                    throw new Error('No se pudo inicializar la mensajería');
-                }
-
-                // Inicializar manejadores de mensajes
-                logger.info(`${logPrefix} Inicializando manejadores de mensajes...`);
-                await inicializarManejadoresMensajes();
-                
-                // Inicializar interfaz
-                inicializarInterfaz();
-                
-                // Inicializar eventos
-                console.log('Inicializando eventos del componente de retos');
-                const btnCompletado = document.getElementById('btn-completado');
-                if (btnCompletado) {
-                    btnCompletado.addEventListener('click', async () => {
-                        const retoId = window.retoActual?.id;
-                        if (retoId) {
-                            try {
-                                await enviarMensaje('padre', 'RETO.COMPLETADO', {
-                                    retoId: retoId,
-                                    timestamp: new Date().toISOString()
-                                });
-                            } catch (error) {
-                                console.error('Error al marcar el reto como completado:', error);
-                            }
-                        }
-                    });
-                }
-                
-                // Configurar botones
-                const btnOcultar = document.getElementById('btn-ocultar');
-                
-                if (btnOcultar) {
-                    btnOcultar.addEventListener('click', async () => {
-                        logger.info('Solicitando ocultar reto.');
-                        try {
-                            await enviarMensaje('padre', 'RETO.OCULTAR', {
-                                timestamp: new Date().toISOString()
-                            });
-                        } catch (error) {
-                            logger.error('Error al enviar mensaje para ocultar reto:', error);
-                        }
-                    });
-                }
-
-                // Notificar que el componente está listo
-                try {
-                    // Asegurarse de que TIPOS_MENSAJE existe
-                    const tiposMensaje = typeof TIPOS_MENSAJE !== 'undefined' ? TIPOS_MENSAJE : {};
-                    
-                    // Obtener el tipo de mensaje de manera segura
-                    const mensajeTipo = tiposMensaje?.SISTEMA?.INICIALIZACION_COMPLETADA || 'SISTEMA.INICIALIZACION_COMPLETADA';
-                    
-                    // Obtener el ID del iframe de manera segura
-                    const componenteId = CONFIG?.IFRAME_ID || 'retos-preguntas';
-                    
-                    // Enviar mensaje de inicialización
-                    await enviarMensaje('padre', mensajeTipo, { 
-                        componente: componenteId,
-                        timestamp: new Date().toISOString()
-                    });
-                    
-                    console.log('✅ Notificación de inicialización enviada correctamente');
-                } catch (error) {
-                    console.error('❌ Error al notificar inicialización:', error);
-                    // Continuar con la inicialización a pesar del error
-                }
-                
-                estado.inicializado = true;
-                logger.info('Componente de retos inicializado correctamente');
-                console.log('✅ [RETOS] Componente de retos inicializado');
-                
-                return {
-                    componente: 'retos-preguntas',
-                    estado: 'inicializado',
-                    timestamp: new Date().toISOString()
-                };
-                
-            } catch (error) {
-                const errorMsg = `Error durante la inicialización del componente de retos: ${error.message}`;
-                console.error('❌', errorMsg, error);
-                logger.error(errorMsg, error);
-                
-                // Intentar notificar el error al padre
-                try {
-                    await enviarMensaje('padre', TIPOS_MENSAJE?.SISTEMA?.ERROR || 'SISTEMA.ERROR', {
-                        tipo: 'inicializacion',
-                        mensaje: error.message,
-                        stack: error.stack,
-                        origen: CONFIG?.IFRAME_ID || 'retos-preguntas',
-                        timestamp: new Date().toISOString()
-                    });
-                } catch (e) {
-                    const fallbackMsg = 'No se pudo notificar el error al padre:';
-                    if (window.logger) {
-                        logger.error(fallbackMsg, e);
-                    } else {
-                        console.error(fallbackMsg, e);
-                    }
-                }
-                throw error;
-            }
-        }
-
-
-        // Inicializar cuando el DOM esté listo
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => {
-                inicializar().catch(error => {
-                    if (window.logger) {
-                    logger.error('Error crítico durante la inicialización:', error);
-                } else {
-                    console.error('Error crítico durante la inicialización:', error);
-                }
-                });
-            });
-        } else {
-            // Si el DOM ya está listo, inicializar directamente
-            inicializar().catch(error => {
-                if (window.logger) {
-                    logger.error('Error crítico durante la inicialización:', error);
-                } else {
-                    console.error('Error crítico durante la inicialización:', error);
-                }
-            });
-        }
-
-        // Exponer funciones de mensajería al ámbito global
-        window.registrarControlador = registrarControlador;
-        window.enviarMensajeConACK = enviarMensajeConACK;
-        
-        // Manejar mensajes globales
-        window.addEventListener('message', async (event) => {
-            if (!event.data || !event.data.tipo || !event.data.datos) return;
-            
-            const { tipo, datos } = event.data;
-            
-            // Manejar ACK/NACK
-            if ((tipo === 'SISTEMA.ACK' || tipo === 'SISTEMA.NACK') && datos.solicitudId) {
-                console.log(`📩 [${CONFIG.IFRAME_ID}] ${tipo} recibido para solicitud ${datos.solicitudId}`);
-                return;
-            }
-            
-            // Manejar PING
-            if (tipo === 'SISTEMA.PING') {
-                console.log(`🔔 [${CONFIG.IFRAME_ID}] PING recibido, respondiendo PONG`);
-                try {
-                    await enviarACK(event.source, 'PONG', { 
-                        timestamp: new Date().toISOString(),
-                        origen: CONFIG.IFRAME_ID
-                    }, event.origin);
-                } catch (error) {
-                    console.error(`❌ [${CONFIG.IFRAME_ID}] Error al responder PING:`, error);
-                }
-                return;
-            }
-        });
-
-        // Suponiendo que tienes un array local de retos y puzzles:
-const retos = retosAventura1Es;
+// Asignar el primer reto como activo al cargar
+window.addEventListener('load', () => {
+    const primerReto = retosAventura1Es[0];
+    if (primerReto) {
+        enviarMensaje('padre', TIPOS_MENSAJE.RETO.ACTIVAR, { retoId: primerReto.id });
+    }
+});
 
 // =================================================================================
-// FUNCIONES DE MENSAJERÍA MEJORADAS
+// MENSAJERÍA - RECEPCIÓN DE MENSAJES
 // =================================================================================
 
-/**
- * Envía un mensaje con confirmación ACK/NACK
- * @param {string} destino - Destino del mensaje ('padre' o ID de iframe)
- * @param {string} tipo - Tipo de mensaje
- * @param {Object} datos - Datos del mensaje
- * @param {Object} opciones - Opciones de envío
- * @returns {Promise<Object>} Respuesta del destinatario
- */
-async function enviarMensajeConACK(destino, tipo, datos, opciones = {}) {
-    const config = {
-        timeout: opciones.timeout || CONFIG.REINTENTOS.TIEMPO_ESPERA,
-        reintentos: opciones.reintentos || CONFIG.REINTENTOS.MAXIMOS,
-        silencioso: opciones.silencioso || false,
-        ...opciones
-    };
-
-    if (!destino || !tipo) {
-        throw new Error('Se requieren destino y tipo de mensaje');
-    }
-
-    const solicitudId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    const mensaje = {
-        tipo,
-        datos: {
-            ...datos,
-            solicitudId,
-            timestamp: new Date().toISOString(),
-            origen: CONFIG.IFRAME_ID
-        }
-    };
-
-    let ultimoError = null;
-
-    for (let intento = 1; intento <= config.reintentos; intento++) {
-        try {
-            console.log(`📤 [${CONFIG.IFRAME_ID}] Enviando mensaje (${solicitudId}) [${intento}/${config.reintentos}]:`, { tipo, destino });
-
-            const respuesta = await new Promise((resolve, reject) => {
-                const timeoutId = setTimeout(() => {
-                    reject(new Error(`Tiempo de espera agotado (${config.timeout}ms)`));
-                }, config.timeout);
-
-                const manejarRespuesta = (event) => {
-                    if (event.data?.tipo === 'SISTEMA.ACK' &&
-                        event.data?.datos?.solicitudId === solicitudId) {
-                        clearTimeout(timeoutId);
-                        window.removeEventListener('message', manejarRespuesta);
-                        resolve(event.data);
-                    } else if (event.data?.tipo === 'SISTEMA.NACK' &&
-                             event.data?.datos?.solicitudId === solicitudId) {
-                        clearTimeout(timeoutId);
-                        window.removeEventListener('message', manejarRespuesta);
-                        const error = new Error(event.data.datos.mensaje || 'Error en el servidor');
-                        error.codigo = event.data.datos.codigo || 'NACK_RECIBIDO';
-                        error.detalles = event.data.datos.detalles;
-                        reject(error);
-                    }
-                };
-
-                window.addEventListener('message', manejarRespuesta, false);
-
-                try {
-                    window.parent.postMessage(mensaje, '*');
-                } catch (error) {
-                    clearTimeout(timeoutId);
-                    window.removeEventListener('message', manejarRespuesta);
-                    reject(new Error(`Error al enviar mensaje: ${error.message}`));
-                }
-            });
-
-            console.log(`✅ [${CONFIG.IFRAME_ID}] ACK recibido para ${solicitudId}`, respuesta);
-            return respuesta.datos;
-
-        } catch (error) {
-            ultimoError = error;
-            if (config.onRetry && intento < config.reintentos) {
-                config.onRetry(intento, config.reintentos);
-            }
-            if (intento < config.reintentos) {
-                const delay = Math.min(1000 * Math.pow(2, intento - 1), 10000);
-                await new Promise(resolve => setTimeout(resolve, delay));
-            }
-        }
-    }
-
-    if (!config.silencioso) {
-        console.error(`❌ [${CONFIG.IFRAME_ID}] No se pudo enviar el mensaje después de ${config.reintentos} intentos`);
-        if (ultimoError) {
-            console.error('Último error:', ultimoError);
-        }
-    }
-    throw ultimoError || new Error('Error desconocido al enviar mensaje');
+try {
+    // Registrar manejadores de mensajes
+    inicializarManejadoresMensajes();
+} catch (error) {
+    console.error('❌ [RETOS] Error al inicializar manejadores de mensajes:', error);
+    throw error;
 }
 
 // =================================================================================
-// MANEJADORES DE MENSAJES
+// MENSAJERÍA - ENVÍO DE MENSAJES
 // =================================================================================
-async function inicializarManejadoresMensajes() {
+// Usamos las funciones enviarACK y enviarNACK importadas desde el módulo de mensajería central
+// para una implementación consistente del sistema ACK/NACK en todos los componentes
+// =================================================================================
+
+// =================================================================================
+// CONTROLADORES DE MENSAJERÍA
+// =================================================================================
+
+/**
+ * Inicializa los manejadores de mensajes para la comunicación entre iframes.
+ */
+function inicializarManejadoresMensajes() {
     try {
-        // SISTEMA.PING - Responder con PONG
-        registrarControlador('SISTEMA.PING', async (mensaje) => {
+        // PING - PONG
+        registrarControlador('PING', async (mensaje) => {
+            const { origen } = mensaje;
             const { solicitudId } = mensaje.datos || {};
             console.log(`🔔 [${CONFIG.IFRAME_ID}] PING recibido, respondiendo PONG`);
             
             if (solicitudId) {
                 try {
-                    await enviarACK(mensaje.origen, 'PONG', {
+                    await enviarACK(mensaje, {
                         timestamp: new Date().toISOString(),
                         componente: 'retos-preguntas',
-                        origen: CONFIG.IFRAME_ID
+                        responseType: 'PONG'
                     });
                 } catch (error) {
                     console.error(`❌ [${CONFIG.IFRAME_ID}] Error al responder PING:`, error);
@@ -753,10 +434,9 @@ async function inicializarManejadoresMensajes() {
             const enviarRespuesta = async (resultado) => {
                 if (solicitudId) {
                     try {
-                        await enviarACK(mensaje.origen, 'UI.MODAL.RESPUESTA', {
+                        await enviarACK(mensaje, {
                             ...resultado,
-                            origen: CONFIG.IFRAME_ID,
-                            solicitudId
+                            responseType: 'UI.MODAL.RESPUESTA'
                         });
                     } catch (error) {
                         console.error(`❌ [${CONFIG.IFRAME_ID}] Error al enviar ACK de UI.MODAL:`, error);
@@ -877,6 +557,13 @@ registrarControlador(TIPOS_MENSAJE.DATOS.SOLICITAR_PARADA, (mensaje) => {
     const retosAventura1Esretos_con_puzzles_Av1_es = [
         // Add the required data here
     ];
+</script>
+
+<script>
+    window.addEventListener('message', (event) => {
+        console.log('Message received in Av1-esp-retos-preguntas:', event.data);
+        // Add consistent logic to handle the event data
+    });
 </script>
 </body>
 </html>
