@@ -1,188 +1,376 @@
 /**
  * Utilidades generales para la aplicación
  * @module Utils
- * @version 1.2.0
  */
 
 import logger from './logger.js';
 
-/**
- * Genera un ID único utilizando caracteres aleatorios
- * @param {string} [prefix=''] - Prefijo opcional para el ID
- * @returns {string} ID único generado
- */
-export function generarIdUnico(prefix = '') {
-    const timestamp = Date.now();
-    const random = Math.random().toString(36).substring(2, 15);
-    return `${prefix ? prefix + '-' : ''}${timestamp}-${random}`;
-}
+import { CONFIG } from './config.js';
+
+// Configuración por defecto (usar CONFIG.MENSAJERIA como base)
+let config = {
+    iframeId: CONFIG.MENSAJERIA.iframeId,
+    debug: CONFIG.DEBUG,
+    logLevel: CONFIG.LOG_LEVEL
+};
 
 /**
- * Genera un hash simple para el contenido proporcionado
- * @param {string} tipo - Tipo de mensaje
- * @param {Object} datos - Datos del mensaje
- * @returns {string} Hash generado
- */
-export function generarHashContenido(tipo, datos) {
-    try {
-        // Serialize data to JSON, keeping only essential properties for comparison
-        const serialized = JSON.stringify({
-            tipo,
-            // For position data, round coordinates to reduce noise
-            lat: datos.lat ? Math.round(datos.lat * 10000) / 10000 : undefined,
-            lng: datos.lng ? Math.round(datos.lng * 10000) / 10000 : undefined,
-            // Other essential properties depending on the type
-            ...(datos.parada_id ? { parada_id: datos.parada_id } : {}),
-            ...(datos.tramo_id ? { tramo_id: datos.tramo_id } : {})
-        });
-        
-        // Simple hash function for strings
-        let hash = 0;
-        for (let i = 0; i < serialized.length; i++) {
-            const char = serialized.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash; // Convert to 32bit integer
-        }
-        
-        // Convert to hexadecimal string and ensure positive value
-        return (hash >>> 0).toString(16);
-    } catch (error) {
-        logger.error('Error al generar hash de contenido:', error);
-        return `error-${Date.now()}`;
-    }
-}
-
-/**
- * Wrapper for async functions to handle errors consistently
- * @param {Function} fn - The async function to wrap
- * @returns {Function} Wrapped function with error handling
- */
-export function asyncHandler(fn) {
-    return async function(...args) {
-        try {
-            return await fn(...args);
-        } catch (error) {
-            logger.error(`Error en ${fn.name || 'función asíncrona'}:`, error);
-            
-            // Add additional context to the error
-            const contextualizedError = new Error(`Error en ${fn.name || 'función asíncrona'}: ${error.message}`);
-            contextualizedError.originalError = error;
-            contextualizedError.args = args;
-            
-            // Re-throw the error with added context
-            throw contextualizedError;
-        }
-    };
-}
-
-/**
- * Validates the parameters against a schema
- * @param {Object} params - The parameters to validate
- * @param {Object} schema - The schema to validate against
- * @param {string} [context] - The context for error messages
- * @returns {Object} - Validation result with valido and error properties
- */
-export function validarParametros(params, schema, context = '') {
-    try {
-        // Handle null or undefined params
-        if (params === null || params === undefined) {
-            return {
-                valido: false,
-                error: `${context ? context + ': ' : ''}Los parámetros no pueden ser null o undefined`
-            };
-        }
-        
-        // Validate each parameter against the schema
-        for (const key in schema) {
-            const fieldSchema = schema[key];
-            let value = params[key];
-            
-            // If the field is required and missing
-            if (fieldSchema.requerido && (value === undefined || value === null)) {
-                return {
-                    valido: false,
-                    error: `${context ? context + ': ' : ''}Parámetro requerido faltante: ${key}`
-                };
-            }
-            
-            // If field is not required and missing, use default value if available
-            if ((value === undefined || value === null) && !fieldSchema.requerido) {
-                if ('valorPorDefecto' in fieldSchema) {
-                    value = fieldSchema.valorPorDefecto;
-                    params[key] = value; // Update the params object with the default value
-                }
-                continue; // Skip further validation for this field
-            }
-            
-            // Check type if the value is defined
-            if (value !== undefined && value !== null) {
-                // Type validation
-                const expectedType = fieldSchema.tipo;
-                let actualType = typeof value;
-                
-                // Special handling for arrays
-                if (Array.isArray(value)) {
-                    actualType = 'array';
-                }
-                
-                if (expectedType && actualType !== expectedType && 
-                    !(expectedType === 'array' && Array.isArray(value))) {
-                    return {
-                        valido: false,
-                        error: `${context ? context + ': ' : ''}Tipo inválido para ${key}, se esperaba ${expectedType} pero se recibió ${actualType}`
-                    };
-                }
-                
-                // Custom validation function
-                if (fieldSchema.validar && typeof fieldSchema.validar === 'function') {
-                    if (!fieldSchema.validar(value)) {
-                        return {
-                            valido: false,
-                            error: `${context ? context + ': ' : ''}Validación personalizada fallida para ${key}`
-                        };
-                    }
-                }
-            }
-        }
-        
-        return { valido: true };
-    } catch (error) {
-        return {
-            valido: false,
-            error: `${context ? context + ': ' : ''}Error durante la validación: ${error.message}`
-        };
-    }
-}
-
-/**
- * Configura las funciones utilitarias con los ajustes de la aplicación
+ * Configura las utilidades
  * @param {Object} options - Opciones de configuración
  */
 export function configurarUtils(options = {}) {
-    // Almacena la configuración para las utilidades
-    const config = {
-        debug: options.debug || false,
-        logLevel: options.logLevel || 1,
-        ...options
-    };
+    // Actualizar configuración
+    config = { ...config, ...options };
     
-    // Aplica la configuración a las funciones utilitarias existentes
-    if (options.logger && typeof options.logger.configure === 'function') {
-        options.logger.configure({
-            debug: config.debug,
-            logLevel: config.logLevel
+    // Configurar logger si está disponible
+    if (logger && typeof logger.configure === 'function') {
+        logger.configure({
+            iframeId: config.iframeId,
+            logLevel: config.logLevel,
+            debug: config.debug
         });
     }
     
     return config;
 }
 
-// Additional utility functions could be added here...
+/**
+ * Crea un objeto de error para reportar al sistema
+ * @param {string} codigo - Código de error
+ * @param {string|Error} error - Mensaje o objeto de error
+ * @param {Object} [datos] - Datos adicionales
+ * @returns {Object} Objeto de error formateado
+ */
+export function crearObjetoError(codigo, error, datos = {}) {
+    // Si es un string, convertir a objeto Error
+    const errorObj = typeof error === 'string' ? new Error(error) : error;
+    
+    return {
+        codigo,
+        mensaje: errorObj.message,
+        stack: errorObj.stack,
+        timestamp: new Date().toISOString(),
+        origen: config.iframeId,
+        datos,
+        nombre: errorObj.name || 'Error'
+    };
+}
 
+/**
+ * Valida un objeto para asegurar que tiene las propiedades requeridas
+ * @param {Object} objeto - Objeto a validar
+ * @param {string[]} propiedadesRequeridas - Lista de propiedades requeridas
+ * @returns {boolean} True si el objeto es válido
+ */
+export function validarObjeto(objeto, propiedadesRequeridas) {
+    if (!objeto || typeof objeto !== 'object') {
+        return false;
+    }
+    
+    return propiedadesRequeridas.every(prop => 
+        Object.prototype.hasOwnProperty.call(objeto, prop) && 
+        objeto[prop] !== undefined && 
+        objeto[prop] !== null
+    );
+}
+
+/**
+ * Genera un ID único
+ * @returns {string} ID único
+ */
+export function generarId() {
+    return `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+/**
+ * Genera un ID único con mayor entropía usando timestamp, aleatorio y prefijo opcional
+ * @param {string} [prefix='msg'] - Prefijo opcional para el ID
+ * @returns {string} ID único garantizado
+ */
+export function generarIdUnico(prefix = 'msg') {
+    // Usar timestamp con milisegundos
+    const timestamp = Date.now();
+    // Generar componente aleatorio con mayor entropía
+    const random = Math.random().toString(36).substring(2, 10) + 
+                  Math.random().toString(36).substring(2, 10);
+    // Componente único del navegador (cuando esté disponible)
+    let uniqueComponent = '';
+    if (typeof window !== 'undefined') {
+        // Usar información de la sesión cuando esté disponible
+        uniqueComponent = window.name || window.sessionStorage?.getItem('session-id') || '';
+    }
+    
+    return `${prefix}-${timestamp}-${random}-${uniqueComponent}`;
+}
+
+/**
+ * Debounce function
+ * @param {Function} func - Función a ejecutar
+ * @param {number} wait - Tiempo de espera en ms
+ * @returns {Function} Función con debounce
+ */
+export function debounce(func, wait = 300) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+/**
+ * Throttle function
+ * @param {Function} func - Función a ejecutar
+ * @param {number} limit - Límite de tiempo en ms
+ * @returns {Function} Función con throttle
+ */
+export function throttle(func, limit = 300) {
+    let inThrottle;
+    return function executedFunction(...args) {
+        if (!inThrottle) {
+            func(...args);
+            inThrottle = true;
+            setTimeout(() => inThrottle = false, limit);
+        }
+    };
+}
+
+/**
+ * Genera un hash simple para el contenido de un mensaje
+ * @param {string} tipo - Tipo de mensaje
+ * @param {Object} datos - Datos del mensaje
+ * @returns {string} Hash del contenido
+ */
+export function generarHashContenido(tipo, datos = {}) {
+    const contenido = `${tipo}:${JSON.stringify(datos)}`;
+    let hash = 0;
+    for (let i = 0; i < contenido.length; i++) {
+        const char = contenido.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convertir a entero de 32 bits
+    }
+    return Math.abs(hash).toString(16);
+}
+
+/**
+ * Obtiene un valor de localStorage con validación de tipo y fallback
+ * @param {string} key - Clave para obtener del localStorage
+ * @param {any} defaultValue - Valor por defecto si no existe o hay error
+ * @param {string} [expectedType] - Tipo esperado ('string', 'number', 'boolean', 'object', 'array')
+ * @returns {any} Valor recuperado o valor por defecto
+ */
+export function getFromStorage(key, defaultValue = null, expectedType = null) {
+    try {
+        // Verificar disponibilidad de localStorage
+        if (typeof localStorage === 'undefined') {
+            logger.warn('localStorage no disponible en este entorno');
+            return defaultValue;
+        }
+
+        const storedValue = localStorage.getItem(key);
+        
+        // Si no hay valor almacenado, retornar default
+        if (storedValue === null) {
+            return defaultValue;
+        }
+        
+        // Intentar analizar el valor JSON
+        let parsedValue;
+        try {
+            parsedValue = JSON.parse(storedValue);
+        } catch (e) {
+            // Si no es JSON válido, usar el valor como string
+            parsedValue = storedValue;
+        }
+        
+        // Validación de tipo si se especifica
+        if (expectedType) {
+            const actualType = Array.isArray(parsedValue) ? 'array' : typeof parsedValue;
+            if (actualType !== expectedType) {
+                logger.warn(`Tipo incorrecto en localStorage para ${key}. Esperado: ${expectedType}, actual: ${actualType}`);
+                return defaultValue;
+            }
+        }
+        
+        return parsedValue;
+    } catch (error) {
+        logger.warn(`Error al leer ${key} de localStorage:`, error);
+        return defaultValue;
+    }
+}
+
+/**
+ * Almacena un valor en localStorage con manejo de errores
+ * @param {string} key - Clave para almacenar en localStorage
+ * @param {any} value - Valor para almacenar
+ * @returns {boolean} True si se almacenó correctamente, False si hubo error
+ */
+export function setToStorage(key, value) {
+    try {
+        // Verificar disponibilidad de localStorage
+        if (typeof localStorage === 'undefined') {
+            logger.warn('localStorage no disponible en este entorno');
+            return false;
+        }
+        
+        // Convertir a string si no es un string
+        const valueToStore = typeof value === 'string' 
+            ? value 
+            : JSON.stringify(value);
+        
+        localStorage.setItem(key, valueToStore);
+        return true;
+    } catch (error) {
+        const errorType = error.name || 'Error desconocido';
+        logger.warn(`Error (${errorType}) al guardar ${key} en localStorage:`, error);
+        
+        // Intentar identificar si es un error de cuota
+        if (error.name === 'QuotaExceededError' || 
+            error.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+            error.message.includes('quota')) {
+            logger.warn('Se ha excedido la cuota de localStorage. Intentando liberar espacio...');
+            // Aquí se podría implementar lógica para liberar espacio
+        }
+        
+        return false;
+    }
+}
+
+/**
+ * Sistema de caché para elementos DOM frecuentemente utilizados
+ * Mejora el rendimiento evitando búsquedas repetidas en el DOM
+ */
+const domCache = {
+    // Almacén de elementos
+    _elements: new Map(),
+    
+    /**
+     * Obtiene un elemento del DOM, usando la caché si ya existe
+     * @param {string} id - ID del elemento
+     * @returns {HTMLElement|null} Elemento encontrado o null
+     */
+    getElementById(id) {
+        if (!id) return null;
+        
+        // Si ya está en caché, devolverlo
+        if (this._elements.has(id)) {
+            return this._elements.get(id);
+        }
+        
+        // Si no está en caché, buscarlo y almacenarlo
+        const element = document.getElementById(id);
+        if (element) {
+            this._elements.set(id, element);
+        }
+        
+        return element;
+    },
+    
+    /**
+     * Obtiene elementos por selector CSS, usando la caché si ya existen
+     * @param {string} selector - Selector CSS
+     * @param {HTMLElement} [parent=document] - Elemento padre donde buscar
+     * @returns {NodeList} Lista de elementos
+     */
+    querySelectorAll(selector, parent = document) {
+        if (!selector) return [];
+        
+        const cacheKey = `${parent === document ? 'document' : parent.id || 'unknown'}_${selector}`;
+        
+        // Si ya está en caché, devolverlo
+        if (this._elements.has(cacheKey)) {
+            return this._elements.get(cacheKey);
+        }
+        
+        // Si no está en caché, buscarlo y almacenarlo
+        const elements = parent.querySelectorAll(selector);
+        if (elements && elements.length > 0) {
+            this._elements.set(cacheKey, elements);
+        }
+        
+        return elements;
+    },
+    
+    /**
+     * Obtiene un único elemento por selector CSS, usando la caché
+     * @param {string} selector - Selector CSS
+     * @param {HTMLElement} [parent=document] - Elemento padre donde buscar
+     * @returns {HTMLElement|null} Elemento encontrado o null
+     */
+    querySelector(selector, parent = document) {
+        if (!selector) return null;
+        
+        const cacheKey = `${parent === document ? 'document' : parent.id || 'unknown'}_${selector}_single`;
+        
+        // Si ya está en caché, devolverlo
+        if (this._elements.has(cacheKey)) {
+            return this._elements.get(cacheKey);
+        }
+        
+        // Si no está en caché, buscarlo y almacenarlo
+        const element = parent.querySelector(selector);
+        if (element) {
+            this._elements.set(cacheKey, element);
+        }
+        
+        return element;
+    },
+    
+    /**
+     * Actualiza o agrega un elemento a la caché
+     * @param {string} id - ID o clave para el elemento
+     * @param {HTMLElement} element - Elemento a almacenar
+     */
+    set(id, element) {
+        if (!id || !element) return;
+        this._elements.set(id, element);
+    },
+    
+    /**
+     * Elimina un elemento de la caché
+     * @param {string} id - ID o clave del elemento
+     */
+    remove(id) {
+        if (!id) return;
+        this._elements.delete(id);
+    },
+    
+    /**
+     * Limpia toda la caché o elementos específicos que coincidan con un patrón
+     * @param {string} [pattern] - Patrón para filtrar elementos (opcional)
+     */
+    clear(pattern = null) {
+        if (!pattern) {
+            this._elements.clear();
+            return;
+        }
+        
+        // Eliminar solo los elementos que coincidan con el patrón
+        for (const key of this._elements.keys()) {
+            if (key.includes(pattern)) {
+                this._elements.delete(key);
+            }
+        }
+    }
+};
+
+// Exportar el sistema de caché DOM
+export const DOMCache = domCache;
+
+// Exportar todo a través de default
 export default {
-    generarIdUnico,
+    configurarUtils,
+    crearObjetoError,
+    validarObjeto,
     generarHashContenido,
-    asyncHandler,
-    validarParametros,
-    configurarUtils
+    generarId,
+    generarIdUnico,
+    debounce,
+    throttle,
+    getFromStorage,
+    setToStorage,
+    DOMCache: domCache
 };
