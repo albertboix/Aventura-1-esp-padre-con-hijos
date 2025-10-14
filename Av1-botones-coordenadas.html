@@ -163,10 +163,12 @@
                 width: calc(var(--trapecio-width) * 0.9);
                 height: calc(var(--trapecio-height) * 0.9);
             }
+            
             .boton {
                 width: calc(var(--btn-size) * 0.9);
                 height: calc(var(--btn-size) * 0.9);
             }
+            
             .status {
                 font-size: 0.8em;
             }
@@ -953,9 +955,29 @@
     </script>
     <script type="module">
     // Import required functions
-    import { registrarControlador, enviarMensaje, inicializarMensajeria } from './js/mensajeria.js';
+    import { registrarControlador, enviarMensaje as enviarMensajeOriginal, inicializarMensajeria } from './js/mensajeria.js';
     import { TIPOS_MENSAJE } from './js/constants.js';
     import logger from './js/logger.js';
+    
+    // Sobrescribir la función de envío de mensajes para utilizar ACK/NACK en mensajes críticos
+    const enviarMensaje = (destino, tipo, datos = {}) => {
+        // Lista de tipos de mensajes críticos que requieren confirmación
+        const tiposCriticos = [
+            'SISTEMA.CAMBIO_MODO',
+            'NAVEGACION.CAMBIO_PARADA',
+            'CONTROL.HABILITAR',
+            'CONTROL.DESHABILITAR'
+        ];
+        
+        // Si es un tipo crítico, usar envío con confirmación
+        if (tiposCriticos.some(tipoCritico => tipo.includes(tipoCritico)) ||
+            (datos && datos.requiereConfirmacion)) {
+            return enviarMensajeConConfirmacion(destino, tipo, datos);
+        }
+        
+        // Para mensajes no críticos, usar el envío normal
+        return enviarMensajeOriginal(destino, tipo, datos);
+    };
     
     // =================================================================================
     // 2. MANEJADORES DE MENSAJES
@@ -1239,6 +1261,50 @@
             return punto;
         }
 
+        // Variables para el sistema ACK/NACK
+        const mensajesPendientes = new Map(); // Almacena mensajes esperando ACK
+        const TIMEOUT_ACK = 5000; // 5 segundos de timeout para recibir ACK
+        
+        // Función para manejar el envío con sistema ACK/NACK
+        function enviarMensajeConConfirmacion(destino, tipo, datos = {}) {
+            // Generar un ID único para el mensaje
+            const mensajeId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const mensaje = {
+                tipo,
+                datos: { ...datos, requiereACK: true },
+                origen: 'hijo2',
+                id: mensajeId,
+                timestamp: Date.now()
+            };
+            
+            return new Promise((resolve, reject) => {
+                // Registrar el mensaje pendiente
+                mensajesPendientes.set(mensajeId, {
+                    mensaje,
+                    resolve,
+                    reject,
+                    timeout: setTimeout(() => {
+                        if (mensajesPendientes.has(mensajeId)) {
+                            console.warn(`No se recibió ACK para el mensaje ${mensajeId} (${tipo})`);
+                            mensajesPendientes.delete(mensajeId);
+                            reject(new Error('Timeout esperando ACK'));
+                            
+                            // Reintento automático para mensajes críticos
+                            if (['CAMBIO_MODO', 'CAMBIO_PARADA', 'HABILITAR', 'DESHABILITAR'].some(m => tipo.includes(m))) {
+                                console.log(`Reintentando envío de mensaje crítico ${tipo}`);
+                                enviarMensajeConConfirmacion(destino, tipo, datos)
+                                    .catch(err => console.error(`Fallo en reintento: ${err.message}`));
+                            }
+                        }
+                    }, TIMEOUT_ACK)
+                });
+                
+                // Enviar el mensaje
+                window.parent.postMessage(mensaje, '*');
+                console.log(`Mensaje ${mensajeId} enviado esperando ACK: ${tipo}`);
+            });
+        }
+        
         // Controlador de mensajes del padre
         window.addEventListener('message', (event) => {
             const mensaje = event.data;
@@ -1246,6 +1312,46 @@
             
             console.log('Mensaje recibido del padre:', mensaje);
             
+            // Procesar ACK/NACK
+            if (mensaje.tipo === 'SISTEMA.ACK') {
+                if (mensaje.datos && mensaje.datos.mensajeId && mensajesPendientes.has(mensaje.datos.mensajeId)) {
+                    const { resolve, timeout } = mensajesPendientes.get(mensaje.datos.mensajeId);
+                    clearTimeout(timeout);
+                    mensajesPendientes.delete(mensaje.datos.mensajeId);
+                    console.log(`ACK recibido para mensaje ${mensaje.datos.mensajeId}`);
+                    resolve(mensaje.datos);
+                }
+                return;
+            } else if (mensaje.tipo === 'SISTEMA.NACK') {
+                if (mensaje.datos && mensaje.datos.mensajeId && mensajesPendientes.has(mensaje.datos.mensajeId)) {
+                    const { reject, timeout } = mensajesPendientes.get(mensaje.datos.mensajeId);
+                    clearTimeout(timeout);
+                    mensajesPendientes.delete(mensaje.datos.mensajeId);
+                    console.warn(`NACK recibido para mensaje ${mensaje.datos.mensajeId}: ${mensaje.datos.motivo || 'No especificado'}`);
+                    reject(new Error(`NACK: ${mensaje.datos.motivo || 'No especificado'}`));
+                }
+                return;
+            }
+            
+            // Enviar ACK automático si el mensaje lo requiere
+            if (mensaje.datos && mensaje.datos.requiereACK && mensaje.id) {
+                const ack = {
+                    tipo: 'SISTEMA.ACK',
+                    datos: {
+                        mensajeId: mensaje.id,
+                        origen: 'hijo2'
+                    },
+                    origen: 'hijo2'
+                };
+                
+                // Enviar ACK inmediatamente
+                if (mensaje.origen) {
+                    window.parent.postMessage(ack, '*');
+                    console.log(`ACK enviado para mensaje ${mensaje.id}`);
+                }
+            }
+            
+            // Continuar con el procesamiento normal
             switch (mensaje.tipo) {
                 case TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO:
                     manejarCambioModo(mensaje);
@@ -1626,7 +1732,7 @@
             // Por ejemplo, centrar el mapa en la ubicación actual o mostrar un diálogo
             
             // Notificar al padre que se hizo clic en el botón de ubicación
-            enviarMensaje('padre', 'NAVEGACION.CENTRAR_EN_UBICACION', {
+            enviarMensaje('padre', TIPOS_MENSAJE.NAVEGACION.CENTRAR_EN_UBICACION, {
                 origen: 'hijo2',
                 timestamp: new Date().toISOString()
             });
@@ -1661,7 +1767,7 @@
             // Por ejemplo, mostrar el mapa completo o cambiar la vista
             
             // Notificar al padre que se hizo clic en el botón de mapa completo
-            enviarMensaje('padre', 'NAVEGACION.MOSTRAR_MAPA_COMPLETO', {
+            enviarMensaje('padre', TIPOS_MENSAJE.NAVEGACION.MOSTRAR_MAPA_COMPLETO, {
                 origen: 'hijo2',
                 timestamp: new Date().toISOString()
             });
@@ -1673,7 +1779,7 @@
             // Por ejemplo, mostrar el mapa JPG o cambiar la vista
             
             // Notificar al padre que se hizo clic en el botón de mapa JPG
-            enviarMensaje('padre', 'NAVEGACION.MOSTRAR_MAPA_JPG', {
+            enviarMensaje('padre', TIPOS_MENSAJE.NAVEGACION.MOSTRAR_MAPA_JPG, {
                 origen: 'hijo2',
                 timestamp: new Date().toISOString()
             });
@@ -1741,10 +1847,9 @@
                 });
 
                 // Inicializar mensajería primero
-                await inicializarMensajeria({ 
-                    iframeId: window.IFRAME_ID,
-                    logLevel: 3,
-                    modoDebug: true
+                await inicializarMensajeria({
+                    ...CONFIG.MENSAJERIA,
+                    iframeId: window.IFRAME_ID
                 });
                 
                 console.log('✅ Mensajería inicializada en el componente de coordenadas');
@@ -1756,14 +1861,14 @@
                 registrarControlador(TIPOS_MENSAJE.NAVEGACION.SOLICITAR_ESTADO_MAPA, manejarSolicitudEstadoMapa);
                 
                 // Notificar al padre que el componente está listo
-                await enviarMensaje('padre', 'SISTEMA.COMPONENTE_INICIALIZADO', {
+                await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.COMPONENTE_INICIALIZADO, {
                     componente: 'botones-coordenadas',
                     estado: 'listo',
                     timestamp: new Date().toISOString()
                 });
                 
                 // Notificar que la inicialización ha finalizado
-                await enviarMensaje('padre', 'SISTEMA.INICIALIZACION_FINALIZADA', {
+                await enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.INICIALIZACION_FINALIZADA, {
                     componente: 'botones-coordenadas',
                     timestamp: new Date().toISOString()
                 });
@@ -1843,9 +1948,10 @@
             }
         });
 
-        // Confirmar recepción de mensajes
+        // Confirmar recepción de mensajes (compatible con el sistema anterior)
         registrarControlador(TIPOS_MENSAJE.SISTEMA.CAMBIO_MODO, (mensaje) => {
             console.log('Cambio de modo recibido:', mensaje.datos);
+            // Se mantiene para compatibilidad con el sistema anterior
             enviarMensaje('padre', TIPOS_MENSAJE.SISTEMA.CONFIRMACION, { estado: 'recibido', origen: 'hijo2' });
         });
 
