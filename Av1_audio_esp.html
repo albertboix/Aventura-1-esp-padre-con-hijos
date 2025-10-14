@@ -712,6 +712,14 @@
         // Alias para compatibilidad
         const IFRAME_ID = CONFIG.IFRAME_ID;
         
+        // Inicializar el sistema de mensajería
+        console.log(`[${CONFIG.IFRAME_ID}] Inicializando sistema de mensajería...`);
+        await inicializarMensajeria({
+            ...CONFIG.MENSAJERIA,
+            iframeId: CONFIG.IFRAME_ID
+        });
+        console.log(`[${CONFIG.IFRAME_ID}] Sistema de mensajería inicializado correctamente`);
+        
         // =================================================================================
         // FUNCIONES DE MENSAJERÍA MEJORADAS
         // =================================================================================
@@ -969,14 +977,104 @@
 
         // --- MANEJADORES DE MENSAJES ---
 
-        // Manejadores para mensajes
-        async function manejarConfirmacion(mensaje) {
-            console.log('✅ [AUDIO] Recibida confirmación:', mensaje);
-            return { 
-                estado: 'ok',
-                timestamp: new Date().toISOString(),
-                origen: IFRAME_ID
-            };
+        // Inicializar manejadores de mensajes
+        async function inicializarManejadoresMensajes() {
+            // Ping del sistema
+            registrarControlador(TIPOS_MENSAJE.SISTEMA.PING, async (mensaje) => {
+                console.log(`[${CONFIG.IFRAME_ID}] Recibido PING, respondiendo...`);
+                try {
+                    await enviarACK(mensaje, {
+                        timestamp: new Date().toISOString(),
+                        componente: CONFIG.IFRAME_ID,
+                        responseType: 'PONG'
+                    });
+                } catch (error) {
+                    console.error(`[${CONFIG.IFRAME_ID}] Error al responder PING:`, error);
+                }
+            });
+
+            // Control de audio
+            registrarControlador(TIPOS_MENSAJE.AUDIO.CONTROL, async (mensaje) => {
+                const { accion, audioId, tiempo } = mensaje.datos || {};
+                
+                try {
+                    if (accion === 'reproducir') {
+                        if (audioId) {
+                            await cargarYReproducirAudio(audioId);
+                        } else if (audioPlayer.src) {
+                            audioPlayer.play();
+                        }
+                        await enviarACK(mensaje, { 
+                            estado: 'reproduciendo', 
+                            audioId: currentAudioId || audioId,
+                            tiempoActual: audioPlayer.currentTime || 0
+                        });
+                    } else if (accion === 'pausar') {
+                        if (audioPlayer.src && !audioPlayer.paused) {
+                            audioPlayer.pause();
+                        }
+                        await enviarACK(mensaje, { 
+                            estado: 'pausado', 
+                            audioId: currentAudioId,
+                            tiempoActual: audioPlayer.currentTime || 0
+                        });
+                    } else if (accion === 'detener') {
+                        if (audioPlayer.src) {
+                            audioPlayer.pause();
+                            audioPlayer.currentTime = 0;
+                        }
+                        await enviarACK(mensaje, { 
+                            estado: 'detenido', 
+                            audioId: currentAudioId
+                        });
+                    } else if (accion === 'saltar') {
+                        if (audioPlayer.src && tiempo !== undefined) {
+                            audioPlayer.currentTime = tiempo;
+                            await enviarACK(mensaje, { 
+                                estado: 'tiempo_actualizado', 
+                                audioId: currentAudioId,
+                                tiempoActual: audioPlayer.currentTime || 0
+                            });
+                        } else {
+                            await enviarNACK(mensaje, { 
+                                codigo: 'PARAMETRO_INVALIDO', 
+                                mensaje: 'Se requiere un valor de tiempo válido'
+                            });
+                        }
+                    } else {
+                        await enviarNACK(mensaje, { 
+                            codigo: 'ACCION_DESCONOCIDA', 
+                            mensaje: `Acción desconocida: ${accion}`
+                        });
+                    }
+                } catch (error) {
+                    console.error(`[${CONFIG.IFRAME_ID}] Error al manejar control de audio:`, error);
+                    await enviarNACK(mensaje, { 
+                        codigo: 'ERROR_PROCESAMIENTO', 
+                        mensaje: error.message || 'Error al procesar la solicitud de audio' 
+                    });
+                }
+            });
+
+            // Manejadores para confirmaciones del sistema (retrocompatibilidad)
+            registrarControlador(TIPOS_MENSAJE.SISTEMA.CONFIRMACION, async (mensaje) => {
+                console.log('✅ [AUDIO] Recibida confirmación:', mensaje);
+                await enviarACK(mensaje, { 
+                    estado: 'ok',
+                    timestamp: new Date().toISOString(),
+                    origen: CONFIG.IFRAME_ID
+                });
+            });
         }
 
-        // Using the imported manejarPing from mensajeria.js instead of redefini
+        // Inicializar los manejadores de mensajes
+        await inicializarManejadoresMensajes();
+        console.log(`[${CONFIG.IFRAME_ID}] Manejadores de mensajes inicializados correctamente`);
+
+        // Cargar el primer audio si está configurado
+        if (CONFIG.AUDIO_INICIAL) {
+            await cargarYReproducirAudio(CONFIG.AUDIO_INICIAL);
+        }
+    </script>
+</body>
+</html>
