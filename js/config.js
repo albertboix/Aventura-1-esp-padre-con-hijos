@@ -41,6 +41,42 @@ export const CONFIG = {
         factor: 2
     },
     
+    // Configuración del sistema de mensajería
+    MENSAJERIA: {
+        // Valores por defecto
+        iframeId: 'unknown',
+        logLevel: isDevelopmentMode() ? LOG_LEVELS.DEBUG : LOG_LEVELS.INFO,
+        debug: isDevelopmentMode(),
+        reintentos: {
+            maximos: 3,
+            tiempoEspera: 1000,
+            factor: 2
+        },
+        // Tiempo de limpieza de instancias inactivas (ms)
+        tiempoLimpieza: 15 * 60 * 1000, // 15 minutos
+        tiempoInactividad: 30 * 60 * 1000, // 30 minutos
+        
+        // Configuración de la cola de mensajes pendientes
+        COLA_PENDIENTES: {
+            // Máximo de mensajes en la cola
+            MAXIMO: 50,
+            // Máximo de mensajes urgentes en la cola
+            MAX_URGENTES: 10,
+            // Intervalo entre procesamiento de la cola (ms)
+            INTERVALO: 5000,
+            // Número de mensajes a procesar en cada lote
+            LOTE: 5,
+            // Factor de backoff exponencial para reintentos
+            FACTOR_BACKOFF: 1.5,
+            // Retraso base para reintentos (ms)
+            RETRASO_BASE: 1000,
+            // Retraso máximo para reintentos (ms)
+            MAX_RETRASO: 30000,
+            // Edad máxima de un mensaje en cola (ms) - 24 horas por defecto
+            MAX_EDAD_MS: 24 * 60 * 60 * 1000
+        }
+    },
+    
     // Configuración del mapa
     MAPA: {
         CENTER: [39.4699, -0.3763], // Valencia
@@ -51,12 +87,13 @@ export const CONFIG = {
     }
 };
 
-// Export LOG_LEVELS to fix dependency issues
+// Exportar constantes y configuración
 export { LOG_LEVELS };
 
-// Cambiar las exportaciones para usar CommonJS si ES6 no es compatible
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { CONFIG, LOG_LEVELS };
-} else {
+// Exportar CONFIG como predeterminado para facilitar importación
+export default CONFIG;
+
+// Proporcionar acceso global para compatibilidad con versiones anteriores del código
+if (typeof window !== 'undefined') {
     window.Config = { CONFIG, LOG_LEVELS };
 }
