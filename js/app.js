@@ -5,7 +5,7 @@
  */
 
 import { TIPOS_MENSAJE, MODOS } from './constants.js';
-import { enviarMensaje, registrarControlador, manejarErrorCritico, validarMensajeEntrante } from './mensajeria.js';
+import mensajeria, { enviarMensaje, registrarControlador } from './mensajeria.js'; // manejarErrorCritico y validarMensajeEntrante ahora desde el objeto mensajeria
 import logger, { registrarEvento } from './logger.js';
 import { CONFIG } from './config.js';
 import { solicitarDatosParadas } from './funciones-mapa.js';
@@ -723,18 +723,3 @@ export async function enviarEventoAHijos(tipoEvento, datos) {
         logger.error('Error al enviar evento a los hijos:', error);
     }
 }
-
-// Eliminar lógica duplicada para manejar confirmaciones (ACK)
-// Esto ya está centralizado en mensajeria.js
-
-// Eliminar lógica duplicada para manejar sincronización de estado global
-// Esto ya está centralizado en mensajeria.js
-
-// Eliminar lógica duplicada para diagnóstico del mapa
-// Esto ya está centralizado en funciones-mapa.js
-
-// Eliminar lógica duplicada de inicialización del mapa
-// El mapa se inicializa desde funciones-mapa.js
-
-// Remover lógica redundante de manejo de errores no capturados
-// Esto ya está centralizado en mensajeria.js
